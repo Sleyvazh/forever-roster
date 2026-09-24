@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "@forever/game-data": "*",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",

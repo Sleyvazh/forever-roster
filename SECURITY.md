@@ -75,7 +75,7 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 
 ## Conteneurs
 
-- API : image `node:22-alpine`, utilisateur `node`, système de fichiers en lecture seule, `cap_drop: ALL`, `no-new-privileges`.
+- API : image `node:24-alpine`, utilisateur `node`, système de fichiers en lecture seule, `cap_drop: ALL`, `no-new-privileges`.
 - PostgreSQL : aucun port publié.
 - Dépendances : Dependabot, `npm audit --omit=dev` et CodeQL (`security-extended`) dans la CI.
 

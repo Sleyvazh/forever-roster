@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 24 }
       # Dépendances livrées en production uniquement ; les outils de dev (esbuild, drizzle-kit) sont exclus.
       - run: npm audit --omit=dev --audit-level=high
 

@@ -18,7 +18,7 @@ Le projet sert aussi de vitrine : l'authentification et la gestion des sessions 
 
 | Couche | Choix |
 |---|---|
-| API | Node 22, TypeScript, Fastify 5, Drizzle ORM, PostgreSQL 16, zod |
+| API | Node 24, TypeScript, Fastify 5, Drizzle ORM, PostgreSQL 16, zod |
 | Front | React 19, Vite, React Router, TanStack Query |
 | Données de jeu | paquet `@forever/game-data` partagé entre l'API et le front |
 | Infra | Docker Compose, Caddy (HTTPS automatique, en-têtes de sécurité) |
@@ -34,7 +34,7 @@ docs/               Architecture
 
 ## Lancer en local
 
-Prérequis : Node 22 et Docker.
+Prérequis : Node 24 et Docker.
 
 ```bash
 cp .env.example .env

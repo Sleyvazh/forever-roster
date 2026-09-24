@@ -5,7 +5,7 @@
 ```mermaid
 flowchart LR
   B[Navigateur<br/>React SPA] -- HTTPS --> C[Caddy<br/>TLS, CSP, fichiers statiques]
-  C -- /api/* --> A[API Fastify<br/>Node 22]
+  C -- /api/* --> A[API Fastify<br/>Node 24]
   A --> P[(PostgreSQL 16)]
   A -- SMTP --> M[Serveur e-mail]
   A -- OAuth 2.0 --> BN[Battle.net]

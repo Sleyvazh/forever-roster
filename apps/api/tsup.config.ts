@@ -3,7 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/server.ts", "src/db/migrate-cli.ts"],
   format: ["esm"],
-  target: "node22",
+  target: "node24",
   platform: "node",
   sourcemap: true,
   clean: true,
