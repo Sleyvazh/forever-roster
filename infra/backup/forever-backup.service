@@ -1,0 +1,8 @@
+[Unit]
+Description=Sauvegarde de la base Forever Roster
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/forever-backup.sh

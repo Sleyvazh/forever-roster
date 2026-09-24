@@ -1,5 +1,7 @@
 # Forever Roster
 
+**En ligne : https://forever-roster.sleyvazh.fr**
+
 Application web pour préparer **WoW Forever** (sortie le 4 novembre 2026) en guilde : chaque joueur gère ses personnages, les officiers composent les raids de 40 et voient en direct quels buffs et debuffs manquent.
 
 Le projet sert aussi de vitrine : l'authentification et la gestion des sessions sont écrites à la main, testées, et documentées dans [SECURITY.md](SECURITY.md).
@@ -29,7 +31,8 @@ apps/api            API Fastify (routes, sessions, migrations SQL)
 apps/web            Front React
 packages/game-data  Races, classes, métiers, règles de buffs de raid
 infra/Caddyfile     Reverse proxy + CSP
-docs/               Architecture
+docs/               Architecture, exploitation
+scripts/deploy.sh   Déploiement en production
 ```
 
 ## Lancer en local
@@ -68,12 +71,14 @@ Les tests de l'API passent par Fastify (`inject`) avec une vraie base Postgres. 
 
 ## Déploiement
 
+L'app tourne sur un VPS Debian durci (SSH par clé uniquement, UFW, fail2ban, mises à jour automatiques), avec Docker Compose et Caddy pour le HTTPS.
+
 ```bash
-cp .env.example .env    # APP_ORIGIN=https://ton-domaine, DOMAIN=ton-domaine, vrais secrets et SMTP
+cp .env.example .env    # APP_ORIGIN, DOMAIN, secrets, SMTP
 docker compose up -d --build
 ```
 
-Caddy obtient le certificat HTTPS tout seul. La base n'expose aucun port, l'API tourne en utilisateur non privilégié avec un système de fichiers en lecture seule.
+Les mises à jour passent par `scripts/deploy.sh` : sauvegarde, récupération de `main`, reconstruction, vérification de santé. Les sauvegardes quotidiennes de la base sont vérifiées et leur restauration testée. Tout est détaillé dans [docs/operations.md](docs/operations.md).
 
 ## Données de jeu
 

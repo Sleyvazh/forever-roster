@@ -73,6 +73,15 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - Journal d'audit en base : inscriptions, connexions réussies ou échouées, verrouillages, changements et réinitialisations de mot de passe, révocations, liaisons Battle.net, actions de groupe. IP et user-agent sont conservés.
 - Les journaux applicatifs masquent `Cookie`, `Authorization`, `X-CSRF-Token` et `Set-Cookie`.
 
+## Serveur
+
+- Debian 13, correctifs de sécurité installés automatiquement (`unattended-upgrades`).
+- SSH : clé ed25519 uniquement, connexion root interdite, un seul utilisateur autorisé, 3 tentatives maximum.
+- Pare-feu UFW (IPv4 et IPv6) : seuls SSH (avec limitation de débit), HTTP et HTTPS sont ouverts.
+- fail2ban bannit une IP pendant 1 h après 5 échecs SSH en 10 minutes.
+- Pas d'utilisateur dans le groupe `docker`, équivalent à root : tout passe par `sudo`.
+- Sauvegardes quotidiennes de la base, lisibles par root uniquement (pas encore chiffrées), vérifiées à chaque exécution, avec restauration testée. Voir [docs/operations.md](docs/operations.md).
+
 ## Conteneurs
 
 - API : image `node:24-alpine`, utilisateur `node`, système de fichiers en lecture seule, `cap_drop: ALL`, `no-new-privileges`.

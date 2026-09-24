@@ -1,0 +1,10 @@
+[Unit]
+Description=Sauvegarde quotidienne de Forever Roster
+
+[Timer]
+OnCalendar=*-*-* 03:30
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
