@@ -1,0 +1,19 @@
+# Services pour le développement local (npm run dev) : Postgres et Mailpit, accessibles seulement depuis la machine.
+#   docker compose -f docker-compose.dev.yml up -d
+name: forever-roster-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forever}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forever}
+      POSTGRES_DB: ${POSTGRES_DB:-forever}
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdev:/var/lib/postgresql/data]
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["127.0.0.1:1025:1025", "127.0.0.1:8025:8025"]
+
+volumes:
+  pgdev:

@@ -1,0 +1,204 @@
+import {
+  CLASSES, computeCoverage, exclusiveBudget, GROUP_SIZE, RAID_EFFECTS, RAID_GROUPS, roleCounts, roleOf, type ClassName, type EffectKind,
+} from "@forever/game-data";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiError, del, get, put, type Character, type RaidChar, type RaidSlot } from "../api";
+
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[] }
+
+const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
+const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
+const toLocalInput = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "");
+
+type Pick = { kind: "bench"; id: string } | { kind: "slot"; group: number; pos: number } | null;
+
+export function RaidPage() {
+  const { groupId = "", raidId = "" } = useParams();
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const raidQ = useQuery({ queryKey: ["raid", raidId], queryFn: () => get<RaidResponse>(`/groups/${groupId}/raids/${raidId}`) });
+  const charsQ = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
+
+  const [slots, setSlots] = useState<RaidSlot[]>([]);
+  const [name, setName] = useState("");
+  const [when, setWhen] = useState("");
+  const [pick, setPick] = useState<Pick>(null);
+  const [status, setStatus] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [filter, setFilter] = useState("");
+  const loaded = useRef(false);
+  const timer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (raidQ.data && !loaded.current) {
+      loaded.current = true;
+      setSlots(raidQ.data.slots); setName(raidQ.data.raid.name); setWhen(toLocalInput(raidQ.data.raid.scheduledAt));
+    }
+  }, [raidQ.data]);
+
+  const canEdit = !!raidQ.data?.canEdit;
+  const chars = useMemo(() => new Map((charsQ.data?.characters ?? []).map(c => [c.id, c])), [charsQ.data]);
+  const placed = new Set(slots.map(s => s.characterId));
+  const bench = (charsQ.data?.characters ?? []).filter(c => !placed.has(c.id) && (!filter || `${c.name} ${c.owner} ${c.cls} ${c.spec1}`.toLowerCase().includes(filter.toLowerCase())));
+  const members = slots.flatMap(s => { const c = chars.get(s.characterId); return c ? [{ characterId: c.id, cls: c.cls, spec: c.spec1 || null, group: s.group }] : []; });
+  const coverage = computeCoverage(members);
+  const budget = exclusiveBudget(members).filter(b => b.available > 0 || members.length);
+  const roles = roleCounts(members);
+
+  const persist = (next: RaidSlot[], meta = { name, when }) => {
+    setSlots(next);
+    if (!canEdit) return;
+    window.clearTimeout(timer.current);
+    setStatus("Enregistrement…");
+    timer.current = window.setTimeout(async () => {
+      try {
+        await put(`/groups/${groupId}/raids/${raidId}`, { name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, slots: next });
+        setStatus("Enregistré."); setError(null);
+        void qc.invalidateQueries({ queryKey: ["raids", groupId] });
+      } catch (e) { setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); setStatus(""); }
+    }, 600);
+  };
+
+  const at = (g: number, p: number) => slots.find(s => s.group === g && s.pos === p);
+  const clickSlot = (g: number, p: number) => {
+    if (!canEdit) return;
+    const here = at(g, p);
+    if (pick?.kind === "bench") {
+      const next = slots.filter(s => !(s.group === g && s.pos === p));
+      next.push({ group: g, pos: p, characterId: pick.id });
+      setPick(null); persist(next); return;
+    }
+    if (pick?.kind === "slot") {
+      if (pick.group === g && pick.pos === p) { setPick(null); return; }
+      const from = at(pick.group, pick.pos);
+      // Déplace ou échange deux places
+      const next = slots.filter(s => s !== from && s !== here);
+      if (from) next.push({ group: g, pos: p, characterId: from.characterId });
+      if (here) next.push({ group: pick.group, pos: pick.pos, characterId: here.characterId });
+      setPick(null); persist(next); return;
+    }
+    if (here) setPick({ kind: "slot", group: g, pos: p });
+  };
+  const firstFree = () => { for (let g = 1; g <= RAID_GROUPS; g++) for (let p = 1; p <= GROUP_SIZE; p++) if (!at(g, p)) return { g, p }; return null; };
+  const addToRaid = (id: string) => { const f = firstFree(); if (f) persist([...slots, { group: f.g, pos: f.p, characterId: id }]); };
+  const removeFrom = (g: number, p: number) => { setPick(null); persist(slots.filter(s => !(s.group === g && s.pos === p))); };
+
+  if (raidQ.isLoading || charsQ.isLoading) return <p className="muted">Chargement…</p>;
+  if (!raidQ.data) return <div className="panel empty"><h2>Raid introuvable</h2><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div>;
+
+  const byKind = (k: EffectKind) => coverage.filter(c => c.effect.kind === k);
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <div className="page-head">
+        <div><div className="eyebrow"><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div><h1>{name || "Raid"}</h1></div>
+        <div className="counts" aria-label="Rôles">
+          <span className="role Tank">{roles.Tank} tank{roles.Tank > 1 ? "s" : ""}</span>
+          <span className="role Heal">{roles.Heal} heal{roles.Heal > 1 ? "s" : ""}</span>
+          <span className="role DPS">{roles.DPS} DPS</span>
+          {roles["?"] > 0 && <span className="role">{roles["?"]} sans spé</span>}
+          <span className="tag num">{slots.length}/40</span>
+        </div>
+      </div>
+
+      {canEdit && (
+        <div className="panel pad row" style={{ alignItems: "flex-end" }}>
+          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when }); }} /></div>
+          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="rw">Date</label><input id="rw" type="datetime-local" value={when} onChange={e => { setWhen(e.target.value); persist(slots, { name, when: e.target.value }); }} /></div>
+          <span className="small muted" role="status" style={{ flex: "1 1 120px" }}>{status}</span>
+          {confirmDel
+            ? <span className="row small">Supprimer ce raid ? <button className="btn danger sm" type="button" onClick={() => void del(`/groups/${groupId}/raids/${raidId}`).then(() => nav(`/groups/${groupId}`))}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
+            : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le raid</button>}
+        </div>
+      )}
+      {error && <div className="alert error" role="alert">{error}</div>}
+      {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
+
+      <div className="raid">
+        <div className="rgroups">
+          {Array.from({ length: RAID_GROUPS }, (_, gi) => gi + 1).map(g => {
+            const missing = coverage.filter(c => c.effect.scope === "party" && c.effect.kind === "aura" && c.missingGroups.includes(g) && c.sources > 0).map(c => c.effect.name);
+            return (
+              <div className="rgroup" key={g}>
+                <h4><span>Groupe {g}</span>{missing.length > 0 && <span className="tag warn" title={`Manque : ${missing.join(", ")}`}>{missing.length} aura{missing.length > 1 ? "s" : ""}</span>}</h4>
+                {Array.from({ length: GROUP_SIZE }, (_, pi) => pi + 1).map(p => {
+                  const s = at(g, p);
+                  const c = s ? chars.get(s.characterId) : undefined;
+                  const cl = c ? CLASSES[c.cls as ClassName] : undefined;
+                  const sel = pick?.kind === "slot" && pick.group === g && pick.pos === p;
+                  return (
+                    <div key={p} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                      <button type="button" className={`slot${c ? " filled" : ""}${pick && !sel ? " target" : ""}${sel ? " selected" : ""}`}
+                        style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => clickSlot(g, p)} disabled={!canEdit && !c}
+                        aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
+                        {c ? <span className="who">{c.name}<small>{c.spec1 || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
+                        {c && <span className={`role ${roleOf(c.spec1) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(c.spec1) ?? "?"}</span>}
+                      </button>
+                      {c && canEdit && <button type="button" className="x" aria-label={`Retirer ${c.name}`} onClick={() => removeFrom(g, p)}>×</button>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        <aside className="stack">
+          {canEdit && (
+            <div className="panel pad stack">
+              <h3>Banc <span className="muted small">({bench.length})</span></h3>
+              <input type="text" aria-label="Filtrer le banc" placeholder="Filtrer (nom, joueur, classe)…" value={filter} onChange={e => setFilter(e.target.value)} />
+              <div className="bench">
+                {bench.length === 0 ? <p className="muted small">Tous les persos du groupe sont placés.</p> : bench.map(c => {
+                  const cl = CLASSES[c.cls as ClassName];
+                  const on = pick?.kind === "bench" && pick.id === c.id;
+                  return (
+                    <div key={c.id} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                      <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", id: c.id })}>
+                        <span className="who">{c.name}<small>Niv. {c.level} · {c.spec1 || c.cls || "?"} · {c.owner}</small></span>
+                      </button>
+                      <button type="button" className="btn sm ghost" title="Placer à la première place libre" aria-label={`Ajouter ${c.name} au raid`} onClick={() => addToRaid(c.id)}>+</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="panel pad stack">
+            <h3>Couverture</h3>
+            <div className="cov">
+              {(["buff", "aura", "debuff", "utility"] as EffectKind[]).map(k => (
+                <div key={k} className="stack" style={{ gap: 4 }}>
+                  <h4>{KIND_LABEL[k]}</h4>
+                  {byKind(k).map(c => {
+                    const partial = c.effect.scope === "party" && c.sources > 0 && !c.covered;
+                    return (
+                      <div key={c.effect.id} className={`it ${c.covered ? "on" : partial ? "part" : "off"}`} title={c.effect.note ?? ""}>
+                        <span className="dot" aria-hidden="true" />
+                        <span>{c.effect.name}{partial && <span className="small muted"> · manque G{c.missingGroups.join(", G")}</span>}</span>
+                        <span className="num small">{c.sources || ""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              {budget.some(b => b.available < b.wanted && b.available > 0) && (
+                <div className="stack" style={{ gap: 4 }}>
+                  <h4>Sources limitées</h4>
+                  {budget.filter(b => b.available > 0 && b.available < b.wanted).map(b => (
+                    <div key={b.group} className="small">{EXCL_LABEL[b.group] ?? b.group} : <span className="num">{b.available}</span> pour {b.wanted} effets</div>
+                  ))}
+                </div>
+              )}
+              <p className="hint" style={{ margin: "8px 0 0" }}>Règles de WoW Classic ({RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé principale utilisée pour chaque perso.</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

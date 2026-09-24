@@ -1,0 +1,227 @@
+import { CLASSES, RACES, type ClassName } from "@forever/game-data";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ApiError, del, get, patch, post, type Character, type GroupRole, type Member } from "../api";
+import { useMe } from "../auth";
+import { CharacterEditor } from "../components/CharacterEditor";
+import { ROLE_LABEL } from "./GroupsPage";
+
+interface GroupDetail { group: { id: string; name: string }; role: GroupRole; members: Member[] }
+interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
+interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number }
+interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
+
+const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+const EVENT_LABEL: Record<string, string> = {
+  group_created: "a créé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
+  group_member_removed: "a retiré un membre", group_role_changed: "a changé un rôle", invite_created: "a créé une invitation",
+  invite_revoked: "a révoqué une invitation", raid_created: "a créé un raid", raid_deleted: "a supprimé un raid",
+};
+
+export function GroupPage() {
+  const { groupId = "" } = useParams();
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const me = useMe();
+  const myId = me.data?.user?.id;
+  const [tab, setTab] = useState<"raids" | "members" | "characters" | "journal">("raids");
+  const [error, setError] = useState<string | null>(null);
+
+  const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
+  const isOfficer = detail.data && detail.data.role !== "member";
+  const isOwner = detail.data?.role === "owner";
+
+  const guard = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try { await fn(); } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
+  };
+
+  if (detail.isLoading) return <p className="muted">Chargement…</p>;
+  if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
+  const { group, role, members } = detail.data;
+
+  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ...(isOfficer ? [["journal", "Journal"] as [typeof tab, string]] : [])];
+
+  return (
+    <div className="stack" style={{ gap: 20 }}>
+      <div className="page-head">
+        <div><div className="eyebrow"><Link to="/groups">Groupes</Link> · {ROLE_LABEL[role]}</div><h1>{group.name}</h1></div>
+        <div className="row">
+          {role !== "owner" && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })}>Quitter le groupe</button>}
+          {isOwner && <DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} />}
+        </div>
+      </div>
+      {error && <div className="alert error" role="alert">{error}</div>}
+      <div className="panel lift">
+        <div className="tabs" role="tablist">
+          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
+        </div>
+        <div className="pane">
+          {tab === "raids" && <Raids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
+          {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
+          {tab === "characters" && <GroupCharacters groupId={groupId} />}
+          {tab === "journal" && <Journal groupId={groupId} />}
+        </div>
+      </div>
+      {isOfficer && <Invites groupId={groupId} guard={guard} />}
+    </div>
+  );
+}
+
+function DeleteGroup({ onDelete }: { onDelete: () => void }) {
+  const [confirm, setConfirm] = useState(false);
+  return confirm
+    ? <span className="row small">Supprimer le groupe, ses raids et ses invitations ? <button className="btn danger sm" type="button" onClick={onDelete}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirm(false)}>Annuler</button></span>
+    : <button className="btn ghost sm" type="button" onClick={() => setConfirm(true)}>Supprimer le groupe</button>;
+}
+
+type Guard = (fn: () => Promise<unknown>) => Promise<void>;
+
+function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const nav = useNavigate();
+  const { data } = useQuery({ queryKey: ["raids", groupId], queryFn: () => get<{ raids: RaidSummary[] }>(`/groups/${groupId}/raids`) });
+  const [name, setName] = useState(""), [when, setWhen] = useState("");
+  const create = (e: FormEvent) => {
+    e.preventDefault();
+    void guard(async () => {
+      const r = await post<{ raid: { id: string } }>(`/groups/${groupId}/raids`, { name, scheduledAt: when ? new Date(when).toISOString() : null });
+      await qc.invalidateQueries({ queryKey: ["raids", groupId] });
+      nav(`/groups/${groupId}/raids/${r.raid.id}`);
+    });
+  };
+  return (
+    <div className="sec">
+      {canEdit && (
+        <form className="row" onSubmit={create} style={{ alignItems: "flex-end" }}>
+          <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="r-name">Nouveau raid</label><input id="r-name" type="text" required minLength={2} maxLength={60} placeholder="Molten Core" value={name} onChange={e => setName(e.target.value)} /></div>
+          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="r-when">Date</label><input id="r-when" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
+          <button className="btn primary" type="submit">Créer</button>
+        </form>
+      )}
+      {!data?.raids.length ? <p className="muted">Aucun raid prévu.</p> : (
+        <div className="tscroll"><table className="data">
+          <thead><tr><th>Raid</th><th>Date</th><th>Places</th></tr></thead>
+          <tbody>{data.raids.map(r => (
+            <tr key={r.id}>
+              <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link></td>
+              <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
+              <td className="num">{r.filled}/40</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </div>
+  );
+}
+
+function Members({ groupId, members, myRole, myId, guard }: { groupId: string; members: Member[]; myRole: GroupRole; myId?: string; guard: Guard }) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: ["group", groupId] });
+  const rank = { member: 0, officer: 1, owner: 2 };
+  return (
+    <div className="tscroll"><table className="data">
+      <thead><tr><th>Joueur</th><th>Battle.net</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
+      <tbody>{members.map(m => (
+        <tr key={m.userId}>
+          <td>{m.displayName}{m.userId === myId && <span className="tag gold" style={{ marginLeft: 6 }}>Toi</span>}</td>
+          <td className="muted">{m.battletag ?? "—"}</td>
+          <td>
+            {myRole === "owner" && m.userId !== myId ? (
+              <select aria-label={`Rôle de ${m.displayName}`} value={m.role} style={{ width: "auto" }}
+                onChange={e => void guard(async () => { await patch(`/groups/${groupId}/members/${m.userId}`, { role: e.target.value }); await refresh(); })}>
+                <option value="member">Membre</option><option value="officer">Officier</option><option value="owner">Propriétaire (transfert)</option>
+              </select>
+            ) : ROLE_LABEL[m.role]}
+          </td>
+          <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>
+          <td>{m.userId !== myId && rank[myRole] > rank[m.role] && (
+            <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); await refresh(); })}>Retirer</button>
+          )}</td>
+        </tr>
+      ))}</tbody>
+    </table></div>
+  );
+}
+
+function GroupCharacters({ groupId }: { groupId: string }) {
+  const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
+  const [open, setOpen] = useState<string | null>(null);
+  const opened = data?.characters.find(c => c.id === open);
+  if (!data) return <p className="muted">Chargement…</p>;
+  if (!data.characters.length) return <p className="muted">Les membres n'ont pas encore de personnages.</p>;
+  return (
+    <div className="stack">
+      <div className="tscroll"><table className="data">
+        <thead><tr><th>Perso</th><th>Joueur</th><th>Niv.</th><th>Race / classe</th><th>Spés</th><th>Métiers</th></tr></thead>
+        <tbody>{data.characters.map(c => {
+          const cl = CLASSES[c.cls as ClassName];
+          return (
+            <tr key={c.id}>
+              <td><button type="button" className="btn ghost sm" style={{ borderColor: cl?.color }} onClick={() => setOpen(o => o === c.id ? null : c.id)}>{c.name}</button></td>
+              <td>{c.owner}</td>
+              <td className="num">{c.level}</td>
+              <td>{c.race} <span style={{ color: cl?.color }}>{c.cls}</span> {RACES[c.race] && <span className={`fac ${RACES[c.race]!.faction}`}>{RACES[c.race]!.faction === "Alliance" ? "A" : "H"}</span>}</td>
+              <td>{[c.spec1, c.spec2].filter(Boolean).join(" / ")}</td>
+              <td className="small">{[c.professions.prof1, c.professions.prof2].filter(p => p.name).map(p => `${p.name} ${p.skill}`).join(" · ")}</td>
+            </tr>
+          );
+        })}</tbody>
+      </table></div>
+      {opened && <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
+    </div>
+  );
+}
+
+function Journal({ groupId }: { groupId: string }) {
+  const { data } = useQuery({ queryKey: ["group-audit", groupId], queryFn: () => get<{ events: GroupEvent[] }>(`/groups/${groupId}/audit`) });
+  if (!data) return <p className="muted">Chargement…</p>;
+  return (
+    <div className="tscroll"><table className="data">
+      <thead><tr><th>Date</th><th>Qui</th><th>Action</th></tr></thead>
+      <tbody>{data.events.map(e => (
+        <tr key={e.id}><td className="small muted">{fmt.format(new Date(e.createdAt))}</td><td>{e.actor ?? "Compte supprimé"}</td><td>{EVENT_LABEL[e.type] ?? e.type}{typeof e.meta.name === "string" ? ` · ${e.meta.name}` : ""}</td></tr>
+      ))}</tbody>
+    </table></div>
+  );
+}
+
+function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["invites", groupId], queryFn: () => get<{ invites: Invite[] }>(`/groups/${groupId}/invites`) });
+  const [maxUses, setMaxUses] = useState(5), [hours, setHours] = useState(72);
+  const [link, setLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const refresh = () => qc.invalidateQueries({ queryKey: ["invites", groupId] });
+
+  return (
+    <section className="panel pad stack">
+      <h3>Invitations</h3>
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">Utilisations max</label><input id="i-uses" className="num" type="number" min={1} max={100} value={maxUses} onChange={e => setMaxUses(Number(e.target.value) || 1)} /></div>
+        <div className="fld" style={{ width: 140 }}><label htmlFor="i-h">Valable (heures)</label><input id="i-h" className="num" type="number" min={1} max={720} value={hours} onChange={e => setHours(Number(e.target.value) || 1)} /></div>
+        <button className="btn primary" type="button" onClick={() => void guard(async () => {
+          const r = await post<{ invite: { url: string } }>(`/groups/${groupId}/invites`, { maxUses, expiresInHours: hours });
+          setLink(r.invite.url); setCopied(false); await refresh();
+        })}>Créer un lien</button>
+      </div>
+      {link && (
+        <div className="alert info stack" style={{ gap: 8 }}>
+          <span>Copie ce lien maintenant : pour des raisons de sécurité, il ne sera plus affiché.</span>
+          <div className="row"><input type="text" readOnly value={link} onFocus={e => e.currentTarget.select()} aria-label="Lien d'invitation" style={{ flex: 1 }} />
+            <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
+        </div>
+      )}
+      {!!data?.invites.length && (
+        <div className="tscroll"><table className="data">
+          <thead><tr><th>Créée</th><th>Utilisations</th><th>Expire</th><th /></tr></thead>
+          <tbody>{data.invites.map(i => (
+            <tr key={i.id}><td className="small">{fmt.format(new Date(i.createdAt))}</td><td className="num">{i.uses}/{i.maxUses}</td><td className="small">{fmt.format(new Date(i.expiresAt))}</td>
+              <td><button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/invites/${i.id}`); await refresh(); })}>Révoquer</button></td></tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </section>
+  );
+}
