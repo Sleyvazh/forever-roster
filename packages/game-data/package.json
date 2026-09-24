@@ -1,0 +1,17 @@
+{
+  "name": "@forever/game-data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Données de jeu WoW Forever partagées entre l'API et le front (races, classes, métiers, buffs de raid).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.1"
+  }
+}

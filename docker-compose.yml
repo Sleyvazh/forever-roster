@@ -1,0 +1,80 @@
+# Pile complète : Postgres + API + Caddy (front + HTTPS).
+#   cp .env.example .env   # puis remplir
+#   docker compose up -d --build
+name: forever-roster
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+    networks: [backend]
+    # Aucun port publié : la base n'est joignable que par l'API.
+
+  api:
+    build: { context: ., target: api }
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      COOKIE_SECURE: "true"
+      TRUST_PROXY: "true"
+      SMTP_URL: ${SMTP_URL}
+      MAIL_FROM: ${MAIL_FROM}
+      HIBP_CHECK: ${HIBP_CHECK:-true}
+      BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
+      BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
+      BNET_OAUTH_HOST: ${BNET_OAUTH_HOST:-https://oauth.battle.net}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [backend, frontend]
+
+  web:
+    build: { context: ., target: web }
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    networks: [frontend]
+
+  # Boîte e-mail de test (interface sur http://localhost:8025). À remplacer par un vrai SMTP en production.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [backend]
+    profiles: [mail]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backend:
+    internal: false
+  frontend:
