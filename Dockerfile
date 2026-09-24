@@ -1,6 +1,6 @@
 # Image multi-étapes : une cible « api » (Node) et une cible « web » (Caddy qui sert le front et fait reverse proxy).
 
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/game-data/package.json packages/game-data/
@@ -15,7 +15,7 @@ COPY apps apps
 RUN npm run build
 
 # Dépendances de production de l'API uniquement
-FROM node:22-alpine AS api-prod-deps
+FROM node:25-alpine AS api-prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/game-data/package.json packages/game-data/
@@ -23,7 +23,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 RUN npm ci --omit=dev --workspace=@forever/api --include-workspace-root=false
 
-FROM node:22-alpine AS api
+FROM node:25-alpine AS api
 ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0
 WORKDIR /app/apps/api
 COPY --from=api-prod-deps /app/node_modules /app/node_modules
