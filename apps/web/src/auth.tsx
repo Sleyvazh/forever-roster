@@ -18,10 +18,14 @@ export function useMe() {
 export function useLogout() {
   const qc = useQueryClient();
   return async () => {
-    await post("/auth/logout");
-    setCsrf(null);
-    qc.clear();
-    await qc.invalidateQueries({ queryKey: ["me"] });
+    try { await post("/auth/logout"); }
+    finally {
+      setCsrf(null);
+      qc.clear();
+      // Rechargement complet : l'interface repart de zéro et plus aucune donnée
+      // de la session précédente ne reste en mémoire dans l'onglet.
+      window.location.assign("/login");
+    }
   };
 }
 

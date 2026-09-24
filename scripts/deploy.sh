@@ -27,7 +27,8 @@ sudo docker compose up -d --build --remove-orphans
 
 step "Vérification de santé (https://$DOMAIN/api/health)"
 for _ in $(seq 1 30); do
-  if curl -fsS --max-time 3 "https://$DOMAIN/api/health" > /dev/null; then
+  # -fs : silencieux pendant les essais (un 502 est normal le temps que l'API redémarre)
+  if curl -fs --max-time 3 "https://$DOMAIN/api/health" > /dev/null; then
     echo "OK : l'application répond."
     sudo docker image prune -f > /dev/null
     echo "Version déployée : $CURRENT (précédente : $PREVIOUS)"
