@@ -1,14 +1,32 @@
 version: 2
 updates:
+  # Dépendances npm : une seule PR groupée pour les mises à jour mineures et correctifs.
   - package-ecosystem: npm
     directory: /
     schedule: { interval: weekly }
+    open-pull-requests-limit: 5
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # TypeScript 7 (réécriture native) : migration à faire volontairement, pas en automatique.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Les types Node doivent suivre la version de Node utilisée (24 LTS).
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]
+
   - package-ecosystem: docker
     directory: /
     schedule: { interval: monthly }
+    ignore:
+      # On reste sur une version LTS de Node (versions paires). Passage à 26 manuel quand elle sera LTS.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
