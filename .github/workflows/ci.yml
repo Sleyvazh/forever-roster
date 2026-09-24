@@ -25,7 +25,7 @@ jobs:
       DATABASE_URL_TEST: postgres://forever:forever@localhost:5432/forever_test
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run typecheck
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22 }
       # Dépendances livrées en production uniquement ; les outils de dev (esbuild, drizzle-kit) sont exclus.
       - run: npm audit --omit=dev --audit-level=high
