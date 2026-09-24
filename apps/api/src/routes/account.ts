@@ -8,6 +8,7 @@ import { hashPassword, PASSWORD_MAX, verifyPassword } from "../lib/password";
 import { currentUser, destroySession, requireAuth } from "../lib/session";
 import { normalizeEmail, publicUser } from "../lib/users";
 import { assertStrongPassword, issueEmailToken } from "./auth";
+import { verifyEmail } from "../lib/email-templates";
 
 export async function accountRoutes(app: FastifyInstance) {
   const { db, mailer } = app.ctx;
@@ -29,7 +30,7 @@ export async function accountRoutes(app: FastifyInstance) {
     if (taken) throw conflict("Cette adresse ne peut pas être utilisée.");
     await db.update(users).set({ email: body.email, emailVerifiedAt: null, updatedAt: new Date() }).where(eq(users.id, u.id));
     const link = await issueEmailToken(app, u.id, "verify");
-    await mailer.send({ to: body.email, subject: "Confirme ton adresse e-mail", text: `Confirme ton adresse en ouvrant ce lien (valable 24 h) :\n${link}` });
+    await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN, false) });
     return reply.code(202).send({ message: "Un e-mail de confirmation a été envoyé." });
   });
 

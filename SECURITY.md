@@ -20,6 +20,7 @@ Ce document décrit ce que l'application protège, contre quoi, et comment. Les 
 - **Anti-énumération** : même réponse à l'inscription (le titulaire réel reçoit un e-mail l'avertissant de la tentative), au mot de passe oublié et aux échecs de connexion. Un hash factice est vérifié quand le compte n'existe pas, pour garder un temps de réponse constant.
 - **Force brute** : limitation par IP (`@fastify/rate-limit`, 20 requêtes / 15 min sur les routes d'authentification) et verrouillage du compte 15 minutes après 10 échecs. Le verrouillage n'est pas annoncé, pour ne pas confirmer l'existence du compte.
 - **Liens e-mail** : jeton de 256 bits, stocké haché (SHA-256), à usage unique, 24 h pour la confirmation, 30 min pour la réinitialisation. Le jeton est placé dans le fragment `#` de l'URL : il n'apparaît ni dans les journaux du serveur ni dans l'en-tête `Referer`, et le front l'efface de la barre d'adresse.
+- **E-mails** : aucun texte saisi par un utilisateur n'y est inséré, pas même le pseudo. Sinon, quelqu'un pourrait s'inscrire avec l'adresse d'une autre personne et un pseudo piégé, et lui faire envoyer un message d'hameçonnage depuis notre domaine. Envoi en texte et en HTML (échappé), en-tête `Auto-Submitted`, SPF, DKIM et DMARC sur le domaine.
 - **Réinitialisation** : ferme toutes les sessions ouvertes. Un changement de mot de passe ferme toutes les autres.
 
 ## Sessions (ASVS V3)

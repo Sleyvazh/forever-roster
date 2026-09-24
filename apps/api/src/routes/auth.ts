@@ -10,6 +10,7 @@ import {
   burnPasswordCheck, checkPasswordPolicy, hashPassword, isPwnedPassword, PASSWORD_MAX, verifyPassword,
 } from "../lib/password";
 import { createSession, destroySession } from "../lib/session";
+import { registerAttempt, resetPassword, verifyEmail } from "../lib/email-templates";
 import { normalizeEmail, publicUser } from "../lib/users";
 
 export const MAX_FAILED_LOGINS = 10;
@@ -71,16 +72,13 @@ export async function authRoutes(app: FastifyInstance) {
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
     if (existing) {
       // Même réponse qu'une inscription réussie : on ne révèle pas quelles adresses ont un compte.
-      await mailer.send({
-        to: body.email, subject: "Tentative d'inscription sur Forever Roster",
-        text: "Quelqu'un a essayé de créer un compte avec ton adresse. Si c'est toi, connecte-toi ou utilise « Mot de passe oublié ». Sinon, tu peux ignorer ce message.",
-      });
+      await mailer.send({ to: body.email, ...registerAttempt(null, app.ctx.cfg.APP_ORIGIN) });
     } else {
       const [u] = await db.insert(users).values({
         email: body.email, displayName: body.displayName, passwordHash: await hashPassword(body.password),
       }).returning({ id: users.id });
       const link = await issueEmailToken(app, u!.id, "verify");
-      await mailer.send({ to: body.email, subject: "Confirme ton adresse e-mail", text: `Bienvenue sur Forever Roster !\n\nConfirme ton adresse en ouvrant ce lien (valable 24 h) :\n${link}` });
+      await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN) });
       await audit(db, req, "register", { userId: u!.id });
     }
     return reply.code(202).send({ message: "Si cette adresse est disponible, un e-mail de confirmation vient d'être envoyé." });
@@ -99,7 +97,7 @@ export async function authRoutes(app: FastifyInstance) {
     const [u] = await db.select().from(users).where(eq(users.email, body.email));
     if (u && !u.emailVerifiedAt) {
       const link = await issueEmailToken(app, u.id, "verify");
-      await mailer.send({ to: body.email, subject: "Confirme ton adresse e-mail", text: `Voici un nouveau lien de confirmation (valable 24 h) :\n${link}` });
+      await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN, false) });
     }
     return reply.code(202).send({ message: "Si un compte non confirmé existe pour cette adresse, un nouvel e-mail a été envoyé." });
   });
@@ -150,7 +148,7 @@ export async function authRoutes(app: FastifyInstance) {
     const [u] = await db.select().from(users).where(eq(users.email, body.email));
     if (u) {
       const link = await issueEmailToken(app, u.id, "reset");
-      await mailer.send({ to: body.email, subject: "Réinitialisation de ton mot de passe", text: `Pour choisir un nouveau mot de passe, ouvre ce lien (valable 30 min) :\n${link}\n\nSi tu n'as rien demandé, ignore ce message : ton mot de passe actuel reste valable.` });
+      await mailer.send({ to: body.email, ...resetPassword(link, null, app.ctx.cfg.APP_ORIGIN) });
       await audit(db, req, "password_reset_requested", { userId: u.id });
     }
     return reply.code(202).send({ message: "Si un compte existe pour cette adresse, un e-mail vient d'être envoyé." });

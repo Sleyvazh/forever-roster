@@ -164,3 +164,14 @@ describe("Battle.net", () => {
     expect(safeJson(await victim.get("/api/auth/me")).user).toBeNull();
   });
 });
+
+describe("e-mails", () => {
+  it("envoie texte + HTML sans y insérer de contenu choisi par l'utilisateur", async () => {
+    const c = new Client(env);
+    await c.post("/api/auth/register", { email: "piege@example.test", password: PASSWORD, displayName: "Clique ici evil.test" });
+    const mail = env.mailer.outbox.filter(m => m.to === "piege@example.test").at(-1)!;
+    expect(mail.html).toContain("Confirmer mon adresse");
+    expect(mail.text).toContain(`${ORIGIN}/verify-email#`);
+    expect(mail.text + mail.html).not.toContain("evil.test");
+  });
+});
