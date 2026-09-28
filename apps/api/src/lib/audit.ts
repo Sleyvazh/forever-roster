@@ -7,7 +7,7 @@ export type AuditType =
   | "password_changed" | "password_reset_requested" | "password_reset"
   | "session_revoked" | "sessions_revoked_all"
   | "battlenet_login" | "battlenet_linked" | "battlenet_unlinked" | "account_created_battlenet"
-  | "group_created" | "group_joined" | "group_left" | "group_role_changed" | "group_member_removed"
+  | "group_created" | "group_renamed" | "group_joined" | "group_left" | "group_role_changed" | "group_member_removed"
   | "invite_created" | "invite_revoked" | "raid_created" | "raid_deleted";
 
 export async function audit(

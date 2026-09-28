@@ -113,3 +113,31 @@ describe("groupes, invitations et raids", () => {
     expect(events).toEqual(expect.arrayContaining(["group_created", "invite_created", "group_joined", "raid_created", "group_role_changed"]));
   });
 });
+
+describe("renommage de groupe", () => {
+  it("réservé aux officiers, validé et tracé dans le journal", async () => {
+    const gm = await signedIn(env, "Chef"), p1 = await signedIn(env, "Membre"), outsider = await signedIn(env, "Dehors");
+    const g = (await gm.c.post("/api/groups", { name: "Ancien nom" })).json().group;
+    const inv = (await gm.c.post(`/api/groups/${g.id}/invites`, { maxUses: 1, expiresInHours: 24 })).json().invite;
+    expect((await p1.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) })).statusCode).toBe(200);
+
+    // Un simple membre ne peut pas renommer ; un non-membre ne voit même pas le groupe
+    expect((await p1.c.patch(`/api/groups/${g.id}`, { name: "Piraté" })).statusCode).toBe(403);
+    expect((await outsider.c.patch(`/api/groups/${g.id}`, { name: "Piraté" })).statusCode).toBe(404);
+    // Nom trop court ou trop long
+    expect((await gm.c.patch(`/api/groups/${g.id}`, { name: " a " })).statusCode).toBe(400);
+    expect((await gm.c.patch(`/api/groups/${g.id}`, { name: "x".repeat(49) })).statusCode).toBe(400);
+
+    const ok = await gm.c.patch(`/api/groups/${g.id}`, { name: "  Les Tournicotis  " });
+    expect(ok.statusCode).toBe(200);
+    expect((await p1.c.get(`/api/groups/${g.id}`)).json().group.name).toBe("Les Tournicotis");
+
+    // Un officier peut aussi renommer ; renvoyer le même nom ne crée pas d'entrée de journal
+    await gm.c.patch(`/api/groups/${g.id}/members/${p1.user.id}`, { role: "officer" });
+    expect((await p1.c.patch(`/api/groups/${g.id}`, { name: "Les Tournicotis" })).statusCode).toBe(200);
+
+    const renames = (await gm.c.get(`/api/groups/${g.id}/audit`)).json().events.filter((e: { type: string }) => e.type === "group_renamed");
+    expect(renames).toHaveLength(1);
+    expect(renames[0].meta).toEqual({ from: "Ancien nom", to: "Les Tournicotis" });
+  });
+});

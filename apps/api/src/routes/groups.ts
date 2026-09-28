@@ -57,8 +57,12 @@ export async function groupRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
     const { name } = parse(z.object({ name: z.string().trim().min(2).max(48) }), req.body);
-    await db.update(groups).set({ name }).where(eq(groups.id, id));
-    return { ok: true };
+    const [before] = await db.select({ name: groups.name }).from(groups).where(eq(groups.id, id));
+    if (before && before.name !== name) {
+      await db.update(groups).set({ name }).where(eq(groups.id, id));
+      await audit(db, req, "group_renamed", { userId: u.id, groupId: id, meta: { from: before.name, to: name } });
+    }
+    return { ok: true, name };
   });
 
   app.delete("/:id", async (req) => {

@@ -14,7 +14,7 @@ interface GroupEvent { id: number; type: string; actor: string | null; meta: Rec
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 const EVENT_LABEL: Record<string, string> = {
-  group_created: "a créé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
+  group_created: "a créé le groupe", group_renamed: "a renommé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
   group_member_removed: "a retiré un membre", group_role_changed: "a changé un rôle", invite_created: "a créé une invitation",
   invite_revoked: "a révoqué une invitation", raid_created: "a créé un raid", raid_deleted: "a supprimé un raid",
 };
@@ -46,7 +46,15 @@ export function GroupPage() {
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
-        <div><div className="eyebrow"><Link to="/groups">Groupes</Link> · {ROLE_LABEL[role]}</div><h1>{group.name}</h1></div>
+        <div style={{ flex: "1 1 280px", minWidth: 0 }}>
+          <div className="eyebrow"><Link to="/groups">Groupes</Link> · {ROLE_LABEL[role]}</div>
+          {isOfficer
+            ? <GroupName key={group.name} name={group.name} onSave={name => guard(async () => {
+                await patch(`/groups/${groupId}`, { name });
+                await Promise.all([qc.invalidateQueries({ queryKey: ["group", groupId] }), qc.invalidateQueries({ queryKey: ["groups"] }), qc.invalidateQueries({ queryKey: ["group-audit", groupId] })]);
+              })} />
+            : <h1>{group.name}</h1>}
+        </div>
         <div className="row">
           {role !== "owner" && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })}>Quitter le groupe</button>}
           {isOwner && <DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} />}
@@ -66,6 +74,38 @@ export function GroupPage() {
       </div>
       {isOfficer && <Invites groupId={groupId} guard={guard} />}
     </div>
+  );
+}
+
+/** Titre du groupe, modifiable sur place par les officiers et le propriétaire. */
+function GroupName({ name, onSave }: { name: string; onSave: (name: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const [saving, setSaving] = useState(false);
+  const cancel = () => { setValue(name); setEditing(false); };
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const next = value.trim();
+    if (next === name) { setEditing(false); return; }
+    setSaving(true);
+    try { await onSave(next); } finally { setSaving(false); }
+  };
+  if (!editing) return (
+    <div className="row" style={{ alignItems: "baseline" }}>
+      <h1>{name}</h1>
+      <button className="btn ghost sm" type="button" onClick={() => setEditing(true)}>Renommer</button>
+    </div>
+  );
+  return (
+    <form className="row" onSubmit={e => void submit(e)} style={{ alignItems: "flex-end", marginTop: 6 }}>
+      <div className="fld" style={{ flex: "1 1 240px" }}>
+        <label htmlFor="g-name">Nom du groupe</label>
+        <input id="g-name" type="text" required minLength={2} maxLength={48} autoFocus value={value}
+          onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === "Escape") cancel(); }} />
+      </div>
+      <button className="btn primary sm" type="submit" disabled={saving || value.trim().length < 2}>Enregistrer</button>
+      <button className="btn ghost sm" type="button" onClick={cancel}>Annuler</button>
+    </form>
   );
 }
 
@@ -181,7 +221,7 @@ function Journal({ groupId }: { groupId: string }) {
     <div className="tscroll"><table className="data">
       <thead><tr><th>Date</th><th>Qui</th><th>Action</th></tr></thead>
       <tbody>{data.events.map(e => (
-        <tr key={e.id}><td className="small muted">{fmt.format(new Date(e.createdAt))}</td><td>{e.actor ?? "Compte supprimé"}</td><td>{EVENT_LABEL[e.type] ?? e.type}{typeof e.meta.name === "string" ? ` · ${e.meta.name}` : ""}</td></tr>
+        <tr key={e.id}><td className="small muted">{fmt.format(new Date(e.createdAt))}</td><td>{e.actor ?? "Compte supprimé"}</td><td>{EVENT_LABEL[e.type] ?? e.type}{typeof e.meta.name === "string" ? ` · ${e.meta.name}` : ""}{e.type === "group_renamed" && typeof e.meta.from === "string" && typeof e.meta.to === "string" ? ` · ${e.meta.from} → ${e.meta.to}` : ""}</td></tr>
       ))}</tbody>
     </table></div>
   );
