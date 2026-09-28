@@ -174,6 +174,26 @@ unset SMTP_PASS
 sudo docker compose up -d api
 ```
 
+## Données du jeu (objets et recettes)
+
+Les recherches d'objets (onglet Équipement), les patrons (onglet Métiers) et l'onglet Artisans des groupes s'appuient sur les tables du client de WoW Forever, publiées en CSV par [wago.tools](https://wago.tools). ForeverChanges et forever-ref utilisent la même source. Wowhead n'a pas d'API publique et interdit l'aspiration de ses pages. Le site y renvoie donc seulement par des liens.
+
+L'import télécharge 12 tables (≈ 1 minute) et remplace les données en une seule transaction :
+
+```bash
+cd ~/forever-roster
+sudo docker compose exec api node dist/import-gamedata.js                       # dernière version de Forever
+sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  # version précise
+```
+
+À relancer après chaque nouvelle version du client (patch, lancement du 4 novembre). La version importée s'affiche avec `curl -s https://forever-roster.sleyvazh.fr/api/gamedata/status` (une session est nécessaire, donc depuis le navigateur connecté).
+
+- **Patrons des joueurs :** les patrons cochés sont liés à l'identifiant du sort de fabrication, qui ne change pas d'une version à l'autre. Un réimport ne les efface pas.
+- **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
+- **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
+
+En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
+
 ## Ce que montrent les journaux
 
 Une seconde après l'émission du premier certificat HTTPS, des robots ont demandé `/api/.env`, `/api/config` et `/api/env`. Chaque certificat est publié dans les journaux publics *Certificate Transparency*, que des scanners surveillent pour attaquer les nouveaux sites avant qu'ils soient sécurisés. Toutes ces requêtes ont reçu un 404 : le `.env` est exclu de l'image Docker (`.dockerignore`) et Caddy ne sert que le dossier du front.

@@ -11,8 +11,8 @@ Le projet sert aussi de vitrine : l'authentification et la gestion des sessions 
 ## Fonctionnalités
 
 - **Comptes** : inscription par e-mail avec confirmation, connexion Battle.net (OAuth 2.0), réinitialisation du mot de passe, suppression du compte (RGPD).
-- **Personnages** : race et classe (combinaisons propres à Forever), spés, répartition des talents, métiers et bonus Forever, suivi BiS par emplacement, perks Legacy, notes. Sauvegarde automatique et réordonnancement par glisser-déposer.
-- **Groupes** : rôles propriétaire / officier / membre, liens d'invitation à durée et nombre d'utilisations limités, transfert de propriété.
+- **Personnages** : race et classe (combinaisons propres à Forever), spé principale et off-spec avec leur build (y compris les spés de niche comme Feral Bear ou Enhancement Tank), métiers et bonus Forever, patrons connus ou recherchés, équipement actuel et BiS choisis dans la base d'objets du jeu, perks Legacy, notes. Sauvegarde automatique et réordonnancement par glisser-déposer.
+- **Groupes** : rôles propriétaire / officier / membre, liens d'invitation à durée et nombre d'utilisations limités, transfert de propriété, onglet Artisans (« qui sait fabriquer quoi ? », pour savoir à qui envoyer les composants).
 - **Raids** : 8 groupes de 5, banc des persos du groupe, déplacement et échange de places, compteur tanks / heals / DPS, couverture des 42 buffs, auras, debuffs et utilitaires (avec détection des groupes où une aura manque).
 - **Sécurité visible** : sessions actives révocables, journal de sécurité personnel, journal d'activité du groupe pour les officiers.
 
@@ -82,6 +82,6 @@ Les mises à jour passent par `scripts/deploy.sh` : sauvegarde, récupération d
 
 ## Données de jeu
 
-Les races, raciaux et métiers viennent de [ForeverChanges](https://foreverchanges.pro). Les règles de buffs de raid reprennent WoW Classic, parce que Forever modifie plus de 700 talents et sorts : elles sont regroupées dans `packages/game-data/src/raid.ts` pour être ajustées au fil des changements publiés.
+Les objets et recettes de métier sont importés des tables du client de WoW Forever publiées par [wago.tools](https://wago.tools) (voir `docs/operations.md`), avec des liens vers Wowhead. Les races, raciaux et bonus de métier viennent de [ForeverChanges](https://foreverchanges.pro). Les règles de buffs de raid reprennent WoW Classic, parce que Forever modifie plus de 700 talents et sorts : elles sont regroupées dans `packages/game-data/src/raid.ts` pour être ajustées au fil des changements publiés.
 
 Projet de fan, non affilié à Blizzard Entertainment.

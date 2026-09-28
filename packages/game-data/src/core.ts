@@ -125,3 +125,31 @@ export const talentPointsAt = (level: number) => Math.max(0, Math.min(MAX_TALENT
 
 /** Lancement mondial : 4 nov. 2026, 15:00 PST = 23:00 UTC. */
 export const LAUNCH_AT = Date.UTC(2026, 10, 4, 23, 0, 0);
+
+/* ---------- Correspondances avec les tables du client (import wago.tools) ---------- */
+
+/** Identifiant SkillLine de chaque métier dans les tables du client. */
+export const PROFESSION_SKILL_LINES: Record<string, number> = {
+  Alchemy: 171, Blacksmithing: 164, Enchanting: 333, Engineering: 202, Herbalism: 182,
+  Leatherworking: 165, Mining: 186, Skinning: 393, Tailoring: 197,
+  Cooking: 185, "First Aid": 129, Fishing: 356,
+};
+export const SKILL_LINE_NAMES: Record<number, string> = Object.fromEntries(Object.entries(PROFESSION_SKILL_LINES).map(([n, id]) => [id, n]));
+
+/**
+ * InventoryType (table Item) accepté par chaque emplacement de la fiche.
+ * 13 une main, 14 bouclier, 15 arc, 17 deux mains, 20 robe, 21 main droite, 22 main gauche,
+ * 23 tenu en main gauche, 25 arme de jet, 26 fusil / baguette / arbalète, 28 relique.
+ */
+export const SLOT_INVENTORY_TYPES: Record<(typeof GEAR_SLOTS)[number], number[]> = {
+  Head: [1], Neck: [2], Shoulder: [3], Back: [16], Chest: [5, 20], Wrist: [9], Hands: [10], Waist: [6], Legs: [7], Feet: [8],
+  "Finger 1": [11], "Finger 2": [11], "Trinket 1": [12], "Trinket 2": [12],
+  "Main Hand": [13, 17, 21], "Off Hand": [13, 14, 22, 23], "Ranged / Relic": [15, 25, 26, 28],
+};
+
+/** Liens vers les bases de données publiques (Wowhead a une section Forever, ForeverChanges lit le client). */
+export const itemLinks = (id: number) => ({
+  wowhead: `https://www.wowhead.com/forever/item=${id}`,
+  foreverchanges: `https://foreverchanges.pro/item/${id}`,
+});
+export const spellLinks = (id: number) => ({ wowhead: `https://www.wowhead.com/forever/spell=${id}` });

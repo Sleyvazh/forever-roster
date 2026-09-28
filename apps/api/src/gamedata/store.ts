@@ -1,0 +1,26 @@
+import { count, sql } from "drizzle-orm";
+import type { Db } from "../db/client";
+import { gameItems, gameMeta, gameRecipes } from "../db/schema";
+import type { ItemRow, RecipeRow } from "./extract";
+
+const chunk = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
+
+/** Remplace le contenu des tables du jeu en une seule transaction : l'application ne voit jamais une base à moitié importée. */
+export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: RecipeRow[] }, build: string) {
+  await db.transaction(async tx => {
+    await tx.delete(gameItems);
+    for (const part of chunk(data.items, 2000)) await tx.insert(gameItems).values(part);
+    await tx.delete(gameRecipes);
+    for (const part of chunk(data.recipes, 1000)) await tx.insert(gameRecipes).values(part);
+    const meta = { build, importedAt: new Date().toISOString(), source: "wago.tools" };
+    for (const [key, value] of Object.entries(meta)) {
+      await tx.insert(gameMeta).values({ key, value }).onConflictDoUpdate({ target: gameMeta.key, set: { value: sql`excluded.value` } });
+    }
+  });
+}
+
+export async function gameDataStatus(db: Db) {
+  const meta = Object.fromEntries((await db.select().from(gameMeta)).map(r => [r.key, r.value]));
+  const [[items], [recipes]] = await Promise.all([db.select({ n: count() }).from(gameItems), db.select({ n: count() }).from(gameRecipes)]);
+  return { build: meta.build ?? null, importedAt: meta.importedAt ?? null, items: items?.n ?? 0, recipes: recipes?.n ?? 0 };
+}

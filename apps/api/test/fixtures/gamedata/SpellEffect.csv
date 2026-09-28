@@ -1,0 +1,7 @@
+ID,SpellID,EffectIndex,Effect,EffectItemType,EffectBasePointsF,EffectMiscValue_0,EffectTriggerSpell
+1,2152,0,24,2304,1,0,0
+2,19080,0,24,15065,1,0,0
+3,19100,0,24,4000,1,0,0
+4,19999,0,36,0,0,0,19100
+5,7418,0,53,0,0,41,0
+6,78,0,2,0,11,0,0

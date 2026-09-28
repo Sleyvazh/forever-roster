@@ -1,0 +1,6 @@
+ID,Name_lang,ParentTradeSkillCategoryID,OrderIndex
+1,Leatherworking,0,0
+10,Armor,1,1
+11,Materials,1,2
+2,Enchanting,0,0
+20,Bracer,2,1

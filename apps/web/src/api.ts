@@ -40,9 +40,26 @@ export interface Character {
   id: string; userId: string; name: string; race: string; cls: string; spec1: string; spec2: string; level: number;
   talents: string; talentLink: string; talents2: string; talentLink2: string;
   professions: { prof1: Prof; prof2: Prof; cooking: number; fishing: number; firstAid: number };
-  gear: Record<string, { cur?: string; q?: number | null; bis?: string; got?: boolean }>;
+  gear: Record<string, GearEntry>;
   legacy: Record<string, { name: string; rank: number; max: number }[]>;
   notes: string; sortOrder: number; updatedAt: string; owner?: string;
+}
+
+export interface GearEntry { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }
+
+/* ---------- Données du jeu ---------- */
+
+export interface GameItem { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number }
+export interface GameRecipe {
+  spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
+  createdItemId: number | null; createdCount: number; enchant: string | null; reagents: { id: number; n: number }[]; taughtBy: number[]; fromItem: boolean;
+}
+export interface GameStatus { build: string | null; importedAt: string | null; items: number; recipes: number }
+export type RecipeStatus = "known" | "wanted";
+export interface Crafter { characterId: string; name: string; owner: string }
+export interface CraftersRecipe {
+  spellId: number; name: string; skillLine: number; reqSkill: number; enchant: string | null;
+  item: { id: number; name: string; quality: number } | null; known: Crafter[]; wanted: Crafter[];
 }
 
 export type GroupRole = "owner" | "officer" | "member";

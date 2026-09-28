@@ -1,12 +1,14 @@
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, groupMembers, users } from "../db/schema";
+import { PROFESSION_SKILL_LINES, SECONDARY_PROFESSIONS } from "@forever/game-data";
+import { characterRecipes, characters, gameRecipes, groupMembers, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 
 const MAX_CHARACTERS = 50;
+const MAX_RECIPES = 2000;
 const idParam = z.object({ id: z.uuid() });
 
 export type CharacterRow = typeof characters.$inferSelect;
@@ -78,6 +80,43 @@ export async function characterRoutes(app: FastifyInstance) {
     const err = crossCheck(next); if (err) throw badRequest(err);
     const [row] = await db.update(characters).set({ ...patch, updatedAt: new Date() }).where(eq(characters.id, id)).returning();
     return { character: toApi(row!) };
+  });
+
+  /* ----- Patrons connus / recherchés ----- */
+
+  app.get("/:id/recipes", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(idParam, req.params);
+    const [row] = await db.select({ userId: characters.userId }).from(characters).where(eq(characters.id, id));
+    if (!row || !(await canSee(app, u.id, row.userId))) throw notFound("Personnage introuvable.");
+    const recipes = await db.select({ spellId: characterRecipes.spellId, status: characterRecipes.status, skillLine: gameRecipes.skillLine })
+      .from(characterRecipes).innerJoin(gameRecipes, eq(gameRecipes.spellId, characterRecipes.spellId))
+      .where(eq(characterRecipes.characterId, id));
+    return { recipes };
+  });
+
+  app.put("/:id/recipes/:spellId", async (req) => {
+    const u = currentUser(req);
+    const { id, spellId } = parse(idParam.extend({ spellId: z.coerce.number().int().positive() }), req.params);
+    const { status } = parse(z.object({ status: z.enum(["known", "wanted"]).nullable() }), req.body);
+    const [ch] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
+    if (!ch) throw notFound("Personnage introuvable.");
+
+    if (status === null) {
+      await db.delete(characterRecipes).where(and(eq(characterRecipes.characterId, id), eq(characterRecipes.spellId, spellId)));
+      return { ok: true };
+    }
+    const [recipe] = await db.select({ skillLine: gameRecipes.skillLine }).from(gameRecipes).where(eq(gameRecipes.spellId, spellId));
+    if (!recipe) throw badRequest("Recette inconnue.");
+    // Uniquement les métiers du perso : ses deux métiers principaux et les métiers secondaires.
+    const allowed = new Set([ch.professions.prof1.name, ch.professions.prof2.name, ...Object.values(SECONDARY_PROFESSIONS).map(p => p.name)]
+      .filter(Boolean).map(n => PROFESSION_SKILL_LINES[n]));
+    if (!allowed.has(recipe.skillLine)) throw badRequest("Cette recette n'appartient à aucun métier de ce personnage.");
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(characterRecipes).where(eq(characterRecipes.characterId, id)) as [{ n: number }];
+    if (n >= MAX_RECIPES) throw badRequest(`Limite de ${MAX_RECIPES} recettes atteinte.`);
+    await db.insert(characterRecipes).values({ characterId: id, spellId, status })
+      .onConflictDoUpdate({ target: [characterRecipes.characterId, characterRecipes.spellId], set: { status, updatedAt: new Date() } });
+    return { ok: true };
   });
 
   app.delete("/:id", async (req) => {

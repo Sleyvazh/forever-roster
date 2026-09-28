@@ -15,6 +15,13 @@
       "when": 1790628386310,
       "tag": "0001_offspec_talents",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790629686986,
+      "tag": "0002_game_data",
+      "breakpoints": true
     }
   ]
 }

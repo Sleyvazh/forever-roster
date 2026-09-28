@@ -1,10 +1,11 @@
-import { CLASSES, RACES, type ClassName } from "@forever/game-data";
+import { CLASSES, RACES, SKILL_LINE_NAMES, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, type Character, type GroupRole, type Member } from "../api";
+import { ApiError, del, get, patch, post, type Character, type CraftersRecipe, type GroupRole, type Member } from "../api";
 import { useMe } from "../auth";
 import { CharacterEditor } from "../components/CharacterEditor";
+import { CRAFTING } from "../components/GameData";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string }; role: GroupRole; members: Member[] }
@@ -25,7 +26,7 @@ export function GroupPage() {
   const nav = useNavigate();
   const me = useMe();
   const myId = me.data?.user?.id;
-  const [tab, setTab] = useState<"raids" | "members" | "characters" | "journal">("raids");
+  const [tab, setTab] = useState<"raids" | "members" | "characters" | "crafters" | "journal">("raids");
   const [error, setError] = useState<string | null>(null);
 
   const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
@@ -41,7 +42,7 @@ export function GroupPage() {
   if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
   const { group, role, members } = detail.data;
 
-  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ...(isOfficer ? [["journal", "Journal"] as [typeof tab, string]] : [])];
+  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["journal", "Journal"] as [typeof tab, string]] : [])];
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -69,6 +70,7 @@ export function GroupPage() {
           {tab === "raids" && <Raids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} />}
+          {tab === "crafters" && <Crafters groupId={groupId} />}
           {tab === "journal" && <Journal groupId={groupId} />}
         </div>
       </div>
@@ -210,6 +212,49 @@ function GroupCharacters({ groupId }: { groupId: string }) {
         })}</tbody>
       </table></div>
       {opened && <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
+    </div>
+  );
+}
+
+/** « Qui crafte quoi ? » : les patrons connus et recherchés par les persos du groupe. */
+function Crafters({ groupId }: { groupId: string }) {
+  const [input, setInput] = useState(""), [q, setQ] = useState(""), [prof, setProf] = useState("");
+  useEffect(() => { const t = window.setTimeout(() => setQ(input.trim()), 300); return () => window.clearTimeout(t); }, [input]);
+  const params = new URLSearchParams({ ...(q.length >= 2 && { q }), ...(prof && { profession: prof }) });
+  const { data, isLoading } = useQuery({
+    queryKey: ["crafters", groupId, q, prof],
+    queryFn: () => get<{ recipes: CraftersRecipe[]; total: number }>(`/groups/${groupId}/crafters?${params}`),
+  });
+  const names = (list: { name: string; owner: string }[]) => list.map(w => `${w.name} (${w.owner})`).join(", ");
+  return (
+    <div className="sec">
+      <p className="hint" style={{ margin: 0 }}>Retrouve qui sait fabriquer un objet pour lui envoyer les composants, et quels patrons les membres recherchent.</p>
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="cr-q">Recette ou objet</label>
+          <input id="cr-q" type="search" placeholder="Warbear Woolies, Flask…" value={input} onChange={e => setInput(e.target.value)} />
+        </div>
+        <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="cr-p">Métier</label>
+          <select id="cr-p" value={prof} onChange={e => setProf(e.target.value)}>
+            <option value="">Tous</option>{[...CRAFTING].map(p => <option key={p}>{p}</option>)}
+          </select>
+        </div>
+      </div>
+      {isLoading ? <p className="muted">Chargement…</p> : !data?.recipes.length ? (
+        <p className="muted">{q || prof ? "Aucun membre n'a renseigné cette recette." : "Aucun patron renseigné pour l'instant. Chaque joueur les coche dans l'onglet Métiers de ses persos."}</p>
+      ) : (
+        <div className="tscroll"><table className="data">
+          <thead><tr><th>Recette</th><th>Métier</th><th>Sait la faire</th><th>La recherche</th></tr></thead>
+          <tbody>{data.recipes.map(r => (
+            <tr key={r.spellId}>
+              <td><span className={r.item ? `q${r.item.quality}` : ""}>{r.name}</span>{r.enchant && <span className="muted small"> · {r.enchant}</span>}</td>
+              <td className="small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} <span className="muted num">{r.reqSkill}</span></td>
+              <td>{r.known.length ? names(r.known) : <span className="muted">—</span>}</td>
+              <td className="small">{r.wanted.length ? names(r.wanted) : <span className="muted">—</span>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {data && data.total > data.recipes.length && <p className="hint">{data.total} recettes : affine la recherche pour voir la suite.</p>}
     </div>
   );
 }

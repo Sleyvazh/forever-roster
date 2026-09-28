@@ -14,8 +14,11 @@ const talentSplit = z.union([z.literal(""), z.string().regex(/^\d{1,2}\/\d{1,2}\
 
 const gearEntry = z.object({
   cur: shortText(100).optional(),
-  q: z.int().min(0).max(5).nullable().optional(),
+  curId: z.int().positive().nullable().optional(),
+  q: z.int().min(0).max(7).nullable().optional(),
   bis: shortText(100).optional(),
+  bisId: z.int().positive().nullable().optional(),
+  bisQ: z.int().min(0).max(7).nullable().optional(),
   got: z.boolean().optional(),
 });
 const perk = z.object({ name: shortText(60), rank: z.int().min(0).max(10), max: z.int().min(1).max(10) });

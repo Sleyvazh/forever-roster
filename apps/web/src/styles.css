@@ -63,7 +63,7 @@ h1, h2, h3, h4 { font-family: var(--f-disp); font-weight: 400; letter-spacing: .
 /* Formulaires */
 .fld { display: grid; gap: 4px; min-width: 0; }
 .fld > label, .lbl { font: 600 11px/1.2 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-input[type=text], input[type=email], input[type=password], input[type=number], input[type=url], input[type=datetime-local], select, textarea {
+input[type=text], input[type=search], input[type=email], input[type=password], input[type=number], input[type=url], input[type=datetime-local], select, textarea {
   width: 100%; min-width: 0; background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px;
 }
 input:hover, select:hover, textarea:hover { border-color: var(--line-2); }
@@ -139,7 +139,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
 .bar > i { display: block; height: 100%; background: var(--cc, var(--gold)); }
 .trow { display: grid; grid-template-columns: 130px 1fr 36px; gap: 10px; align-items: center; font-size: 14px; }
 .trow b { font-family: var(--f-mono); text-align: right; }
-.profs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.profs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; align-items: start; }
 .prof { border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 10px; background: var(--panel-2); }
 .prof .two { display: grid; grid-template-columns: 1fr 84px; gap: 8px; }
 .bonus { font-size: 13px; color: var(--ink-2); border-left: 2px solid var(--gold); padding-left: 8px; }
@@ -195,3 +195,40 @@ table.gear { min-width: 720px; }
 .build-head h4 { margin: 0; font-size: 15px; }
 .build .trow { grid-template-columns: 110px 1fr 30px; }
 .trow.main span { color: var(--cc); font-weight: 700; }
+
+/* Patrons : carte dépliante sous chaque métier */
+.recipes { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.recipes > summary { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; font-weight: 700; list-style: none; }
+.recipes > summary::-webkit-details-marker { display: none; }
+.recipes > summary::before { content: "▸"; color: var(--gold); margin-right: 6px; transition: transform .15s; }
+.recipes[open] > summary::before { transform: rotate(90deg); }
+.recipes > summary > span:first-child { flex: 1; }
+.recipes-body { display: grid; gap: 10px; padding: 0 12px 12px; }
+.rfilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
+.rfilters input { grid-column: 1 / -1; }
+.rlist { list-style: none; margin: 0; padding: 0; display: grid; max-height: 420px; overflow: auto; border-top: 1px solid var(--line); }
+.rlist li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start; padding: 7px 2px; border-bottom: 1px solid var(--line); }
+.rlist li.known { background: color-mix(in srgb, var(--ok) 7%, transparent); }
+.rlist li.wanted { background: color-mix(in srgb, var(--gold) 9%, transparent); }
+.rcheck { padding-top: 2px; }
+.rcheck input { width: 16px; height: 16px; accent-color: var(--ok); }
+.rmain { min-width: 0; display: grid; gap: 2px; }
+.rname { font-weight: 600; overflow-wrap: anywhere; }
+.rmeta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; color: var(--ink-3); }
+.rmeta .num { font-family: var(--f-mono); color: var(--ink-2); }
+.rmeta .warn, .rmeta .warn .num { color: var(--warn); }
+.rmeta .reag { flex-basis: 100%; }
+.rwant { background: none; border: 0; font-size: 18px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 0 4px; }
+.rwant.on { color: var(--gold); }
+.rwant:disabled { cursor: default; }
+.ext { margin-left: 6px; font-size: 12px; text-decoration: none; color: var(--ink-3); }
+.ext:hover { color: var(--gold); }
+
+/* Sélecteur d'objet (combobox) */
+.picker { position: relative; display: flex; align-items: center; min-width: 200px; }
+.picker input { flex: 1; min-width: 0; }
+.picker-list { position: fixed; z-index: 50; margin: 0; padding: 4px; list-style: none;
+  background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); max-height: 320px; overflow: auto; }
+.picker-list li { display: grid; gap: 1px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.picker-list li[aria-selected="true"] { background: var(--panel-2); }
+.picker-list li small { color: var(--ink-3); font-size: 12px; }

@@ -1,0 +1,120 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { parseCsv } from "../src/gamedata/csv";
+import { extract } from "../src/gamedata/extract";
+import { isForeverBuild, latestBuild, readTables } from "../src/gamedata/source";
+import { storeGameData } from "../src/gamedata/store";
+import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
+
+const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/gamedata");
+let env: TestEnv;
+beforeAll(async () => {
+  env = await setup();
+  await storeGameData(env.app.ctx.db, extract(await readTables(FIXTURES)), "1.60.1.70009");
+});
+afterAll(async () => { await env.close(); });
+
+describe("import des tables du client", () => {
+  it("lit un CSV avec guillemets, virgules et retours à la ligne", () => {
+    expect(parseCsv('ID,Name\n1,"a, ""b""\nc"\r\n2,d\n')).toEqual([{ ID: "1", Name: 'a, "b"\nc' }, { ID: "2", Name: "d" }]);
+  });
+
+  it("reconnaît les versions de Forever et choisit la plus récente", async () => {
+    expect(isForeverBuild("1.60.1.70009")).toBe(true);
+    expect(isForeverBuild("1.15.9.69722")).toBe(false);
+    const fake = (async () => Response.json({
+      wow_classic_era: [{ version: "1.15.9.69722" }],
+      wow_classic_beta: [{ version: "1.60.1.69913" }, { version: "1.60.1.70009" }],
+      wow: [{ version: "12.0.1.66000" }],
+    })) as unknown as typeof fetch;
+    expect(await latestBuild(fake)).toEqual({ product: "wow_classic_beta", version: "1.60.1.70009" });
+  });
+
+  it("joint les recettes : produit, composants, patron, compétence requise", async () => {
+    const { recipes, items } = extract(await readTables(FIXTURES));
+    const byId = new Map(recipes.map(r => [r.spellId, r]));
+    // Le rang du métier (sans effet ni composant) et les sorts de classe sont ignorés
+    expect(byId.has(2108)).toBe(false);
+    expect(byId.has(78)).toBe(false);
+    expect(byId.get(2152)).toMatchObject({ createdItemId: 2304, fromItem: false, reqSkill: 1, category: "Materials", reagents: [{ id: 2318, n: 1 }] });
+    // Seuil requis lu sur l'objet Patron
+    expect(byId.get(19080)).toMatchObject({ taughtBy: [15090], fromItem: true, reqSkill: 285, reagents: [{ id: 8170, n: 20 }, { id: 2318, n: 4 }] });
+    // Patron qui passe par un sort « apprendre » (effet 36)
+    expect(byId.get(19100)).toMatchObject({ taughtBy: [15091], reqSkill: 90 });
+    expect(byId.get(7418)).toMatchObject({ enchant: "+5 Health", skillLine: 333 });
+    expect(items.find(i => i.id === 19019)).toMatchObject({ name: "Thunderfury, Blessed Blade of the Windseeker", quality: 5, kind: "Weapon · Sword" });
+  });
+
+  it("refuse une table dont la structure a changé", async () => {
+    const t = await readTables(FIXTURES);
+    t.SpellReagents = t.SpellReagents.map(({ Reagent_0: _, ...rest }) => rest);
+    expect(() => extract(t)).toThrow(/SpellReagents.*Reagent_0/);
+  });
+});
+
+describe("API données du jeu", () => {
+  it("donne l'état de l'import et cherche un objet par emplacement", async () => {
+    const { c } = await signedIn(env);
+    expect((await c.get("/api/gamedata/status")).json()).toMatchObject({ build: "1.60.1.70009", recipes: 4 });
+    const head = (await c.get("/api/gamedata/items?q=helm&slot=Head")).json().items;
+    expect(head.map((i: { name: string }) => i.name)).toEqual(["Helm of Might"]);
+    expect((await c.get("/api/gamedata/items?q=hat&slot=Legs")).json().items).toEqual([]);
+    // Les jokers SQL sont traités comme du texte
+    expect((await c.get("/api/gamedata/items?q=%25%25")).json().items).toEqual([]);
+    expect((await c.get("/api/gamedata/items?q=a")).statusCode).toBe(400);
+    const lw = (await c.get("/api/gamedata/professions/Leatherworking/recipes")).json();
+    expect(lw.recipes.map((r: { spellId: number }) => r.spellId)).toEqual([2152, 19100, 19080]);
+    expect(lw.items[15090].name).toBe("Pattern: Warbear Woolies");
+  });
+
+  it("exige une session", async () => {
+    const { Client } = await import("./helpers");
+    expect((await new Client(env).get("/api/gamedata/status")).statusCode).toBe(401);
+  });
+});
+
+describe("patrons des persos et « qui crafte quoi »", () => {
+  it("coche un patron, le limite aux métiers du perso et le montre au groupe", async () => {
+    const lw = await signedIn(env, "Tanneur"), other = await signedIn(env, "Guildeux"), outsider = await signedIn(env, "Inconnu");
+    const ch = (await lw.c.post("/api/characters", {
+      name: "Tournicoti", professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 300 }, cooking: 0, fishing: 0, firstAid: 0 },
+    })).json().character;
+
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "known" })).statusCode).toBe(200);
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19100`, { status: "wanted" })).statusCode).toBe(200);
+    // Enchanting n'est pas un métier de ce perso ; recette inconnue ; statut invalide
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/7418`, { status: "known" })).statusCode).toBe(400);
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/999999`, { status: "known" })).statusCode).toBe(400);
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "maybe" })).statusCode).toBe(400);
+    // Personne d'autre ne peut modifier ni lire hors groupe
+    expect((await other.c.put(`/api/characters/${ch.id}/recipes/2152`, { status: "known" })).statusCode).toBe(404);
+    expect((await outsider.c.get(`/api/characters/${ch.id}/recipes`)).statusCode).toBe(404);
+
+    const g = (await lw.c.post("/api/groups", { name: "Artisans" })).json().group;
+    const inv = (await lw.c.post(`/api/groups/${g.id}/invites`, { maxUses: 1, expiresInHours: 24 })).json().invite;
+    await other.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
+
+    expect((await other.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toHaveLength(2);
+    const found = (await other.c.get(`/api/groups/${g.id}/crafters?q=woolies`)).json();
+    expect(found.recipes).toHaveLength(1);
+    expect(found.recipes[0]).toMatchObject({ spellId: 19080, item: { name: "Warbear Woolies", quality: 4 }, known: [{ name: "Tournicoti", owner: "Tanneur" }], wanted: [] });
+    const wanted = (await other.c.get(`/api/groups/${g.id}/crafters?profession=Leatherworking`)).json().recipes.find((r: { spellId: number }) => r.spellId === 19100);
+    expect(wanted.wanted).toHaveLength(1);
+    expect((await outsider.c.get(`/api/groups/${g.id}/crafters`)).statusCode).toBe(404);
+
+    // Décocher supprime ; supprimer le perso nettoie ses patrons
+    await lw.c.put(`/api/characters/${ch.id}/recipes/19100`, { status: null });
+    expect((await lw.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual([{ spellId: 19080, status: "known", skillLine: 165 }]);
+    await lw.c.del(`/api/characters/${ch.id}`);
+    expect((await other.c.get(`/api/groups/${g.id}/crafters`)).json().recipes).toEqual([]);
+  });
+
+  it("enregistre l'objet choisi dans la base pour l'équipement", async () => {
+    const { c } = await signedIn(env);
+    const ch = (await c.post("/api/characters", { name: "Stuff" })).json().character;
+    const r = await c.patch(`/api/characters/${ch.id}`, { gear: { Head: { cur: "Helm of Might", curId: 16866, q: 4, bis: "Helm of Might", bisId: 16866, bisQ: 4 } } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().character.gear.Head.curId).toBe(16866);
+  });
+});

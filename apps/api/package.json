@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate-cli.ts"
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate-cli.ts",
+    "gamedata:import": "tsx --env-file-if-exists=../../.env src/gamedata/import-cli.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

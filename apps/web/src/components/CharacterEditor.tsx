@@ -3,7 +3,8 @@ import {
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
-import type { Character, Prof } from "../api";
+import type { Character, GearEntry, Prof } from "../api";
+import { CRAFTING, ItemPicker, RecipeCard } from "./GameData";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
@@ -48,7 +49,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
       <fieldset disabled={!editable} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div className="pane">
           {tab === "profil" && <Profil c={c} onChange={onChange} />}
-          {tab === "metiers" && <Metiers c={c} onChange={onChange} />}
+          {tab === "metiers" && <Metiers c={c} onChange={onChange} editable={editable} />}
           {tab === "stuff" && <Stuff c={c} onChange={onChange} />}
           {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
         </div>
@@ -58,7 +59,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
   );
 }
 
-type SubProps = { c: Character; onChange: EditorProps["onChange"] };
+type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean };
 
 function Profil({ c, onChange }: SubProps) {
   const cl = CLASSES[c.cls as ClassName];
@@ -172,7 +173,7 @@ function Build({ id, title, cls, specs, spec, talents, link, onChange }: {
   );
 }
 
-function ProfCard({ k, p, other, onSet }: { k: string; p: Prof; other: string; onSet: (p: Prof) => void }) {
+function ProfCard({ k, p, other, onSet, characterId, editable }: { k: string; p: Prof; other: string; onSet: (p: Prof) => void; characterId: string; editable: boolean }) {
   const pair = p.name && PROFESSION_PAIRS.some(([a, b]) => (a === p.name && b === other) || (b === p.name && a === other));
   return (
     <div className="prof">
@@ -190,11 +191,12 @@ function ProfCard({ k, p, other, onSet }: { k: string; p: Prof; other: string; o
       </div>
       {p.name && <div className="bonus">{PRIMARY_PROFESSIONS[p.name]}</div>}
       {pair && <div className="okmsg">Paire récolte + artisanat cohérente avec {other}.</div>}
+      {CRAFTING.has(p.name) && <RecipeCard key={p.name} characterId={characterId} profession={p.name} skill={p.skill} editable={editable} />}
     </div>
   );
 }
 
-function Metiers({ c, onChange }: SubProps) {
+function Metiers({ c, onChange, editable = false }: SubProps) {
   const pr = c.professions;
   const set = (patch: Partial<Character["professions"]>) => onChange({ professions: { ...pr, ...patch } });
   return (
@@ -202,8 +204,8 @@ function Metiers({ c, onChange }: SubProps) {
       <div className="sec">
         <h3>Métiers principaux <small>Apprenti 75 · Compagnon 150 · Expert 225 · Artisan 300</small></h3>
         <div className="profs">
-          <ProfCard k="p1" p={pr.prof1} other={pr.prof2.name} onSet={p => set({ prof1: p })} />
-          <ProfCard k="p2" p={pr.prof2} other={pr.prof1.name} onSet={p => set({ prof2: p })} />
+          <ProfCard k="p1" p={pr.prof1} other={pr.prof2.name} onSet={p => set({ prof1: p })} characterId={c.id} editable={editable} />
+          <ProfCard k="p2" p={pr.prof2} other={pr.prof1.name} onSet={p => set({ prof2: p })} characterId={c.id} editable={editable} />
         </div>
       </div>
       <div className="sec">
@@ -219,6 +221,7 @@ function Metiers({ c, onChange }: SubProps) {
               </div>
               <div style={{ ["--cc" as string]: "var(--gold)" }}><Bar pct={pr[k] / 3} /></div>
               <div className="bonus">{SECONDARY_PROFESSIONS[k].bonus}</div>
+              {CRAFTING.has(SECONDARY_PROFESSIONS[k].name) && <RecipeCard characterId={c.id} profession={SECONDARY_PROFESSIONS[k].name} skill={pr[k]} editable={editable} />}
             </div>
           ))}
         </div>
@@ -231,7 +234,7 @@ function Metiers({ c, onChange }: SubProps) {
 function Stuff({ c, onChange }: SubProps) {
   const got = GEAR_SLOTS.filter(s => c.gear[s]?.got).length;
   const slug = CLASSES[c.cls as ClassName]?.slug ?? "warrior";
-  const setSlot = (slot: string, patch: Record<string, unknown>) => onChange({ gear: { ...c.gear, [slot]: { ...c.gear[slot], ...patch } } });
+  const setSlot = (slot: string, patch: Partial<GearEntry>) => onChange({ gear: { ...c.gear, [slot]: { ...c.gear[slot], ...patch } } });
   return (
     <div className="sec">
       <h3>Équipement <small><a href={`https://foreverchanges.pro/bis/${slug}`} target="_blank" rel="noopener noreferrer">Listes BiS sur ForeverChanges</a></small></h3>
@@ -245,13 +248,15 @@ function Stuff({ c, onChange }: SubProps) {
               return (
                 <tr key={s}>
                   <td style={{ whiteSpace: "nowrap", color: g.got ? "var(--ok)" : "var(--ink-2)" }}>{s}</td>
-                  <td><input type="text" aria-label={`Équipé : ${s}`} maxLength={100} className={g.q != null ? `q${g.q}` : ""} value={g.cur ?? ""} onChange={e => setSlot(s, { cur: e.target.value })} /></td>
+                  <td><ItemPicker slot={s} label={`Équipé : ${s}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q}
+                    onChange={p => setSlot(s, { cur: p.name, curId: p.id, ...(p.quality !== undefined && { q: p.quality }) })} /></td>
                   <td>
                     <select aria-label={`Qualité : ${s}`} value={g.q ?? ""} style={{ width: "auto" }} onChange={e => setSlot(s, { q: e.target.value === "" ? null : Number(e.target.value) })}>
                       <option value="">—</option>{ITEM_QUALITIES.map((q, qi) => <option key={q} value={qi}>{q}</option>)}
                     </select>
                   </td>
-                  <td><input type="text" aria-label={`Objectif BiS : ${s}`} maxLength={100} value={g.bis ?? ""} onChange={e => setSlot(s, { bis: e.target.value })} /></td>
+                  <td><ItemPicker slot={s} label={`Objectif BiS : ${s}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ}
+                    onChange={p => setSlot(s, { bis: p.name, bisId: p.id, bisQ: p.quality ?? (p.id ? g.bisQ : null) })} /></td>
                   <td style={{ textAlign: "center" }}><input id={`got-${i}`} type="checkbox" aria-label={`BiS obtenu : ${s}`} checked={!!g.got} onChange={e => setSlot(s, { got: e.target.checked })} /></td>
                 </tr>
               );

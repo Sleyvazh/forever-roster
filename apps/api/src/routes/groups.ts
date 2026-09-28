@@ -1,13 +1,15 @@
-import { and, asc, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { auditEvents, characters, groupInvites, groupMembers, groups, users } from "../db/schema";
+import { PROFESSION_SKILL_LINES } from "@forever/game-data";
+import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
+import { likeContains } from "./gamedata";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -83,6 +85,48 @@ export async function groupRoutes(app: FastifyInstance) {
       .innerJoin(users, eq(users.id, characters.userId))
       .orderBy(asc(users.displayName), asc(characters.sortOrder));
     return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner })) };
+  });
+
+  /** « Qui crafte quoi ? » : patrons connus et recherchés par les persos du groupe. */
+  app.get("/:id/crafters", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    const { q, profession } = parse(z.object({
+      q: z.string().trim().max(60).optional(),
+      profession: z.enum(Object.keys(PROFESSION_SKILL_LINES) as [string, ...string[]]).optional(),
+    }), req.query);
+    await membership(db, id, u.id);
+    const filters = [
+      ...(q && q.length >= 2 ? [or(ilike(gameRecipes.name, likeContains(q)), ilike(gameItems.name, likeContains(q)))] : []),
+      ...(profession ? [eq(gameRecipes.skillLine, PROFESSION_SKILL_LINES[profession]!)] : []),
+    ];
+    const rows = await db.select({
+      spellId: gameRecipes.spellId, name: gameRecipes.name, skillLine: gameRecipes.skillLine, reqSkill: gameRecipes.reqSkill,
+      itemId: gameRecipes.createdItemId, itemName: gameItems.name, quality: gameItems.quality, enchant: gameRecipes.enchant,
+      status: characterRecipes.status, characterId: characters.id, character: characters.name, owner: users.displayName,
+    }).from(characterRecipes)
+      .innerJoin(characters, eq(characters.id, characterRecipes.characterId))
+      .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, id)))
+      .innerJoin(users, eq(users.id, characters.userId))
+      .innerJoin(gameRecipes, eq(gameRecipes.spellId, characterRecipes.spellId))
+      .leftJoin(gameItems, eq(gameItems.id, gameRecipes.createdItemId))
+      .where(filters.length ? and(...filters) : undefined)
+      .orderBy(asc(gameRecipes.name), asc(characters.name))
+      .limit(2000);
+
+    type Who = { characterId: string; name: string; owner: string };
+    const byRecipe = new Map<number, { spellId: number; name: string; skillLine: number; reqSkill: number; item: { id: number; name: string; quality: number } | null; enchant: string | null; known: Who[]; wanted: Who[] }>();
+    for (const r of rows) {
+      let e = byRecipe.get(r.spellId);
+      if (!e) {
+        e = { spellId: r.spellId, name: r.name, skillLine: r.skillLine, reqSkill: r.reqSkill, enchant: r.enchant, known: [], wanted: [],
+          item: r.itemId && r.itemName ? { id: r.itemId, name: r.itemName, quality: r.quality ?? 1 } : null };
+        byRecipe.set(r.spellId, e);
+      }
+      e[r.status].push({ characterId: r.characterId, name: r.character, owner: r.owner });
+    }
+    const recipes = [...byRecipe.values()];
+    return { recipes: recipes.slice(0, 150), total: recipes.length };
   });
 
   /* ----- Membres ----- */

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid,
+  bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -85,7 +85,8 @@ export interface Professions {
   prof2: { name: string; skill: number };
   cooking: number; fishing: number; firstAid: number;
 }
-export type Gear = Partial<Record<string, { cur?: string; q?: number | null; bis?: string; got?: boolean }>>;
+/** curId / bisId : identifiant de l'objet dans la base du jeu (game_items), quand il a été choisi dans la recherche. */
+export type Gear = Partial<Record<string, { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }>>;
 export type Legacy = Partial<Record<string, { name: string; rank: number; max: number }[]>>;
 
 export const characters = pgTable("characters", {
@@ -155,3 +156,58 @@ export const raids = pgTable("raids", {
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [index("raids_group_idx").on(t.groupId)]);
+
+/* ---------- Données du jeu (importées des tables du client via wago.tools) ---------- */
+
+export const gameItems = pgTable("game_items", {
+  id: integer("id").primaryKey(),
+  name: text("name").notNull(),
+  quality: smallint("quality").notNull(),
+  itemLevel: integer("item_level").notNull(),
+  reqLevel: integer("req_level").notNull(),
+  classId: integer("class_id").notNull(),
+  subclassId: integer("subclass_id").notNull(),
+  inventoryType: integer("inventory_type").notNull(),
+  /** Libellé lisible, ex. « Armure · Cuir » tel que fourni par le client. */
+  kind: text("kind").notNull().default(""),
+}, t => [
+  index("game_items_inv_idx").on(t.inventoryType),
+]);
+
+export interface Reagent { id: number; n: number }
+
+export const gameRecipes = pgTable("game_recipes", {
+  /** Identifiant du sort de fabrication. */
+  spellId: integer("spell_id").primaryKey(),
+  skillLine: integer("skill_line").notNull(),
+  name: text("name").notNull(),
+  /** Compétence requise (seuil orange). */
+  reqSkill: integer("req_skill").notNull(),
+  trivialLow: integer("trivial_low").notNull(),
+  trivialHigh: integer("trivial_high").notNull(),
+  category: text("category").notNull().default(""),
+  createdItemId: integer("created_item_id"),
+  createdCount: integer("created_count").notNull().default(1),
+  enchant: text("enchant"),
+  reagents: jsonb("reagents").$type<Reagent[]>().notNull().default([]),
+  /** Objets « Patron / Plans / Recette » qui enseignent ce sort. Vide = appris chez un entraîneur. */
+  taughtBy: jsonb("taught_by").$type<number[]>().notNull().default([]),
+  fromItem: boolean("from_item").notNull().default(false),
+}, t => [index("game_recipes_skill_idx").on(t.skillLine)]);
+
+export const gameMeta = pgTable("game_meta", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
+/** Patrons connus ou recherchés par un personnage. */
+export const characterRecipes = pgTable("character_recipes", {
+  characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  spellId: integer("spell_id").notNull(),
+  status: text("status").$type<"known" | "wanted">().notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.characterId, t.spellId] }),
+  index("character_recipes_spell_idx").on(t.spellId),
+  check("character_recipes_status", sql`${t.status} IN ('known', 'wanted')`),
+]);
