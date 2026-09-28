@@ -187,3 +187,11 @@ table.gear { min-width: 720px; }
 
 @media (max-width: 520px) { .trow { grid-template-columns: 96px 1fr 30px; } .pane { padding: 16px; } .dhead { padding: 16px; } }
 @media (prefers-reduced-motion: no-preference) { .card, .btn, .tab, .slot { transition: border-color .15s, background .15s, color .15s; } }
+
+/* Builds : spé principale et off-spec côte à côte */
+.builds { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.build { display: grid; gap: 12px; align-content: start; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); min-width: 0; }
+.build-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.build-head h4 { margin: 0; font-size: 15px; }
+.build .trow { grid-template-columns: 110px 1fr 30px; }
+.trow.main span { color: var(--cc); font-weight: 700; }

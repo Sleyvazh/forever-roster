@@ -1,6 +1,6 @@
 import {
   CLASSES, GEAR_SLOTS, ITEM_QUALITIES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
-  SECONDARY_PROFESSIONS, isValidCombo, professionTier, roleOf, talentPointsAt, type ClassName,
+  SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
 import type { Character, Prof } from "../api";
@@ -65,9 +65,7 @@ function Profil({ c, onChange }: SubProps) {
   const race = RACES[c.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
   const bad = !!(c.race && c.cls && !isValidCombo(c.race, c.cls));
-  const specs: readonly string[] = cl?.specs ?? [];
-  const split = (c.talents || "0/0/0").split("/").map(n => parseInt(n, 10) || 0);
-  const total = split.reduce((a, b) => a + b, 0);
+  const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
   const avail = talentPointsAt(c.level);
   const slug = cl?.slug ?? "warrior";
 
@@ -99,40 +97,78 @@ function Profil({ c, onChange }: SubProps) {
               {classes.map(k => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
-          <div className="fld"><label htmlFor="f-s1">Spé principale</label>
-            <select id="f-s1" value={c.spec1} onChange={e => onChange({ spec1: e.target.value })}><option value="">—</option>{specs.map(s => <option key={s}>{s}</option>)}</select>
-          </div>
-          <div className="fld"><label htmlFor="f-s2">Spé secondaire</label>
-            <select id="f-s2" value={c.spec2} onChange={e => onChange({ spec2: e.target.value })}><option value="">—</option>{specs.map(s => <option key={s}>{s}</option>)}</select>
-          </div>
         </div>
         {bad && <div className="warnmsg">{c.race} ne peut pas être {c.cls} dans WoW Forever.</div>}
         {race && <div className="bonus"><span className="lbl">Raciaux {c.race}</span><br />{race.racials}</div>}
       </div>
 
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
-        <h3>Talents <small>Build cible <span className="num">{total}</span>/51 · <span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level}</small></h3>
-        <div className="grid">
-          <div className="fld"><label htmlFor="f-tal">Répartition (ex. 9/37/5)</label>
-            <input id="f-tal" className="num" type="text" placeholder="0/0/0" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={c.talents} onChange={e => onChange({ talents: e.target.value })} />
+        <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
+        {!cl && <p className="hint">Choisis une classe pour afficher les spés et les arbres.</p>}
+        {cl && (
+          <div className="builds">
+            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink}
+              onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
+            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2}
+              onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
-          <div className="fld" style={{ gridColumn: "span 2" }}><label htmlFor="f-link">Lien du build (https uniquement)</label>
-            <input id="f-link" type="url" placeholder={`https://foreverchanges.pro/talents/${slug}…`} value={c.talentLink} onChange={e => onChange({ talentLink: e.target.value })} />
-          </div>
-        </div>
-        {cl ? (
-          <div className="stack" style={{ gap: 8 }}>
-            {cl.trees.map((t, i) => <div className="trow" key={t}><span>{t}</span><Bar pct={(split[i] ?? 0) / 51 * 100} /><b>{split[i] ?? 0}</b></div>)}
-          </div>
-        ) : <p className="hint">Choisis une classe pour afficher les arbres.</p>}
-        {total > 51 && <div className="warnmsg">{total} points au total : le maximum au niveau 60 est de 51.</div>}
+        )}
         <div className="row">
-          {/^https:\/\//.test(c.talentLink) && <a className="btn sm" href={c.talentLink} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}
           <a className="btn sm ghost" href={`https://foreverchanges.pro/talents/${slug}`} target="_blank" rel="noopener noreferrer">Calculateur de talents</a>
           <a className="btn sm ghost" href={`https://foreverchanges.pro/class/${slug}`} target="_blank" rel="noopener noreferrer">Changements de classe</a>
         </div>
       </div>
     </>
+  );
+}
+
+const ROLES: Role[] = ["Tank", "Heal", "DPS"];
+
+/** Un build : intitulé de spé (avec son rôle), répartition des points et lien vers le calculateur. */
+function Build({ id, title, cls, specs, spec, talents, link, onChange }: {
+  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string;
+  onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
+}) {
+  const cl = CLASSES[cls as ClassName];
+  const def = specDef(cls, spec);
+  const split = (talents || "0/0/0").split("/").map(n => parseInt(n, 10) || 0);
+  const total = split.reduce((a, b) => a + b, 0);
+  return (
+    <div className="build">
+      <div className="build-head">
+        <h4>{title}</h4>
+        {def && <span className={`role ${def.role}`}>{def.role}</span>}
+      </div>
+      <div className="grid">
+        <div className="fld"><label htmlFor={`f-spec-${id}`}>Intitulé de la spé</label>
+          <select id={`f-spec-${id}`} value={spec} onChange={e => onChange({ spec: e.target.value })}>
+            <option value="">—</option>
+            {ROLES.map(r => {
+              const list = specs.filter(d => d.role === r);
+              return list.length ? <optgroup key={r} label={r}>{list.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}</optgroup> : null;
+            })}
+          </select>
+        </div>
+        <div className="fld"><label htmlFor={`f-tal-${id}`}>Répartition (ex. 9/37/5)</label>
+          <input id={`f-tal-${id}`} className="num" type="text" placeholder="0/0/0" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={talents} onChange={e => onChange({ talents: e.target.value })} />
+        </div>
+        <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build (https uniquement)</label>
+          <input id={`f-link-${id}`} type="url" placeholder={`https://foreverchanges.pro/talents/${cl?.slug ?? ""}…`} value={link} onChange={e => onChange({ link: e.target.value })} />
+        </div>
+      </div>
+      {cl && (
+        <div className="stack" style={{ gap: 8 }}>
+          {cl.trees.map((t, i) => (
+            <div className={`trow${def?.tree === i ? " main" : ""}`} key={t}><span>{t}</span><Bar pct={(split[i] ?? 0) / 51 * 100} /><b>{split[i] ?? 0}</b></div>
+          ))}
+        </div>
+      )}
+      <div className="row small">
+        <span className="muted">Total <span className="num">{total}</span>/51</span>
+        {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}
+      </div>
+      {total > 51 && <div className="warnmsg">{total} points au total : le maximum au niveau 60 est de 51.</div>}
+    </div>
   );
 }
 

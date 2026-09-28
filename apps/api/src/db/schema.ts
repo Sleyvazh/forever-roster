@@ -99,6 +99,9 @@ export const characters = pgTable("characters", {
   level: integer("level").notNull().default(1),
   talents: text("talents").notNull().default(""),
   talentLink: text("talent_link").notNull().default(""),
+  /** Build de l'off-spec (spec2). */
+  talents2: text("talents2").notNull().default(""),
+  talentLink2: text("talent_link2").notNull().default(""),
   professions: jsonb("professions").$type<Professions>().notNull()
     .default({ prof1: { name: "", skill: 0 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 }),
   gear: jsonb("gear").$type<Gear>().notNull().default({}),

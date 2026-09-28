@@ -27,7 +27,7 @@ const any = (cls: ClassName, specs?: string[]): Provider => (specs ? { cls, spec
 export const RAID_EFFECTS: RaidEffect[] = [
   // Buffs de raid
   { id: "fort", name: "Power Word: Fortitude", kind: "buff", scope: "raid", providers: [any("Priest")] },
-  { id: "spirit", name: "Divine Spirit", kind: "buff", scope: "raid", providers: [any("Priest", ["Discipline"])], note: "Talent Discipline." },
+  { id: "spirit", name: "Divine Spirit", kind: "buff", scope: "raid", providers: [any("Priest", ["Discipline Heal", "Discipline DPS"])], note: "Talent Discipline." },
   { id: "shadowprot", name: "Shadow Protection", kind: "buff", scope: "raid", providers: [any("Priest")] },
   { id: "motw", name: "Mark of the Wild", kind: "buff", scope: "raid", providers: [any("Druid")] },
   { id: "ai", name: "Arcane Intellect", kind: "buff", scope: "raid", providers: [any("Mage")] },
@@ -66,13 +66,13 @@ export const RAID_EFFECTS: RaidEffect[] = [
   { id: "hmark", name: "Hunter's Mark", kind: "debuff", scope: "raid", providers: [any("Hunter")] },
   { id: "demo", name: "Demoralizing Shout / Roar", kind: "debuff", scope: "raid", providers: [any("Warrior"), any("Druid", ["Feral Bear"])] },
   { id: "tclap", name: "Thunder Clap", kind: "debuff", scope: "raid", providers: [any("Warrior")] },
-  { id: "stormstrike", name: "Stormstrike", kind: "debuff", scope: "raid", providers: [any("Shaman", ["Enhancement"])], note: "Talent Enhancement." },
+  { id: "stormstrike", name: "Stormstrike", kind: "debuff", scope: "raid", providers: [any("Shaman", ["Enhancement DPS", "Enhancement Tank"])], note: "Talent Enhancement." },
 
   // Utilitaires
   { id: "brez", name: "Rebirth (rez en combat)", kind: "utility", scope: "raid", providers: [any("Druid")] },
   { id: "innervate", name: "Innervate", kind: "utility", scope: "raid", providers: [any("Druid")] },
   { id: "soulstone", name: "Soulstone", kind: "utility", scope: "raid", providers: [any("Warlock")] },
-  { id: "pi", name: "Power Infusion", kind: "utility", scope: "raid", providers: [any("Priest", ["Discipline"])], note: "Talent Discipline." },
+  { id: "pi", name: "Power Infusion", kind: "utility", scope: "raid", providers: [any("Priest", ["Discipline Heal", "Discipline DPS"])], note: "Talent Discipline." },
   { id: "tremor", name: "Tremor Totem", kind: "utility", scope: "party", providers: [any("Shaman")] },
 ];
 

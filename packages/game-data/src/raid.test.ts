@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeCoverage, exclusiveBudget, roleCounts } from "./raid";
-import { isValidCombo, isValidSpec, talentPointsAt } from "./core";
+import { isValidCombo, isValidSpec, roleOf, talentPointsAt } from "./core";
 
 const get = (cov: ReturnType<typeof computeCoverage>, id: string) => cov.find(c => c.effect.id === id)!;
 
@@ -30,7 +30,7 @@ describe("computeCoverage", () => {
 
 describe("exclusiveBudget", () => {
   it("compte les paladins face aux bénédictions", () => {
-    const b = exclusiveBudget([{ characterId: "p", cls: "Paladin", spec: "Holy", group: 1 }]).find(x => x.group === "blessing")!;
+    const b = exclusiveBudget([{ characterId: "p", cls: "Paladin", spec: "Holy Heal", group: 1 }]).find(x => x.group === "blessing")!;
     expect(b).toEqual({ group: "blessing", available: 1, wanted: 5 });
   });
 });
@@ -48,5 +48,21 @@ describe("règles de base", () => {
   });
   it("compte les rôles", () => {
     expect(roleCounts([{ spec: "Protection" }, { spec: "Holy" }, { spec: "Fire" }, { spec: null }])).toEqual({ Tank: 1, Heal: 1, DPS: 1, "?": 1 });
+  });
+});
+
+describe("spés de niche", () => {
+  it("le rôle suit l'intitulé de la spé", () => {
+    expect(roleOf("Feral Bear")).toBe("Tank");
+    expect(roleOf("Feral Cat")).toBe("DPS");
+    expect(roleOf("Enhancement Tank")).toBe("Tank");
+    expect(roleOf("Discipline DPS")).toBe("DPS");
+    expect(roleOf("Discipline Heal")).toBe("Heal");
+    expect(roleOf("Holy DPS")).toBe("DPS");
+    expect(roleOf("Holy Heal")).toBe("Heal");
+  });
+  it("les variantes gardent les buffs de leur arbre", () => {
+    const cov = computeCoverage([{ characterId: "p", cls: "Priest", spec: "Discipline DPS", group: 1 }]);
+    expect(get(cov, "pi").covered).toBe(true);
   });
 });

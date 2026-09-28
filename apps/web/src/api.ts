@@ -38,7 +38,7 @@ export interface Me { user: User | null; csrfToken: string | null; battlenetEnab
 export interface Prof { name: string; skill: number }
 export interface Character {
   id: string; userId: string; name: string; race: string; cls: string; spec1: string; spec2: string; level: number;
-  talents: string; talentLink: string;
+  talents: string; talentLink: string; talents2: string; talentLink2: string;
   professions: { prof1: Prof; prof2: Prof; cooking: number; fishing: number; firstAid: number };
   gear: Record<string, { cur?: string; q?: number | null; bis?: string; got?: boolean }>;
   legacy: Record<string, { name: string; rank: number; max: number }[]>;

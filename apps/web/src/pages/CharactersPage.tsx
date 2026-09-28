@@ -19,6 +19,8 @@ function useAutosave(id: string | null, onSaved: (c: Character) => void) {
     const held: string[] = [];
     if (body.talents !== undefined && !TALENTS_RE.test(body.talents)) { held.push("répartition des talents"); delete body.talents; }
     if (body.talentLink !== undefined && !LINK_RE.test(body.talentLink)) { held.push("lien du build (https)"); delete body.talentLink; }
+    if (body.talents2 !== undefined && !TALENTS_RE.test(body.talents2)) { held.push("répartition de l'off-spec"); delete body.talents2; }
+    if (body.talentLink2 !== undefined && !LINK_RE.test(body.talentLink2)) { held.push("lien du build off-spec (https)"); delete body.talentLink2; }
     if (body.name !== undefined && !body.name.trim()) { held.push("nom"); delete body.name; }
     pending.current = Object.fromEntries(Object.entries(pending.current).filter(([k]) => !(k in body)));
     if (!Object.keys(body).length) { setStatus(held.length ? { kind: "held", msg: `À corriger avant enregistrement : ${held.join(", ")}.` } : { kind: "idle" }); return; }

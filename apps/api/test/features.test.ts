@@ -36,6 +36,21 @@ describe("personnages", () => {
     expect((await c.post("/api/characters", { name: "X", cls: "Warrior", spec1: "Feral Cat" })).statusCode).toBe(400);
     expect((await c.post("/api/characters", { name: "X", cls: "Druid", talents: "40/30/0" })).statusCode).toBe(400);
     expect((await c.post("/api/characters", { name: "X", level: 61 })).statusCode).toBe(400);
+    expect((await c.post("/api/characters", { name: "X", cls: "Druid", talents2: "40/30/0" })).statusCode).toBe(400);
+    expect((await c.post("/api/characters", { name: "X", cls: "Priest", spec1: "Holy DPS" })).statusCode).toBe(400);
+  });
+
+  it("enregistre la spé principale et l'off-spec avec chacune son build", async () => {
+    const { c } = await signedIn(env);
+    const r = await c.post("/api/characters", {
+      name: "Sam", race: "Undead", cls: "Priest", spec1: "Discipline Heal", spec2: "Discipline DPS",
+      talents: "31/20/0", talents2: "21/0/30", talentLink2: "https://foreverchanges.pro/talents/priest?b=1",
+    });
+    expect(r.statusCode).toBe(201);
+    const ch = r.json().character;
+    expect(ch).toMatchObject({ spec1: "Discipline Heal", spec2: "Discipline DPS", talents: "31/20/0", talents2: "21/0/30" });
+    expect((await c.patch(`/api/characters/${ch.id}`, { talentLink2: "javascript:alert(1)" })).statusCode).toBe(400);
+    expect((await c.patch(`/api/characters/${ch.id}`, { spec2: "Shadow", talents2: "0/21/30" })).json().character.talents2).toBe("0/21/30");
   });
 
   it("refuse les liens non https (XSS via javascript:)", async () => {

@@ -5,16 +5,40 @@
 
 export type Faction = "Alliance" | "Horde";
 
+export type Role = "Tank" | "Heal" | "DPS";
+
+/**
+ * Spés jouables : un intitulé, un rôle et l'arbre de talents principal (0, 1 ou 2).
+ * Plusieurs intitulés peuvent partager un arbre (Feral Cat / Feral Bear, Holy DPS / Holy Heal…) :
+ * c'est l'intitulé qui fixe le rôle dans le roster de raid.
+ */
+export interface SpecDef { name: string; role: Role; tree: 0 | 1 | 2 }
+const s = (name: string, role: Role, tree: 0 | 1 | 2): SpecDef => ({ name, role, tree });
+
+export const CLASS_SPECS = {
+  Warrior: [s("Arms", "DPS", 0), s("Fury", "DPS", 1), s("Protection", "Tank", 2), s("Fury Tank", "Tank", 1)],
+  Paladin: [s("Holy Heal", "Heal", 0), s("Holy DPS", "DPS", 0), s("Protection", "Tank", 1), s("Retribution", "DPS", 2)],
+  Hunter: [s("Beast Mastery", "DPS", 0), s("Marksmanship", "DPS", 1), s("Survival", "DPS", 2)],
+  Rogue: [s("Assassination", "DPS", 0), s("Combat", "DPS", 1), s("Subtlety", "DPS", 2)],
+  Priest: [s("Discipline Heal", "Heal", 0), s("Discipline DPS", "DPS", 0), s("Holy", "Heal", 1), s("Shadow", "DPS", 2)],
+  Shaman: [s("Elemental", "DPS", 0), s("Enhancement DPS", "DPS", 1), s("Enhancement Tank", "Tank", 1), s("Restoration", "Heal", 2)],
+  Mage: [s("Arcane", "DPS", 0), s("Fire", "DPS", 1), s("Frost", "DPS", 2)],
+  Warlock: [s("Affliction", "DPS", 0), s("Demonology", "DPS", 1), s("Destruction", "DPS", 2)],
+  Druid: [s("Balance", "DPS", 0), s("Feral Cat", "DPS", 1), s("Feral Bear", "Tank", 1), s("Restoration", "Heal", 2)],
+} satisfies Record<string, SpecDef[]>;
+
+const names = (list: readonly SpecDef[]): readonly string[] => list.map(d => d.name);
+
 export const CLASSES = {
-  Warrior: { color: "#C69B6D", slug: "warrior", trees: ["Arms", "Fury", "Protection"], specs: ["Arms", "Fury", "Protection"] },
-  Paladin: { color: "#F48CBA", slug: "paladin", trees: ["Holy", "Protection", "Retribution"], specs: ["Holy", "Protection", "Retribution"] },
-  Hunter: { color: "#AAD372", slug: "hunter", trees: ["Beast Mastery", "Marksmanship", "Survival"], specs: ["Beast Mastery", "Marksmanship", "Survival"] },
-  Rogue: { color: "#E8D340", slug: "rogue", trees: ["Assassination", "Combat", "Subtlety"], specs: ["Assassination", "Combat", "Subtlety"] },
-  Priest: { color: "#B9C2D6", slug: "priest", trees: ["Discipline", "Holy", "Shadow"], specs: ["Discipline", "Holy", "Shadow"] },
-  Shaman: { color: "#0070DD", slug: "shaman", trees: ["Elemental", "Enhancement", "Restoration"], specs: ["Elemental", "Enhancement", "Restoration"] },
-  Mage: { color: "#3FC7EB", slug: "mage", trees: ["Arcane", "Fire", "Frost"], specs: ["Arcane", "Fire", "Frost"] },
-  Warlock: { color: "#8788EE", slug: "warlock", trees: ["Affliction", "Demonology", "Destruction"], specs: ["Affliction", "Demonology", "Destruction"] },
-  Druid: { color: "#FF7C0A", slug: "druid", trees: ["Balance", "Feral Combat", "Restoration"], specs: ["Balance", "Feral Cat", "Feral Bear", "Restoration"] },
+  Warrior: { color: "#C69B6D", slug: "warrior", trees: ["Arms", "Fury", "Protection"], specs: names(CLASS_SPECS.Warrior) },
+  Paladin: { color: "#F48CBA", slug: "paladin", trees: ["Holy", "Protection", "Retribution"], specs: names(CLASS_SPECS.Paladin) },
+  Hunter: { color: "#AAD372", slug: "hunter", trees: ["Beast Mastery", "Marksmanship", "Survival"], specs: names(CLASS_SPECS.Hunter) },
+  Rogue: { color: "#E8D340", slug: "rogue", trees: ["Assassination", "Combat", "Subtlety"], specs: names(CLASS_SPECS.Rogue) },
+  Priest: { color: "#B9C2D6", slug: "priest", trees: ["Discipline", "Holy", "Shadow"], specs: names(CLASS_SPECS.Priest) },
+  Shaman: { color: "#0070DD", slug: "shaman", trees: ["Elemental", "Enhancement", "Restoration"], specs: names(CLASS_SPECS.Shaman) },
+  Mage: { color: "#3FC7EB", slug: "mage", trees: ["Arcane", "Fire", "Frost"], specs: names(CLASS_SPECS.Mage) },
+  Warlock: { color: "#8788EE", slug: "warlock", trees: ["Affliction", "Demonology", "Destruction"], specs: names(CLASS_SPECS.Warlock) },
+  Druid: { color: "#FF7C0A", slug: "druid", trees: ["Balance", "Feral Combat", "Restoration"], specs: names(CLASS_SPECS.Druid) },
 } as const;
 
 export type ClassName = keyof typeof CLASSES;
@@ -34,14 +58,16 @@ export const RACES: Record<string, { faction: Faction; classes: ClassName[]; rac
 };
 export const RACE_NAMES = Object.keys(RACES);
 
-export type Role = "Tank" | "Heal" | "DPS";
-const TANK_SPECS = ["Protection", "Feral Bear"];
-const HEAL_SPECS = ["Holy", "Restoration", "Discipline"];
+const ROLE_BY_SPEC = new Map(Object.values(CLASS_SPECS).flat().map(d => [d.name, d.role]));
+/** Rôle d'une spé d'après son intitulé (les intitulés ont le même rôle quelle que soit la classe). */
 export function roleOf(spec: string | null | undefined): Role | null {
   if (!spec) return null;
-  if (TANK_SPECS.includes(spec)) return "Tank";
-  if (HEAL_SPECS.includes(spec)) return "Heal";
-  return "DPS";
+  return ROLE_BY_SPEC.get(spec) ?? "DPS";
+}
+
+/** Définition d'une spé pour une classe donnée (rôle, arbre principal). */
+export function specDef(cls: string, spec: string): SpecDef | null {
+  return (CLASS_SPECS as Record<string, SpecDef[]>)[cls]?.find(d => d.name === spec) ?? null;
 }
 
 export function isValidCombo(race: string, cls: string): boolean {

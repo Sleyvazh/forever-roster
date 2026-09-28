@@ -12,7 +12,7 @@ const idParam = z.object({ id: z.uuid() });
 export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
-  talents: c.talents, talentLink: c.talentLink, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
+  talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
   sortOrder: c.sortOrder, updatedAt: c.updatedAt,
 });
 
