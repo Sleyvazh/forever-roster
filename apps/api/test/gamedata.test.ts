@@ -66,6 +66,10 @@ describe("API données du jeu", () => {
     const lw = (await c.get("/api/gamedata/professions/Leatherworking/recipes")).json();
     expect(lw.recipes.map((r: { spellId: number }) => r.spellId)).toEqual([2152, 19100, 19080]);
     expect(lw.items[15090].name).toBe("Pattern: Warbear Woolies");
+    const batch = (await c.get("/api/gamedata/items/batch?ids=16866,19019,424242")).json().items;
+    expect(Object.keys(batch).sort()).toEqual(["16866", "19019"]);
+    expect(batch[16866]).toMatchObject({ name: "Helm of Might", quality: 4, itemLevel: 66 });
+    expect((await c.get("/api/gamedata/items/batch?ids=1;DROP")).statusCode).toBe(400);
   });
 
   it("exige une session", async () => {

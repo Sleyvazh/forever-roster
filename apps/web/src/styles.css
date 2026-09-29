@@ -1,29 +1,41 @@
-/* Forever Roster : palette « tooltip de jeu » (bleu nuit + or), en clair et en sombre. */
+/* Forever Roster : direction « tooltip de jeu » (bleu nuit + or, cadres d'infobulle).
+   Titres Marcellus SC, texte Geist, chiffres Geist Mono. Thème : système par défaut, forçable via [data-theme]. */
 :root {
   color-scheme: light;
-  --bg: #e9ecf1; --panel: #ffffff; --panel-2: #f3f5f8; --ink: #141925; --ink-2: #4d5568; --ink-3: #6f7890;
-  --line: #d3d8e1; --line-2: #bfc6d2; --gold: #8f6310; --gold-soft: #f4ead3; --on-gold: #ffffff;
+  --bg: #e7eaf0; --panel: #ffffff; --panel-2: #f2f4f8; --ink: #161b27; --ink-2: #4c5468; --ink-3: #6a7388;
+  --line: #d3d8e1; --line-2: #bfc6d2; --frame: #b89449; --gold: #8f6310; --gold-soft: #f4ead3; --on-gold: #ffffff;
   --q0: #7d7d7d; --q1: #3b3f48; --q2: #1b8a06; --q3: #0062c4; --q4: #8a2fd0; --q5: #cc6500;
   --ok: #1b7a06; --warn: #9a5f00; --bad: #b3261e; --alli: #2458b8; --horde: #b3261e;
+  --icon-bg: #1b2236;
   --shadow: 0 1px 2px rgba(20,25,37,.06), 0 8px 24px -12px rgba(20,25,37,.18);
   --f-disp: "Marcellus SC", "Trajan Pro", Georgia, serif;
-  --f-body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
-  --f-mono: "JetBrains Mono", Consolas, ui-monospace, monospace;
+  --f-body: "Geist", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "Geist Mono", Consolas, ui-monospace, monospace;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #a4acc0; --ink-3: #7c86a0;
-    --line: #232c47; --line-2: #34405f; --gold: #e6bf57; --gold-soft: #2a2512; --on-gold: #0e1427;
+    --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #a9b0c2; --ink-3: #7c86a0;
+    --line: #232c47; --line-2: #34405f; --frame: #6d5a2c; --gold: #e6bf57; --gold-soft: #2a2512; --on-gold: #0e1427;
     --q0: #9d9d9d; --q1: #f2f2f2; --q2: #1eff00; --q3: #3d9cff; --q4: #b65cff; --q5: #ff8000;
     --ok: #4fd35f; --warn: #f0b43c; --bad: #ff6b5e; --alli: #5f95ff; --horde: #ff5a4d;
+    --icon-bg: #0a0f1d;
     --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -16px rgba(0,0,0,.8);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #a9b0c2; --ink-3: #7c86a0;
+  --line: #232c47; --line-2: #34405f; --frame: #6d5a2c; --gold: #e6bf57; --gold-soft: #2a2512; --on-gold: #0e1427;
+  --q0: #9d9d9d; --q1: #f2f2f2; --q2: #1eff00; --q3: #3d9cff; --q4: #b65cff; --q5: #ff8000;
+  --ok: #4fd35f; --warn: #f0b43c; --bad: #ff6b5e; --alli: #5f95ff; --horde: #ff5a4d;
+  --icon-bg: #0a0f1d;
+  --shadow: 0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -16px rgba(0,0,0,.8);
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 16px/1.45 var(--f-body); }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
 a { color: var(--gold); }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
@@ -232,3 +244,73 @@ table.gear { min-width: 720px; }
 .picker-list li { display: grid; gap: 1px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
 .picker-list li[aria-selected="true"] { background: var(--panel-2); }
 .picker-list li small { color: var(--ink-3); font-size: 12px; }
+
+/* ---------- Direction « tooltip de jeu » : cadres d'infobulle ---------- */
+/* Grands panneaux : double filet or et losanges d'angle, comme une infobulle du jeu. */
+.panel.lift { position: relative; border-color: var(--frame); background: linear-gradient(180deg, var(--panel-2), var(--panel) 160px);
+  box-shadow: inset 0 0 0 3px var(--panel), inset 0 0 0 4px color-mix(in srgb, var(--frame) 45%, transparent), var(--shadow); }
+.panel.lift::before, .panel.lift::after { content: ""; position: absolute; top: -5px; width: 9px; height: 9px; background: var(--frame); transform: rotate(45deg); pointer-events: none; }
+.panel.lift::before { left: 14px; } .panel.lift::after { right: 14px; }
+.brand strong { color: var(--gold); }
+.sec > h3, .page-head h1 { color: var(--gold); }
+.dhead h2 { color: var(--ink); }
+
+/* Sélecteur de thème */
+.theme-seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; }
+.theme-seg > * { background: none; border: 0; padding: 4px 9px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; user-select: none; }
+.theme-seg > * + * { border-left: 1px solid var(--line-2); }
+.theme-seg > [aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+
+/* ---------- Équipement : fiche de personnage façon jeu ---------- */
+.gear-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.doll { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 270px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.dcol { display: grid; gap: 6px; min-width: 0; }
+.dcol.right .gslot { flex-direction: row-reverse; text-align: right; }
+.dcol.right .gslot .gmeta { justify-content: flex-end; }
+.dweapons { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.gslot { display: flex; gap: 10px; align-items: center; width: 100%; min-width: 0; padding: 6px; background: transparent; border: 1px solid transparent; border-radius: 6px; color: inherit; cursor: pointer; text-align: left; }
+.gslot:hover, .gslot:focus-visible, .gslot[aria-expanded="true"] { background: var(--panel-2); border-color: var(--line); }
+.gicon { --qc: var(--line-2); position: relative; flex: none; width: 44px; height: 44px; border-radius: 6px; display: grid; place-items: center;
+  background: radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--qc) 38%, var(--icon-bg)), var(--icon-bg) 70%); border: 2px solid var(--qc); }
+.gicon svg { width: 26px; height: 26px; stroke: color-mix(in srgb, var(--qc) 55%, #ffffff); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.gicon.none { border-style: dashed; border-color: var(--line-2); background: var(--panel-2); }
+.gicon.none svg { stroke: var(--ink-3); }
+.gicon .got { position: absolute; right: -5px; bottom: -5px; width: 17px; height: 17px; border-radius: 50%; background: #2f9b2a; color: #fff; font: 700 11px/17px var(--f-body); text-align: center; box-shadow: 0 0 0 2px var(--panel); }
+.gtxt { min-width: 0; display: grid; gap: 1px; }
+.gname { font-weight: 600; font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+.gmeta { display: flex; gap: 6px; font-size: 12.5px; color: var(--ink-3); flex-wrap: wrap; }
+.gmeta .num { font-size: 12px; }
+.portrait { --cc: var(--gold); display: grid; gap: 12px; justify-items: center; text-align: center; padding: 18px 14px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--frame);
+  box-shadow: inset 0 0 0 3px var(--panel-2), inset 0 0 0 4px color-mix(in srgb, var(--frame) 50%, transparent); }
+.crest { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; font: 400 40px/1 var(--f-disp); color: color-mix(in srgb, var(--cc) 75%, #ffffff);
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--cc) 30%, var(--icon-bg)), var(--icon-bg) 72%); border: 2px solid color-mix(in srgb, var(--cc) 70%, var(--frame)); }
+.portrait .spec { font: 400 17px/1.2 var(--f-disp); letter-spacing: .04em; color: var(--gold); }
+.pstats { width: 100%; display: grid; gap: 8px; }
+.pstat { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 8px; }
+.pstat b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+.pbar { width: 100%; height: 8px; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
+.pbar i { display: block; height: 100%; background: #2f9b2a; }
+
+/* Infobulle d'objet (toujours sombre, comme dans le jeu) */
+.itip { position: fixed; z-index: 60; width: 270px; max-width: calc(100vw - 32px); padding: 10px 12px; border-radius: 6px; background: #0b1022; color: #e8e6df;
+  border: 1px solid #b89449; box-shadow: inset 0 0 0 2px #0b1022, inset 0 0 0 3px rgba(184,148,73,.35), 0 10px 30px -10px rgba(0,0,0,.6); font-size: 13.5px; line-height: 1.4; pointer-events: none; }
+.itip .t-name { font-weight: 700; font-size: 15px; }
+.itip .t-row { color: #cfd3dc; }
+.itip .t-src { color: #9aa3b6; font-size: 12.5px; margin-top: 4px; }
+.itip .t-ok { color: #5fd35a; font-size: 12.5px; } .itip .t-warn { color: #f0b43c; font-size: 12.5px; }
+.itip .tq0 { color: #9d9d9d; } .itip .tq1 { color: #f2f2f2; } .itip .tq2 { color: #1eff00; } .itip .tq3 { color: #3d9cff; } .itip .tq4 { color: #b65cff; } .itip .tq5 { color: #ff8000; }
+
+/* Édition d'un emplacement */
+.gedit { grid-column: 1 / -1; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--frame); border-radius: 8px; background: var(--panel-2); }
+.gedit .grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: end; }
+
+@media (max-width: 860px) {
+  .doll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .portrait { grid-column: 1 / -1; order: -1; }
+  .dcol.right .gslot { flex-direction: row; text-align: left; }
+  .dcol.right .gslot .gmeta { justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+  .doll, .dweapons { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) { .gslot, .gicon { transition: background-color .15s, border-color .15s; } }

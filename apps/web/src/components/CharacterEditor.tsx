@@ -1,10 +1,11 @@
 import {
-  CLASSES, GEAR_SLOTS, ITEM_QUALITIES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
+  CLASSES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
-import type { Character, GearEntry, Prof } from "../api";
-import { CRAFTING, ItemPicker, RecipeCard } from "./GameData";
+import type { Character, Prof } from "../api";
+import { CRAFTING, RecipeCard } from "./GameData";
+import { Paperdoll } from "./Paperdoll";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
@@ -50,7 +51,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
         <div className="pane">
           {tab === "profil" && <Profil c={c} onChange={onChange} />}
           {tab === "metiers" && <Metiers c={c} onChange={onChange} editable={editable} />}
-          {tab === "stuff" && <Stuff c={c} onChange={onChange} />}
+          {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable={editable} />}
           {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
         </div>
       </fieldset>
@@ -228,43 +229,6 @@ function Metiers({ c, onChange, editable = false }: SubProps) {
         <p className="hint" style={{ margin: 0 }}>Nouveau dans Forever : chaque métier a 3 objets de camp qui donnent un buff horaire. Le premier se débloque à 20 de compétence.</p>
       </div>
     </>
-  );
-}
-
-function Stuff({ c, onChange }: SubProps) {
-  const got = GEAR_SLOTS.filter(s => c.gear[s]?.got).length;
-  const slug = CLASSES[c.cls as ClassName]?.slug ?? "warrior";
-  const setSlot = (slot: string, patch: Partial<GearEntry>) => onChange({ gear: { ...c.gear, [slot]: { ...c.gear[slot], ...patch } } });
-  return (
-    <div className="sec">
-      <h3>Équipement <small><a href={`https://foreverchanges.pro/bis/${slug}`} target="_blank" rel="noopener noreferrer">Listes BiS sur ForeverChanges</a></small></h3>
-      <div className="row"><span className="muted">BiS obtenus</span><div style={{ flex: 1, maxWidth: 240, ["--cc" as string]: "var(--ok)" }}><Bar pct={got / GEAR_SLOTS.length * 100} /></div><b className="num">{got}/{GEAR_SLOTS.length}</b></div>
-      <div className="tscroll">
-        <table className="data gear">
-          <thead><tr><th>Emplacement</th><th>Équipé</th><th>Qualité</th><th>Objectif BiS</th><th>Obtenu</th></tr></thead>
-          <tbody>
-            {GEAR_SLOTS.map((s, i) => {
-              const g = c.gear[s] ?? {};
-              return (
-                <tr key={s}>
-                  <td style={{ whiteSpace: "nowrap", color: g.got ? "var(--ok)" : "var(--ink-2)" }}>{s}</td>
-                  <td><ItemPicker slot={s} label={`Équipé : ${s}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q}
-                    onChange={p => setSlot(s, { cur: p.name, curId: p.id, ...(p.quality !== undefined && { q: p.quality }) })} /></td>
-                  <td>
-                    <select aria-label={`Qualité : ${s}`} value={g.q ?? ""} style={{ width: "auto" }} onChange={e => setSlot(s, { q: e.target.value === "" ? null : Number(e.target.value) })}>
-                      <option value="">—</option>{ITEM_QUALITIES.map((q, qi) => <option key={q} value={qi}>{q}</option>)}
-                    </select>
-                  </td>
-                  <td><ItemPicker slot={s} label={`Objectif BiS : ${s}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ}
-                    onChange={p => setSlot(s, { bis: p.name, bisId: p.id, bisQ: p.quality ?? (p.id ? g.bisQ : null) })} /></td>
-                  <td style={{ textAlign: "center" }}><input id={`got-${i}`} type="checkbox" aria-label={`BiS obtenu : ${s}`} checked={!!g.got} onChange={e => setSlot(s, { got: e.target.checked })} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }
 

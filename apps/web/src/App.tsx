@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes, Link } from "react-router-dom";
 import { RequireAuth, useLogout, useMe } from "./auth";
 import { Countdown } from "./components/Countdown";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { AccountPage } from "./pages/AccountPage";
 import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
 import { CharactersPage } from "./pages/CharactersPage";
@@ -30,6 +31,7 @@ export function App() {
         )}
         <div className="row" style={{ gap: 16 }}>
           <Countdown />
+          <ThemeToggle />
           {user && (
             <div className="userbox">
               <span>{user.displayName}</span>

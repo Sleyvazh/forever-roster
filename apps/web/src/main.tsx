@@ -1,9 +1,10 @@
 import "@fontsource/marcellus-sc/400.css";
-import "@fontsource/alegreya-sans/400.css";
-import "@fontsource/alegreya-sans/500.css";
-import "@fontsource/alegreya-sans/700.css";
-import "@fontsource/jetbrains-mono/400.css";
-import "@fontsource/jetbrains-mono/600.css";
+import "@fontsource/geist/400.css";
+import "@fontsource/geist/500.css";
+import "@fontsource/geist/600.css";
+import "@fontsource/geist/700.css";
+import "@fontsource/geist-mono/400.css";
+import "@fontsource/geist-mono/500.css";
 import "./styles.css";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +13,10 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ApiError } from "./api";
 import { App } from "./App";
+import { applyTheme, readTheme } from "./components/ThemeToggle";
+
+// Thème choisi, appliqué avant le premier rendu (pas de script inline : la CSP l'interdit).
+applyTheme(readTheme());
 
 const qc = new QueryClient({
   defaultOptions: {

@@ -45,6 +45,13 @@ export async function gameDataRoutes(app: FastifyInstance) {
     return { items };
   });
 
+  /** Plusieurs objets d'un coup (fiche d'équipement : jusqu'à 34 identifiants). */
+  app.get("/items/batch", async (req, reply) => {
+    const { ids } = parse(z.object({ ids: z.string().regex(/^\d{1,9}(,\d{1,9}){0,59}$/, "liste d'identifiants attendue") }), req.query);
+    reply.header("Cache-Control", "private, max-age=600");
+    return { items: await itemsById(db, ids.split(",").map(Number)) };
+  });
+
   app.get("/items/:id", async (req) => {
     const { id } = parse(z.object({ id: z.coerce.number().int().positive() }), req.params);
     const [item] = await db.select(itemSummary).from(gameItems).where(eq(gameItems.id, id));
