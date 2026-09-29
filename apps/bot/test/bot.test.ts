@@ -6,7 +6,7 @@ import { parseRaidDate } from "../src/dates";
 import { confirmation, onCharPicked, onClassPicked, onStatus } from "../src/flow";
 import { decodeId, encodeId, splitValue } from "../src/ids";
 import { escapeMd, fitLines, renderAnnouncement, renderReminder } from "../src/render";
-import { emojiName, iconFiles, makeLookup, syncEmojis } from "../src/emojis";
+import { emojiName, iconFiles, makeLookup, specEmojiName, syncEmojis } from "../src/emojis";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -194,11 +194,13 @@ describe("client de l'API interne", () => {
 });
 
 describe("compo publiée, rappels et émojis", () => {
-  const emoji = makeLookup(new Map([["fr_druid", "11"], ["fr_druid_2", "22"], ["fr_mage", "33"]]));
+  const emoji = makeLookup(new Map([["fr_druid", "11"], ["fr_druid_2", "22"], ["fr_mage", "33"], ["fr_druid_feral_cat", "44"]]));
 
   it("émoji de la spé, sinon de la classe", () => {
     expect(emojiName("Druid", 1)).toBe("fr_druid_2");
-    expect(emoji("Druid", "Feral Bear")).toBe("<:fr_druid_2:22>");
+    expect(emoji("Druid", "Feral Bear")).toBe("<:fr_druid_2:22>"); // repli sur l'ancien émoji d'arbre
+    expect(emoji("Druid", "Feral Cat")).toBe("<:fr_druid_feral_cat:44>");
+    expect(specEmojiName("Shaman", "Enhancement Tank")).toBe("fr_shaman_enhancement_tank");
     expect(emoji("Druid", "Balance")).toBe("<:fr_druid:11>");
     expect(emoji("Mage", "Frost")).toBe("<:fr_mage:33>");
     expect(emoji("Priest", "Shadow")).toBe("");
@@ -230,18 +232,20 @@ describe("compo publiée, rappels et émojis", () => {
 
   it("envoie à Discord les icônes manquantes, une seule fois", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "icons-"));
-    await mkdir(path.join(dir, "class")); await mkdir(path.join(dir, "tree"));
+    await mkdir(path.join(dir, "class")); await mkdir(path.join(dir, "tree")); await mkdir(path.join(dir, "spec"));
+    await writeFile(path.join(dir, "spec", "druid-feral-bear.png"), "png");
+    await writeFile(path.join(dir, "spec", "druid-inconnue.png"), "png");
     await writeFile(path.join(dir, "class", "warlock.png"), "png");
     await writeFile(path.join(dir, "tree", "warlock-1.png"), "png");
     await writeFile(path.join(dir, "tree", "inconnu-1.png"), "png");
     await writeFile(path.join(dir, "class", "druid.png"), Buffer.alloc(300 * 1024));
-    expect((await iconFiles(dir)).map(f => f.name)).toEqual(["fr_druid", "fr_warlock", "fr_warlock_1"]);
+    expect((await iconFiles(dir)).map(f => f.name)).toEqual(["fr_druid", "fr_warlock", "fr_druid_feral_bear", "fr_warlock_1"]);
     const created: string[] = [];
     const api = { list: vi.fn(async () => [{ id: "9", name: "fr_warlock" }, { id: "8", name: "autre" }]), create: vi.fn(async (name: string) => { created.push(name); return { id: "10", name }; }) };
     const log = vi.fn();
     const ids = await syncEmojis(dir, api, log);
-    expect(created).toEqual(["fr_warlock_1"]); // warlock déjà là, druid trop lourd
-    expect([...ids]).toEqual([["fr_warlock", "9"], ["fr_warlock_1", "10"]]);
+    expect(created).toEqual(["fr_druid_feral_bear", "fr_warlock_1"]); // warlock déjà là, druid trop lourd
+    expect([...ids]).toEqual([["fr_warlock", "9"], ["fr_druid_feral_bear", "10"], ["fr_warlock_1", "10"]]);
     expect(log).toHaveBeenCalledWith(expect.stringContaining("trop lourde"));
     expect(await iconFiles(path.join(dir, "absent"))).toEqual([]);
   });

@@ -225,7 +225,7 @@ python3 scripts/normalize-icons.py ~/wowicons      # range et renomme dans icons
 rm -r ~/wowicons
 ```
 
-Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><1|2|3>-<Arbre>.png` (ordre de l'arbre dans le jeu, ex. `Warlock1-Affliction.png`) et `Profession_<Métier>.png`. Le script liste les fichiers ignorés. Rien à redémarrer : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine).
+Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `Profession_<Métier>.png`. Le nom après le tiret désigne une spé (`Druid3-FeralCat`, `Druid2-FeralGuardian` pour Feral Bear) ou un arbre (`Paladin1-Holy` vaut pour Holy Heal et Holy DPS) ; le numéro sert seulement à trier. Les icônes sont rangées dans `icons/spec/<classe>-<spé>.png` (ex. `druid-feral-bear.png`). Le script liste les fichiers ignorés. Rien à redémarrer pour le site : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine). Pour les émojis Discord, `sudo docker compose restart bot`.
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 
@@ -283,7 +283,7 @@ Pour changer un seul secret (jeton régénéré chez Discord, par exemple), rela
 
 Changer de salon ou délier efface les anciennes annonces. Supprimer un raid ou le groupe aussi. Une annonce reste synchronisée jusqu'à 12 heures après l'heure du raid.
 
-**Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/tree/` comme émojis de l'application (`fr_warlock`, `fr_warlock_1`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
+**Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/spec/` comme émojis de l'application (`fr_druid`, `fr_druid_feral_bear`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
 
 **Si le bot ne publie pas :** `sudo docker compose logs --tail=30 bot`. « Salon … inaccessible » ou « Missing Access » signifie qu'il manque des droits au bot dans ce salon ; il réessaie de lui-même, de plus en plus espacé (jusqu'à 10 minutes). « jeton du bot invalide » : régénérer le jeton et relancer le bloc ci-dessus.
 

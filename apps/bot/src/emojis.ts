@@ -1,11 +1,12 @@
-import { CLASSES, specDef, type ClassName } from "@forever/game-data";
+import { CLASS_SPECS, CLASSES, specDef, specSlug, type ClassName } from "@forever/game-data";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 /**
  * Icônes de classe et de spé en émojis d'application Discord (visibles partout où le bot écrit).
  * Les fichiers viennent du dossier icons/ du serveur (monté en lecture seule) ; ils ne sont
- * jamais dans le dépôt. Émoji « fr_<classe> » pour la classe, « fr_<classe>_<n> » pour l'arbre n.
+ * jamais dans le dépôt. Émoji « fr_<classe> » pour la classe, « fr_<classe>_<spé> » pour une spé
+ * (ex. fr_druid_feral_bear) ; « fr_<classe>_<n> » (arbre n, ancien rangement) reste reconnu en repli.
  */
 
 export type EmojiLookup = (cls: string, spec?: string | null) => string;
@@ -20,11 +21,17 @@ export function emojiName(cls: string, tree?: number | null) {
   return tree === undefined || tree === null ? `fr_${c.slug}` : `fr_${c.slug}_${tree + 1}`;
 }
 
-/** Émoji de la spé (arbre principal) si on l'a, sinon celui de la classe, sinon rien. */
+/** Nom d'émoji d'une spé (32 caractères au plus, limite de Discord). */
+export function specEmojiName(cls: string, spec: string) {
+  const c = CLASSES[cls as ClassName];
+  return c ? `fr_${c.slug}_${specSlug(spec).replace(/-/g, "_")}`.slice(0, 32) : null;
+}
+
+/** Émoji de la spé si on l'a, sinon celui de son arbre, sinon celui de la classe, sinon rien. */
 export function makeLookup(ids: Map<string, string>): EmojiLookup {
   return (cls, spec) => {
-    const tree = spec ? specDef(cls, spec)?.tree : undefined;
-    for (const name of [tree !== undefined ? emojiName(cls, tree) : null, emojiName(cls)]) {
+    const def = spec ? specDef(cls, spec) : null;
+    for (const name of [def ? specEmojiName(cls, spec!) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
       const id = name && ids.get(name);
       if (id) return `<:${name}:${id}>`;
     }
@@ -36,18 +43,29 @@ export function makeLookup(ids: Map<string, string>): EmojiLookup {
 export async function iconFiles(dir: string): Promise<{ name: string; file: string }[]> {
   const out: { name: string; file: string }[] = [];
   const slugToClass = new Map<string, string>(Object.entries(CLASSES).map(([k, v]) => [v.slug, k]));
-  for (const sub of ["class", "tree"]) {
+  for (const sub of ["class", "spec", "tree"]) {
     let entries: string[];
     try { entries = await readdir(path.join(dir, sub)); } catch { continue; }
     for (const f of entries.sort()) {
       const ext = path.extname(f).toLowerCase();
       if (!EXT.has(ext)) continue;
       const stem = path.basename(f, ext);
-      const m = sub === "class" ? /^([a-z]+)$/.exec(stem) : /^([a-z]+)-([123])$/.exec(stem);
-      const cls = m && slugToClass.get(m[1]!);
-      if (!cls) continue;
-      const name = emojiName(cls, sub === "tree" ? Number(m![2]) - 1 : null)!;
-      if (!out.some(o => o.name === name)) out.push({ name, file: path.join(dir, sub, f) });
+      let name: string | null = null;
+      if (sub === "class") {
+        const cls = slugToClass.get(stem);
+        name = cls ? emojiName(cls) : null;
+      } else if (sub === "tree") {
+        const m = /^([a-z]+)-([123])$/.exec(stem);
+        const cls = m && slugToClass.get(m[1]!);
+        name = cls ? emojiName(cls, Number(m![2]) - 1) : null;
+      } else {
+        // spec/<classe>-<spé> : on retrouve la spé exacte du site
+        const [slug, ...rest] = stem.split("-");
+        const cls = slug ? slugToClass.get(slug) : undefined;
+        const spec = cls && (CLASS_SPECS as Record<string, { name: string }[]>)[cls]?.find(d => specSlug(d.name) === rest.join("-"));
+        name = cls && spec ? specEmojiName(cls, spec.name) : null;
+      }
+      if (name && !out.some(o => o.name === name)) out.push({ name, file: path.join(dir, sub, f) });
     }
   }
   return out;

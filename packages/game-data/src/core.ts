@@ -65,6 +65,9 @@ export function roleOf(spec: string | null | undefined): Role | null {
   return ROLE_BY_SPEC.get(spec) ?? "DPS";
 }
 
+/** Nom de fichier d'une spé (« Feral Bear » → « feral-bear ») ; même règle que scripts/normalize-icons.py. */
+export const specSlug = (spec: string) => spec.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
 /** Définition d'une spé pour une classe donnée (rôle, arbre principal). */
 export function specDef(cls: string, spec: string): SpecDef | null {
   return (CLASS_SPECS as Record<string, SpecDef[]>)[cls]?.find(d => d.name === spec) ?? null;
