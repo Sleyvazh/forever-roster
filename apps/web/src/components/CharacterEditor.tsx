@@ -5,6 +5,7 @@ import {
 import { useState } from "react";
 import type { Character, Prof } from "../api";
 import { CRAFTING, RecipeCard } from "./GameData";
+import { ClassIcon, SpecIcon } from "./Icons";
 import { Paperdoll } from "./Paperdoll";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
@@ -33,7 +34,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }}>
         <div>
-          <h2>{c.name}</h2>
+          <h2 className="with-icon">{c.cls && <ClassIcon cls={c.cls} size={34} />}<span>{c.name}</span></h2>
           <div className="line">
             Niv. <span className="num">{c.level}</span> · {c.race || "Race ?"} <span className="cls">{c.cls || "Classe ?"}</span>
             {race && ` · ${race.faction}`}{c.owner && ` · Joueur : ${c.owner}`}
@@ -138,7 +139,7 @@ function Build({ id, title, cls, specs, spec, talents, link, onChange }: {
   return (
     <div className="build">
       <div className="build-head">
-        <h4>{title}</h4>
+        <h4 className="with-icon">{def && <SpecIcon cls={cls} spec={spec} size={26} />}<span>{title}</span></h4>
         {def && <span className={`role ${def.role}`}>{def.role}</span>}
       </div>
       <div className="grid">

@@ -22,6 +22,9 @@ else
   git log --oneline "$PREVIOUS..$CURRENT"
 fi
 
+# Dossier des icônes monté dans Caddy : le créer nous-mêmes, sinon Docker le crée en root.
+mkdir -p icons
+
 step "Construction des images et redémarrage"
 sudo docker compose up -d --build --remove-orphans
 

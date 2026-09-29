@@ -22,6 +22,14 @@
 		reverse_proxy api:3000
 	}
 
+	# Icônes du jeu (dossier icons/ du serveur, hors dépôt Git). Pas de repli sur index.html :
+	# une icône absente répond 404 et le front affiche l'initiale de la classe.
+	handle_path /icons/* {
+		root * /srv/icons
+		header Cache-Control "public, max-age=604800"
+		file_server
+	}
+
 	# Front React (SPA) : fichiers statiques, repli sur index.html pour les routes du client.
 	handle {
 		root * /srv

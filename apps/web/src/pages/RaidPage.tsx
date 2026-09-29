@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, put, type Character, type RaidChar, type RaidSlot } from "../api";
+import { ClassIcon } from "../components/Icons";
 
 interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[] }
 
@@ -134,7 +135,7 @@ export function RaidPage() {
                       <button type="button" className={`slot${c ? " filled" : ""}${pick && !sel ? " target" : ""}${sel ? " selected" : ""}`}
                         style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => clickSlot(g, p)} disabled={!canEdit && !c}
                         aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
-                        {c ? <span className="who">{c.name}<small>{c.spec1 || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
+                        {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>{c.spec1 || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
                         {c && <span className={`role ${roleOf(c.spec1) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(c.spec1) ?? "?"}</span>}
                       </button>
                       {c && canEdit && <button type="button" className="x" aria-label={`Retirer ${c.name}`} onClick={() => removeFrom(g, p)}>×</button>}
@@ -158,7 +159,7 @@ export function RaidPage() {
                   return (
                     <div key={c.id} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", id: c.id })}>
-                        <span className="who">{c.name}<small>Niv. {c.level} · {c.spec1 || c.cls || "?"} · {c.owner}</small></span>
+                        <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>Niv. {c.level} · {c.spec1 || c.cls || "?"} · {c.owner}</small></span>
                       </button>
                       <button type="button" className="btn sm ghost" title="Placer à la première place libre" aria-label={`Ajouter ${c.name} au raid`} onClick={() => addToRaid(c.id)}>+</button>
                     </div>

@@ -194,6 +194,26 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 
+## Icônes du jeu
+
+Les icônes (classes, arbres de talents, métiers, puis objets) sont des fichiers de Blizzard : elles restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/`. Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
+
+Ajouter un lot d'icônes reçu sur le PC :
+
+```powershell
+scp -r "$HOME\Pictures\WoWicons" forever:~/wowicons
+```
+
+```bash
+cd ~/forever-roster
+python3 scripts/normalize-icons.py ~/wowicons      # range et renomme dans icons/
+rm -r ~/wowicons
+```
+
+Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><1|2|3>-<Arbre>.png` (ordre de l'arbre dans le jeu, ex. `Warlock1-Affliction.png`) et `Profession_<Métier>.png`. Le script liste les fichiers ignorés. Rien à redémarrer : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine).
+
+En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
+
 ## Ce que montrent les journaux
 
 Une seconde après l'émission du premier certificat HTTPS, des robots ont demandé `/api/.env`, `/api/config` et `/api/env`. Chaque certificat est publié dans les journaux publics *Certificate Transparency*, que des scanners surveillent pour attaquer les nouveaux sites avant qu'ils soient sécurisés. Toutes ces requêtes ont reçu un 404 : le `.env` est exclu de l'image Docker (`.dockerignore`) et Caddy ne sert que le dossier du front.

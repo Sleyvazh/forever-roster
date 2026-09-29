@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, del, get, patch, post, put, type Character } from "../api";
 import { CharacterEditor } from "../components/CharacterEditor";
+import { ClassIcon } from "../components/Icons";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -133,7 +134,7 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
   return (
     <button type="button" className="card" aria-current={current ? "true" : "false"} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={onClick}>
       <span className="lvl num">{c.level}</span>
-      <span className="nm">{c.name}</span>
+      <span className="nm">{c.cls && <ClassIcon cls={c.cls} size={18} className="inline" />}{c.name}</span>
       {race ? <span className={`fac ${race.faction}`}>{race.faction === "Alliance" ? "ALLI" : "HORDE"}</span> : <span />}
       <span className="sub">{[c.race, c.cls].filter(Boolean).join(" ") || "À configurer"}{specs && ` · ${specs}`}</span>
     </button>

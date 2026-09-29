@@ -6,3 +6,5 @@ node_modules
 .env.*
 !.env.example
 coverage
+icons
+apps/web/public/icons

@@ -314,3 +314,12 @@ table.gear { min-width: 720px; }
   .doll, .dweapons { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: no-preference) { .gslot, .gicon { transition: background-color .15s, border-color .15s; } }
+
+/* Icônes de classe et de spé (servies par /icons, repli sur l'initiale) */
+.cicon, .sicon, .gi-fallback { flex: none; vertical-align: middle; object-fit: contain; }
+.sicon { border-radius: 6px; }
+.gi-fallback { display: inline-grid; place-items: center; border-radius: 50%; font-family: var(--f-disp); color: var(--cc, var(--gold)); background: var(--panel-2); border: 1px solid var(--line-2); line-height: 1; }
+.inline { display: inline-block; margin-right: 6px; margin-top: -2px; }
+.with-icon { display: flex; align-items: center; gap: 10px; }
+.crest .sicon { border-radius: 10px; box-shadow: 0 0 0 2px var(--icon-bg); }
+.crest .gi-fallback { background: none; border: 0; }

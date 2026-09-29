@@ -3,3 +3,4 @@
 *.timer text eol=lf
 infra/Caddyfile text eol=lf
 Dockerfile text eol=lf
+*.py text eol=lf
