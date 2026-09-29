@@ -37,11 +37,31 @@ services:
       BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
       BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}
       BNET_OAUTH_HOST: ${BNET_OAUTH_HOST:-https://oauth.battle.net}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      # API interne du bot : port 3001, joignable seulement sur le réseau Docker (jamais publié ni relayé par Caddy)
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [backend, frontend]
+
+  # Bot Discord : annonces de raid et inscriptions par boutons. Reste en veille tant que DISCORD_BOT_TOKEN est vide.
+  bot:
+    build: { context: ., target: bot }
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      INTERNAL_API_URL: http://api:3001
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+      BOT_TIMEZONE: ${BOT_TIMEZONE:-Europe/Paris}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [backend]
 
   web:
     build: { context: ., target: web }

@@ -51,6 +51,7 @@ main() {
     # -fs : silencieux pendant les essais (un 502 est normal le temps que l'API redémarre)
     if curl -fs --max-time 3 "https://$DOMAIN/api/health" > /dev/null; then
       echo "OK : l'application répond."
+      echo "Bot Discord : $(sudo docker compose logs --tail=1 --no-log-prefix bot 2>/dev/null || echo 'pas de journal')"
       sudo docker image prune -f > /dev/null
       echo "Version déployée : $CURRENT (précédente : $PREVIOUS)"
       return 0
@@ -59,7 +60,7 @@ main() {
   done
 
   echo "ÉCHEC : l'application ne répond pas après 60 s." >&2
-  echo "Journaux : sudo docker compose logs --tail=50 api web" >&2
+  echo "Journaux : sudo docker compose logs --tail=50 api web bot" >&2
   echo "Retour arrière : git checkout $PREVIOUS && sudo docker compose up -d --build" >&2
   return 1
 }

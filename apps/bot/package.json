@@ -1,0 +1,24 @@
+{
+  "name": "@forever/bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bot Discord de Forever Roster : annonces de raid et inscriptions par boutons (sur le modèle de Raid-Helper).",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "build": "tsup",
+    "start": "node dist/bot.js",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@forever/game-data": "*",
+    "@types/node": "^24.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.1"
+  }
+}

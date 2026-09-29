@@ -43,9 +43,9 @@ export const imageUrl = (id: string) => `/api/images/${id}`;
 
 export interface User {
   id: string; email: string | null; emailVerified: boolean; displayName: string; battletag: string | null;
-  hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; createdAt: string;
+  hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; createdAt: string;
 }
-export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean }
+export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean; discordEnabled: boolean }
 
 export interface Prof { name: string; skill: number }
 export interface Character {
@@ -79,7 +79,7 @@ export interface GroupSummary { id: string; name: string; role: GroupRole; membe
 export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
 
 export interface RaidSignup {
-  id: string; userId: string | null; displayName: string; characterId: string | null; characterName: string | null;
+  id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;
   cls: string; spec: string; role: "Tank" | "Heal" | "DPS" | null; status: import("@forever/game-data").SignupStatus; note: string; createdAt: string; mine: boolean;
 }
 export interface RaidSlot { group: number; pos: number; characterId: string }

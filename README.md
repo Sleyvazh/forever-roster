@@ -14,6 +14,7 @@ Le projet sert aussi de vitrine : l'authentification et la gestion des sessions 
 - **Personnages** : race et classe (combinaisons propres à Forever), spé principale et off-spec avec leur build (y compris les spés de niche comme Feral Bear ou Enhancement Tank), métiers et bonus Forever, patrons connus ou recherchés, équipement actuel et BiS choisis dans la base d'objets du jeu, perks Legacy, notes. Sauvegarde automatique et réordonnancement par glisser-déposer.
 - **Groupes** : rôles propriétaire / officier / membre, liens d'invitation à durée et nombre d'utilisations limités, transfert de propriété, onglet Artisans (« qui sait fabriquer quoi ? », pour savoir à qui envoyer les composants).
 - **Raids** : 8 groupes de 5, banc des persos du groupe, déplacement et échange de places, compteur tanks / heals / DPS, couverture des 42 buffs, auras, debuffs et utilitaires (avec détection des groupes où une aura manque).
+- **Inscriptions et bot Discord** : Présent, En retard, Peut-être, Reroll, Banc ou Absent, avec perso et spé pour le raid. Un bot sur le modèle de Raid-Helper publie chaque raid dans un salon, avec des boutons d'inscription (compte lié ou inscription libre) et `/raid` pour créer un raid depuis Discord.
 - **Sécurité visible** : sessions actives révocables, journal de sécurité personnel, journal d'activité du groupe pour les officiers.
 
 ## Stack
@@ -29,6 +30,7 @@ Le projet sert aussi de vitrine : l'authentification et la gestion des sessions 
 ```
 apps/api            API Fastify (routes, sessions, migrations SQL)
 apps/web            Front React
+apps/bot            Bot Discord (discord.js) : annonces et inscriptions, via l'API interne
 packages/game-data  Races, classes, métiers, règles de buffs de raid
 infra/Caddyfile     Reverse proxy + CSP
 docs/               Architecture, exploitation

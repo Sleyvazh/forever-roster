@@ -1,14 +1,19 @@
-import { isValidSpec, roleOf, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { CLASS_NAMES, isValidSpec, roleOf, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
+import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, raids, raidSignups } from "../db/schema";
+import { characters, discordDeletions, raids, raidSignups } from "../db/schema";
 import { badRequest } from "./http";
 
 /**
  * Inscriptions aux raids. Toute la logique est ici pour être partagée par le site et, plus tard,
  * par le bot Discord : mêmes règles, mêmes contrôles, quelle que soit l'origine de l'inscription.
  */
+
+/** Signale un changement au bot Discord (l'annonce du raid sera republiée). */
+export async function touchRaid(db: Db, raidId: string) {
+  await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.id, raidId));
+}
 
 export const signupInput = z.object({
   status: z.enum(SIGNUP_STATUSES),
@@ -36,18 +41,41 @@ export async function signUpSiteUser(db: Db, raidId: string, user: { id: string;
   const [row] = await db.insert(raidSignups).values(values)
     .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.userId], set: values })
     .returning();
+  await touchRaid(db, raidId);
+  return row!;
+}
+
+/**
+ * Inscription libre depuis Discord, sans compte sur le site : on garde l'identifiant Discord,
+ * le pseudo affiché, la classe et la spé choisies dans le bot.
+ */
+export async function signUpDiscordGuest(db: Db, raidId: string, who: { discordUserId: string; displayName: string },
+  input: { status: SignupStatus; cls?: string; spec?: string }) {
+  const cls = input.cls ?? "", spec = input.spec ?? "";
+  if (input.status !== "absent") {
+    if (!(CLASS_NAMES as string[]).includes(cls)) throw badRequest("Choisis ta classe.");
+    if (!spec || !isValidSpec(cls, spec)) throw badRequest("Choisis une spé de ta classe.");
+  }
+  const values = {
+    raidId, userId: null, discordUserId: who.discordUserId, displayName: who.displayName.slice(0, 64) || "Joueur Discord",
+    characterId: null, cls, spec, status: input.status, note: "", updatedAt: new Date(),
+  };
+  const [row] = await db.insert(raidSignups).values(values)
+    .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.discordUserId], set: values })
+    .returning();
+  await touchRaid(db, raidId);
   return row!;
 }
 
 export interface SignupView {
-  id: string; userId: string | null; displayName: string; characterId: string | null; characterName: string | null;
+  id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;
   cls: string; spec: string; role: string | null; status: SignupStatus; note: string; createdAt: Date;
 }
 
 /** Inscriptions d'un raid, dans l'ordre d'arrivée (comme Raid-Helper). */
 export async function listSignups(db: Db, raidId: string): Promise<SignupView[]> {
   const rows = await db.select({
-    id: raidSignups.id, userId: raidSignups.userId, displayName: raidSignups.displayName, characterId: raidSignups.characterId,
+    id: raidSignups.id, userId: raidSignups.userId, discordUserId: raidSignups.discordUserId, displayName: raidSignups.displayName, characterId: raidSignups.characterId,
     characterName: characters.name, cls: raidSignups.cls, spec: raidSignups.spec, status: raidSignups.status, note: raidSignups.note, createdAt: raidSignups.createdAt,
   }).from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
     .where(eq(raidSignups.raidId, raidId)).orderBy(asc(raidSignups.createdAt));
@@ -73,4 +101,19 @@ export async function signupSummary(db: Db, raidIds: string[], userId: string) {
 export async function dropSignupsInGroup(db: Db, groupId: string, userId: string) {
   const groupRaids = db.select({ id: raids.id }).from(raids).where(eq(raids.groupId, groupId));
   await db.delete(raidSignups).where(and(eq(raidSignups.userId, userId), inArray(raidSignups.raidId, groupRaids)));
+  await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, groupId));
+}
+
+/**
+ * Met en file de suppression les annonces Discord déjà publiées pour les raids d'un groupe
+ * (salon délié, changé ou groupe supprimé) : le bot les efface, pour ne pas laisser de boutons morts.
+ * Avec `keepChannelId`, les annonces déjà dans ce salon sont conservées.
+ */
+export async function retireAnnouncements(db: Db, groupId: string, keepChannelId?: string) {
+  const where = and(eq(raids.groupId, groupId), isNotNull(raids.discordMessageId), isNotNull(raids.discordChannelId),
+    keepChannelId ? ne(raids.discordChannelId, keepChannelId) : undefined);
+  const rows = await db.select({ id: raids.id, channelId: raids.discordChannelId, messageId: raids.discordMessageId }).from(raids).where(where);
+  if (!rows.length) return;
+  await db.insert(discordDeletions).values(rows.map(r => ({ channelId: r.channelId!, messageId: r.messageId! })));
+  await db.update(raids).set({ discordChannelId: null, discordMessageId: null, discordSyncedAt: null }).where(inArray(raids.id, rows.map(r => r.id)));
 }

@@ -36,6 +36,13 @@
       "when": 1790707314978,
       "tag": "0004_raid_signups",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790709239152,
+      "tag": "0005_discord",
+      "breakpoints": true
     }
   ]
 }

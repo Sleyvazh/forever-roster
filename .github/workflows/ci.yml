@@ -85,6 +85,9 @@ jobs:
       - name: Image API
         uses: docker/build-push-action@v7
         with: { context: ., target: api, push: false, tags: forever-roster-api:ci }
+      - name: Image bot
+        uses: docker/build-push-action@v7
+        with: { context: ., target: bot, push: false, tags: forever-roster-bot:ci }
       - name: Image web
         uses: docker/build-push-action@v7
         with: { context: ., target: web, push: false, tags: forever-roster-web:ci }

@@ -1,4 +1,5 @@
 import { buildApp } from "./app";
+import { buildInternalApp } from "./internal";
 import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
@@ -20,8 +21,12 @@ const app = await buildApp({ ctx: { db, cfg, mailer: mailerRef, fetch }, logger 
 const real = createMailer(cfg.SMTP_URL, cfg.MAIL_FROM, app.log, cfg.NODE_ENV === "development");
 mailerRef.send = real.send;
 
-const close = async () => { await app.close(); await pool.end(); process.exit(0); };
+// API interne du bot Discord : port séparé, jamais exposé par Caddy (réseau Docker uniquement).
+const internal = cfg.INTERNAL_API_SECRET ? await buildInternalApp({ db, cfg, mailer: mailerRef, fetch }, logger) : null;
+
+const close = async () => { await Promise.all([app.close(), internal?.close()]); await pool.end(); process.exit(0); };
 process.on("SIGTERM", close);
 process.on("SIGINT", close);
 
 await app.listen({ port: cfg.PORT, host: cfg.HOST });
+if (internal) await internal.listen({ port: cfg.INTERNAL_PORT, host: cfg.HOST });

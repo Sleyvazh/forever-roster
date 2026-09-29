@@ -21,6 +21,8 @@ export async function setup(overrides: Partial<Record<keyof Config, string>> = {
   const cfg = loadConfig({
     NODE_ENV: "test", APP_ORIGIN: ORIGIN, DATABASE_URL: DB_URL, COOKIE_SECURE: "false", HIBP_CHECK: "false",
     BNET_CLIENT_ID: "client", BNET_CLIENT_SECRET: "secret", BNET_OAUTH_HOST: "https://oauth.bnet.test",
+    DISCORD_CLIENT_ID: "dclient", DISCORD_CLIENT_SECRET: "dsecret", DISCORD_HOST: "https://discord.test",
+    INTERNAL_API_SECRET: "secret-interne-de-test-assez-long-0123456789",
     ...overrides,
   });
   const { db, pool } = createDb(DB_URL);

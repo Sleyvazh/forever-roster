@@ -9,7 +9,7 @@ import { CRAFTING } from "../components/GameData";
 import { Portrait } from "../components/ImageUpload";
 import { ROLE_LABEL } from "./GroupsPage";
 
-interface GroupDetail { group: { id: string; name: string }; role: GroupRole; members: Member[] }
+interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
 interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
@@ -19,6 +19,7 @@ const EVENT_LABEL: Record<string, string> = {
   group_created: "a créé le groupe", group_renamed: "a renommé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
   group_member_removed: "a retiré un membre", group_role_changed: "a changé un rôle", invite_created: "a créé une invitation",
   invite_revoked: "a révoqué une invitation", raid_created: "a créé un raid", raid_deleted: "a supprimé un raid",
+  group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
 };
 
 export function GroupPage() {
@@ -76,6 +77,7 @@ export function GroupPage() {
         </div>
       </div>
       {isOfficer && <Invites groupId={groupId} guard={guard} />}
+      {isOfficer && <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />}
     </div>
   );
 }
@@ -312,6 +314,44 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
               <td><button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/invites/${i.id}`); await refresh(); })}>Révoquer</button></td></tr>
           ))}</tbody>
         </table></div>
+      )}
+    </section>
+  );
+}
+
+/** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier dans le salon voulu. */
+function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const cmd = code ? `/forever-lier code:${code.code}` : "";
+  return (
+    <section className="panel pad stack" aria-labelledby="dc-title">
+      <div className="row between">
+        <h3 id="dc-title" style={{ margin: 0 }}>Salon Discord</h3>
+        <span className={`tag ${linked ? "ok" : ""}`}>{linked ? "Lié" : "Non lié"}</span>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>
+        Le bot publie chaque raid à venir dans ce salon, avec des boutons d'inscription. Les inscriptions faites sur Discord et sur le site sont les mêmes.
+        Les joueurs sans compte peuvent aussi s'inscrire (classe et spé), marqués ✱.
+      </p>
+      {!hasDiscord && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
+      <div className="row">
+        <button className="btn primary sm" type="button" onClick={() => void guard(async () => {
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/code`)); setCopied(false);
+        })}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
+        {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
+          await del(`/groups/${groupId}/discord`); setCode(null);
+          await qc.invalidateQueries({ queryKey: ["group", groupId] });
+        })}>Délier le salon</button>}
+      </div>
+      {code && (
+        <div className="alert info stack" style={{ gap: 8 }}>
+          <span>Dans le salon Discord voulu, tape cette commande (valable jusqu'à {new Intl.DateTimeFormat("fr-FR", { timeStyle: "short" }).format(new Date(code.expiresAt))}, une seule fois) :</span>
+          <div className="row"><input type="text" readOnly value={cmd} onFocus={e => e.currentTarget.select()} aria-label="Commande de liaison" className="num" style={{ flex: 1 }} />
+            <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
+          <span className="small muted">Une fois le salon lié, recharge cette page.</span>
+        </div>
       )}
     </section>
   );

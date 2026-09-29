@@ -18,6 +18,9 @@ export const users = pgTable("users", {
   displayName: text("display_name").notNull(),
   battlenetId: text("battlenet_id"),
   battletag: text("battletag"),
+  /** Compte Discord lié (identifiant « snowflake ») : sert aux inscriptions depuis le bot. */
+  discordId: text("discord_id"),
+  discordUsername: text("discord_username"),
   /** Image du compte (200×200, WebP ré-encodé par le serveur). */
   avatarId: uuid("avatar_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   failedLogins: integer("failed_logins").notNull().default(0),
@@ -27,6 +30,7 @@ export const users = pgTable("users", {
 }, t => [
   uniqueIndex("users_email_uq").on(t.email),
   uniqueIndex("users_battlenet_uq").on(t.battlenetId),
+  uniqueIndex("users_discord_uq").on(t.discordId),
   check("users_login_method", sql`${t.passwordHash} IS NOT NULL OR ${t.battlenetId} IS NOT NULL`),
 ]);
 
@@ -61,7 +65,7 @@ export const emailTokens = pgTable("email_tokens", {
 /** États OAuth en attente (protection CSRF du flux Battle.net). */
 export const oauthStates = pgTable("oauth_states", {
   stateHash: text("state_hash").primaryKey(),
-  mode: text("mode", { enum: ["login", "link"] }).notNull(),
+  mode: text("mode", { enum: ["login", "link", "discord_link"] }).notNull(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   expiresAt: ts("expires_at").notNull(),
 });
@@ -124,6 +128,12 @@ export const characters = pgTable("characters", {
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  /** Salon Discord où le bot publie les raids du groupe (lié par un officier avec un code à usage unique). */
+  discordGuildId: text("discord_guild_id"),
+  discordChannelId: text("discord_channel_id"),
+  /** Code de liaison (haché) et son expiration. */
+  discordLinkCodeHash: text("discord_link_code_hash"),
+  discordLinkCodeExpiresAt: ts("discord_link_code_expires_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
@@ -158,6 +168,14 @@ export const raids = pgTable("raids", {
   scheduledAt: ts("scheduled_at"),
   slots: jsonb("slots").$type<RaidSlot[]>().notNull().default([]),
   description: text("description").notNull().default(""),
+  /**
+   * Annonce Discord du raid : message publié par le bot. Il est à republier quand
+   * discord_changed_at > discord_synced_at (le bot confirme la version exacte qu'il a publiée).
+   */
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -255,3 +273,11 @@ export const raidSignups = pgTable("raid_signups", {
   check("raid_signups_who", sql`${t.userId} IS NOT NULL OR ${t.discordUserId} IS NOT NULL`),
   check("raid_signups_status", sql`${t.status} IN ('present', 'late', 'tentative', 'alt', 'bench', 'absent')`),
 ]);
+
+/** Annonces Discord à supprimer (raid supprimé sur le site) : le bot les traite puis les efface. */
+export const discordDeletions = pgTable("discord_deletions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  channelId: text("channel_id").notNull(),
+  messageId: text("message_id").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+});

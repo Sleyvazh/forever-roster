@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { battlenetEnabled } from "../config";
+import { battlenetEnabled, discordEnabled } from "../config";
 import { emailTokens, sessions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
@@ -73,6 +73,7 @@ export async function authRoutes(app: FastifyInstance) {
       user: req.user ? publicUser(req.user) : null,
       csrfToken: req.session?.csrfToken ?? null,
       battlenetEnabled: battlenetEnabled(app.ctx.cfg),
+      discordEnabled: discordEnabled(app.ctx.cfg),
     };
   });
 

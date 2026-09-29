@@ -229,6 +229,58 @@ Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><1|2|3>-<Arbre>.png` (ordre d
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 
+## Bot Discord
+
+Le bot publie les raids dans un salon Discord, avec des boutons d'inscription sur le modèle de Raid-Helper. Il tourne dans le conteneur `bot`, sans port ouvert : il se connecte à Discord en sortie, et à l'API par le port interne 3001, qui n'est joignable que sur le réseau Docker. Tant que `DISCORD_BOT_TOKEN` est vide, il reste en veille.
+
+### Créer l'application Discord (une fois)
+
+Sur <https://discord.com/developers/applications>, **New Application** (« Forever Roster ») :
+
+1. **Installation** : *Install Link* → **None**. Discord refuse sinon l'étape 3.
+2. **OAuth2** : ajouter la redirection `https://forever-roster.sleyvazh.fr/api/auth/discord/callback`. Noter le **Client ID** (public). **Reset Secret** donne le **Client Secret** : ne le coller que dans le terminal du serveur (étape suivante).
+3. **Bot** : décocher **Public Bot** (toi seul peux l'inviter), laisser les trois *Privileged Gateway Intents* **désactivés**. **Reset Token** donne le jeton du bot : même règle que le secret.
+4. Inviter le bot sur le serveur Discord, en remplaçant `CLIENT_ID` :
+   `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands&permissions=19456`
+   (droits : Voir les salons, Envoyer des messages, Intégrer des liens. Rien d'autre.)
+
+### Renseigner les secrets sur le serveur
+
+Les valeurs sont tapées sans écho et ne passent jamais par l'historique du shell, ni par une conversation :
+
+```bash
+cd ~/forever-roster
+read -rp  "Client ID Discord : " DISCORD_CLIENT_ID
+read -rsp "Client Secret Discord : " DISCORD_CLIENT_SECRET; echo
+read -rsp "Jeton du bot : " DISCORD_BOT_TOKEN; echo
+INTERNAL_API_SECRET=$(openssl rand -hex 32)
+export DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN INTERNAL_API_SECRET
+python3 - <<'PY'
+import os
+keys = ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_BOT_TOKEN", "INTERNAL_API_SECRET"]
+lines = [l for l in open(".env").read().splitlines() if l.split("=", 1)[0] not in keys]
+lines += [f"{k}={os.environ[k].strip()}" for k in keys]
+open(".env", "w").write("\n".join(lines) + "\n")
+PY
+unset DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET DISCORD_BOT_TOKEN INTERNAL_API_SECRET
+chmod 600 .env
+sudo docker compose up -d api bot
+sudo docker compose logs --tail=5 bot     # attendu : « Connecté en tant que Forever Roster#… »
+```
+
+Pour changer un seul secret (jeton régénéré chez Discord, par exemple), relancer le bloc en entier : les quatre lignes sont réécrites, et `INTERNAL_API_SECRET` change aussi, ce qui est sans conséquence.
+
+### Utilisation
+
+1. Chaque joueur lie son Discord dans **Compte & sécurité** : ses clics dans le bot l'inscrivent alors avec ses persos. Sans liaison, il peut quand même s'inscrire en choisissant classe et spé (marqué ✱ sur le site).
+2. Un officier (Discord lié) génère un code dans l'encart **Salon Discord** de la page du groupe, puis tape `/forever-lier code:XXXXXXXX` dans le salon voulu. Code valable 30 minutes, une seule fois.
+3. Les raids à venir y sont publiés dans les secondes qui suivent. Toute inscription, sur le site ou sur Discord, met l'annonce à jour.
+4. `/raid nom:Molten Core date:12/11/2026 21:00 description:…` crée un raid depuis Discord (officiers, heure de Paris).
+
+Changer de salon ou délier efface les anciennes annonces. Supprimer un raid ou le groupe aussi. Une annonce reste synchronisée jusqu'à 12 heures après l'heure du raid.
+
+**Si le bot ne publie pas :** `sudo docker compose logs --tail=30 bot`. « Salon … inaccessible » ou « Missing Access » signifie qu'il manque des droits au bot dans ce salon ; il réessaie de lui-même, de plus en plus espacé (jusqu'à 10 minutes). « jeton du bot invalide » : régénérer le jeton et relancer le bloc ci-dessus.
+
 ## Ce que montrent les journaux
 
 Une seconde après l'émission du premier certificat HTTPS, des robots ont demandé `/api/.env`, `/api/config` et `/api/env`. Chaque certificat est publié dans les journaux publics *Certificate Transparency*, que des scanners surveillent pour attaquer les nouveaux sites avant qu'ils soient sécurisés. Toutes ces requêtes ont reçu un 404 : le `.env` est exclu de l'image Docker (`.dockerignore`) et Caddy ne sert que le dossier du front.

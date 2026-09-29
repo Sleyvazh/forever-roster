@@ -16,6 +16,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   session_revoked: ["Session fermée", ""], sessions_revoked_all: ["Autres sessions fermées", "warn"],
   battlenet_login: ["Connexion Battle.net", "ok"], battlenet_linked: ["Battle.net lié", "warn"], battlenet_unlinked: ["Battle.net délié", "warn"],
   account_created_battlenet: ["Compte créé via Battle.net", ""],
+  discord_linked: ["Discord lié", "warn"], discord_unlinked: ["Discord délié", "warn"],
+  group_discord_linked: ["Salon Discord lié à un groupe", ""], group_discord_unlinked: ["Salon Discord délié d'un groupe", ""],
   group_created: ["Groupe créé", ""], group_joined: ["Groupe rejoint", ""], group_left: ["Groupe quitté", ""],
   group_role_changed: ["Rôle modifié dans un groupe", ""], group_member_removed: ["Membre retiré d'un groupe", ""],
   invite_created: ["Invitation créée", ""], invite_revoked: ["Invitation révoquée", ""], raid_created: ["Raid créé", ""], raid_deleted: ["Raid supprimé", ""],
@@ -55,6 +57,8 @@ export function AccountPage() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head"><div><div className="eyebrow">Compte</div><h1>Compte &amp; sécurité</h1></div></div>
       {params.get("bnet") === "linked" && <div className="alert ok">Ton compte Battle.net est maintenant lié.</div>}
+      {params.get("discord") === "linked" && <div className="alert ok">Ton compte Discord est maintenant lié : tes clics dans le bot t'inscrivent avec tes persos.</div>}
+      {DISCORD_ERROR[params.get("error") ?? ""] && <div className="alert error" role="alert">{DISCORD_ERROR[params.get("error")!]}</div>}
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, alignItems: "start" }}>
         <Profile name={user.displayName} onDone={refreshMe} />
         <Section title="Image du compte" hint="Visible par toi et les membres de tes groupes.">
@@ -63,6 +67,7 @@ export function AccountPage() {
             onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />
         </Section>
         <Identity email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet} bnetEnabled={!!me.data?.battlenetEnabled} onDone={refreshMe} />
+        <DiscordLink username={user.discordUsername} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
       </div>
       <Sessions />
@@ -108,6 +113,32 @@ function Identity(p: { email: string | null; verified: boolean; battletag: strin
             onClick={() => void a.run(async () => { await del("/auth/battlenet"); p.onDone(); return "Battle.net délié."; })}>Délier</button>
         ) : p.bnetEnabled ? (
           <button className="btn bnet sm" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/battlenet/link"); window.location.assign(r.url); })}>Lier Battle.net</button>
+        ) : <span className="muted small">Non configuré sur ce serveur</span>}
+      </div>
+      {a.view}
+    </Section>
+  );
+}
+
+const DISCORD_ERROR: Record<string, string> = {
+  discord_cancelled: "Liaison Discord annulée.",
+  discord_state: "La liaison Discord a expiré ou ne venait pas de ce navigateur. Réessaie.",
+  discord_exchange: "Discord n'a pas répondu correctement. Réessaie dans un instant.",
+  discord_session: "Ta session a changé pendant la liaison Discord. Recommence.",
+  discord_taken: "Ce compte Discord est déjà lié à un autre compte Forever Roster.",
+};
+
+/** Liaison Discord : sert uniquement au bot d'inscription (pas de connexion au site via Discord). */
+function DiscordLink({ username, enabled, onDone }: { username: string | null; enabled: boolean; onDone: () => void }) {
+  const a = useAction();
+  return (
+    <Section title="Discord" hint="Lie ton Discord pour t'inscrire aux raids depuis le bot avec tes persos. Le site ne reçoit que ton identifiant et ton pseudo Discord.">
+      <div className="row between">
+        <span><span className="lbl">Compte Discord</span><br />{username ? <b>{username}</b> : <span className="muted">Non lié</span>}</span>
+        {username ? (
+          <button className="btn ghost sm" type="button" onClick={() => void a.run(async () => { await del("/account/discord"); onDone(); return "Discord délié."; })}>Délier</button>
+        ) : enabled ? (
+          <button className="btn discord sm" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/discord/link"); window.location.assign(r.url); })}>Lier Discord</button>
         ) : <span className="muted small">Non configuré sur ce serveur</span>}
       </div>
       {a.view}

@@ -22,6 +22,13 @@ export async function accountRoutes(app: FastifyInstance) {
     return { user: publicUser(row!) };
   });
 
+  app.delete("/discord", async (req) => {
+    const u = currentUser(req);
+    await db.update(users).set({ discordId: null, discordUsername: null, updatedAt: new Date() }).where(eq(users.id, u.id));
+    await audit(db, req, "discord_unlinked", { userId: u.id });
+    return { ok: true };
+  });
+
   /** Image du compte (recadrée par le navigateur, ré-encodée ici). */
   app.put("/avatar", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
     const u = currentUser(req);

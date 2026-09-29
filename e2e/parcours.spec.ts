@@ -123,6 +123,15 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByRole("row", { name: /Molten Core/ })).toContainText("En retard");
   });
 
+  await test.step("groupe : code de liaison d'un salon Discord", async () => {
+    await expect(page.getByRole("heading", { name: "Salon Discord" })).toBeVisible();
+    await page.getByRole("button", { name: "Générer un code de liaison" }).click();
+    await expect(page.getByRole("textbox", { name: "Commande de liaison" })).toHaveValue(/^\/forever-lier code:[A-Z2-9]{8}$/);
+    await page.goto("/account");
+    await expect(page.getByRole("heading", { name: "Discord" })).toBeVisible();
+    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord" }) })).toContainText("Non lié");
+  });
+
   await test.step("menu du compte : thème et déconnexion", async () => {
     await page.locator(".acct-btn").click();
     await page.locator(".acct-menu").getByRole("button", { name: "Sombre" }).click();

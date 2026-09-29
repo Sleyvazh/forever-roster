@@ -125,8 +125,8 @@ function Row({ s, canEdit, groupId, raidId, onDone, compact }: { s: RaidSignup; 
     <div className={`su-row${s.mine ? " mine" : ""}`} title={s.note || undefined}>
       {s.cls ? (s.spec ? <SpecIcon cls={s.cls} spec={s.spec} size={20} /> : <ClassIcon cls={s.cls} size={20} />) : <span className="su-dot" aria-hidden="true" />}
       <span className="su-who">
-        <b>{s.characterName ?? s.displayName}</b>
-        {!compact && <small>{[s.spec, s.characterName ? s.displayName : null].filter(Boolean).join(" · ")}</small>}
+        <b>{s.characterName ?? s.displayName}{!s.userId && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site" aria-label=" (sans compte)"> ✱</span>}</b>
+        {!compact && <small>{[s.spec, s.characterName ? s.displayName : null, !s.userId ? "Discord" : null].filter(Boolean).join(" · ")}</small>}
       </span>
       {s.status === "late" && <span className="tag warn">Retard</span>}
       {s.note && !compact && <span className="su-note" aria-label={`Note : ${s.note}`}>✎</span>}

@@ -16,6 +16,12 @@ const schema = z.object({
   BNET_CLIENT_SECRET: z.string().default(""),
   BNET_OAUTH_HOST: z.url().default("https://oauth.battle.net"),
   TRUST_PROXY: bool.default(false),
+  DISCORD_CLIENT_ID: z.string().default(""),
+  DISCORD_CLIENT_SECRET: z.string().default(""),
+  DISCORD_HOST: z.url().default("https://discord.com"),
+  /** Secret partagé avec le bot pour l'API interne (vide = API interne désactivée). */
+  INTERNAL_API_SECRET: z.union([z.literal(""), z.string().min(32, "INTERNAL_API_SECRET : 32 caractères minimum")]).default(""),
+  INTERNAL_PORT: z.coerce.number().int().default(3001),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -33,4 +39,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return cfg;
 }
 
+export const discordEnabled = (cfg: Config) => !!(cfg.DISCORD_CLIENT_ID && cfg.DISCORD_CLIENT_SECRET);
 export const battlenetEnabled = (cfg: Config) => !!(cfg.BNET_CLIENT_ID && cfg.BNET_CLIENT_SECRET);

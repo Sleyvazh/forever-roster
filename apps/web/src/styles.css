@@ -82,6 +82,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
 .btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
 .btn.sm { padding: 4px 10px; font-size: 13px; }
 .btn.bnet { background: #148eff; border-color: #148eff; color: #fff; font-weight: 700; }
+.btn.discord { background: #5865f2; border-color: #5865f2; color: #fff; font-weight: 700; }
 
 .alert { border-radius: 6px; padding: 10px 12px; font-size: 14px; border: 1px solid; }
 .alert.error { color: var(--bad); border-color: var(--bad); }
@@ -414,6 +415,7 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 .su-inline .su-row { padding: 2px 4px; color: var(--ink-3); }
 .su-who { display: grid; min-width: 0; flex: 1; line-height: 1.2; }
 .su-who b { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-guest { color: var(--ink-3); font-weight: 400; }
 .su-who small { color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .su-note { color: var(--ink-3); cursor: help; }
 .su-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--panel-2); border: 1px dashed var(--line-2); flex: none; }

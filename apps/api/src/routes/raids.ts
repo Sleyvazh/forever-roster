@@ -3,7 +3,8 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { characters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
-import { listSignups, signupInput, signupSummary, signUpSiteUser } from "../lib/signups";
+import { listSignups, signupInput, signupSummary, signUpSiteUser, touchRaid } from "../lib/signups";
+import { discordDeletions } from "../db/schema";
 import { SIGNUP_STATUSES } from "@forever/game-data";
 import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
@@ -112,6 +113,7 @@ export async function raidRoutes(app: FastifyInstance) {
     await db.update(raids).set({
       name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, slots: body.slots, updatedAt: new Date(),
       ...(body.description !== undefined && { description: body.description }),
+      discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
     return withCoverage(body.slots, chars, await signupSpecs(p.raidId));
   });
@@ -134,6 +136,7 @@ export async function raidRoutes(app: FastifyInstance) {
     await membership(db, p.id, u.id);
     await loadRaid(p.id, p.raidId);
     await db.delete(raidSignups).where(and(eq(raidSignups.raidId, p.raidId), eq(raidSignups.userId, u.id)));
+    await touchRaid(db, p.raidId);
     return { ok: true };
   });
 
@@ -148,6 +151,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const [row] = await db.update(raidSignups).set({ status, updatedAt: new Date() })
       .where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId))).returning({ id: raidSignups.id });
     if (!row) throw notFound("Inscription introuvable.");
+    await touchRaid(db, p.raidId);
     return { ok: true };
   });
 
@@ -158,6 +162,7 @@ export async function raidRoutes(app: FastifyInstance) {
     await loadRaid(p.id, p.raidId);
     const [row] = await db.delete(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId))).returning({ id: raidSignups.id });
     if (!row) throw notFound("Inscription introuvable.");
+    await touchRaid(db, p.raidId);
     return { ok: true };
   });
 
@@ -167,6 +172,8 @@ export async function raidRoutes(app: FastifyInstance) {
     await requireRole(db, p.id, u.id, "officer");
     const r = await loadRaid(p.id, p.raidId);
     await db.delete(raids).where(eq(raids.id, r.id));
+    // L'annonce Discord éventuelle sera supprimée par le bot
+    if (r.discordChannelId && r.discordMessageId) await db.insert(discordDeletions).values({ channelId: r.discordChannelId, messageId: r.discordMessageId });
     await audit(db, req, "raid_deleted", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
     return { ok: true };
   });

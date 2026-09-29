@@ -11,12 +11,13 @@ const currentLines = (p: Professions) => new Set(
 import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
+import { randomBytes } from "node:crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
 import { likeContains } from "./gamedata";
-import { dropSignupsInGroup } from "../lib/signups";
+import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -58,7 +59,7 @@ export async function groupRoutes(app: FastifyInstance) {
       userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
     }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
-    return { group: { id: g!.id, name: g!.name }, role, members };
+    return { group: { id: g!.id, name: g!.name, discordLinked: !!g!.discordChannelId }, role, members };
   });
 
   app.patch("/:id", async (req) => {
@@ -78,6 +79,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "owner");
+    await retireAnnouncements(db, id);
     await db.delete(groups).where(eq(groups.id, id));
     return { ok: true };
   });
@@ -137,6 +139,31 @@ export async function groupRoutes(app: FastifyInstance) {
     }
     const recipes = [...byRecipe.values()];
     return { recipes: recipes.slice(0, 150), total: recipes.length };
+  });
+
+  /* ----- Discord ----- */
+
+  /** Code à usage unique (30 min) à taper avec /forever-lier dans le salon Discord choisi. */
+  app.post("/:id/discord/code", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans 0/O ni 1/I
+    const bytes = randomBytes(8);
+    const code = Array.from(bytes, b => alphabet[b % alphabet.length]).join("");
+    const expiresAt = new Date(Date.now() + 30 * 60e3);
+    await db.update(groups).set({ discordLinkCodeHash: sha256(code), discordLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    return { code, expiresAt };
+  });
+
+  app.delete("/:id/discord", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    await db.update(groups).set({ discordGuildId: null, discordChannelId: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    await retireAnnouncements(db, id);
+    await audit(db, req, "group_discord_unlinked", { userId: u.id, groupId: id });
+    return { ok: true };
   });
 
   /* ----- Membres ----- */

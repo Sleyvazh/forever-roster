@@ -48,6 +48,16 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - L'identité est lue sur l'endpoint `userinfo`, dont la réponse est validée avec zod.
 - Le secret client reste côté serveur (authentification HTTP Basic sur l'endpoint `token`).
 
+## Discord (liaison et bot)
+
+- **Liaison du compte** : même flux OAuth que Battle.net (state de 256 bits haché en base + cookie `HttpOnly` limité à `/api/auth/discord`, démarrage en POST protégé CSRF). Portée `identify` seulement : le site ne reçoit que l'identifiant et le pseudo Discord, jamais l'e-mail ni la liste des serveurs. Un compte Discord ne peut être lié qu'à un seul compte du site. La liaison sert au bot, pas à se connecter au site.
+- **API interne** : le bot n'a aucun accès à la base. Il passe par une API à part, sur le port 3001, joignable uniquement sur le réseau Docker. Caddy ne la relaie pas et le port n'est pas publié. Chaque requête porte un secret partagé de 256 bits (`INTERNAL_API_SECRET`), comparé en temps constant. Sans ce secret, l'API interne ne démarre pas.
+- **Mêmes règles que le site** : les inscriptions depuis Discord passent par les mêmes fonctions que celles du site (le perso doit appartenir au joueur, la spé doit exister pour sa classe). Lier un salon ou créer un raid exige que le compte Discord soit lié à un **officier** du groupe. Le code de liaison d'un salon est aléatoire, haché en base, valable 30 minutes et à usage unique.
+- **Boutons forgés** : n'importe quel client Discord peut envoyer un `custom_id` arbitraire. Le bot le valide (format, UUID, statut connu) et le site revérifie tout de son côté. Un joueur ne peut agir que sur sa propre inscription, identifiée par l'ID Discord que Discord fournit (non falsifiable).
+- **Contenu publié** : pseudos et noms de persos échappés (mise en forme Markdown), mentions désactivées (`allowed_mentions` vide). Un pseudo ne peut donc ni pinger `@everyone`, ni casser l'annonce.
+- **Moindre privilège** : intent `Guilds` seul (le bot ne lit aucun message ni la liste des membres). Droits Discord : voir le salon, envoyer des messages, intégrer des liens. Bot privé (non public).
+- **Secrets** : `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` et `INTERNAL_API_SECRET` sont uniquement dans le `.env` du serveur (droits 600), saisis sans écho. Ils ne sont jamais dans le dépôt ni dans les journaux (en-tête `Authorization` masqué).
+
 ## Contrôle d'accès (Top 10 A01)
 
 - Chaque route vérifie le propriétaire ou le rôle dans le groupe côté serveur (`requireRole`).
@@ -96,6 +106,7 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 ## Conteneurs
 
 - API : image `node:24-alpine`, utilisateur `node`, système de fichiers en lecture seule, `cap_drop: ALL`, `no-new-privileges`.
+- Bot Discord : même durcissement que l'API (lecture seule, `cap_drop: ALL`, utilisateur `node`), aucun port ouvert, réseau interne seulement vers l'API.
 - PostgreSQL : aucun port publié.
 - Dépendances : Dependabot, `npm audit --omit=dev` et CodeQL (`security-extended`) dans la CI.
 
