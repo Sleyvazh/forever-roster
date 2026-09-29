@@ -46,7 +46,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
         </div>
       </div>
       <div className="tabs" role="tablist">
-        {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}</button>)}
+        {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}{k === "legacy" && <span className="tag gold tab-tag">Aperçu</span>}</button>)}
       </div>
       <fieldset disabled={!editable} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div className="pane">
@@ -239,6 +239,7 @@ function LegacyTab({ c, onChange }: SubProps) {
     <>
       <div className="sec">
         <h3>Legacy <small>21 perks connus, 6 encore cachés</small></h3>
+        <div className="alert info">Section en aperçu : le système Legacy sera précisé à la prochaine phase de la bêta, et cette page sera complétée à ce moment-là. Tes notes sont bien enregistrées en attendant.</div>
         <div className="trees">
           {LEGACY_TREES.map(t => {
             const list = c.legacy[t.key] ?? [];
