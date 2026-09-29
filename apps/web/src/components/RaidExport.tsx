@@ -13,24 +13,35 @@ export function RaidExport({ raid, slots, chars, signups }: {
   const [copied, setCopied] = useState<string | null>(null);
   const byChar = new Map(signups.filter(s => s.characterId).map(s => [s.characterId!, s]));
   const members: ExportMember[] = [];
+  const byId = new Map(signups.map(s => [s.id, s]));
+  const placedSignups = new Set<string>();
   for (const s of slots) {
-    const c = chars.get(s.characterId);
+    if (s.signupId) {
+      // Inscrit sans compte placé dans la compo
+      const su = byId.get(s.signupId);
+      if (!su || su.userId) continue;
+      placedSignups.add(su.id);
+      members.push({ name: su.displayName, cls: su.cls, spec: su.spec || null, role: su.role, group: s.group, pos: s.pos, status: su.status, source: "discord" });
+      continue;
+    }
+    const c = chars.get(s.characterId!);
     if (!c) continue;
     const su = byChar.get(c.id);
+    if (su) placedSignups.add(su.id);
     const spec = su?.spec || c.spec1 || null;
     members.push({ name: c.name, cls: c.cls, spec, role: roleOf(spec), group: s.group, pos: s.pos, status: su?.status ?? null, source: "site" });
   }
-  const placed = new Set(slots.map(s => s.characterId));
   for (const su of signups) {
-    if (su.status === "absent" || (su.characterId && placed.has(su.characterId))) continue;
+    if (su.status === "absent" || placedSignups.has(su.id)) continue;
     members.push({
       name: su.characterName ?? su.displayName, cls: su.cls, spec: su.spec || null, role: su.role, group: 0, pos: 0, status: su.status,
       source: su.userId ? "site" : "discord",
     });
   }
   const text = addonExport(raid, members);
-  // Invitations : persos placés d'abord ; les inscrits sans compte n'ont pas de nom de perso fiable
-  const macros = inviteMacros(members.filter(m => m.group > 0).map(m => m.name));
+  // Invitations : persos placés du site seulement (le pseudo Discord d'un inscrit sans compte n'est pas un nom de perso)
+  const macros = inviteMacros(members.filter(m => m.group > 0 && m.source === "site").map(m => m.name));
+  const guestsPlaced = members.filter(m => m.group > 0 && m.source === "discord").map(m => m.name);
 
   const copy = (key: string, value: string) => {
     void navigator.clipboard.writeText(value).then(() => { setCopied(key); window.setTimeout(() => setCopied(null), 1500); }, () => setCopied(null));
@@ -54,6 +65,7 @@ export function RaidExport({ raid, slots, chars, signups }: {
               <button className="btn sm" type="button" onClick={() => copy(`m${i}`, m)}>{copied === `m${i}` ? "Copié" : "Copier"}</button>
             </div>
           ))}
+          {guestsPlaced.length > 0 && <p className="hint" style={{ margin: 0 }}>À inviter à la main (inscrits sans compte, pseudo Discord) : {guestsPlaced.join(", ")}.</p>}
           {macros.length > 0 && <p className="hint" style={{ margin: 0 }}>Une macro WoW fait 255 caractères au plus : colle chacune dans une macro (Échap → Macros), puis clique-les une à une.</p>}
         </div>
       </div>

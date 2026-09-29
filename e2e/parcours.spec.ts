@@ -1,6 +1,7 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import pg from "pg";
 
 /**
  * Parcours complet d'un joueur, sur le site construit comme en production.
@@ -117,12 +118,25 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     // L'officier place l'inscrit : le rôle affiché suit la spé choisie pour ce raid
     await page.getByRole("button", { name: "Ajouter Tournicoti au raid" }).click();
     await expect(page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ })).toContainText("Tank");
+    // Inscrit sans compte (fait depuis le bot Discord) : placé comme un perso du site
+    await expect(page.getByRole("status").filter({ hasText: "Enregistré." })).toBeVisible();
+    const raidId = page.url().split("/raids/")[1]!;
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e" });
+    await db.connect();
+    await db.query(`INSERT INTO raid_signups (raid_id, discord_user_id, display_name, cls, spec, status) VALUES ($1, '720000000000000001', 'Chamy', 'Shaman', 'Enhancement DPS', 'present')`, [raidId]);
+    await db.end();
+    await page.reload();
+    await page.getByRole("button", { name: "Ajouter Chamy au raid" }).click();
+    await expect(page.getByRole("button", { name: /Groupe 1, place 2 : Chamy/ })).toContainText("Discord");
+    await expect(page.locator(".cov .it.on").filter({ hasText: "Windfury Totem" })).toBeVisible();
+
     // Compo publiée sur Discord, puis export pour le jeu
     await page.getByRole("button", { name: "Publier la compo" }).click();
     await expect(page.locator(".roster-pub .tag")).toHaveText("Publiée");
     await page.getByText("Export pour le jeu").click();
-    await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1$/);
+    await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Chamy;SHAMAN;DPS;Enhancement DPS;1;2;present;discord\nEND;2$/);
     await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Tournicoti");
+    await expect(page.getByText("À inviter à la main (inscrits sans compte, pseudo Discord) : Chamy.")).toBeVisible();
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "En retard" }).click();
     await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
     await page.getByRole("link", { name: "Retour au groupe" }).click();

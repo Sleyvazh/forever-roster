@@ -76,6 +76,52 @@ describe("raids récurrents", () => {
   });
 });
 
+describe("inscrits sans compte dans la compo", () => {
+  it("un officier place un inscrit Discord ; il apparaît dans la couverture, l'annonce et son rappel", async () => {
+    const { off, mem, g } = await groupWithMember("Invites");
+    await linkDiscord(off.c, "710000000000000001");
+    const { code } = (await off.c.post(`/api/groups/${g.id}/discord/code`)).json();
+    await bot("POST", "/internal/discord/bind", { code, guildId: "710000000000000010", channelId: "710000000000000011", discordUserId: "710000000000000001" });
+    const soon = new Date(Date.now() + 5 * 3600e3).toISOString();
+    const raidId = (await off.c.post(`/api/groups/${g.id}/raids`, { name: "ZG", scheduledAt: soon })).json().raid.id;
+    await bot("POST", `/internal/discord/raids/${raidId}/signup`, { discordUserId: "710000000000000003", discordName: "Chamy", status: "present", cls: "Shaman", spec: "Enhancement DPS" });
+    const guest = (await off.c.get(`/api/groups/${g.id}/raids/${raidId}`)).json().signups.find((s: { displayName: string }) => s.displayName === "Chamy");
+
+    const put = (slots: object[]) => off.c.put(`/api/groups/${g.id}/raids/${raidId}`, { name: "ZG", scheduledAt: soon, slots });
+    // Refus : ni perso ni inscrit, les deux à la fois, inscrit d'un autre raid ou avec compte, doublon
+    expect((await put([{ group: 1, pos: 1 }])).statusCode).toBe(400);
+    expect((await put([{ group: 1, pos: 1, signupId: guest.id, characterId: guest.id }])).statusCode).toBe(400);
+    expect((await put([{ group: 1, pos: 1, signupId: "00000000-0000-4000-8000-000000000000" }])).statusCode).toBe(400);
+    expect((await put([{ group: 1, pos: 1, signupId: guest.id }, { group: 1, pos: 2, signupId: guest.id }])).statusCode).toBe(400);
+    const druid = (await mem.c.post("/api/characters", { name: "Tournicoti", race: "Tauren", cls: "Druid", spec1: "Feral Cat" })).json().character;
+    await mem.c.put(`/api/groups/${g.id}/raids/${raidId}/signup`, { status: "present", characterId: druid.id });
+    const memberSignup = (await off.c.get(`/api/groups/${g.id}/raids/${raidId}`)).json().signups.find((s: { characterId: string }) => s.characterId === druid.id);
+    expect((await put([{ group: 1, pos: 1, signupId: memberSignup.id }])).statusCode).toBe(400);
+
+    const ok = await put([{ group: 1, pos: 1, signupId: guest.id }, { group: 1, pos: 2, characterId: druid.id }]);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().coverage.find((c: { id: string }) => c.id === "wf")).toMatchObject({ covered: true });
+    const detail = (await off.c.get(`/api/groups/${g.id}/raids/${raidId}`)).json();
+    expect(detail.slots).toEqual([{ group: 1, pos: 1, signupId: guest.id }, { group: 1, pos: 2, characterId: druid.id }]);
+
+    await off.c.post(`/api/groups/${g.id}/raids/${raidId}/roster`);
+    const v = (await bot("GET", `/internal/discord/raids/${raidId}/view`)).json();
+    expect(v.roster.groups[0].members).toEqual([
+      { name: "Chamy", cls: "Shaman", spec: "Enhancement DPS", role: "DPS" },
+      { name: "Tournicoti", cls: "Druid", spec: "Feral Cat", role: "DPS" },
+    ]);
+    expect(v.signups.find((s: { displayName: string }) => s.displayName === "Chamy").group).toBe(1);
+    const claim = (await bot("POST", "/internal/discord/reminders/claim")).json().reminders.find((r: { view: { raid: { id: string } } }) => r.view.raid.id === raidId);
+    expect(claim.recipients.find((r: { name: string }) => r.name === "Chamy").group).toBe(1);
+
+    // Il se désinscrit : sa place disparaît de la compo
+    await bot("DELETE", `/internal/discord/raids/${raidId}/signup/710000000000000003`);
+    const after = (await off.c.get(`/api/groups/${g.id}/raids/${raidId}`)).json();
+    expect(after.slots).toEqual([{ group: 1, pos: 2, characterId: druid.id }]);
+    expect((await bot("GET", `/internal/discord/raids/${raidId}/view`)).json().roster.groups[0].members).toHaveLength(1);
+  });
+});
+
 describe("compo publiée et rappels Discord", () => {
   it("publie la compo dans l'annonce, envoie un seul rappel aux inscrits qui le veulent", async () => {
     const { off, mem, g } = await groupWithMember("Compo");

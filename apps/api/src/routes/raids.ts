@@ -1,5 +1,5 @@
 import { computeCoverage, GROUP_SIZE, RAID_GROUPS } from "@forever/game-data";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { characters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
@@ -18,7 +18,11 @@ const raidFields = z.object({
   scheduledAt: z.iso.datetime({ offset: true }).nullable().optional(),
   description: z.string().trim().max(1000).optional(),
 });
-const slot = z.object({ group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE), characterId: z.uuid() });
+const slot = z.object({
+  group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
+  characterId: z.uuid().optional(), signupId: z.uuid().optional(),
+}).refine(s => !!s.characterId !== !!s.signupId, "Une place contient un perso ou un inscrit sans compte.");
+const slotKey = (s: RaidSlot) => (s.characterId ? `c:${s.characterId}` : `s:${s.signupId}`);
 
 export async function raidRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
@@ -31,7 +35,7 @@ export async function raidRoutes(app: FastifyInstance) {
   }
 
   async function slotCharacters(groupId: string, slots: RaidSlot[]) {
-    const ids = slots.map(s => s.characterId);
+    const ids = slots.flatMap(s => (s.characterId ? [s.characterId] : []));
     if (!ids.length) return [];
     return db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, level: characters.level, race: characters.race, owner: users.displayName })
       .from(characters)
@@ -46,12 +50,24 @@ export async function raidRoutes(app: FastifyInstance) {
     return new Map(rows.filter(r => r.characterId && r.spec).map(r => [r.characterId!, r.spec]));
   }
 
-  function withCoverage(slots: RaidSlot[], chars: Awaited<ReturnType<typeof slotCharacters>>, specs = new Map<string, string>()) {
+  /** Inscriptions libres (sans compte) placées dans la compo : classe et spé choisies sur Discord. */
+  async function slotGuests(raidId: string, slots: RaidSlot[]) {
+    const ids = slots.flatMap(s => (s.signupId ? [s.signupId] : []));
+    if (!ids.length) return [];
+    return db.select({ id: raidSignups.id, cls: raidSignups.cls, spec: raidSignups.spec }).from(raidSignups)
+      .where(and(eq(raidSignups.raidId, raidId), inArray(raidSignups.id, ids), isNull(raidSignups.userId)));
+  }
+
+  function withCoverage(slots: RaidSlot[], chars: Awaited<ReturnType<typeof slotCharacters>>, guests: Awaited<ReturnType<typeof slotGuests>>, specs = new Map<string, string>()) {
     const byId = new Map(chars.map(c => [c.id, c]));
-    // Un perso dont le joueur a quitté le groupe disparaît de la composition.
-    const live = slots.filter(s => byId.has(s.characterId));
-    const specOf = (id: string) => specs.get(id) || byId.get(id)!.spec1 || null;
-    const coverage = computeCoverage(live.map(s => ({ characterId: s.characterId, cls: byId.get(s.characterId)!.cls, spec: specOf(s.characterId), group: s.group })));
+    const guestById = new Map(guests.map(g => [g.id, g]));
+    // Un perso dont le joueur a quitté le groupe, ou un inscrit sans compte désinscrit, disparaît de la composition.
+    const live = slots.filter(s => (s.characterId ? byId.has(s.characterId) : guestById.has(s.signupId!)));
+    const coverage = computeCoverage(live.map(s => {
+      if (s.signupId) { const g = guestById.get(s.signupId)!; return { characterId: `s:${g.id}`, cls: g.cls, spec: g.spec || null, group: s.group }; }
+      const c = byId.get(s.characterId!)!;
+      return { characterId: c.id, cls: c.cls, spec: specs.get(c.id) || c.spec1 || null, group: s.group };
+    }));
     return { slots: live, characters: chars, coverage: coverage.map(c => ({ id: c.effect.id, covered: c.covered, sources: c.sources, missingGroups: c.missingGroups })) };
   }
 
@@ -91,7 +107,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const signups = await listSignups(db, r.id);
     return {
       raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt },
-      canEdit: role !== "member", ...withCoverage(r.slots, chars, await signupSpecs(r.id)),
+      canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
     };
   });
@@ -104,11 +120,12 @@ export async function raidRoutes(app: FastifyInstance) {
     const body = parse(raidFields.extend({ slots: z.array(slot).max(RAID_GROUPS * GROUP_SIZE) }), req.body);
 
     const seatKeys = new Set(body.slots.map(s => `${s.group}:${s.pos}`));
-    const charIds = new Set(body.slots.map(s => s.characterId));
     if (seatKeys.size !== body.slots.length) throw badRequest("Deux personnages occupent la même place.");
-    if (charIds.size !== body.slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
+    if (new Set(body.slots.map(slotKey)).size !== body.slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
     const chars = await slotCharacters(p.id, body.slots);
-    if (chars.length !== charIds.size) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
+    if (chars.length !== body.slots.filter(s => s.characterId).length) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
+    const guests = await slotGuests(p.raidId, body.slots);
+    if (guests.length !== body.slots.filter(s => s.signupId).length) throw badRequest("Certains inscrits sans compte ne sont pas inscrits à ce raid.");
 
     const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
     const moved = (scheduledAt?.getTime() ?? null) !== (current.scheduledAt?.getTime() ?? null);
@@ -119,7 +136,7 @@ export async function raidRoutes(app: FastifyInstance) {
       ...(body.description !== undefined && { description: body.description }),
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
-    return withCoverage(body.slots, chars, await signupSpecs(p.raidId));
+    return withCoverage(body.slots, chars, guests, await signupSpecs(p.raidId));
   });
 
   /** Officiers : afficher (ou retirer) la composition dans l'annonce Discord. */

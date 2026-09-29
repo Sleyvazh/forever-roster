@@ -62,7 +62,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
 
   /** Persos placés dans la compo (dont le joueur est toujours membre du groupe). */
   async function placed(raid: typeof raids.$inferSelect) {
-    const ids = raid.slots.map(s => s.characterId);
+    const ids = raid.slots.flatMap(s => (s.characterId ? [s.characterId] : []));
     if (!ids.length) return new Map<string, { id: string; name: string; cls: string; spec1: string }>();
     const rows = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1 }).from(characters)
       .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, raid.groupId)))
@@ -70,25 +70,35 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return new Map(rows.map(r => [r.id, r]));
   }
 
-  /** Tout ce qu'il faut au bot pour dessiner l'annonce. */
-  async function view(raidId: string) {
+  /** Tout ce qu'il faut au bot pour dessiner l'annonce, et le groupe de chaque inscrit placé. */
+  async function layout(raidId: string) {
     const { raid, group } = await loadRaid(raidId);
     const signups = await listSignups(db, raid.id);
     const chars = await placed(raid);
-    const groupOf = new Map(raid.slots.filter(s => chars.has(s.characterId)).map(s => [s.characterId, s.group]));
-    const specOf = new Map(signups.filter(s => s.characterId && s.spec).map(s => [s.characterId!, s.spec]));
+    const bySignup = new Map(signups.map(s => [s.id, s]));
+    const byChar = new Map(signups.filter(s => s.characterId).map(s => [s.characterId!, s]));
+    // Place → membre affiché : perso du site, ou inscrit sans compte (classe et spé choisies sur Discord)
+    const member = (slot: (typeof raid.slots)[number]) => {
+      if (slot.signupId) {
+        const g = bySignup.get(slot.signupId);
+        return g && !g.userId ? { signupId: g.id, name: g.displayName, cls: g.cls, spec: g.spec } : null;
+      }
+      const c = chars.get(slot.characterId!);
+      if (!c) return null;
+      const su = byChar.get(c.id);
+      return { signupId: su?.id ?? null, name: c.name, cls: c.cls, spec: su?.spec || c.spec1 || "" };
+    };
+    const live = raid.slots.flatMap(slot => { const m = member(slot); return m ? [{ slot, m }] : []; });
+    const groupOfSignup = new Map(live.filter(x => x.m.signupId).map(x => [x.m.signupId!, x.slot.group]));
     // Composition validée par un officier : groupes 1 à 8, dans l'ordre des places
     const roster = raid.rosterPublishedAt ? {
       groups: Array.from({ length: RAID_GROUPS }, (_, i) => i + 1).map(g => ({
         group: g,
-        members: raid.slots.filter(s => s.group === g && chars.has(s.characterId)).sort((a, b) => a.pos - b.pos).map(s => {
-          const c = chars.get(s.characterId)!;
-          const spec = specOf.get(c.id) || c.spec1 || "";
-          return { name: c.name, cls: c.cls, spec, role: spec ? roleOf(spec) : null };
-        }),
+        members: live.filter(x => x.slot.group === g).sort((a, b) => a.slot.pos - b.slot.pos)
+          .map(({ m }) => ({ name: m.name, cls: m.cls, spec: m.spec, role: m.spec ? roleOf(m.spec) : null })),
       })).filter(g => g.members.length),
     } : null;
-    return {
+    const view = {
       raid: {
         id: raid.id, name: raid.name, description: raid.description, scheduledAt: raid.scheduledAt,
         url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt,
@@ -99,11 +109,15 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       messageId: raid.discordChannelId === group.discordChannelId ? raid.discordMessageId : null,
       signups: signups.map(s => ({
         displayName: s.displayName, characterName: s.characterName, cls: s.cls, spec: s.spec, role: s.role,
-        status: s.status, note: s.note, guest: !s.userId, group: s.characterId ? groupOf.get(s.characterId) ?? null : null,
+        status: s.status, note: s.note, guest: !s.userId, group: groupOfSignup.get(s.id) ?? null,
       })),
       roster,
     };
+    return { view, groupOfSignup };
   }
+
+  const view = async (raidId: string) => (await layout(raidId)).view;
+
 
   /* ----- Liaison d'un salon à un groupe ----- */
 
@@ -191,22 +205,21 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       .where(and(inArray(raids.id, due.map(d => d.id)), isNull(raids.reminderSentAt))).returning({ id: raids.id });
     const reminders = [];
     for (const { id } of claimed) {
-      const v = await view(id);
+      const { view: v, groupOfSignup } = await layout(id);
       // Inscrits qui viennent (ou peut-être) : compte lié avec rappels activés, ou inscription libre
       const rows = await db.select({
-        status: raidSignups.status, displayName: raidSignups.displayName, characterId: raidSignups.characterId, spec: raidSignups.spec, cls: raidSignups.cls,
+        id: raidSignups.id, status: raidSignups.status, displayName: raidSignups.displayName, spec: raidSignups.spec, cls: raidSignups.cls,
         characterName: characters.name, guestId: raidSignups.discordUserId, linkedId: users.discordId, wants: users.discordReminders,
       }).from(raidSignups)
         .leftJoin(users, eq(users.id, raidSignups.userId))
         .leftJoin(characters, eq(characters.id, raidSignups.characterId))
         .where(and(eq(raidSignups.raidId, id), ne(raidSignups.status, "absent")));
-      const slots = new Map((await db.select({ slots: raids.slots }).from(raids).where(eq(raids.id, id)))[0]?.slots.map(s => [s.characterId, s.group]) ?? []);
       const recipients = rows.flatMap(r => {
         const discordUserId = r.guestId ?? (r.wants ? r.linkedId : null);
         if (!discordUserId) return [];
         return [{
           discordUserId, status: r.status, name: r.characterName ?? r.displayName, cls: r.cls, spec: r.spec, guest: !!r.guestId,
-          group: v.roster && r.characterId ? slots.get(r.characterId) ?? null : null,
+          group: v.roster ? groupOfSignup.get(r.id) ?? null : null,
         }];
       });
       reminders.push({ view: v, recipients });

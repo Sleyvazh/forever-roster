@@ -161,7 +161,11 @@ export const groupInvites = pgTable("group_invites", {
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [uniqueIndex("group_invites_hash_uq").on(t.tokenHash)]);
 
-export interface RaidSlot { group: number; pos: number; characterId: string }
+/**
+ * Place dans la compo : un perso du site (`characterId`) ou une inscription libre faite
+ * depuis Discord, sans compte (`signupId`). Exactement l'un des deux.
+ */
+export interface RaidSlot { group: number; pos: number; characterId?: string; signupId?: string }
 
 export const raids = pgTable("raids", {
   id: uuid("id").primaryKey().defaultRandom(),

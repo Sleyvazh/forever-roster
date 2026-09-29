@@ -64,7 +64,7 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - Chaque route vérifie le propriétaire ou le rôle dans le groupe côté serveur (`requireRole`).
 - Un non-membre qui demande un groupe, un raid ou un personnage reçoit **404**, sans confirmation que la ressource existe. Un membre sans le rôle requis reçoit 403.
 - Hiérarchie des rôles : un officier ne peut retirer que des membres, seul le propriétaire change les rôles, et le propriétaire ne peut pas quitter le groupe sans le transférer.
-- Composition de raid : chaque personnage placé doit appartenir à un membre du groupe, une place ne peut être occupée qu'une fois, un personnage n'occupe qu'une place.
+- Composition de raid : chaque personnage placé doit appartenir à un membre du groupe, et chaque inscrit sans compte placé doit être une inscription libre de ce raid. Une place ne peut être occupée qu'une fois, et un personnage ou un inscrit n'occupe qu'une place.
 - Les invitations sont consommées par un `UPDATE` atomique, ce qui empêche de dépasser le nombre d'utilisations avec des requêtes simultanées.
 
 ## Validation et injection (ASVS V5, Top 10 A03)

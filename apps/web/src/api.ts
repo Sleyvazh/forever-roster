@@ -82,6 +82,8 @@ export interface RaidSignup {
   id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;
   cls: string; spec: string; role: "Tank" | "Heal" | "DPS" | null; status: import("@forever/game-data").SignupStatus; note: string; createdAt: string; mine: boolean;
 }
-export interface RaidSlot { group: number; pos: number; characterId: string }
+/** Place dans la compo : un perso du site ou un inscrit sans compte (inscription libre depuis Discord). */
+export interface RaidSlot { group: number; pos: number; characterId?: string; signupId?: string }
+export const slotKey = (s: { characterId?: string; signupId?: string }) => (s.characterId ? `c:${s.characterId}` : `s:${s.signupId}`);
 export interface RaidChar { id: string; name: string; cls: string; spec1: string; level: number; race: string; owner: string }
 export interface Coverage { id: string; covered: boolean; sources: number; missingGroups: number[] }
