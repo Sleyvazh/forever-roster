@@ -82,6 +82,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: "Métiers" }).click();
     await page.selectOption("#p1-n", "Leatherworking");
     await page.fill("#p1-s", "300");
+    await page.locator("#p1-s").press("ArrowDown");
+    await expect(page.locator("#p1-s")).toHaveValue("295");
+    await page.locator("#p1-s").fill("0450");
+    await expect(page.locator("#p1-s")).toHaveValue("300");
     const card = page.locator("details.recipes").first();
     await card.locator("summary").click();
     await card.getByLabel("Je connais Warbear Woolies").check();

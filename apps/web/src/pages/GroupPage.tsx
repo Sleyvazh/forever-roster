@@ -7,6 +7,7 @@ import { useMe } from "../auth";
 import { CharacterEditor } from "../components/CharacterEditor";
 import { CRAFTING } from "../components/GameData";
 import { Portrait } from "../components/ImageUpload";
+import { NumberField } from "../components/NumberField";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
@@ -213,7 +214,7 @@ function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: bool
           <div className="fld" style={{ flex: "1 1 130px" }}><label htmlFor="t-day">Jour</label>
             <select id="t-day" value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })}>{WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</select></div>
           <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-time">Heure</label><input id="t-time" type="time" required value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></div>
-          <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor="t-lead">Créé (jours avant)</label><input id="t-lead" className="num" type="number" min={1} max={28} value={form.leadDays} onChange={e => setForm({ ...form, leadDays: Math.min(28, Math.max(1, Number(e.target.value) || 7)) })} /></div>
+          <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor="t-lead">Créé (jours avant)</label><NumberField id="t-lead" min={1} max={28} value={form.leadDays} onChange={leadDays => setForm({ ...form, leadDays })} /></div>
           <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="t-desc">Description (reprise dans chaque raid)</label><input id="t-desc" type="text" maxLength={1000} placeholder="Ex. Pull à 21 h 15, flasques obligatoires" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
           <button className="btn primary" type="submit">Ajouter</button>
         </form>
@@ -349,8 +350,8 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
     <section className="panel pad stack">
       <h3>Invitations</h3>
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">Utilisations max</label><input id="i-uses" className="num" type="number" min={1} max={100} value={maxUses} onChange={e => setMaxUses(Number(e.target.value) || 1)} /></div>
-        <div className="fld" style={{ width: 140 }}><label htmlFor="i-h">Valable (heures)</label><input id="i-h" className="num" type="number" min={1} max={720} value={hours} onChange={e => setHours(Number(e.target.value) || 1)} /></div>
+        <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">Utilisations max</label><NumberField id="i-uses" min={1} max={100} value={maxUses} onChange={setMaxUses} /></div>
+        <div className="fld" style={{ width: 140 }}><label htmlFor="i-h">Valable (heures)</label><NumberField id="i-h" min={1} max={720} step={24} value={hours} onChange={setHours} /></div>
         <button className="btn primary" type="button" onClick={() => void guard(async () => {
           const r = await post<{ invite: { url: string } }>(`/groups/${groupId}/invites`, { maxUses, expiresInHours: hours });
           setLink(r.invite.url); setCopied(false); await refresh();

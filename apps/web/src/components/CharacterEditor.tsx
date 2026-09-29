@@ -1,3 +1,4 @@
+import { NumberField } from "./NumberField";
 import {
   CLASSES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
@@ -94,7 +95,7 @@ function Profil({ c, onChange, editable, onPortrait }: SubProps) {
         <h3>Identité</h3>
         <div className="grid">
           <div className="fld"><label htmlFor="f-name">Nom</label><input id="f-name" type="text" maxLength={40} value={c.name} onChange={e => onChange({ name: e.target.value })} /></div>
-          <div className="fld"><label htmlFor="f-level">Niveau</label><input id="f-level" className="num" type="number" min={1} max={60} value={c.level} onChange={e => onChange({ level: Math.min(60, Math.max(1, parseInt(e.target.value, 10) || 1)) })} /></div>
+          <div className="fld"><label htmlFor="f-level">Niveau</label><NumberField id="f-level" min={1} max={60} value={c.level} onChange={level => onChange({ level })} /></div>
           <div className="fld"><label htmlFor="f-race">Race</label>
             <select id="f-race" value={c.race} onChange={e => setRace(e.target.value)}>
               <option value="">Choisir…</option>
@@ -201,7 +202,7 @@ function ProfCard({ k, p, other, onSet, characterId, editable }: { k: string; p:
           <select id={`${k}-n`} value={p.name} onChange={e => onSet({ ...p, name: e.target.value })}><option value="">—</option>{Object.keys(PRIMARY_PROFESSIONS).map(n => <option key={n}>{n}</option>)}</select>
         </div>
         <div className="fld"><label htmlFor={`${k}-s`}>Compétence</label>
-          <input id={`${k}-s`} className="num" type="number" min={0} max={300} value={p.skill} onChange={e => onSet({ ...p, skill: Math.min(300, Math.max(0, parseInt(e.target.value, 10) || 0)) })} />
+          <NumberField id={`${k}-s`} min={0} max={300} step={5} value={p.skill} onChange={skill => onSet({ ...p, skill })} />
         </div>
       </div>
       <div className="stack" style={{ gap: 4 }}>
@@ -235,7 +236,7 @@ function Metiers({ c, onChange, editable = false }: SubProps) {
               <div className="two">
                 <div className="fld"><span className="lbl">{SECONDARY_PROFESSIONS[k].name}</span><span className="tier">{professionTier(pr[k])}</span></div>
                 <div className="fld"><label htmlFor={`sec-${k}`}>Compétence</label>
-                  <input id={`sec-${k}`} className="num" type="number" min={0} max={300} value={pr[k]} onChange={e => set({ [k]: Math.min(300, Math.max(0, parseInt(e.target.value, 10) || 0)) })} />
+                  <NumberField id={`sec-${k}`} min={0} max={300} step={5} value={pr[k]} onChange={v => set({ [k]: v })} />
                 </div>
               </div>
               <div style={{ ["--cc" as string]: "var(--gold)" }}><Bar pct={pr[k] / 3} /></div>
@@ -266,8 +267,8 @@ function LegacyTab({ c, onChange }: SubProps) {
                 {list.map((p, i) => (
                   <div className="perk" key={i}>
                     <input type="text" aria-label="Nom du perk" placeholder="Nom du perk" maxLength={60} value={p.name} onChange={e => setTree(t.key, list.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-                    <input type="number" className="num" aria-label="Rang" min={0} max={10} value={p.rank} onChange={e => setTree(t.key, list.map((x, j) => j === i ? { ...x, rank: Math.min(10, Math.max(0, parseInt(e.target.value, 10) || 0)) } : x))} />
-                    <input type="number" className="num" aria-label="Rang max" min={1} max={10} value={p.max} onChange={e => setTree(t.key, list.map((x, j) => j === i ? { ...x, max: Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)) } : x))} />
+                    <NumberField label="Rang" stepper={false} min={0} max={10} value={p.rank} onChange={rank => setTree(t.key, list.map((x, j) => j === i ? { ...x, rank } : x))} />
+                    <NumberField label="Rang max" stepper={false} min={1} max={10} value={p.max} onChange={max => setTree(t.key, list.map((x, j) => j === i ? { ...x, max } : x))} />
                     <button type="button" className="x" aria-label="Retirer ce perk" onClick={() => setTree(t.key, list.filter((_, j) => j !== i))}>×</button>
                   </div>
                 ))}
