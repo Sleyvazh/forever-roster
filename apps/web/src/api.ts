@@ -78,6 +78,10 @@ export type GroupRole = "owner" | "officer" | "member";
 export interface GroupSummary { id: string; name: string; role: GroupRole; members: number }
 export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
 
+export interface RaidSignup {
+  id: string; userId: string | null; displayName: string; characterId: string | null; characterName: string | null;
+  cls: string; spec: string; role: "Tank" | "Heal" | "DPS" | null; status: import("@forever/game-data").SignupStatus; note: string; createdAt: string; mine: boolean;
+}
 export interface RaidSlot { group: number; pos: number; characterId: string }
 export interface RaidChar { id: string; name: string; cls: string; spec1: string; level: number; race: string; owner: string }
 export interface Coverage { id: string; covered: boolean; sources: number; missingGroups: number[] }

@@ -105,6 +105,24 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ })).toBeVisible();
   });
 
+  await test.step("raid : création, inscription et composition", async () => {
+    await page.getByRole("tab", { name: "Raids" }).click();
+    await page.fill("#r-name", "Molten Core");
+    await page.locator("form").filter({ has: page.locator("#r-name") }).getByRole("button", { name: "Créer" }).click();
+    await expect(page.getByRole("heading", { name: "Molten Core" })).toBeVisible();
+    await page.selectOption("#su-spec", "Feral Bear");
+    await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
+    await expect(page.getByText("Tu es inscrit : Présent avec Tournicoti (Feral Bear)")).toBeVisible();
+    await expect(page.locator(".su-col").filter({ hasText: "Tank" })).toContainText("Tournicoti");
+    // L'officier place l'inscrit : le rôle affiché suit la spé choisie pour ce raid
+    await page.getByRole("button", { name: "Ajouter Tournicoti au raid" }).click();
+    await expect(page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ })).toContainText("Tank");
+    await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "En retard" }).click();
+    await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
+    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await expect(page.getByRole("row", { name: /Molten Core/ })).toContainText("En retard");
+  });
+
   await test.step("menu du compte : thème et déconnexion", async () => {
     await page.locator(".acct-btn").click();
     await page.locator(".acct-menu").getByRole("button", { name: "Sombre" }).click();

@@ -16,6 +16,7 @@ import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
 import { likeContains } from "./gamedata";
+import { dropSignupsInGroup } from "../lib/signups";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -169,6 +170,7 @@ export async function groupRoutes(app: FastifyInstance) {
       if (!outranks(myRole, target)) throw forbidden("Tu ne peux retirer que des membres de rang inférieur.");
     }
     await db.delete(groupMembers).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
+    await dropSignupsInGroup(db, p.id, p.userId);
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
     return { ok: true };
   });

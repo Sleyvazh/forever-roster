@@ -392,3 +392,30 @@ table.gear { min-width: 720px; }
 .upl label.btn { cursor: pointer; }
 .upl label.btn:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
 input[type=range] { width: 100%; accent-color: var(--gold); }
+
+/* ---------- Inscriptions aux raids ---------- */
+.su-me { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--frame); border-radius: 8px; background: var(--panel-2); }
+.su-status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.su-btn { --sc: var(--ink-2); border: 1px solid color-mix(in srgb, var(--sc) 60%, var(--line)); background: var(--panel); color: var(--sc); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+.su-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--sc) 10%, var(--panel)); }
+.su-btn[aria-pressed="true"] { background: var(--sc); color: var(--panel); border-color: var(--sc); }
+.su-btn:disabled { opacity: .5; cursor: not-allowed; }
+.su-btn.present, .su-tag.present { --sc: var(--ok); } .su-btn.late, .su-tag.late { --sc: var(--warn); } .su-btn.tentative, .su-tag.tentative { --sc: var(--ink-2); }
+.su-btn.alt, .su-tag.alt { --sc: var(--alli); } .su-btn.bench, .su-tag.bench { --sc: var(--gold); } .su-btn.absent, .su-tag.absent { --sc: var(--bad); }
+.su-tag { color: var(--sc); border-color: var(--sc); }
+.su-roles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 720px) { .su-roles { grid-template-columns: 1fr; } }
+.su-col, .su-group { display: grid; gap: 4px; align-content: start; }
+.su-col h4, .su-group h4 { font-size: 14px; display: flex; align-items: center; gap: 6px; margin: 0 0 2px; }
+.su-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; }
+.su-inline { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.su-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; min-width: 0; }
+.su-row.mine { background: var(--gold-soft); }
+.su-inline .su-row { padding: 2px 4px; color: var(--ink-3); }
+.su-who { display: grid; min-width: 0; flex: 1; line-height: 1.2; }
+.su-who b { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-who small { color: var(--ink-3); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.su-note { color: var(--ink-3); cursor: help; }
+.su-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--panel-2); border: 1px dashed var(--line-2); flex: none; }
+.su-admin { display: flex; align-items: center; gap: 2px; }
+.su-admin select { width: auto; padding: 2px 6px; font-size: 12px; }

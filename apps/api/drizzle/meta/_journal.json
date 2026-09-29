@@ -29,6 +29,13 @@
       "when": 1790690394355,
       "tag": "0003_images",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790707314978,
+      "tag": "0004_raid_signups",
+      "breakpoints": true
     }
   ]
 }

@@ -4,10 +4,12 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, put, type Character, type RaidChar, type RaidSlot } from "../api";
+import { ApiError, del, get, put, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
+import { RaidSignups } from "../components/RaidSignups";
+import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[] }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
 
 const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
 const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
@@ -25,6 +27,7 @@ export function RaidPage() {
   const [slots, setSlots] = useState<RaidSlot[]>([]);
   const [name, setName] = useState("");
   const [when, setWhen] = useState("");
+  const [desc, setDesc] = useState("");
   const [pick, setPick] = useState<Pick>(null);
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -36,27 +39,35 @@ export function RaidPage() {
   useEffect(() => {
     if (raidQ.data && !loaded.current) {
       loaded.current = true;
-      setSlots(raidQ.data.slots); setName(raidQ.data.raid.name); setWhen(toLocalInput(raidQ.data.raid.scheduledAt));
+      setSlots(raidQ.data.slots); setName(raidQ.data.raid.name); setWhen(toLocalInput(raidQ.data.raid.scheduledAt)); setDesc(raidQ.data.raid.description);
     }
   }, [raidQ.data]);
 
   const canEdit = !!raidQ.data?.canEdit;
   const chars = useMemo(() => new Map((charsQ.data?.characters ?? []).map(c => [c.id, c])), [charsQ.data]);
   const placed = new Set(slots.map(s => s.characterId));
-  const bench = (charsQ.data?.characters ?? []).filter(c => !placed.has(c.id) && (!filter || `${c.name} ${c.owner} ${c.cls} ${c.spec1}`.toLowerCase().includes(filter.toLowerCase())));
-  const members = slots.flatMap(s => { const c = chars.get(s.characterId); return c ? [{ characterId: c.id, cls: c.cls, spec: c.spec1 || null, group: s.group }] : []; });
+  // Spé et statut choisis à l'inscription, par perso
+  const signupByChar = useMemo(() => new Map((raidQ.data?.signups ?? []).filter(s => s.characterId).map(s => [s.characterId!, s])), [raidQ.data]);
+  const specOf = (c: Character) => signupByChar.get(c.id)?.spec || c.spec1;
+  const matches = (c: Character) => !filter || `${c.name} ${c.owner} ${c.cls} ${specOf(c)}`.toLowerCase().includes(filter.toLowerCase());
+  const allChars = charsQ.data?.characters ?? [];
+  const order = (c: Character) => SIGNUP_AVAILABLE.indexOf(signupByChar.get(c.id)!.status);
+  const benchSigned = allChars.filter(c => !placed.has(c.id) && signupByChar.has(c.id) && SIGNUP_AVAILABLE.includes(signupByChar.get(c.id)!.status) && matches(c)).sort((a, b) => order(a) - order(b));
+  const benchOthers = allChars.filter(c => !placed.has(c.id) && !signupByChar.has(c.id) && matches(c));
+  const bench = [...benchSigned, ...benchOthers];
+  const members = slots.flatMap(s => { const c = chars.get(s.characterId); return c ? [{ characterId: c.id, cls: c.cls, spec: specOf(c) || null, group: s.group }] : []; });
   const coverage = computeCoverage(members);
   const budget = exclusiveBudget(members).filter(b => b.available > 0 || members.length);
   const roles = roleCounts(members);
 
-  const persist = (next: RaidSlot[], meta = { name, when }) => {
+  const persist = (next: RaidSlot[], meta = { name, when, desc }) => {
     setSlots(next);
     if (!canEdit) return;
     window.clearTimeout(timer.current);
     setStatus("Enregistrement…");
     timer.current = window.setTimeout(async () => {
       try {
-        await put(`/groups/${groupId}/raids/${raidId}`, { name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, slots: next });
+        await put(`/groups/${groupId}/raids/${raidId}`, { name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, description: meta.desc, slots: next });
         setStatus("Enregistré."); setError(null);
         void qc.invalidateQueries({ queryKey: ["raids", groupId] });
       } catch (e) { setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); setStatus(""); }
@@ -107,14 +118,19 @@ export function RaidPage() {
 
       {canEdit && (
         <div className="panel pad row" style={{ alignItems: "flex-end" }}>
-          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when }); }} /></div>
-          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="rw">Date</label><input id="rw" type="datetime-local" value={when} onChange={e => { setWhen(e.target.value); persist(slots, { name, when: e.target.value }); }} /></div>
+          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when, desc }); }} /></div>
+          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="rw">Date</label><input id="rw" type="datetime-local" value={when} onChange={e => { setWhen(e.target.value); persist(slots, { name, when: e.target.value, desc }); }} /></div>
+          <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="rd">Description (visible par le groupe et sur Discord)</label>
+            <textarea id="rd" maxLength={1000} style={{ minHeight: 60 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
+          </div>
           <span className="small muted" role="status" style={{ flex: "1 1 120px" }}>{status}</span>
           {confirmDel
             ? <span className="row small">Supprimer ce raid ? <button className="btn danger sm" type="button" onClick={() => void del(`/groups/${groupId}/raids/${raidId}`).then(() => nav(`/groups/${groupId}`))}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
             : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le raid</button>}
         </div>
       )}
+      {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
+      <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
       {error && <div className="alert error" role="alert">{error}</div>}
       {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
@@ -135,8 +151,8 @@ export function RaidPage() {
                       <button type="button" className={`slot${c ? " filled" : ""}${pick && !sel ? " target" : ""}${sel ? " selected" : ""}`}
                         style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => clickSlot(g, p)} disabled={!canEdit && !c}
                         aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
-                        {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>{c.spec1 || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
-                        {c && <span className={`role ${roleOf(c.spec1) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(c.spec1) ?? "?"}</span>}
+                        {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>{specOf(c) || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
+                        {c && <span className={`role ${roleOf(specOf(c)) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(specOf(c)) ?? "?"}</span>}
                       </button>
                       {c && canEdit && <button type="button" className="x" aria-label={`Retirer ${c.name}`} onClick={() => removeFrom(g, p)}>×</button>}
                     </div>
@@ -153,15 +169,21 @@ export function RaidPage() {
               <h3>Banc <span className="muted small">({bench.length})</span></h3>
               <input type="text" aria-label="Filtrer le banc" placeholder="Filtrer (nom, joueur, classe)…" value={filter} onChange={e => setFilter(e.target.value)} />
               <div className="bench">
-                {bench.length === 0 ? <p className="muted small">Tous les persos du groupe sont placés.</p> : bench.map(c => {
+                {bench.length === 0 ? <p className="muted small">Tous les persos du groupe sont placés.</p> : bench.map((c, i) => {
                   const cl = CLASSES[c.cls as ClassName];
                   const on = pick?.kind === "bench" && pick.id === c.id;
+                  const su = signupByChar.get(c.id);
                   return (
-                    <div key={c.id} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
+                    <div key={c.id} className="stack" style={{ gap: 4 }}>
+                    {i === 0 && benchSigned.length > 0 && <div className="lbl">Inscrits</div>}
+                    {i === benchSigned.length && benchOthers.length > 0 && <div className="lbl">Autres persos du groupe (non inscrits)</div>}
+                    <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", id: c.id })}>
-                        <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>Niv. {c.level} · {c.spec1 || c.cls || "?"} · {c.owner}</small></span>
+                        <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}<small>Niv. {c.level} · {specOf(c) || c.cls || "?"} · {c.owner}</small></span>
+                        {su && su.status !== "present" && <span className="tag">{SIGNUP_LABEL[su.status]}</span>}
                       </button>
                       <button type="button" className="btn sm ghost" title="Placer à la première place libre" aria-label={`Ajouter ${c.name} au raid`} onClick={() => addToRaid(c.id)}>+</button>
+                    </div>
                     </div>
                   );
                 })}
@@ -195,7 +217,7 @@ export function RaidPage() {
                   ))}
                 </div>
               )}
-              <p className="hint" style={{ margin: "8px 0 0" }}>Règles de WoW Classic ({RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé principale utilisée pour chaque perso.</p>
+              <p className="hint" style={{ margin: "8px 0 0" }}>Règles de WoW Classic ({RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé choisie à l'inscription, sinon spé principale.</p>
             </div>
           </div>
         </aside>

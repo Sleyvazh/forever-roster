@@ -157,6 +157,7 @@ export const raids = pgTable("raids", {
   name: text("name").notNull(),
   scheduledAt: ts("scheduled_at"),
   slots: jsonb("slots").$type<RaidSlot[]>().notNull().default([]),
+  description: text("description").notNull().default(""),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -227,3 +228,30 @@ export const images = pgTable("images", {
   bytes: integer("bytes").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [index("images_owner_idx").on(t.ownerId)]);
+
+/* ---------- Inscriptions aux raids ---------- */
+
+/**
+ * Une inscription par joueur et par raid : un compte du site (user_id) ou, pour l'inscription libre
+ * depuis Discord, un identifiant Discord seul (discord_user_id). Le perso est facultatif (absent, inscription libre).
+ */
+export const raidSignups = pgTable("raid_signups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  raidId: uuid("raid_id").notNull().references(() => raids.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  discordUserId: text("discord_user_id"),
+  displayName: text("display_name").notNull(),
+  characterId: uuid("character_id").references(() => characters.id, { onDelete: "set null" }),
+  cls: text("cls").notNull().default(""),
+  spec: text("spec").notNull().default(""),
+  status: text("status").$type<"present" | "late" | "tentative" | "alt" | "bench" | "absent">().notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  uniqueIndex("raid_signups_user_uq").on(t.raidId, t.userId),
+  uniqueIndex("raid_signups_discord_uq").on(t.raidId, t.discordUserId),
+  index("raid_signups_raid_idx").on(t.raidId),
+  check("raid_signups_who", sql`${t.userId} IS NOT NULL OR ${t.discordUserId} IS NOT NULL`),
+  check("raid_signups_status", sql`${t.status} IN ('present', 'late', 'tentative', 'alt', 'bench', 'absent')`),
+]);

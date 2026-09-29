@@ -153,3 +153,23 @@ export const itemLinks = (id: number) => ({
   foreverchanges: `https://foreverchanges.pro/item/${id}`,
 });
 export const spellLinks = (id: number) => ({ wowhead: `https://www.wowhead.com/forever/spell=${id}` });
+
+/* ---------- Inscriptions aux raids ---------- */
+
+/** Statuts d'inscription (repris de Raid-Helper) ; l'ordre est celui des boutons. */
+export const SIGNUP_STATUSES = ["present", "late", "tentative", "alt", "bench", "absent"] as const;
+export type SignupStatus = (typeof SIGNUP_STATUSES)[number];
+export const SIGNUP_LABEL: Record<SignupStatus, string> = {
+  present: "Présent", late: "En retard", tentative: "Peut-être", alt: "Reroll", bench: "Banc", absent: "Absent",
+};
+/** Explication courte affichée au survol / dans Discord. */
+export const SIGNUP_HINT: Record<SignupStatus, string> = {
+  present: "Je viens avec ce perso.",
+  late: "Je viens, mais en retard.",
+  tentative: "Pas encore sûr de venir.",
+  alt: "Dispo avec un reroll si besoin.",
+  bench: "En réserve : je viens si on manque de monde.",
+  absent: "Je ne viens pas.",
+};
+/** Statuts qui comptent comme « disponible » pour composer le roster. */
+export const SIGNUP_AVAILABLE: SignupStatus[] = ["present", "late", "tentative", "alt", "bench"];

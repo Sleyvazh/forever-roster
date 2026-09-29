@@ -1,4 +1,4 @@
-import { CLASSES, RACES, SKILL_LINE_NAMES, type ClassName } from "@forever/game-data";
+import { CLASSES, RACES, SIGNUP_LABEL, SKILL_LINE_NAMES, type ClassName, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -11,7 +11,7 @@ import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
-interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number }
+interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
@@ -145,14 +145,19 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
       )}
       {!data?.raids.length ? <p className="muted">Aucun raid prévu.</p> : (
         <div className="tscroll"><table className="data">
-          <thead><tr><th>Raid</th><th>Date</th><th>Places</th></tr></thead>
-          <tbody>{data.raids.map(r => (
-            <tr key={r.id}>
-              <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link></td>
-              <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
-              <td className="num">{r.filled}/40</td>
-            </tr>
-          ))}</tbody>
+          <thead><tr><th>Raid</th><th>Date</th><th>Inscrits</th><th>Moi</th><th>Places</th></tr></thead>
+          <tbody>{data.raids.map(r => {
+            const coming = (r.signups.present ?? 0) + (r.signups.late ?? 0);
+            return (
+              <tr key={r.id}>
+                <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link></td>
+                <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
+                <td className="small"><span className="num">{coming}</span> viennent{r.signups.tentative ? <span className="muted"> · {r.signups.tentative} peut-être</span> : null}{r.signups.absent ? <span className="muted"> · {r.signups.absent} absent{r.signups.absent > 1 ? "s" : ""}</span> : null}</td>
+                <td>{r.mySignup ? <span className={`tag su-tag ${r.mySignup}`}>{SIGNUP_LABEL[r.mySignup]}</span> : <Link className="small" to={`/groups/${groupId}/raids/${r.id}`}>S'inscrire</Link>}</td>
+                <td className="num">{r.filled}/40</td>
+              </tr>
+            );
+          })}</tbody>
         </table></div>
       )}
     </div>
