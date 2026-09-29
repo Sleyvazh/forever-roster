@@ -111,6 +111,10 @@ export function CharactersPage() {
               character={current}
               editable
               onChange={edit}
+              onPortrait={portraitId => {
+                setLocal(list => list.map(c => c.id === current.id ? { ...c, portraitId } : c));
+                qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => c.id === current.id ? { ...c, portraitId } : c) });
+              }}
               footer={<>
                 <span className={`small ${saver.status.kind === "error" || saver.status.kind === "held" ? "warnmsg" : "muted"}`} role="status">
                   {{ idle: "Les modifications sont enregistrées automatiquement.", saving: "Enregistrement…", saved: "Enregistré.", error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}

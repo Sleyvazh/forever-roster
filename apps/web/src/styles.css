@@ -370,3 +370,25 @@ table.gear { min-width: 720px; }
   @keyframes pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 }
 .tab-tag { margin-left: 6px; font-size: 9px; padding: 3px 5px; vertical-align: 1px; }
+
+/* ---------- Images de compte et portraits ---------- */
+.portrait-img { display: block; object-fit: cover; }
+.portrait-img.round, .upl-empty.round { border-radius: 50%; }
+.head-portrait { border: 2px solid var(--cc, var(--frame)); box-shadow: 0 0 0 2px var(--panel); }
+.crest.has-portrait { position: relative; overflow: visible; }
+.crest.has-portrait .portrait-img { width: 100%; height: 100%; }
+.crest-badge { position: absolute; right: -6px; bottom: -6px; width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: var(--icon-bg); border: 2px solid var(--frame); }
+.upl { display: grid; gap: 10px; }
+.upl-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.upl-head .portrait-img { border: 1px solid var(--frame); border-radius: 8px; }
+.upl-head .portrait-img.round { border-radius: 50%; }
+.upl-empty { display: block; width: 64px; height: 64px; border-radius: 8px; border: 1px dashed var(--line-2); background: var(--panel-2); }
+.upl-crop { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 520px) { .upl-crop { grid-template-columns: 1fr; justify-items: start; } }
+.upl-frame { position: relative; width: 200px; height: 200px; overflow: hidden; border-radius: 8px; background: var(--icon-bg); border: 1px solid var(--frame); cursor: grab; touch-action: none; user-select: none; }
+.upl-frame.round { border-radius: 50%; }
+.upl-frame:active { cursor: grabbing; }
+.upl-frame img { position: absolute; left: 0; top: 0; max-width: none; pointer-events: none; }
+.upl label.btn { cursor: pointer; }
+.upl label.btn:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
+input[type=range] { width: 100%; accent-color: var(--gold); }

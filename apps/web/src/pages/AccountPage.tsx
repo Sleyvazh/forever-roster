@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, setCsrf } from "../api";
+import { ApiError, del, get, patch, post, setCsrf, uploadImage } from "../api";
+import { ImageUpload } from "../components/ImageUpload";
 import { useMe } from "../auth";
 
 interface SessionRow { id: string; ip: string | null; userAgent: string | null; createdAt: string; lastSeenAt: string; current: boolean }
@@ -56,6 +57,11 @@ export function AccountPage() {
       {params.get("bnet") === "linked" && <div className="alert ok">Ton compte Battle.net est maintenant lié.</div>}
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, alignItems: "start" }}>
         <Profile name={user.displayName} onDone={refreshMe} />
+        <Section title="Image du compte" hint="Visible par toi et les membres de tes groupes.">
+          <ImageUpload title="Avatar" hint="PNG, JPEG ou WebP. Recadrée en 200 × 200, métadonnées supprimées." currentId={user.avatarId} round
+            onUpload={async blob => { await uploadImage("/account/avatar", blob); await refreshMe(); }}
+            onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />
+        </Section>
         <Identity email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet} bnetEnabled={!!me.data?.battlenetEnabled} onDone={refreshMe} />
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
       </div>

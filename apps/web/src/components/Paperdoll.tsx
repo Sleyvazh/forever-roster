@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
 import { ItemPicker } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
+import { Portrait } from "./ImageUpload";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 type View = "cur" | "bis";
@@ -126,7 +127,11 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
       <div className="doll">
         <div className="dcol left">{LEFT.map(slotEl)}</div>
         <aside className="portrait" aria-label="Résumé de l'équipement" style={cls ? { ["--cc" as string]: cls.color } : undefined}>
-          <div className="crest" aria-hidden="true">{c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={64} /> : <ClassIcon cls={c.cls} size={64} />) : "?"}</div>
+          <div className={`crest${c.portraitId ? " has-portrait" : ""}`} aria-hidden="true">
+            <Portrait id={c.portraitId} size={104} className="round"
+              fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={64} /> : <ClassIcon cls={c.cls} size={64} />) : "?"} />
+            {c.portraitId && c.cls && <span className="crest-badge">{c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />}</span>}
+          </div>
           <div>
             <div className="spec">{c.spec1 || c.cls || "Spé ?"}</div>
             {c.spec2 && <div className="small muted">Off-spec : {c.spec2}</div>}

@@ -8,6 +8,7 @@ import { hashPassword, PASSWORD_MAX, verifyPassword } from "../lib/password";
 import { currentUser, destroySession, requireAuth } from "../lib/session";
 import { normalizeEmail, publicUser } from "../lib/users";
 import { assertStrongPassword, issueEmailToken } from "./auth";
+import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { verifyEmail } from "../lib/email-templates";
 
 export async function accountRoutes(app: FastifyInstance) {
@@ -19,6 +20,23 @@ export async function accountRoutes(app: FastifyInstance) {
     const body = parse(z.object({ displayName: z.string().trim().min(2).max(32) }), req.body);
     const [row] = await db.update(users).set({ displayName: body.displayName, updatedAt: new Date() }).where(eq(users.id, u.id)).returning();
     return { user: publicUser(row!) };
+  });
+
+  /** Image du compte (recadrée par le navigateur, ré-encodée ici). */
+  app.put("/avatar", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
+    const u = currentUser(req);
+    if (!Buffer.isBuffer(req.body)) throw badRequest("Envoie une image PNG, JPEG ou WebP.");
+    const data = await normalizeImage(req.body);
+    const avatarId = await replaceImage(db, u.id, data, u.avatarId, newId =>
+      db.update(users).set({ avatarId: newId, updatedAt: new Date() }).where(eq(users.id, u.id)));
+    return { avatarId };
+  });
+
+  app.delete("/avatar", async (req) => {
+    const u = currentUser(req);
+    await db.update(users).set({ avatarId: null }).where(eq(users.id, u.id));
+    await deleteImage(db, u.avatarId);
+    return { ok: true };
   });
 
   /** Ajout d'une adresse e-mail (comptes créés via Battle.net). */

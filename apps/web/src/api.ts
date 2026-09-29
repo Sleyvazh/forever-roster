@@ -27,11 +27,23 @@ export const patch = <T,>(p: string, b: unknown) => api<T>("PATCH", p, b);
 export const put = <T,>(p: string, b: unknown) => api<T>("PUT", p, b);
 export const del = <T,>(p: string, b?: unknown) => api<T>("DELETE", p, b);
 
+/** Envoi d'une image en binaire brut (le serveur la ré-encode). */
+export async function uploadImage<T>(path: string, blob: Blob): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "PUT", credentials: "same-origin", body: blob,
+    headers: { Accept: "application/json", "Content-Type": blob.type || "image/png", ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? (res.status === 413 ? "Image trop lourde." : `Erreur ${res.status}`));
+  return data as T;
+}
+export const imageUrl = (id: string) => `/api/images/${id}`;
+
 /* ---------- Types renvoyés par l'API ---------- */
 
 export interface User {
   id: string; email: string | null; emailVerified: boolean; displayName: string; battletag: string | null;
-  hasPassword: boolean; hasBattlenet: boolean; createdAt: string;
+  hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; createdAt: string;
 }
 export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean }
 
@@ -42,7 +54,7 @@ export interface Character {
   professions: { prof1: Prof; prof2: Prof; cooking: number; fishing: number; firstAid: number };
   gear: Record<string, GearEntry>;
   legacy: Record<string, { name: string; rank: number; max: number }[]>;
-  notes: string; sortOrder: number; updatedAt: string; owner?: string;
+  notes: string; portraitId: string | null; sortOrder: number; updatedAt: string; owner?: string;
 }
 
 export interface GearEntry { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }
@@ -64,7 +76,7 @@ export interface CraftersRecipe {
 
 export type GroupRole = "owner" | "officer" | "member";
 export interface GroupSummary { id: string; name: string; role: GroupRole; members: number }
-export interface Member { userId: string; displayName: string; battletag: string | null; role: GroupRole; joinedAt: string }
+export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
 
 export interface RaidSlot { group: number; pos: number; characterId: string }
 export interface RaidChar { id: string; name: string; cls: string; spec1: string; level: number; race: string; owner: string }

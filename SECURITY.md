@@ -63,6 +63,15 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - React échappe tout le contenu affiché. Aucun `dangerouslySetInnerHTML`.
 - Corps de requête limité à 256 Ko, nombre de personnages, de groupes et de raids plafonné.
 
+## Images envoyées (avatar, portraits)
+
+- Le navigateur recadre l'image, puis le serveur la **ré-encode entièrement** avec sharp (libvips) : décodage, recadrage 200 × 200, sortie WebP. Le fichier stocké est toujours une image produite par le serveur, jamais le fichier reçu. Un fichier polyglotte (image + HTML ou script) ne survit pas.
+- La signature du fichier (« magic bytes ») est vérifiée : PNG, JPEG ou WebP uniquement. Le `Content-Type` annoncé par le client ne suffit pas.
+- Les métadonnées (EXIF, dont la position GPS d'une photo de téléphone) sont supprimées.
+- Protections contre les abus : 2 Mo maximum par envoi, 4096 × 4096 pixels maximum au décodage (contre les « bombes de décompression »), 30 envois par quart d'heure.
+- Stockage en base (≈ 10 Ko par image), donc compris dans les sauvegardes. L'identifiant change à chaque envoi, et l'ancienne image est supprimée.
+- Lecture sur `/api/images/:id`, réservée au propriétaire et aux membres de ses groupes, avec un 404 pour les autres. Réponse en `image/webp` avec `nosniff` et `Content-Disposition: inline`, sous la CSP stricte de l'API.
+
 ## En-têtes et transport (ASVS V14)
 
 - Caddy : HTTPS automatique, HSTS, CSP stricte (`default-src 'self'`, pas de script inline, `frame-ancestors 'none'`), `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `COOP`.

@@ -1,9 +1,10 @@
 import { sql } from "drizzle-orm";
 import {
-  bigserial, boolean, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
+  type AnyPgColumn, bigserial, boolean, customType, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 /* ---------- Comptes ---------- */
 
@@ -17,6 +18,8 @@ export const users = pgTable("users", {
   displayName: text("display_name").notNull(),
   battlenetId: text("battlenet_id"),
   battletag: text("battletag"),
+  /** Image du compte (200×200, WebP ré-encodé par le serveur). */
+  avatarId: uuid("avatar_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: ts("locked_until"),
   createdAt: ts("created_at").notNull().defaultNow(),
@@ -108,6 +111,8 @@ export const characters = pgTable("characters", {
   gear: jsonb("gear").$type<Gear>().notNull().default({}),
   legacy: jsonb("legacy").$type<Legacy>().notNull().default({}),
   notes: text("notes").notNull().default(""),
+  /** Portrait du perso (capture de la tête en jeu, 200×200). */
+  portraitId: uuid("portrait_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
@@ -211,3 +216,14 @@ export const characterRecipes = pgTable("character_recipes", {
   index("character_recipes_spell_idx").on(t.spellId),
   check("character_recipes_status", sql`${t.status} IN ('known', 'wanted')`),
 ]);
+
+/* ---------- Images envoyées par les joueurs ---------- */
+
+/** Stockées en base (≈ 10 Ko chacune) : sauvegardées avec le reste par pg_dump. */
+export const images = pgTable("images", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id").notNull().references((): AnyPgColumn => users.id, { onDelete: "cascade" }),
+  data: bytea("data").notNull(),
+  bytes: integer("bytes").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [index("images_owner_idx").on(t.ownerId)]);

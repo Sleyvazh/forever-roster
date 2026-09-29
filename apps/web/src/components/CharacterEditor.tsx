@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { Character, Prof } from "../api";
 import { CRAFTING, RecipeCard } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
+import { ImageUpload, Portrait } from "./ImageUpload";
+import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
@@ -17,13 +19,15 @@ export interface EditorProps {
   /** Reçoit uniquement les champs modifiés. */
   onChange: (patch: Partial<Character>) => void;
   footer?: React.ReactNode;
+  /** Portrait changé (envoyé directement, hors sauvegarde automatique). */
+  onPortrait?: (id: string | null) => void;
 }
 
 const Bar = ({ pct, color }: { pct: number; color?: string }) => (
   <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, ...(color ? { background: color } : {}) }} /></div>
 );
 
-export function CharacterEditor({ character: c, editable, onChange, footer }: EditorProps) {
+export function CharacterEditor({ character: c, editable, onChange, footer, onPortrait }: EditorProps) {
   const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem("fr-tab") as Tab) || "profil");
   const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
@@ -34,7 +38,10 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }}>
         <div>
-          <h2 className="with-icon">{c.cls && <ClassIcon cls={c.cls} size={34} />}<span>{c.name}</span></h2>
+          <h2 className="with-icon">
+            <Portrait id={c.portraitId} size={48} className="round head-portrait" fallback={c.cls ? <ClassIcon cls={c.cls} size={34} /> : null} />
+            <span>{c.name}</span>
+          </h2>
           <div className="line">
             Niv. <span className="num">{c.level}</span> · {c.race || "Race ?"} <span className="cls">{c.cls || "Classe ?"}</span>
             {race && ` · ${race.faction}`}{c.owner && ` · Joueur : ${c.owner}`}
@@ -50,7 +57,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
       </div>
       <fieldset disabled={!editable} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div className="pane">
-          {tab === "profil" && <Profil c={c} onChange={onChange} />}
+          {tab === "profil" && <Profil c={c} onChange={onChange} editable={editable} onPortrait={onPortrait} />}
           {tab === "metiers" && <Metiers c={c} onChange={onChange} editable={editable} />}
           {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable={editable} />}
           {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
@@ -61,9 +68,9 @@ export function CharacterEditor({ character: c, editable, onChange, footer }: Ed
   );
 }
 
-type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean };
+type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean; onPortrait?: EditorProps["onPortrait"] };
 
-function Profil({ c, onChange }: SubProps) {
+function Profil({ c, onChange, editable, onPortrait }: SubProps) {
   const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
@@ -104,6 +111,16 @@ function Profil({ c, onChange }: SubProps) {
         {bad && <div className="warnmsg">{c.race} ne peut pas être {c.cls} dans WoW Forever.</div>}
         {race && <div className="bonus"><span className="lbl">Raciaux {c.race}</span><br />{race.racials}</div>}
       </div>
+
+      {editable && onPortrait && (
+        <div className="sec">
+          <h3>Portrait</h3>
+          <ImageUpload title="Tête du perso" hint="Une capture de ton perso en jeu (PNG, JPEG ou WebP), recadrée en 200 × 200. Visible par les membres de tes groupes."
+            currentId={c.portraitId}
+            onUpload={async blob => { const r = await uploadImage<{ portraitId: string }>(`/characters/${c.id}/portrait`, blob); onPortrait(r.portraitId); }}
+            onRemove={async () => { await del(`/characters/${c.id}/portrait`); onPortrait(null); }} />
+        </div>
+      )}
 
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
         <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>

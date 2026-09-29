@@ -1,11 +1,13 @@
-import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PROFESSION_SKILL_LINES, SECONDARY_PROFESSIONS } from "@forever/game-data";
-import { characterRecipes, characters, gameRecipes, groupMembers, users } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
+import { canSee } from "../lib/visibility";
+import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 
 const MAX_CHARACTERS = 50;
 const MAX_RECIPES = 2000;
@@ -15,17 +17,9 @@ export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
-  sortOrder: c.sortOrder, updatedAt: c.updatedAt,
+  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt,
 });
 
-/** Un perso est visible par son propriétaire et par les membres des groupes qu'ils partagent. */
-async function canSee(app: FastifyInstance, viewerId: string, ownerId: string) {
-  if (viewerId === ownerId) return true;
-  const gm1 = app.ctx.db.select({ g: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, viewerId));
-  const rows = await app.ctx.db.select({ g: groupMembers.groupId }).from(groupMembers)
-    .where(and(eq(groupMembers.userId, ownerId), inArray(groupMembers.groupId, gm1))).limit(1);
-  return rows.length > 0;
-}
 
 export async function characterRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
@@ -66,7 +60,7 @@ export async function characterRoutes(app: FastifyInstance) {
     const [row] = await db.select({ c: characters, owner: users.displayName }).from(characters)
       .innerJoin(users, eq(users.id, characters.userId)).where(eq(characters.id, id));
     // 404 aussi quand le perso existe mais n'est pas visible : on ne confirme pas son existence.
-    if (!row || !(await canSee(app, u.id, row.c.userId))) throw notFound("Personnage introuvable.");
+    if (!row || !(await canSee(db, u.id, row.c.userId))) throw notFound("Personnage introuvable.");
     return { character: toApi(row.c), owner: row.owner, editable: row.c.userId === u.id };
   });
 
@@ -88,7 +82,7 @@ export async function characterRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
     const [row] = await db.select({ userId: characters.userId }).from(characters).where(eq(characters.id, id));
-    if (!row || !(await canSee(app, u.id, row.userId))) throw notFound("Personnage introuvable.");
+    if (!row || !(await canSee(db, u.id, row.userId))) throw notFound("Personnage introuvable.");
     const recipes = await db.select({ spellId: characterRecipes.spellId, status: characterRecipes.status, skillLine: gameRecipes.skillLine })
       .from(characterRecipes).innerJoin(gameRecipes, eq(gameRecipes.spellId, characterRecipes.spellId))
       .where(eq(characterRecipes.characterId, id));
@@ -119,11 +113,38 @@ export async function characterRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /* ----- Portrait ----- */
+
+  const uploadLimit = { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } };
+
+  app.put("/:id/portrait", uploadLimit, async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(idParam, req.params);
+    if (!Buffer.isBuffer(req.body)) throw badRequest("Envoie une image PNG, JPEG ou WebP.");
+    const [ch] = await db.select({ portraitId: characters.portraitId }).from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
+    if (!ch) throw notFound("Personnage introuvable.");
+    const data = await normalizeImage(req.body);
+    const portraitId = await replaceImage(db, u.id, data, ch.portraitId, newId =>
+      db.update(characters).set({ portraitId: newId, updatedAt: new Date() }).where(eq(characters.id, id)));
+    return { portraitId };
+  });
+
+  app.delete("/:id/portrait", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(idParam, req.params);
+    const [ch] = await db.select({ portraitId: characters.portraitId }).from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
+    if (!ch) throw notFound("Personnage introuvable.");
+    await db.update(characters).set({ portraitId: null }).where(eq(characters.id, id));
+    await deleteImage(db, ch.portraitId);
+    return { ok: true };
+  });
+
   app.delete("/:id", async (req) => {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
-    const [row] = await db.delete(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id))).returning({ id: characters.id });
+    const [row] = await db.delete(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id))).returning({ id: characters.id, portraitId: characters.portraitId });
     if (!row) throw notFound("Personnage introuvable.");
+    await deleteImage(db, row.portraitId);
     return { ok: true };
   });
 }

@@ -6,6 +6,7 @@ import { ApiError, del, get, patch, post, type Character, type CraftersRecipe, t
 import { useMe } from "../auth";
 import { CharacterEditor } from "../components/CharacterEditor";
 import { CRAFTING } from "../components/GameData";
+import { Portrait } from "../components/ImageUpload";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string }; role: GroupRole; members: Member[] }
@@ -167,7 +168,7 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
       <thead><tr><th>Joueur</th><th>Battle.net</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
       <tbody>{members.map(m => (
         <tr key={m.userId}>
-          <td>{m.displayName}{m.userId === myId && <span className="tag gold" style={{ marginLeft: 6 }}>Toi</span>}</td>
+          <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>{m.displayName}{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
           <td className="muted">{m.battletag ?? "—"}</td>
           <td>
             {myRole === "owner" && m.userId !== myId ? (

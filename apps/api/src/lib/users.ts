@@ -10,6 +10,7 @@ export function publicUser(u: UserRow) {
     battletag: u.battletag,
     hasPassword: !!u.passwordHash,
     hasBattlenet: !!u.battlenetId,
+    avatarId: u.avatarId,
     createdAt: u.createdAt,
   };
 }

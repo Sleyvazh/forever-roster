@@ -48,7 +48,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const role = await membership(db, id, u.id);
     const [g] = await db.select().from(groups).where(eq(groups.id, id));
     const members = await db.select({
-      userId: users.id, displayName: users.displayName, battletag: users.battletag, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
+      userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
     }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
     return { group: { id: g!.id, name: g!.name }, role, members };

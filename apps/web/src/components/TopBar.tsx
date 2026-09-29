@@ -5,6 +5,7 @@ import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
 import { LaunchPill } from "./Countdown";
 import { ClassIcon } from "./Icons";
+import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
 
 const Brand = () => (
@@ -14,11 +15,17 @@ const Brand = () => (
   </Link>
 );
 
-/** Avatar du compte : pour l'instant l'icône de classe du premier perso. */
+/** Avatar du compte : l'image du compte, sinon le portrait du premier perso, sinon son icône de classe. */
 function Avatar({ size = 30 }: { size?: number }) {
+  const me = useMe();
   const chars = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
   const first = chars.data?.characters[0];
-  return <span className="avatar" style={{ width: size, height: size }}>{first?.cls ? <ClassIcon cls={first.cls} size={Math.round(size * 0.8)} /> : null}</span>;
+  const icon = first?.cls ? <ClassIcon cls={first.cls} size={Math.round(size * 0.8)} /> : null;
+  return (
+    <span className="avatar" style={{ width: size, height: size }}>
+      <Portrait id={me.data?.user?.avatarId ?? first?.portraitId} size={size} fallback={icon} />
+    </span>
+  );
 }
 
 function AccountMenu() {

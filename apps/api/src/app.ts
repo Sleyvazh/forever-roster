@@ -14,6 +14,8 @@ import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
 import { groupRoutes } from "./routes/groups";
 import { raidRoutes } from "./routes/raids";
+import { imageRoutes } from "./routes/images";
+import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
 
 export interface AppContext {
   db: Db;
@@ -52,6 +54,9 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
 
   registerSession(app);
 
+  // Images envoyées en binaire brut (le navigateur a déjà recadré) ; limite propre à ce type de contenu.
+  app.addContentTypeParser(IMAGE_TYPES, { parseAs: "buffer", bodyLimit: MAX_UPLOAD_BYTES }, (_req, body, done) => done(null, body));
+
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
     const status = (err as { statusCode?: number }).statusCode;
@@ -71,6 +76,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(gameDataRoutes, { prefix: "/api/gamedata" });
   await app.register(groupRoutes, { prefix: "/api/groups" });
   await app.register(raidRoutes, { prefix: "/api/groups" });
+  await app.register(imageRoutes, { prefix: "/api/images" });
 
   return app;
 }
