@@ -119,5 +119,7 @@ test("les en-têtes de sécurité de production sont bien appliqués", async ({ 
   const h = res!.headers();
   expect(h["content-security-policy"]).toContain("default-src 'self'");
   expect(h["x-content-type-options"]).toBe("nosniff");
+  expect(h["x-frame-options"]).toBe("DENY");
+  expect(h["content-security-policy"]).toContain("frame-ancestors 'none'");
   await expect(page.getByRole("heading", { name: /connexion/i })).toBeVisible();
 });
