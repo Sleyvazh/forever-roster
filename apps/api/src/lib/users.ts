@@ -11,6 +11,7 @@ export function publicUser(u: UserRow) {
     hasPassword: !!u.passwordHash,
     hasBattlenet: !!u.battlenetId,
     discordUsername: u.discordUsername,
+    discordReminders: u.discordReminders,
     avatarId: u.avatarId,
     createdAt: u.createdAt,
   };

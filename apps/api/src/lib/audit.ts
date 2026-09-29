@@ -8,7 +8,8 @@ export type AuditType =
   | "session_revoked" | "sessions_revoked_all"
   | "battlenet_login" | "battlenet_linked" | "battlenet_unlinked" | "discord_linked" | "discord_unlinked" | "account_created_battlenet"
   | "group_created" | "group_renamed" | "group_joined" | "group_left" | "group_role_changed" | "group_member_removed"
-  | "invite_created" | "invite_revoked" | "raid_created" | "raid_deleted" | "group_discord_linked" | "group_discord_unlinked";
+  | "invite_created" | "invite_revoked" | "raid_created" | "raid_deleted" | "group_discord_linked" | "group_discord_unlinked"
+  | "raid_template_created" | "raid_template_updated" | "raid_template_deleted" | "raid_roster_published" | "raid_roster_unpublished";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

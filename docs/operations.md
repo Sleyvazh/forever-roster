@@ -277,7 +277,13 @@ Pour changer un seul secret (jeton régénéré chez Discord, par exemple), rela
 3. Les raids à venir y sont publiés dans les secondes qui suivent. Toute inscription, sur le site ou sur Discord, met l'annonce à jour.
 4. `/raid nom:Molten Core date:12/11/2026 21:00 description:…` crée un raid depuis Discord (officiers, heure de Paris).
 
+5. **Raids récurrents** : dans l'onglet Raids du groupe, « Raids récurrents » (ex. Molten Core, mercredi 20:30, créé 7 jours avant). L'API crée les occurrences au démarrage puis toutes les 15 minutes. Un raid supprimé à la main n'est pas recréé.
+6. **Compo** : sur la page d'un raid, « Publier la compo » remplace les colonnes par rôle de l'annonce par les 8 groupes.
+7. **Rappels** : la veille (entre 24 h et 1 h avant), le bot envoie un message privé à chaque inscrit qui vient ou hésite, avec les boutons de statut. Les comptes liés peuvent les couper dans Compte & sécurité. Un joueur qui refuse les messages privés du serveur est simplement ignoré. Changer la date du raid renvoie un rappel.
+
 Changer de salon ou délier efface les anciennes annonces. Supprimer un raid ou le groupe aussi. Une annonce reste synchronisée jusqu'à 12 heures après l'heure du raid.
+
+**Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/tree/` comme émojis de l'application (`fr_warlock`, `fr_warlock_1`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
 
 **Si le bot ne publie pas :** `sudo docker compose logs --tail=30 bot`. « Salon … inaccessible » ou « Missing Access » signifie qu'il manque des droits au bot dans ce salon ; il réessaie de lui-même, de plus en plus espacé (jusqu'à 10 minutes). « jeton du bot invalide » : régénérer le jeton et relancer le bloc ci-dessus.
 

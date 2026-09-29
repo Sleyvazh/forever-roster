@@ -67,7 +67,7 @@ export function AccountPage() {
             onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />
         </Section>
         <Identity email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet} bnetEnabled={!!me.data?.battlenetEnabled} onDone={refreshMe} />
-        <DiscordLink username={user.discordUsername} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
+        <DiscordLink username={user.discordUsername} reminders={user.discordReminders} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
       </div>
       <Sessions />
@@ -129,7 +129,7 @@ const DISCORD_ERROR: Record<string, string> = {
 };
 
 /** Liaison Discord : sert uniquement au bot d'inscription (pas de connexion au site via Discord). */
-function DiscordLink({ username, enabled, onDone }: { username: string | null; enabled: boolean; onDone: () => void }) {
+function DiscordLink({ username, reminders, enabled, onDone }: { username: string | null; reminders: boolean; enabled: boolean; onDone: () => void }) {
   const a = useAction();
   return (
     <Section title="Discord" hint="Lie ton Discord pour t'inscrire aux raids depuis le bot avec tes persos. Le site ne reçoit que ton identifiant et ton pseudo Discord.">
@@ -141,6 +141,13 @@ function DiscordLink({ username, enabled, onDone }: { username: string | null; e
           <button className="btn discord sm" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/discord/link"); window.location.assign(r.url); })}>Lier Discord</button>
         ) : <span className="muted small">Non configuré sur ce serveur</span>}
       </div>
+      {username && (
+        <label className="row" style={{ gap: 8, flexWrap: "nowrap", alignItems: "flex-start" }}>
+          <input type="checkbox" checked={reminders} style={{ width: "auto", marginTop: 3 }}
+            onChange={e => { const on = e.target.checked; void a.run(async () => { await patch("/account/discord", { reminders: on }); onDone(); return on ? "Rappels activés." : "Rappels désactivés."; }); }} />
+          <span>Rappel en message privé la veille des raids auxquels je suis inscrit<br /><span className="hint">Avec des boutons pour changer de statut sans ouvrir le site.</span></span>
+        </label>
+      )}
       {a.view}
     </Section>
   );

@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   /** Compte Discord lié (identifiant « snowflake ») : sert aux inscriptions depuis le bot. */
   discordId: text("discord_id"),
   discordUsername: text("discord_username"),
+  /** Rappel en message privé Discord la veille des raids auxquels le joueur est inscrit. */
+  discordReminders: boolean("discord_reminders").notNull().default(true),
   /** Image du compte (200×200, WebP ré-encodé par le serveur). */
   avatarId: uuid("avatar_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   failedLogins: integer("failed_logins").notNull().default(0),
@@ -176,10 +178,46 @@ export const raids = pgTable("raids", {
   discordMessageId: text("discord_message_id"),
   discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
   discordSyncedAt: ts("discord_synced_at"),
+  /** Rappel de la veille déjà envoyé (remis à zéro si la date change). */
+  reminderSentAt: ts("reminder_sent_at"),
+  /** Composition validée par un officier : affichée dans l'annonce Discord. */
+  rosterPublishedAt: ts("roster_published_at"),
+  /** Raid créé automatiquement à partir d'un modèle récurrent. */
+  templateId: uuid("template_id").references((): AnyPgColumn => raidTemplates.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, t => [index("raids_group_idx").on(t.groupId)]);
+}, t => [
+  index("raids_group_idx").on(t.groupId),
+  uniqueIndex("raids_template_occurrence_uq").on(t.templateId, t.scheduledAt),
+]);
+
+/**
+ * Raid récurrent (ex. « Molten Core, mercredi 21:00 ») : le site crée chaque occurrence
+ * `leadDays` jours à l'avance. `generatedUntil` = dernière occurrence déjà créée : un raid
+ * supprimé à la main n'est donc jamais recréé.
+ */
+export const raidTemplates = pgTable("raid_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  /** 1 = lundi … 7 = dimanche (ISO 8601). */
+  weekday: smallint("weekday").notNull(),
+  /** Heure locale (fuseau du serveur de jeu), « HH:MM ». */
+  time: text("time").notNull(),
+  leadDays: smallint("lead_days").notNull().default(7),
+  active: boolean("active").notNull().default(true),
+  generatedUntil: ts("generated_until"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  index("raid_templates_group_idx").on(t.groupId),
+  check("raid_templates_weekday_chk", sql`${t.weekday} between 1 and 7`),
+  check("raid_templates_lead_chk", sql`${t.leadDays} between 1 and 28`),
+  check("raid_templates_time_chk", sql`${t.time} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),
+]);
 
 /* ---------- Données du jeu (importées des tables du client via wago.tools) ---------- */
 

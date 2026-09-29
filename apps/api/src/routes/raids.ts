@@ -10,8 +10,8 @@ import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
+import { MAX_RAIDS_PER_GROUP } from "../lib/recurring";
 
-const MAX_RAIDS_PER_GROUP = 100;
 const raidParams = z.object({ id: z.uuid(), raidId: z.uuid() });
 const raidFields = z.object({
   name: z.string().trim().min(2).max(60),
@@ -59,11 +59,11 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await membership(db, id, u.id);
-    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt })
+    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId })
       .from(raids).where(eq(raids.groupId, id)).orderBy(desc(raids.scheduledAt), asc(raids.name));
     const summary = await signupSummary(db, rows.map(r => r.id), u.id);
     return { raids: rows.map(r => ({
-      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, updatedAt: r.updatedAt,
+      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, updatedAt: r.updatedAt, recurring: !!r.templateId,
       signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null,
     })) };
   });
@@ -90,7 +90,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const chars = await slotCharacters(p.id, r.slots);
     const signups = await listSignups(db, r.id);
     return {
-      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt },
+      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt },
       canEdit: role !== "member", ...withCoverage(r.slots, chars, await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
     };
@@ -100,7 +100,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const p = parse(raidParams, req.params);
     await requireRole(db, p.id, u.id, "officer");
-    await loadRaid(p.id, p.raidId);
+    const current = await loadRaid(p.id, p.raidId);
     const body = parse(raidFields.extend({ slots: z.array(slot).max(RAID_GROUPS * GROUP_SIZE) }), req.body);
 
     const seatKeys = new Set(body.slots.map(s => `${s.group}:${s.pos}`));
@@ -110,12 +110,37 @@ export async function raidRoutes(app: FastifyInstance) {
     const chars = await slotCharacters(p.id, body.slots);
     if (chars.length !== charIds.size) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
 
+    const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
+    const moved = (scheduledAt?.getTime() ?? null) !== (current.scheduledAt?.getTime() ?? null);
     await db.update(raids).set({
-      name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, slots: body.slots, updatedAt: new Date(),
+      name: body.name, scheduledAt, slots: body.slots, updatedAt: new Date(),
+      // Nouvelle date : le rappel de la veille sera renvoyé
+      ...(moved && { reminderSentAt: null }),
       ...(body.description !== undefined && { description: body.description }),
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
     return withCoverage(body.slots, chars, await signupSpecs(p.raidId));
+  });
+
+  /** Officiers : afficher (ou retirer) la composition dans l'annonce Discord. */
+  app.post("/:id/raids/:raidId/roster", async (req) => {
+    const u = currentUser(req);
+    const p = parse(raidParams, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const r = await loadRaid(p.id, p.raidId);
+    await db.update(raids).set({ rosterPublishedAt: new Date(), discordChangedAt: new Date() }).where(eq(raids.id, r.id));
+    await audit(db, req, "raid_roster_published", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
+    return { rosterPublished: true };
+  });
+
+  app.delete("/:id/raids/:raidId/roster", async (req) => {
+    const u = currentUser(req);
+    const p = parse(raidParams, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const r = await loadRaid(p.id, p.raidId);
+    await db.update(raids).set({ rosterPublishedAt: null, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
+    await audit(db, req, "raid_roster_unpublished", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
+    return { rosterPublished: false };
   });
 
   /* ----- Inscriptions ----- */

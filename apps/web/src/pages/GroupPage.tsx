@@ -1,4 +1,4 @@
-import { CLASSES, RACES, SIGNUP_LABEL, SKILL_LINE_NAMES, type ClassName, type SignupStatus } from "@forever/game-data";
+import { CLASSES, RACES, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type ClassName, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -11,7 +11,8 @@ import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
-interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
+interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; recurring: boolean; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
+interface RaidTemplate { id: string; name: string; description: string; weekday: number; time: string; leadDays: number; active: boolean; generatedUntil: string | null }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
@@ -19,6 +20,8 @@ const EVENT_LABEL: Record<string, string> = {
   group_created: "a créé le groupe", group_renamed: "a renommé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
   group_member_removed: "a retiré un membre", group_role_changed: "a changé un rôle", invite_created: "a créé une invitation",
   invite_revoked: "a révoqué une invitation", raid_created: "a créé un raid", raid_deleted: "a supprimé un raid",
+  raid_template_created: "a créé un raid récurrent", raid_template_updated: "a modifié un raid récurrent", raid_template_deleted: "a supprimé un raid récurrent",
+  raid_roster_published: "a publié une compo sur Discord", raid_roster_unpublished: "a retiré une compo de Discord",
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
 };
 
@@ -152,7 +155,7 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
             const coming = (r.signups.present ?? 0) + (r.signups.late ?? 0);
             return (
               <tr key={r.id}>
-                <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link></td>
+                <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link>{r.recurring && <span className="muted small" title="Créé par un raid récurrent"> ↻</span>}</td>
                 <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
                 <td className="small"><span className="num">{coming}</span> viennent{r.signups.tentative ? <span className="muted"> · {r.signups.tentative} peut-être</span> : null}{r.signups.absent ? <span className="muted"> · {r.signups.absent} absent{r.signups.absent > 1 ? "s" : ""}</span> : null}</td>
                 <td>{r.mySignup ? <span className={`tag su-tag ${r.mySignup}`}>{SIGNUP_LABEL[r.mySignup]}</span> : <Link className="small" to={`/groups/${groupId}/raids/${r.id}`}>S'inscrire</Link>}</td>
@@ -162,7 +165,61 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
           })}</tbody>
         </table></div>
       )}
+      <Recurring groupId={groupId} canEdit={canEdit} guard={guard} />
     </div>
+  );
+}
+
+/** Raids récurrents : le site crée chaque semaine le raid suivant, et le bot l'annonce. */
+function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["raid-templates", groupId], queryFn: () => get<{ templates: RaidTemplate[] }>(`/groups/${groupId}/raid-templates`) });
+  const [form, setForm] = useState({ name: "", weekday: 3, time: "21:00", leadDays: 7, description: "" });
+  const [msg, setMsg] = useState<string | null>(null);
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raid-templates", groupId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
+  const list = data?.templates ?? [];
+  if (!canEdit && !list.length) return null;
+  const created = (n: number) => setMsg(n ? `${n} raid${n > 1 ? "s" : ""} créé${n > 1 ? "s" : ""}.` : "Aucun nouveau raid dans la période choisie.");
+  return (
+    <section className="stack" aria-labelledby="rec-title" style={{ marginTop: 20 }}>
+      <div><h3 id="rec-title" style={{ margin: 0 }}>Raids récurrents</h3>
+        <p className="hint" style={{ margin: "4px 0 0" }}>Chaque semaine, le raid est créé automatiquement quelques jours à l'avance (heure de Paris), puis annoncé sur Discord si un salon est lié. Supprimer un raid créé ainsi ne le fait pas revenir.</p></div>
+      {list.length > 0 && (
+        <div className="tscroll"><table className="data">
+          <thead><tr><th>Raid</th><th>Quand</th><th>Créé</th><th>État</th>{canEdit && <th />}</tr></thead>
+          <tbody>{list.map(t => (
+            <tr key={t.id}>
+              <td>{t.name}</td>
+              <td>{WEEKDAYS[t.weekday - 1]} à {t.time.replace(":", " h ")}</td>
+              <td className="small">{t.leadDays} jour{t.leadDays > 1 ? "s" : ""} avant</td>
+              <td>{t.active ? <span className="tag ok">Actif</span> : <span className="tag">En pause</span>}</td>
+              {canEdit && <td className="row" style={{ flexWrap: "nowrap" }}>
+                <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { const r = await patch<{ created: number }>(`/groups/${groupId}/raid-templates/${t.id}`, { active: !t.active }); await refresh(); if (!t.active) created(r.created); else setMsg(null); })}>{t.active ? "Mettre en pause" : "Reprendre"}</button>
+                <button className="btn ghost sm" type="button" aria-label={`Supprimer le raid récurrent ${t.name}`} onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${t.id}`); await refresh(); setMsg("Raid récurrent supprimé (les raids déjà créés restent)."); })}>Supprimer</button>
+              </td>}
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {canEdit && (
+        <form className="row" style={{ alignItems: "flex-end" }} onSubmit={e => {
+          e.preventDefault();
+          void guard(async () => {
+            const r = await post<{ created: number }>(`/groups/${groupId}/raid-templates`, form);
+            setForm(f => ({ ...f, name: "", description: "" })); await refresh(); created(r.created);
+          });
+        }}>
+          <div className="fld" style={{ flex: "2 1 180px" }}><label htmlFor="t-name">Raid récurrent</label><input id="t-name" type="text" required minLength={2} maxLength={60} placeholder="Molten Core" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+          <div className="fld" style={{ flex: "1 1 130px" }}><label htmlFor="t-day">Jour</label>
+            <select id="t-day" value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })}>{WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</select></div>
+          <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-time">Heure</label><input id="t-time" type="time" required value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></div>
+          <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor="t-lead">Créé (jours avant)</label><input id="t-lead" className="num" type="number" min={1} max={28} value={form.leadDays} onChange={e => setForm({ ...form, leadDays: Math.min(28, Math.max(1, Number(e.target.value) || 7)) })} /></div>
+          <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="t-desc">Description (reprise dans chaque raid)</label><input id="t-desc" type="text" maxLength={1000} placeholder="Ex. Pull à 21 h 15, flasques obligatoires" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+          <button className="btn primary" type="submit">Ajouter</button>
+        </form>
+      )}
+      {msg && <div className="alert ok" role="status">{msg}</div>}
+    </section>
   );
 }
 

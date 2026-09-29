@@ -4,6 +4,7 @@ import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import { createMailer } from "./lib/mailer";
+import { ensureRecurringRaids } from "./lib/recurring";
 
 const cfg = loadConfig();
 const { db, pool } = createDb(cfg.DATABASE_URL);
@@ -24,9 +25,21 @@ mailerRef.send = real.send;
 // API interne du bot Discord : port séparé, jamais exposé par Caddy (réseau Docker uniquement).
 const internal = cfg.INTERNAL_API_SECRET ? await buildInternalApp({ db, cfg, mailer: mailerRef, fetch }, logger) : null;
 
-const close = async () => { await Promise.all([app.close(), internal?.close()]); await pool.end(); process.exit(0); };
+// Raids récurrents : création des prochaines occurrences au démarrage, puis toutes les 15 minutes.
+const runRecurring = () => ensureRecurringRaids(db)
+  .then(n => { if (n) app.log.info({ created: n }, "Raids récurrents créés"); })
+  .catch(err => app.log.error({ err }, "Échec de la création des raids récurrents"));
+const recurringTimer = setInterval(runRecurring, 15 * 60e3);
+
+const close = async () => {
+  clearInterval(recurringTimer);
+  await Promise.all([app.close(), internal?.close()]);
+  await pool.end();
+  process.exit(0);
+};
 process.on("SIGTERM", close);
 process.on("SIGINT", close);
 
 await app.listen({ port: cfg.PORT, host: cfg.HOST });
 if (internal) await internal.listen({ port: cfg.INTERNAL_PORT, host: cfg.HOST });
+void runRecurring();

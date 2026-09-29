@@ -1,6 +1,7 @@
 import { CLASSES, SIGNUP_LABEL, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
 import { ButtonStyle, ComponentType, type APIActionRowComponent, type APIComponentInMessageActionRow, type APIEmbed, type APIEmbedField } from "discord.js";
-import type { RaidView, ViewSignup } from "./api";
+import type { RaidView, Recipient, RosterMember, ViewSignup } from "./api";
+import { noEmoji, type EmojiLookup } from "./emojis";
 import { encodeId } from "./ids";
 
 /** Rendu de l'annonce d'un raid dans Discord (fonctions pures : testées sans Discord). */
@@ -44,8 +45,9 @@ export function fitLines(lines: string[], max = 1024, sep = "\n") {
 
 const who = (s: ViewSignup) => escapeMd(s.characterName ?? s.displayName);
 
-function line(s: ViewSignup) {
-  const bits = [`**${who(s)}**`];
+function line(s: ViewSignup, emoji: EmojiLookup) {
+  const icon = s.cls ? emoji(s.cls, s.spec) : "";
+  const bits = [`${icon ? `${icon} ` : ""}**${who(s)}**`];
   if (s.spec) bits.push(s.spec);
   else if (s.cls) bits.push(s.cls);
   let out = bits.join(" · ");
@@ -56,18 +58,39 @@ function line(s: ViewSignup) {
 
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
-export function renderEmbed(v: RaidView): APIEmbed {
+function rosterLine(m: RosterMember, emoji: EmojiLookup) {
+  const icon = emoji(m.cls, m.spec);
+  return `${icon ? `${icon} ` : ""}**${escapeMd(m.name)}**${m.spec ? ` · ${m.spec}` : ""}`;
+}
+
+/** Compo validée : un champ par groupe (3 par ligne), puis les inscrits non retenus. */
+function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): APIEmbedField[] {
+  const groups = v.roster!.groups;
+  const all = groups.flatMap(g => g.members);
+  const count = (r: string) => all.filter(m => m.role === r).length;
+  const fields: APIEmbedField[] = [{
+    name: `✅ Compo validée — ${all.length}/40`,
+    value: ROLES.map(({ role, icon }) => `${icon} ${count(role)} ${role}`).join(" · "),
+    inline: false,
+  }];
+  for (const g of groups) fields.push({ name: `Groupe ${g.group}`, value: fitLines(g.members.map(m => rosterLine(m, emoji))), inline: true });
+  const out = coming.filter(s => !s.group);
+  if (out.length) fields.push({ name: `Inscrits non placés — ${out.length}`, value: fitLines(out.map(s => line(s, emoji))), inline: false });
+  return fields;
+}
+
+export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed {
   const coming = v.signups.filter(s => COMING.includes(s.status));
-  const fields: APIEmbedField[] = ROLES.map(({ role, icon }) => {
+  const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : ROLES.map(({ role, icon }) => {
     const list = coming.filter(s => s.role === role);
-    return { name: `${icon} ${role} — ${list.length}`, value: fitLines(list.map(line)), inline: true };
+    return { name: `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji))), inline: true };
   });
   const noRole = coming.filter(s => !s.role);
-  if (noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(line)), inline: false });
+  if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji))), inline: false });
   for (const st of OTHERS) {
     const list = v.signups.filter(s => s.status === st);
     if (!list.length) continue;
-    const text = st === "absent" ? list.map(who) : list.map(line);
+    const text = st === "absent" ? list.map(who) : list.map(s => line(s, emoji));
     fields.push({ name: `${SIGNUP_LABEL[st]} — ${list.length}`, value: fitLines(text, 1024, st === "absent" ? ", " : "\n"), inline: false });
   }
 
@@ -111,6 +134,33 @@ export function renderButtons(v: RaidView): Row[] {
   ] as Row[];
 }
 
-export function renderAnnouncement(v: RaidView): MessagePayload {
-  return { embeds: [renderEmbed(v)], components: renderButtons(v), allowedMentions: { parse: [] } };
+export function renderAnnouncement(v: RaidView, emoji: EmojiLookup = noEmoji): MessagePayload {
+  return { embeds: [renderEmbed(v, emoji)], components: renderButtons(v), allowedMentions: { parse: [] } };
+}
+
+/** Rappel envoyé en message privé la veille du raid, avec les mêmes boutons que l'annonce. */
+export function renderReminder(v: RaidView, r: Recipient, emoji: EmojiLookup = noEmoji): MessagePayload {
+  const t = v.raid.scheduledAt ? unix(v.raid.scheduledAt) : null;
+  const icon = r.cls ? emoji(r.cls, r.spec) : "";
+  const lines = [
+    t ? `📅 <t:${t}:F> · <t:${t}:R>` : null,
+    `Tu es inscrit : **${SIGNUP_LABEL[r.status]}**${r.name ? ` avec ${icon ? `${icon} ` : ""}**${escapeMd(r.name)}**` : ""}${r.spec ? ` (${r.spec})` : ""}.`,
+    r.group ? `Tu es dans le **groupe ${r.group}** de la compo.` : v.roster && ["present", "late"].includes(r.status) ? "Tu n'es pas placé dans la compo pour l'instant." : null,
+    "Un changement ? Clique sur un statut ci-dessous.",
+  ].filter(Boolean);
+  return {
+    embeds: [{
+      title: `Rappel : ${v.raid.name}`.slice(0, 256),
+      url: v.raid.url,
+      description: lines.join("\n"),
+      color: GOLD,
+      footer: {
+        text: r.guest
+          ? `${v.group.name} · Inscrit sans compte : « Me désinscrire » arrête les rappels de ce raid.`
+          : `${v.group.name} · Rappels désactivables dans Compte & sécurité sur le site.`,
+      },
+    }],
+    components: renderButtons(v),
+    allowedMentions: { parse: [] },
+  };
 }

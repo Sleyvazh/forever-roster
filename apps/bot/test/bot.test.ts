@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Choices, RaidView } from "../src/api";
 import { ApiError, InternalApi } from "../src/api";
-import { parseRaidDate, zonedTime } from "../src/dates";
+import { zonedTime } from "@forever/game-data";
+import { parseRaidDate } from "../src/dates";
 import { confirmation, onCharPicked, onClassPicked, onStatus } from "../src/flow";
 import { decodeId, encodeId, splitValue } from "../src/ids";
-import { escapeMd, fitLines, renderAnnouncement } from "../src/render";
+import { escapeMd, fitLines, renderAnnouncement, renderReminder } from "../src/render";
+import { emojiName, iconFiles, makeLookup, syncEmojis } from "../src/emojis";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createSync } from "../src/sync";
 
 const RAID = "0b6f6f3e-3d0a-4a1e-9a55-2f1f1d2c3b4a";
@@ -17,11 +22,12 @@ const view = (over: Partial<RaidView> = {}): RaidView => ({
   channelId: "123456789012345678",
   messageId: null,
   signups: [
-    { displayName: "Flo", characterName: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank", status: "present", note: "", guest: false },
-    { displayName: "Bob", characterName: null, cls: "Priest", spec: "Holy Heal", role: "Heal", status: "late", note: "", guest: true },
-    { displayName: "Zed_*", characterName: null, cls: "", spec: "", role: null, status: "absent", note: "", guest: true },
-    { displayName: "Ann", characterName: "Annie", cls: "Mage", spec: "Frost", role: "DPS", status: "tentative", note: "", guest: false },
+    { displayName: "Flo", characterName: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank", status: "present", note: "", guest: false, group: null },
+    { displayName: "Bob", characterName: null, cls: "Priest", spec: "Holy Heal", role: "Heal", status: "late", note: "", guest: true, group: null },
+    { displayName: "Zed_*", characterName: null, cls: "", spec: "", role: null, status: "absent", note: "", guest: true, group: null },
+    { displayName: "Ann", characterName: "Annie", cls: "Mage", spec: "Frost", role: "DPS", status: "tentative", note: "", guest: false, group: null },
   ],
+  roster: null,
   ...over,
 });
 
@@ -184,5 +190,59 @@ describe("client de l'API interne", () => {
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${"s".repeat(40)}`);
     const down = new InternalApi("http://api:3001", "x", (async () => { throw new TypeError("fetch failed"); }) as typeof fetch);
     await expect(down.outbox()).rejects.toMatchObject({ status: 503 });
+  });
+});
+
+describe("compo publiée, rappels et émojis", () => {
+  const emoji = makeLookup(new Map([["fr_druid", "11"], ["fr_druid_2", "22"], ["fr_mage", "33"]]));
+
+  it("émoji de la spé, sinon de la classe", () => {
+    expect(emojiName("Druid", 1)).toBe("fr_druid_2");
+    expect(emoji("Druid", "Feral Bear")).toBe("<:fr_druid_2:22>");
+    expect(emoji("Druid", "Balance")).toBe("<:fr_druid:11>");
+    expect(emoji("Mage", "Frost")).toBe("<:fr_mage:33>");
+    expect(emoji("Priest", "Shadow")).toBe("");
+  });
+
+  it("l'annonce montre les groupes de la compo validée et les inscrits non placés", () => {
+    const base = view();
+    const v = view({
+      signups: base.signups.map(s => (s.characterName === "Tournicoti" ? { ...s, group: 2 } : s)),
+      roster: { groups: [{ group: 2, members: [{ name: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank" }] }] },
+    });
+    const f = renderAnnouncement(v, emoji).embeds[0]!.fields!;
+    expect(f[0]).toMatchObject({ name: "✅ Compo validée — 1/40", value: "🛡️ 1 Tank · ✚ 0 Heal · ⚔️ 0 DPS" });
+    expect(f[1]).toEqual({ name: "Groupe 2", value: "<:fr_druid_2:22> **Tournicoti** · Feral Bear", inline: true });
+    expect(f[2]).toMatchObject({ name: "Inscrits non placés — 1", value: "**Bob** · Holy Heal ⏰ ✱" });
+    expect(f.some(x => x.name.startsWith("🛡️ Tank"))).toBe(false);
+  });
+
+  it("rappel en message privé", () => {
+    const r = renderReminder(view({ roster: { groups: [] } }), { discordUserId: "1", status: "present", name: "Tournicoti", cls: "Druid", spec: "Feral Bear", guest: false, group: 3 }, emoji);
+    const d = r.embeds[0]!.description!;
+    expect(r.embeds[0]!.title).toBe("Rappel : Molten Core");
+    expect(d).toContain("Tu es inscrit : **Présent** avec <:fr_druid_2:22> **Tournicoti** (Feral Bear).");
+    expect(d).toContain("groupe 3");
+    expect(r.components.flatMap(c => c.components)).toHaveLength(8);
+    const g = renderReminder(view(), { discordUserId: "2", status: "late", name: "Bob", cls: "Priest", spec: "Shadow", guest: true, group: null });
+    expect(g.embeds[0]!.footer!.text).toContain("Me désinscrire");
+  });
+
+  it("envoie à Discord les icônes manquantes, une seule fois", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "icons-"));
+    await mkdir(path.join(dir, "class")); await mkdir(path.join(dir, "tree"));
+    await writeFile(path.join(dir, "class", "warlock.png"), "png");
+    await writeFile(path.join(dir, "tree", "warlock-1.png"), "png");
+    await writeFile(path.join(dir, "tree", "inconnu-1.png"), "png");
+    await writeFile(path.join(dir, "class", "druid.png"), Buffer.alloc(300 * 1024));
+    expect((await iconFiles(dir)).map(f => f.name)).toEqual(["fr_druid", "fr_warlock", "fr_warlock_1"]);
+    const created: string[] = [];
+    const api = { list: vi.fn(async () => [{ id: "9", name: "fr_warlock" }, { id: "8", name: "autre" }]), create: vi.fn(async (name: string) => { created.push(name); return { id: "10", name }; }) };
+    const log = vi.fn();
+    const ids = await syncEmojis(dir, api, log);
+    expect(created).toEqual(["fr_warlock_1"]); // warlock déjà là, druid trop lourd
+    expect([...ids]).toEqual([["fr_warlock", "9"], ["fr_warlock_1", "10"]]);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("trop lourde"));
+    expect(await iconFiles(path.join(dir, "absent"))).toEqual([]);
   });
 });

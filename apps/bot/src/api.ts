@@ -5,14 +5,21 @@ import type { Role, SignupStatus } from "@forever/game-data";
 export interface ViewSignup {
   displayName: string; characterName: string | null; cls: string; spec: string; role: Role | null;
   status: SignupStatus; note: string; guest: boolean;
+  /** Groupe dans la compo (null : pas placé). */
+  group: number | null;
 }
+export interface RosterMember { name: string; cls: string; spec: string; role: Role | null }
 export interface RaidView {
   raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string };
   group: { id: string; name: string };
   channelId: string;
   messageId: string | null;
   signups: ViewSignup[];
+  /** Compo validée par un officier (null tant qu'elle n'est pas publiée). */
+  roster: { groups: { group: number; members: RosterMember[] }[] } | null;
 }
+export interface Recipient { discordUserId: string; status: SignupStatus; name: string; cls: string; spec: string; guest: boolean; group: number | null }
+export interface Reminder { view: RaidView; recipients: Recipient[] }
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
@@ -56,6 +63,7 @@ export class InternalApi {
   published(raidId: string, b: { channelId: string; messageId: string; changedAt: string }) {
     return this.req<{ ok: true }>("POST", `/internal/discord/raids/${raidId}/published`, b);
   }
+  claimReminders() { return this.req<{ reminders: Reminder[] }>("POST", "/internal/discord/reminders/claim", {}); }
   deletionDone(id: number) { return this.req<{ ok: true }>("DELETE", `/internal/discord/deletions/${id}`); }
   view(raidId: string) { return this.req<RaidView>("GET", `/internal/discord/raids/${raidId}/view`); }
   choices(raidId: string, discordUserId: string) {

@@ -14,6 +14,7 @@ import { discordRoutes } from "./routes/discord";
 import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
 import { groupRoutes } from "./routes/groups";
+import { templateRoutes } from "./routes/templates";
 import { raidRoutes } from "./routes/raids";
 import { imageRoutes } from "./routes/images";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
@@ -78,6 +79,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(gameDataRoutes, { prefix: "/api/gamedata" });
   await app.register(groupRoutes, { prefix: "/api/groups" });
   await app.register(raidRoutes, { prefix: "/api/groups" });
+  await app.register(templateRoutes, { prefix: "/api/groups" });
   await app.register(imageRoutes, { prefix: "/api/images" });
 
   return app;

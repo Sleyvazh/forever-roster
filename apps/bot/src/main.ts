@@ -6,9 +6,10 @@ import { ApiError, InternalApi, type RaidView } from "./api";
 import { COMMANDS } from "./commands";
 import { loadConfig } from "./config";
 import { parseRaidDate } from "./dates";
+import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
 import { confirmation, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, splitValue } from "./ids";
-import { renderAnnouncement } from "./render";
+import { renderAnnouncement, renderReminder } from "./render";
 import { createSync, type Publisher } from "./sync";
 
 const log = {
@@ -30,12 +31,14 @@ async function start() {
   // Intent « Guilds » seulement : le bot ne lit aucun message ni la liste des membres.
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-  const UNKNOWN_MESSAGE = 10008, UNKNOWN_CHANNEL = 10003;
+  const UNKNOWN_MESSAGE = 10008, UNKNOWN_CHANNEL = 10003, CANNOT_DM = 50007;
+  /** Émojis de classe / spé (vide tant que les icônes ne sont pas envoyées à Discord). */
+  let emoji: EmojiLookup = noEmoji;
   const publisher: Publisher = {
     async upsert(view, messageId) {
       const ch = await client.channels.fetch(view.channelId);
       if (!ch || !ch.isSendable()) throw new Error(`Salon ${view.channelId} inaccessible`);
-      const payload = renderAnnouncement(view);
+      const payload = renderAnnouncement(view, emoji);
       if (messageId) {
         try {
           const m = await ch.messages.edit(messageId, payload);
@@ -61,10 +64,41 @@ async function start() {
   const sync = createSync(api, publisher, log);
   const publishSoon = (view: RaidView) => { sync.publish(view).catch(e => log.warn("Mise à jour de l'annonce impossible", e?.message)); };
 
+  /** Envoie les icônes du serveur comme émojis d'application (au démarrage, puis toutes les 6 h). */
+  const refreshEmojis = async () => {
+    const app = client.application!;
+    const ids = await syncEmojis(cfg.iconsDir, {
+      list: async () => [...(await app.emojis.fetch()).values()].map(e => ({ id: e.id, name: e.name })),
+      create: (name, data) => app.emojis.create({ attachment: data, name }).then(e => ({ id: e.id, name: e.name })),
+    }, msg => log.info(msg));
+    emoji = ids.size ? makeLookup(ids) : noEmoji;
+  };
+
+  /** Rappels de la veille, en message privé ; un joueur qui refuse les MP est simplement ignoré. */
+  const sendReminders = async () => {
+    const { reminders } = await api.claimReminders();
+    for (const { view, recipients } of reminders) {
+      let sent = 0;
+      for (const r of recipients) {
+        try {
+          await client.users.send(r.discordUserId, renderReminder(view, r, emoji));
+          sent++;
+        } catch (e) {
+          if (!(e instanceof DiscordAPIError && e.code === CANNOT_DM)) log.warn(`Rappel non envoyé (${view.raid.name})`, (e as Error).message);
+        }
+        await new Promise(res => setTimeout(res, 300));
+      }
+      log.info(`Rappel « ${view.raid.name} » : ${sent}/${recipients.length} message(s) privé(s).`);
+    }
+  };
+
   client.once(Events.ClientReady, async c => {
     log.info(`Connecté en tant que ${c.user.tag}`);
     await c.application.commands.set(COMMANDS);
+    await refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message));
+    setInterval(() => { refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message)); }, 6 * 3600e3);
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
   });
 
   client.on(Events.InteractionCreate, (i: Interaction) => {

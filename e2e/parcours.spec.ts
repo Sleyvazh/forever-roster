@@ -117,10 +117,27 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     // L'officier place l'inscrit : le rôle affiché suit la spé choisie pour ce raid
     await page.getByRole("button", { name: "Ajouter Tournicoti au raid" }).click();
     await expect(page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ })).toContainText("Tank");
+    // Compo publiée sur Discord, puis export pour le jeu
+    await page.getByRole("button", { name: "Publier la compo" }).click();
+    await expect(page.locator(".roster-pub .tag")).toHaveText("Publiée");
+    await page.getByText("Export pour le jeu").click();
+    await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1$/);
+    await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Tournicoti");
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "En retard" }).click();
     await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
     await page.getByRole("link", { name: "Retour au groupe" }).click();
     await expect(page.getByRole("row", { name: /Molten Core/ })).toContainText("En retard");
+  });
+
+  await test.step("groupe : raid récurrent", async () => {
+    await page.fill("#t-name", "Zul'Gurub");
+    await page.selectOption("#t-day", "5");
+    await page.fill("#t-time", "20:30");
+    await page.fill("#t-lead", "14");
+    await page.locator("form").filter({ has: page.locator("#t-name") }).getByRole("button", { name: "Ajouter" }).click();
+    await expect(page.getByRole("status").filter({ hasText: /raids? créés?\./ })).toBeVisible();
+    await expect(page.getByRole("row", { name: /Zul'Gurub.*Vendredi à 20 h 30/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Zul'Gurub" }).first()).toBeVisible();
   });
 
   await test.step("groupe : code de liaison d'un salon Discord", async () => {

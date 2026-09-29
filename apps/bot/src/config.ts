@@ -5,6 +5,8 @@ export interface BotConfig {
   apiSecret: string;
   pollMs: number;
   timeZone: string;
+  /** Dossier des icônes du jeu (monté en lecture seule) pour les émojis de classe. */
+  iconsDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
@@ -14,6 +16,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     apiSecret: env.INTERNAL_API_SECRET?.trim() ?? "",
     pollMs: Math.max(2000, Number(env.BOT_POLL_MS ?? 5000) || 5000),
     timeZone: env.BOT_TIMEZONE?.trim() || "Europe/Paris",
+    iconsDir: env.BOT_ICONS_DIR?.trim() || "/icons",
   };
   if (cfg.token && cfg.apiSecret.length < 32) throw new Error("INTERNAL_API_SECRET manquant ou trop court (32 caractères minimum).");
   // Vérifie que le fuseau est connu (lève une RangeError sinon)

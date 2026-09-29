@@ -43,6 +43,13 @@
       "when": 1790709239152,
       "tag": "0005_discord",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790712288169,
+      "tag": "0006_recurring_reminders",
+      "breakpoints": true
     }
   ]
 }

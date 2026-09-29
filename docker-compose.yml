@@ -57,6 +57,9 @@ services:
       INTERNAL_API_URL: http://api:3001
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
       BOT_TIMEZONE: ${BOT_TIMEZONE:-Europe/Paris}
+    volumes:
+      # Icônes de classe et de spé, envoyées à Discord comme émojis de l'application
+      - ./icons:/icons:ro
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

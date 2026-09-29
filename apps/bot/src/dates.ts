@@ -3,28 +3,10 @@
  *   « 12/11/2026 21:00 », « 12/11 21h », « 12/11/2026 20h45 », « 2026-11-12 21:00 ».
  * Sans année, on prend la prochaine occurrence.
  */
+import { zonedTime } from "@forever/game-data";
+
 const DMY = /^(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2}|\d{4}))?\s+(\d{1,2})\s*(?:[h:](\d{2})?)?$/i;
 const ISO = /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})$/;
-
-/** Décalage (ms) du fuseau par rapport à UTC à l'instant `ts`. */
-function offset(ts: number, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
-  }).formatToParts(new Date(ts));
-  const n = (t: string) => Number(parts.find(p => p.type === t)?.value);
-  return Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second")) - Math.floor(ts / 1000) * 1000;
-}
-
-/** Heure murale (dans le fuseau) → instant UTC, ou null si la date n'existe pas (31/02, 25h…). */
-export function zonedTime(y: number, mo: number, d: number, h: number, mi: number, timeZone: string): Date | null {
-  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
-  const wall = Date.UTC(y, mo - 1, d, h, mi);
-  const check = new Date(wall);
-  if (check.getUTCDate() !== d || check.getUTCMonth() !== mo - 1) return null;
-  let ts = wall - offset(wall, timeZone);
-  ts = wall - offset(ts, timeZone); // second passage : bon côté d'un changement d'heure
-  return new Date(ts);
-}
 
 export type ParsedDate = { ok: true; date: Date } | { ok: false; error: string };
 

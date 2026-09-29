@@ -4,12 +4,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, put, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
+import { ApiError, del, get, post, put, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
+import { RaidExport } from "../components/RaidExport";
 import { RaidSignups } from "../components/RaidSignups";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
 
 const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
 const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
@@ -132,6 +133,23 @@ export function RaidPage() {
       {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
       <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
       {error && <div className="alert error" role="alert">{error}</div>}
+      {canEdit && (
+        <div className="panel pad row between roster-pub">
+          <span>
+            <b>Compo sur Discord</b>{raidQ.data.raid.rosterPublished && <span className="tag ok" style={{ marginLeft: 8 }}>Publiée</span>}<br />
+            <span className="hint">{raidQ.data.raid.rosterPublished
+              ? "L'annonce Discord affiche les groupes et se met à jour à chaque changement de la compo."
+              : "Une fois la compo prête, publie-la : l'annonce Discord affichera les 8 groupes à la place des colonnes par rôle."}</span>
+          </span>
+          <button className={`btn sm ${raidQ.data.raid.rosterPublished ? "ghost" : "primary"}`} type="button" onClick={() => void (async () => {
+            try {
+              if (raidQ.data!.raid.rosterPublished) await del(`/groups/${groupId}/raids/${raidId}/roster`);
+              else await post(`/groups/${groupId}/raids/${raidId}/roster`);
+              await qc.invalidateQueries({ queryKey: ["raid", raidId] });
+            } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
+          })()}>{raidQ.data.raid.rosterPublished ? "Retirer de Discord" : "Publier la compo"}</button>
+        </div>
+      )}
       {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
       <div className="raid">
@@ -222,6 +240,7 @@ export function RaidPage() {
           </div>
         </aside>
       </div>
+      <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when ? new Date(when).toISOString() : null }} slots={slots} chars={chars} signups={raidQ.data.signups} />
     </div>
   );
 }

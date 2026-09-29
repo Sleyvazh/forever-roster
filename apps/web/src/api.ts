@@ -43,7 +43,7 @@ export const imageUrl = (id: string) => `/api/images/${id}`;
 
 export interface User {
   id: string; email: string | null; emailVerified: boolean; displayName: string; battletag: string | null;
-  hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; createdAt: string;
+  hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; discordReminders: boolean; createdAt: string;
 }
 export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean; discordEnabled: boolean }
 

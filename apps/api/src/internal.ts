@@ -1,5 +1,5 @@
-import { CLASS_SPECS, SIGNUP_STATUSES, type SpecDef } from "@forever/game-data";
-import { and, asc, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { CLASS_SPECS, RAID_GROUPS, roleOf, SIGNUP_STATUSES, type SpecDef } from "@forever/game-data";
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
@@ -7,6 +7,7 @@ import { characters, discordDeletions, groupMembers, groups, raidSignups, raids,
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
+import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 
 /**
@@ -59,10 +60,34 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return r;
   }
 
+  /** Persos placés dans la compo (dont le joueur est toujours membre du groupe). */
+  async function placed(raid: typeof raids.$inferSelect) {
+    const ids = raid.slots.map(s => s.characterId);
+    if (!ids.length) return new Map<string, { id: string; name: string; cls: string; spec1: string }>();
+    const rows = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1 }).from(characters)
+      .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, raid.groupId)))
+      .where(inArray(characters.id, ids));
+    return new Map(rows.map(r => [r.id, r]));
+  }
+
   /** Tout ce qu'il faut au bot pour dessiner l'annonce. */
   async function view(raidId: string) {
     const { raid, group } = await loadRaid(raidId);
     const signups = await listSignups(db, raid.id);
+    const chars = await placed(raid);
+    const groupOf = new Map(raid.slots.filter(s => chars.has(s.characterId)).map(s => [s.characterId, s.group]));
+    const specOf = new Map(signups.filter(s => s.characterId && s.spec).map(s => [s.characterId!, s.spec]));
+    // Composition validée par un officier : groupes 1 à 8, dans l'ordre des places
+    const roster = raid.rosterPublishedAt ? {
+      groups: Array.from({ length: RAID_GROUPS }, (_, i) => i + 1).map(g => ({
+        group: g,
+        members: raid.slots.filter(s => s.group === g && chars.has(s.characterId)).sort((a, b) => a.pos - b.pos).map(s => {
+          const c = chars.get(s.characterId)!;
+          const spec = specOf.get(c.id) || c.spec1 || "";
+          return { name: c.name, cls: c.cls, spec, role: spec ? roleOf(spec) : null };
+        }),
+      })).filter(g => g.members.length),
+    } : null;
     return {
       raid: {
         id: raid.id, name: raid.name, description: raid.description, scheduledAt: raid.scheduledAt,
@@ -74,8 +99,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       messageId: raid.discordChannelId === group.discordChannelId ? raid.discordMessageId : null,
       signups: signups.map(s => ({
         displayName: s.displayName, characterName: s.characterName, cls: s.cls, spec: s.spec, role: s.role,
-        status: s.status, note: s.note, guest: !s.userId,
+        status: s.status, note: s.note, guest: !s.userId, group: s.characterId ? groupOf.get(s.characterId) ?? null : null,
       })),
+      roster,
     };
   }
 
@@ -109,6 +135,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { user, role } = await linkedMember(body.discordUserId, g.id);
     if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
     if (!role || RANK[role] < RANK.officer) throw forbidden("Seuls les officiers du groupe peuvent créer un raid.");
+    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raids).where(eq(raids.groupId, g.id));
+    if (n >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     const [r] = await db.insert(raids).values({
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
     }).returning({ id: raids.id });
@@ -143,6 +171,47 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { id } = parse(z.object({ id: z.coerce.number().int().positive() }), req.params);
     await db.delete(discordDeletions).where(eq(discordDeletions.id, id));
     return { ok: true };
+  });
+
+  /* ----- Rappels de la veille ----- */
+
+  /**
+   * Réserve les raids dont le rappel est dû (entre 24 h et 1 h avant, salon lié) et renvoie les destinataires.
+   * La réservation est atomique : un rappel n'est jamais envoyé deux fois, même si deux bots tournaient.
+   */
+  app.post("/internal/discord/reminders/claim", async () => {
+    const now = Date.now();
+    const due = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+      .where(and(
+        isNotNull(groups.discordChannelId), isNull(raids.reminderSentAt),
+        gt(raids.scheduledAt, new Date(now + 3600e3)), lte(raids.scheduledAt, new Date(now + 24 * 3600e3)),
+      )).limit(10);
+    if (!due.length) return { reminders: [] };
+    const claimed = await db.update(raids).set({ reminderSentAt: new Date() })
+      .where(and(inArray(raids.id, due.map(d => d.id)), isNull(raids.reminderSentAt))).returning({ id: raids.id });
+    const reminders = [];
+    for (const { id } of claimed) {
+      const v = await view(id);
+      // Inscrits qui viennent (ou peut-être) : compte lié avec rappels activés, ou inscription libre
+      const rows = await db.select({
+        status: raidSignups.status, displayName: raidSignups.displayName, characterId: raidSignups.characterId, spec: raidSignups.spec, cls: raidSignups.cls,
+        characterName: characters.name, guestId: raidSignups.discordUserId, linkedId: users.discordId, wants: users.discordReminders,
+      }).from(raidSignups)
+        .leftJoin(users, eq(users.id, raidSignups.userId))
+        .leftJoin(characters, eq(characters.id, raidSignups.characterId))
+        .where(and(eq(raidSignups.raidId, id), ne(raidSignups.status, "absent")));
+      const slots = new Map((await db.select({ slots: raids.slots }).from(raids).where(eq(raids.id, id)))[0]?.slots.map(s => [s.characterId, s.group]) ?? []);
+      const recipients = rows.flatMap(r => {
+        const discordUserId = r.guestId ?? (r.wants ? r.linkedId : null);
+        if (!discordUserId) return [];
+        return [{
+          discordUserId, status: r.status, name: r.characterName ?? r.displayName, cls: r.cls, spec: r.spec, guest: !!r.guestId,
+          group: v.roster && r.characterId ? slots.get(r.characterId) ?? null : null,
+        }];
+      });
+      reminders.push({ view: v, recipients });
+    }
+    return { reminders };
   });
 
   /* ----- Inscription depuis un bouton ----- */

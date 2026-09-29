@@ -29,6 +29,14 @@ export async function accountRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Rappels Discord (message privé la veille des raids). */
+  app.patch("/discord", async (req) => {
+    const u = currentUser(req);
+    const { reminders } = parse(z.object({ reminders: z.boolean() }), req.body);
+    const [row] = await db.update(users).set({ discordReminders: reminders, updatedAt: new Date() }).where(eq(users.id, u.id)).returning();
+    return { user: publicUser(row!) };
+  });
+
   /** Image du compte (recadrée par le navigateur, ré-encodée ici). */
   app.put("/avatar", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
     const u = currentUser(req);
