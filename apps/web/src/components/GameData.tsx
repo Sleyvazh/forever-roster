@@ -1,6 +1,6 @@
 import { ITEM_QUALITIES, itemLinks, PROFESSION_SKILL_LINES, type GEAR_SLOTS } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ApiError, get, put, type GameItem, type GameRecipe, type GameStatus, type RecipeStatus } from "../api";
 
 const QUALITY_LABEL = [...ITEM_QUALITIES, "Artefact", "Héritage"];
@@ -196,12 +196,22 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
   const results = search.data?.items ?? [];
   const open = enabled && focus && term.length >= 2 && (results.length > 0 || search.isFetched);
 
-  // La liste est en position fixe : le tableau d'équipement défile horizontalement et la couperait sinon.
+  // La liste est en position fixe (un conteneur qui défile la couperait sinon). Elle s'ouvre vers le haut
+  // quand il n'y a pas assez de place sous le champ, et ne dépasse jamais de l'écran.
   const inputRef = useRef<HTMLInputElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [rect, setRect] = useState<CSSProperties | null>(null);
   useEffect(() => {
     if (!open) return;
-    const place = () => { const r = inputRef.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom + 4, left: r.left, width: r.width }); };
+    const place = () => {
+      const r = inputRef.current?.getBoundingClientRect(); if (!r) return;
+      const below = innerHeight - r.bottom - 12, above = r.top - 12;
+      const up = below < 220 && above > below;
+      const width = Math.min(Math.max(r.width, 280), innerWidth - 24);
+      const left = Math.max(12, Math.min(r.left, innerWidth - width - 12));
+      setRect(up
+        ? { bottom: innerHeight - r.top + 4, left, width, maxHeight: Math.min(320, above) }
+        : { top: r.bottom + 4, left, width, maxHeight: Math.min(320, below) });
+    };
     place();
     window.addEventListener("scroll", place, true); window.addEventListener("resize", place);
     return () => { window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
@@ -232,7 +242,7 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
         }} />
       {itemId ? <ExtLink id={itemId} /> : null}
       {open && (
-        <ul className="picker-list" id={listId} role="listbox" style={rect ? { top: rect.top, left: rect.left, width: Math.max(rect.width, 280) } : undefined}>
+        <ul className="picker-list" id={listId} role="listbox" style={rect ?? undefined}>
           {!results.length && <li className="muted small" role="option" aria-selected={false}>Aucun objet trouvé pour cet emplacement.</li>}
           {results.map((it, i) => (
             <li key={it.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}

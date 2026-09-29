@@ -7,7 +7,7 @@ import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { hashPassword, PASSWORD_MAX, verifyPassword } from "../lib/password";
 import { currentUser, destroySession, requireAuth } from "../lib/session";
 import { normalizeEmail, publicUser } from "../lib/users";
-import { assertStrongPassword, issueEmailToken } from "./auth";
+import { assertStrongPassword, invalidateEmailTokens, issueEmailToken } from "./auth";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { verifyEmail } from "../lib/email-templates";
 
@@ -62,6 +62,8 @@ export async function accountRoutes(app: FastifyInstance) {
     }
     await assertStrongPassword(app, body.newPassword, u.email);
     await db.update(users).set({ passwordHash: await hashPassword(body.newPassword), updatedAt: new Date() }).where(eq(users.id, u.id));
+    // Un lien de réinitialisation demandé avant ce changement ne doit plus pouvoir l'annuler.
+    await invalidateEmailTokens(db, u.id, "reset");
     // Les autres appareils sont déconnectés, la session actuelle est conservée.
     await db.update(sessions).set({ revokedAt: new Date() })
       .where(and(eq(sessions.userId, u.id), ne(sessions.id, req.session!.id), isNull(sessions.revokedAt)));

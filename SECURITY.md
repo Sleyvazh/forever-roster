@@ -22,6 +22,7 @@ Ce document décrit ce que l'application protège, contre quoi, et comment. Les 
 - **Liens e-mail** : jeton de 256 bits, stocké haché (SHA-256), à usage unique, 24 h pour la confirmation, 30 min pour la réinitialisation. Le jeton est placé dans le fragment `#` de l'URL : il n'apparaît ni dans les journaux du serveur ni dans l'en-tête `Referer`, et le front l'efface de la barre d'adresse.
 - **E-mails** : aucun texte saisi par un utilisateur n'y est inséré, pas même le pseudo. Sinon, quelqu'un pourrait s'inscrire avec l'adresse d'une autre personne et un pseudo piégé, et lui faire envoyer un message d'hameçonnage depuis notre domaine. Envoi en texte et en HTML (échappé), en-tête `Auto-Submitted`, SPF, DKIM et DMARC sur le domaine.
 - **Réinitialisation** : ferme toutes les sessions ouvertes. Un changement de mot de passe ferme toutes les autres.
+- **Un seul lien actif à la fois** : demander un nouveau lien (confirmation ou réinitialisation) annule les précédents. Utiliser un lien, ou changer son mot de passe, annule aussi les liens de réinitialisation encore en attente.
 
 ## Sessions (ASVS V3)
 

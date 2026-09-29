@@ -67,7 +67,19 @@ Les tests de l'API passent par Fastify (`inject`) avec une vraie base Postgres. 
 - la révocation des sessions (déconnexion, réinitialisation, « fermer les autres sessions ») ;
 - la vérification Have I Been Pwned (seul un préfixe du hash quitte le serveur) ;
 - le flux OAuth Battle.net et le rejet d'un `state` qui ne vient pas du navigateur ;
-- le contrôle d'accès des personnages, des groupes et des raids.
+- le contrôle d'accès des personnages, des groupes et des raids ;
+- un seul lien de réinitialisation valide à la fois ;
+- le traitement des images envoyées (ré-encodage, métadonnées supprimées, fichiers piégés refusés).
+
+### De bout en bout (Playwright)
+
+```bash
+npm run build
+createdb forever_e2e
+DATABASE_URL_E2E=postgres://forever:forever@localhost:5432/forever_e2e npm run test:e2e
+```
+
+Un vrai navigateur rejoue le parcours d'un joueur : inscription, fiche, portrait, patrons, équipement, groupe. Le site testé est la version construite pour la production, servie avec les mêmes en-têtes que Caddy (lus dans `infra/Caddyfile`). Toute erreur JavaScript ou violation de la CSP fait échouer le test. C'est ce filet qui manquait quand un envoi d'image fonctionnait en développement mais pas en production.
 
 ## Déploiement
 

@@ -51,7 +51,7 @@ Prérequis : l'enregistrement DNS `A` du domaine doit pointer vers le serveur **
 
 ## Déployer une nouvelle version
 
-Sur son PC : commit et push sur `main`, puis attendre que la CI GitHub soit verte. Ensuite, sur le serveur :
+Sur son PC : commit et push sur `main`. Ensuite, sur le serveur, on peut lancer le déploiement tout de suite :
 
 ```bash
 ~/forever-roster/scripts/deploy.sh
@@ -59,11 +59,16 @@ Sur son PC : commit et push sur `main`, puis attendre que la CI GitHub soit vert
 
 Le script :
 
-1. sauvegarde la base ;
-2. récupère `main` en *fast-forward* uniquement (il refuse si le serveur a des modifications locales) ;
-3. reconstruit les images et redémarre les conteneurs ;
-4. vérifie `https://<domaine>/api/health` pendant 60 s ;
-5. en cas d'échec, affiche la commande de retour arrière.
+1. vérifie la CI GitHub du commit à déployer (tests, bout en bout, CodeQL, images Docker) et **attend qu'elle soit terminée**. Il interroge l'API publique de GitHub toutes les 30 s pendant 20 min au maximum, et annule si une vérification échoue ;
+2. sauvegarde la base ;
+3. récupère `main` en *fast-forward* uniquement (il refuse si le serveur a des modifications locales) ;
+4. reconstruit les images et redémarre les conteneurs ;
+5. vérifie `https://<domaine>/api/health` pendant 60 s ;
+6. en cas d'échec, affiche la commande de retour arrière.
+
+En cas d'urgence (GitHub indisponible, correctif critique), `deploy.sh --skip-ci` déploie sans attendre la CI.
+
+Le script est entièrement contenu dans une fonction : bash le lit en entier avant de l'exécuter, donc sa propre mise à jour par `git merge` ne peut plus perturber le déploiement en cours.
 
 Les migrations de base de données s'appliquent automatiquement au démarrage de l'API.
 
@@ -78,6 +83,16 @@ sudo docker compose up -d --build
 ```
 
 Si une migration a modifié la base de façon incompatible, restaurer aussi la sauvegarde faite par `deploy.sh` (voir plus bas).
+
+## Surveillance
+
+Un service externe vérifie que le site répond et prévient par e-mail sinon. Exemple avec UptimeRobot (offre gratuite, contrôle toutes les 5 min) :
+
+1. Créer un compte, puis **New monitor** de type **HTTP(s) - Keyword** ;
+2. URL `https://forever-roster.sleyvazh.fr/api/health`, mot-clé `"ok":true` ;
+3. Alerte par e-mail vers son adresse personnelle (pas `no-reply@`).
+
+L'endpoint `/api/health` ne donne aucune information interne et ne touche pas la base, il peut être interrogé souvent.
 
 ## Sauvegardes
 

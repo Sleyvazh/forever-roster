@@ -1,7 +1,6 @@
 import { and, asc, eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PROFESSION_SKILL_LINES, SECONDARY_PROFESSIONS } from "@forever/game-data";
 import { characterRecipes, characters, gameRecipes, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
@@ -102,10 +101,8 @@ export async function characterRoutes(app: FastifyInstance) {
     }
     const [recipe] = await db.select({ skillLine: gameRecipes.skillLine }).from(gameRecipes).where(eq(gameRecipes.spellId, spellId));
     if (!recipe) throw badRequest("Recette inconnue.");
-    // Uniquement les métiers du perso : ses deux métiers principaux et les métiers secondaires.
-    const allowed = new Set([ch.professions.prof1.name, ch.professions.prof2.name, ...Object.values(SECONDARY_PROFESSIONS).map(p => p.name)]
-      .filter(Boolean).map(n => PROFESSION_SKILL_LINES[n]));
-    if (!allowed.has(recipe.skillLine)) throw badRequest("Cette recette n'appartient à aucun métier de ce personnage.");
+    // Pas de contrôle du métier ici : le métier choisi juste avant peut ne pas être encore enregistré
+    // (sauvegarde automatique différée). Les patrons d'un métier que le perso n'a plus sont ignorés à la lecture.
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(characterRecipes).where(eq(characterRecipes.characterId, id)) as [{ n: number }];
     if (n >= MAX_RECIPES) throw badRequest(`Limite de ${MAX_RECIPES} recettes atteinte.`);
     await db.insert(characterRecipes).values({ characterId: id, spellId, status })

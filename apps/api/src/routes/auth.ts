@@ -33,8 +33,18 @@ export async function assertStrongPassword(app: FastifyInstance, pwd: string, ma
   }
 }
 
+/**
+ * Annule les liens encore valides d'un compte pour un usage donné.
+ * Un seul lien actif à la fois : un e-mail plus ancien, resté dans une boîte ou transféré, ne sert plus à rien.
+ */
+export async function invalidateEmailTokens(db: FastifyInstance["ctx"]["db"], userId: string, purpose: "verify" | "reset") {
+  await db.update(emailTokens).set({ usedAt: new Date() })
+    .where(and(eq(emailTokens.userId, userId), eq(emailTokens.purpose, purpose), isNull(emailTokens.usedAt)));
+}
+
 export async function issueEmailToken(app: FastifyInstance, userId: string, purpose: "verify" | "reset") {
   const raw = randomToken();
+  await invalidateEmailTokens(app.ctx.db, userId, purpose);
   await app.ctx.db.insert(emailTokens).values({
     userId, purpose, tokenHash: sha256(raw),
     expiresAt: new Date(Date.now() + (purpose === "verify" ? VERIFY_TTL_MS : RESET_TTL_MS)),
@@ -50,6 +60,7 @@ async function consumeEmailToken(app: FastifyInstance, raw: string, purpose: "ve
       isNull(emailTokens.usedAt), gt(emailTokens.expiresAt, new Date())))
     .returning();
   if (!row) throw badRequest("Ce lien n'est plus valide. Demande-en un nouveau.");
+  await invalidateEmailTokens(db, row.userId, purpose);
   return row;
 }
 

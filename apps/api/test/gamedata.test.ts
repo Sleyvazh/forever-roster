@@ -87,8 +87,9 @@ describe("patrons des persos et « qui crafte quoi »", () => {
 
     expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "known" })).statusCode).toBe(200);
     expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19100`, { status: "wanted" })).statusCode).toBe(200);
-    // Enchanting n'est pas un métier de ce perso ; recette inconnue ; statut invalide
-    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/7418`, { status: "known" })).statusCode).toBe(400);
+    // Enchanting n'est pas un métier de ce perso : accepté (le métier peut être en cours d'enregistrement),
+    // mais ignoré par l'onglet Artisans tant que le perso n'a pas ce métier ; recette inconnue ; statut invalide
+    expect((await lw.c.put(`/api/characters/${ch.id}/recipes/7418`, { status: "known" })).statusCode).toBe(200);
     expect((await lw.c.put(`/api/characters/${ch.id}/recipes/999999`, { status: "known" })).statusCode).toBe(400);
     expect((await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "maybe" })).statusCode).toBe(400);
     // Personne d'autre ne peut modifier ni lire hors groupe
@@ -99,17 +100,23 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     const inv = (await lw.c.post(`/api/groups/${g.id}/invites`, { maxUses: 1, expiresInHours: 24 })).json().invite;
     await other.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
 
-    expect((await other.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toHaveLength(2);
+    expect((await other.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toHaveLength(3);
     const found = (await other.c.get(`/api/groups/${g.id}/crafters?q=woolies`)).json();
     expect(found.recipes).toHaveLength(1);
     expect(found.recipes[0]).toMatchObject({ spellId: 19080, item: { name: "Warbear Woolies", quality: 4 }, known: [{ name: "Tournicoti", owner: "Tanneur" }], wanted: [] });
     const wanted = (await other.c.get(`/api/groups/${g.id}/crafters?profession=Leatherworking`)).json().recipes.find((r: { spellId: number }) => r.spellId === 19100);
     expect(wanted.wanted).toHaveLength(1);
     expect((await outsider.c.get(`/api/groups/${g.id}/crafters`)).statusCode).toBe(404);
+    expect((await other.c.get(`/api/groups/${g.id}/crafters?q=bracer`)).json().recipes).toEqual([]);
+    // Changer de métier retire ses patrons de l'onglet Artisans
+    await lw.c.patch(`/api/characters/${ch.id}`, { professions: { prof1: { name: "Enchanting", skill: 300 }, prof2: { name: "Skinning", skill: 300 }, cooking: 0, fishing: 0, firstAid: 0 } });
+    expect((await other.c.get(`/api/groups/${g.id}/crafters?q=bracer`)).json().recipes).toHaveLength(1);
+    expect((await other.c.get(`/api/groups/${g.id}/crafters?q=woolies`)).json().recipes).toEqual([]);
+    await lw.c.patch(`/api/characters/${ch.id}`, { professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 300 }, cooking: 0, fishing: 0, firstAid: 0 } });
 
     // Décocher supprime ; supprimer le perso nettoie ses patrons
     await lw.c.put(`/api/characters/${ch.id}/recipes/19100`, { status: null });
-    expect((await lw.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual([{ spellId: 19080, status: "known", skillLine: 165 }]);
+    expect((await lw.c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual(expect.arrayContaining([{ spellId: 19080, status: "known", skillLine: 165 }]));
     await lw.c.del(`/api/characters/${ch.id}`);
     expect((await other.c.get(`/api/groups/${g.id}/crafters`)).json().recipes).toEqual([]);
   });

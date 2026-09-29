@@ -1,0 +1,123 @@
+import { expect, test as base, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+/**
+ * Parcours complet d'un joueur, sur le site construit comme en production.
+ * Chaque test échoue s'il y a une erreur JavaScript ou une violation de la CSP :
+ * c'est ce qui avait bloqué l'envoi d'image en production sans qu'aucun test ne le voie.
+ */
+const test = base.extend<{ page: Page }>({
+  page: async ({ page }, use) => {
+    const problems: string[] = [];
+    page.on("pageerror", e => problems.push(`Erreur JS : ${e.message}`));
+    page.on("console", m => {
+      if (m.type() !== "error") return;
+      const url = m.location().url ?? "";
+      if (url.includes("/icons/")) return; // icônes du jeu absentes en test : repli prévu par le site
+      problems.push(`Console : ${m.text().slice(0, 200)}`);
+    });
+    await use(page);
+    expect(problems, "erreurs ou violations CSP pendant le test").toEqual([]);
+  },
+});
+
+const LOG = path.resolve("test-results/api.log");
+/** Dernier lien de confirmation envoyé à cette adresse (e-mails journalisés par l'API en mode test). */
+function lastToken(email: string, kind: "verify-email" | "reset-password") {
+  const lines = readFileSync(LOG, "utf8").split("\n").filter(l => l.includes(email) && l.includes(kind));
+  const m = lines.at(-1)?.match(new RegExp(`${kind}#([A-Za-z0-9_-]{20,})`));
+  if (!m) throw new Error(`Aucun lien ${kind} pour ${email}`);
+  return m[1]!;
+}
+
+test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page }) => {
+  const email = `e2e-${Date.now()}@example.test`;
+  const password = "une phrase de passe pour les tests";
+
+  await test.step("inscription et confirmation de l'adresse", async () => {
+    await page.goto("/register");
+    await page.fill("#dn", "Testeur");
+    await page.fill("#em", email);
+    await page.fill("#pw", password);
+    await page.fill("#pw2", password);
+    await page.getByRole("button", { name: /créer/i }).click();
+    await expect(page.getByText("Vérifie tes e-mails")).toBeVisible();
+    await expect.poll(() => { try { return lastToken(email, "verify-email"); } catch { return ""; } }).not.toBe("");
+    await page.goto(`/verify-email#${lastToken(email, "verify-email")}`);
+    await expect(page.getByText("Adresse confirmée")).toBeVisible();
+  });
+
+  await test.step("connexion", async () => {
+    await page.goto("/login");
+    await page.fill("#email", email);
+    await page.fill("#password", password);
+    await page.getByRole("button", { name: /se connecter/i }).click();
+    await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  });
+
+  await test.step("création d'un perso et sauvegarde automatique", async () => {
+    await page.getByRole("button", { name: "+ Ajouter un perso" }).first().click();
+    await page.fill("#f-name", "Tournicoti");
+    await page.selectOption("#f-race", "Tauren");
+    await page.selectOption("#f-cls", "Druid");
+    await page.selectOption("#f-spec-main", "Feral Cat");
+    await expect(page.getByText("Enregistré.")).toBeVisible();
+    await page.reload();
+    await expect(page.locator(".dhead h2")).toContainText("Tournicoti");
+    await expect(page.locator("#f-spec-main")).toHaveValue("Feral Cat");
+  });
+
+  await test.step("portrait : recadrage puis envoi (sous la CSP de production)", async () => {
+    await page.locator(".upl input[type=file]").setInputFiles(path.resolve("e2e/fixtures/portrait.png"));
+    const save = page.locator(".upl .btn.primary");
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect(page.locator(".dhead .portrait-img")).toBeVisible();
+    await expect(page.locator(".dhead .portrait-img")).toHaveJSProperty("naturalWidth", 200);
+  });
+
+  await test.step("métiers : cocher un patron", async () => {
+    await page.getByRole("tab", { name: "Métiers" }).click();
+    await page.selectOption("#p1-n", "Leatherworking");
+    await page.fill("#p1-s", "300");
+    const card = page.locator("details.recipes").first();
+    await card.locator("summary").click();
+    await card.getByLabel("Je connais Warbear Woolies").check();
+    await expect(card.locator("summary")).toContainText("1 connu");
+  });
+
+  await test.step("équipement : choisir un objet dans la base", async () => {
+    await page.getByRole("tab", { name: "Équipement" }).click();
+    await page.getByRole("button", { name: /^Tête : vide/ }).click();
+    await page.getByRole("combobox", { name: "Équipé : Tête" }).fill("helm");
+    await page.getByRole("option", { name: /Helm of Might/ }).click();
+    await page.getByRole("button", { name: "Fermer" }).click();
+    await page.getByRole("button", { name: /^Tête : Helm of Might/ }).hover();
+    await expect(page.locator(".itip")).toContainText("Niveau d'objet 66");
+  });
+
+  await test.step("groupe : l'onglet Artisans montre le patron coché", async () => {
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.fill("#g-name", "Les Testeurs");
+    await page.getByRole("button", { name: "Créer" }).click();
+    await page.getByRole("tab", { name: "Artisans" }).click();
+    await expect(page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ })).toBeVisible();
+  });
+
+  await test.step("menu du compte : thème et déconnexion", async () => {
+    await page.locator(".acct-btn").click();
+    await page.locator(".acct-menu").getByRole("button", { name: "Sombre" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.locator(".acct-menu").getByRole("button", { name: "Se déconnecter" }).click();
+    await expect(page).toHaveURL(/\/login$/);
+  });
+});
+
+test("les en-têtes de sécurité de production sont bien appliqués", async ({ page }) => {
+  const res = await page.goto("/login");
+  const h = res!.headers();
+  expect(h["content-security-policy"]).toContain("default-src 'self'");
+  expect(h["x-content-type-options"]).toBe("nosniff");
+  await expect(page.getByRole("heading", { name: /connexion/i })).toBeVisible();
+});

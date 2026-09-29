@@ -110,6 +110,27 @@ describe("protections de session", () => {
   });
 });
 
+describe("liens envoyés par e-mail", () => {
+  it("un nouveau lien annule les précédents, et un lien utilisé annule les autres", async () => {
+    const { email } = await signedIn(env, "Oublieux");
+    const anon = new Client(env);
+    await anon.post("/api/auth/forgot-password", { email });
+    await anon.post("/api/auth/forgot-password", { email });
+    const [first, second] = env.mailer.outbox.filter(m => m.to === email && m.subject.includes("Réinitialisation")).slice(-2).map(m => tokenFrom(m.text));
+    expect((await anon.post("/api/auth/reset-password", { token: first, password: "un mot de passe tout neuf" })).statusCode).toBe(400);
+    expect((await anon.post("/api/auth/reset-password", { token: second, password: "un mot de passe tout neuf" })).statusCode).toBe(200);
+    expect((await anon.post("/api/auth/reset-password", { token: second, password: "encore un autre mot de passe" })).statusCode).toBe(400);
+  });
+
+  it("changer son mot de passe annule un lien de réinitialisation en attente", async () => {
+    const { c, email, password } = await signedIn(env, "Prudent");
+    await new Client(env).post("/api/auth/forgot-password", { email });
+    const link = env.mailer.outbox.filter(m => m.to === email).at(-1)!;
+    expect((await c.post("/api/account/password", { currentPassword: password, newPassword: "phrase de passe changee ce soir" })).statusCode).toBe(200);
+    expect((await new Client(env).post("/api/auth/reset-password", { token: tokenFrom(link.text), password: "tentative apres changement" })).statusCode).toBe(400);
+  });
+});
+
 describe("Have I Been Pwned", () => {
   it("refuse un mot de passe présent dans une fuite (seul le préfixe du hash est envoyé)", async () => {
     const local = await setup({ HIBP_CHECK: "true" });

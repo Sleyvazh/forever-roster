@@ -10,3 +10,7 @@ coverage/
 # Icônes du jeu (fichiers de Blizzard) : uniquement sur le serveur et en local
 /icons/
 apps/web/public/icons/
+
+# Tests de bout en bout
+test-results/
+playwright-report/

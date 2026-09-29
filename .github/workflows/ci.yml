@@ -32,6 +32,41 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  # Parcours complet dans un vrai navigateur, sur le site construit comme en production
+  # (mêmes en-têtes de sécurité que Caddy, CSP comprise).
+  e2e:
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: forever
+          POSTGRES_PASSWORD: forever
+          POSTGRES_DB: forever_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U forever" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL_E2E: postgres://forever:forever@localhost:5432/forever_e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - name: Rapport en cas d'échec
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   audit:
     runs-on: ubuntu-latest
     steps:

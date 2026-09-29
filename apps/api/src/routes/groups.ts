@@ -1,7 +1,13 @@
 import { and, asc, desc, eq, gt, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PROFESSION_SKILL_LINES } from "@forever/game-data";
+import { PROFESSION_SKILL_LINES, SECONDARY_PROFESSIONS } from "@forever/game-data";
+import type { Professions } from "../db/schema";
+
+/** Lignes de compétence des métiers actuels d'un perso (deux principaux + secondaires). */
+const currentLines = (p: Professions) => new Set(
+  [p.prof1.name, p.prof2.name, ...Object.values(SECONDARY_PROFESSIONS).map(s => s.name)].filter(Boolean).map(n => PROFESSION_SKILL_LINES[n]),
+);
 import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
@@ -104,6 +110,7 @@ export async function groupRoutes(app: FastifyInstance) {
       spellId: gameRecipes.spellId, name: gameRecipes.name, skillLine: gameRecipes.skillLine, reqSkill: gameRecipes.reqSkill,
       itemId: gameRecipes.createdItemId, itemName: gameItems.name, quality: gameItems.quality, enchant: gameRecipes.enchant,
       status: characterRecipes.status, characterId: characters.id, character: characters.name, owner: users.displayName,
+      professions: characters.professions,
     }).from(characterRecipes)
       .innerJoin(characters, eq(characters.id, characterRecipes.characterId))
       .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, id)))
@@ -117,6 +124,8 @@ export async function groupRoutes(app: FastifyInstance) {
     type Who = { characterId: string; name: string; owner: string };
     const byRecipe = new Map<number, { spellId: number; name: string; skillLine: number; reqSkill: number; item: { id: number; name: string; quality: number } | null; enchant: string | null; known: Who[]; wanted: Who[] }>();
     for (const r of rows) {
+      // Seulement les métiers actuels du perso (un patron d'un métier abandonné ne compte plus)
+      if (!currentLines(r.professions).has(r.skillLine)) continue;
       let e = byRecipe.get(r.spellId);
       if (!e) {
         e = { spellId: r.spellId, name: r.name, skillLine: r.skillLine, reqSkill: r.reqSkill, enchant: r.enchant, known: [], wanted: [],
