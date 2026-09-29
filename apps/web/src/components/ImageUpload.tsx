@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ApiError, imageUrl } from "../api";
 
 const FRAME = 200;        // taille du cadre de recadrage à l'écran (px)
@@ -31,8 +31,6 @@ export function ImageUpload({ title, hint, currentId, onUpload, onRemove, round 
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
-  useEffect(() => () => { if (src) URL.revokeObjectURL(src); }, [src]);
-
   const base = nat ? Math.max(FRAME / nat.w, FRAME / nat.h) : 1;
   const dw = nat ? nat.w * base * zoom : FRAME, dh = nat ? nat.h * base * zoom : FRAME;
   const clamp = (p: { x: number; y: number }, w = dw, h = dh) => ({ x: Math.min(0, Math.max(FRAME - w, p.x)), y: Math.min(0, Math.max(FRAME - h, p.y)) });
@@ -42,8 +40,14 @@ export function ImageUpload({ title, hint, currentId, onUpload, onRemove, round 
     if (!f) return;
     if (!ACCEPT.includes(f.type)) { setError("Formats acceptés : PNG, JPEG ou WebP."); return; }
     if (f.size > MAX_FILE) { setError("Fichier trop lourd (15 Mo maximum)."); return; }
-    setSrc(URL.createObjectURL(f)); setNat(null); setZoom(1);
+    // Lecture en data: URL et non en blob: URL : la CSP du site (img-src 'self' data:) n'autorise pas blob:.
+    const reader = new FileReader();
+    reader.onload = () => { setSrc(String(reader.result)); setNat(null); setZoom(1); };
+    reader.onerror = () => setError("Impossible de lire ce fichier.");
+    reader.readAsDataURL(f);
   };
+
+  const onError = () => { setSrc(null); setError("Image illisible : essaie un autre fichier (PNG, JPEG ou WebP)."); };
 
   const onLoad = () => {
     const el = imgRef.current; if (!el) return;
@@ -105,7 +109,7 @@ export function ImageUpload({ title, hint, currentId, onUpload, onRemove, round 
         <div className="upl-crop">
           <div className={`upl-frame ${round ? "round" : ""}`} tabIndex={0} role="img" aria-label="Aperçu du recadrage : glisse l'image ou utilise les flèches du clavier"
             onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onKeyDown={key}>
-            <img ref={imgRef} src={src} alt="" draggable={false} onLoad={onLoad}
+            <img ref={imgRef} src={src} alt="" draggable={false} onLoad={onLoad} onError={onError}
               style={{ width: dw, height: dh, transform: `translate(${pos.x}px, ${pos.y}px)`, visibility: nat ? "visible" : "hidden" }} />
           </div>
           <div className="stack" style={{ gap: 8, minWidth: 0 }}>
