@@ -2,12 +2,13 @@
    Titres Marcellus SC, texte Geist, chiffres Geist Mono. Thème : système par défaut, forçable via [data-theme]. */
 :root {
   color-scheme: light;
-  --bg: #e7eaf0; --panel: #ffffff; --panel-2: #f2f4f8; --ink: #161b27; --ink-2: #4c5468; --ink-3: #6a7388;
-  --line: #d3d8e1; --line-2: #bfc6d2; --frame: #b89449; --gold: #8f6310; --gold-soft: #f4ead3; --on-gold: #ffffff;
-  --q0: #7d7d7d; --q1: #3b3f48; --q2: #1b8a06; --q3: #0062c4; --q4: #8a2fd0; --q5: #cc6500;
-  --ok: #1b7a06; --warn: #9a5f00; --bad: #b3261e; --alli: #2458b8; --horde: #b3261e;
-  --icon-bg: #1b2236;
-  --shadow: 0 1px 2px rgba(20,25,37,.06), 0 8px 24px -12px rgba(20,25,37,.18);
+  /* Thème clair « parchemin » : papier teinté, jamais de blanc pur */
+  --bg: #ddd5c4; --panel: #efe9dc; --panel-2: #e5ddcc; --ink: #231d14; --ink-2: #57503f; --ink-3: #5d5442;
+  --line: #cbbfa6; --line-2: #b9aa8c; --frame: #a8843f; --gold: #7d560c; --gold-soft: #e6d7b3; --on-gold: #fbf7ee;
+  --q0: #666360; --q1: #3b3f48; --q2: #186e05; --q3: #0058b0; --q4: #7e26c2; --q5: #a14e00;
+  --ok: #186a05; --warn: #7f4d00; --bad: #b3261e; --alli: #2458b8; --horde: #b3261e;
+  --icon-bg: #2a2418;
+  --shadow: 0 1px 2px rgba(60,45,20,.08), 0 8px 24px -12px rgba(60,45,20,.25);
   --f-disp: "Marcellus SC", "Trajan Pro", Georgia, serif;
   --f-body: "Geist", "Segoe UI", system-ui, sans-serif;
   --f-mono: "Geist Mono", Consolas, ui-monospace, monospace;
