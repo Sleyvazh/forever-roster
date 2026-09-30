@@ -208,6 +208,7 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 - **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
 - **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever n'est jamais remplacé. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
 - **Infobulles :** armure, caractéristiques, dégâts des armes, effets « Équipé : » et bonus de set sont calculés à l'import à partir des barèmes du client (RandPropPoints, ItemArmor*, ItemDamage*, Spell*, ItemSet). Si une de ces tables manque ou change de structure, l'import continue et les infobulles se limitent au nom, à l'emplacement et au niveau. Pas encore affichés : durabilité et dégâts des armes à distance. Le nom de l'icône de chaque objet est retrouvé via la [liste de fichiers communautaire](https://github.com/wowdev/wow-listfile) (`--no-icons` pour sauter cette étape).
+- **Recettes en double :** le client contient aussi des recettes de la Saison de la Découverte, au même nom qu'une recette d'origine mais dont l'objet n'existe pas sur Forever. L'import garde la version dont l'objet est connu, et reporte sur elle les patrons que les joueurs avaient cochés sur l'autre.
 - **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
 
 ### Objets révélés en jeu (cache du client)
@@ -254,7 +255,9 @@ bash scripts/fetch-item-icons.sh                 # relançable à tout moment
 SKIP_ICONS=1 bash scripts/import-gamedata.sh     # import sans téléchargement d'icônes
 ```
 
-Une icône absente (objet propre à Forever dont le fichier n'est pas encore dans la liste communautaire) est remplacée par le pictogramme de l'emplacement sur la fiche d'équipement, et par un cadre de la couleur de qualité ailleurs.
+Beaucoup d'objets (surtout ceux de Forever) n'ont pas d'icône propre dans la table Item : l'import prend alors celle de leur apparence (ItemModifiedAppearance → ItemAppearance), comme le jeu. Les icônes que le serveur d'images de Blizzard ne sert pas (récentes, propres à Forever) et celles dont le nom est inconnu (fichier nommé `f<identifiant>`) sont ensuite récupérées dans les fichiers du jeu par leur identifiant, sur wago.tools (format BLP), puis converties en JPEG 56×56 par `dist/blp-icons.js` dans un conteneur `api` temporaire. Branches essayées : `WAGO_BRANCHES` (par défaut `wow_classic_beta,wow_classic,wow_classic_era`).
+
+Si une icône reste introuvable, le site affiche le pictogramme de son emplacement.
 
 ## Bot Discord
 

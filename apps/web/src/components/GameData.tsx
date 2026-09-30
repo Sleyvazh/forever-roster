@@ -147,11 +147,10 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                     <li key={r.spellId} className={mark ? `on ${mark}` : ""}>
                       <div className="rmain">
                         <div className="rname">
-                          <ItemHover item={made} className="with-icon">
+                          <ItemHover item={made} className="with-icon" link>
                             {made && <ItemIcon item={made} size={20} />}
                             <span className={made ? `q${made.quality}` : ""}>{made && r.createdCount > 1 ? `${r.createdCount}× ` : ""}{r.name}</span>
                           </ItemHover>
-                          {made && <ExtLink id={made.id} />}
                           {r.enchant && <span className="muted small"> · {r.enchant}</span>}
                         </div>
                         <div className="rmeta">
@@ -159,7 +158,7 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                           <span>{r.fromItem ? "Patron" : "Entraîneur"}</span>
                           {r.reagents.length > 0 && (
                             <span className="reag">{r.reagents.map((x, k) => (
-                              <span key={x.id}>{k > 0 && ", "}<ItemHover item={items[x.id]}>{x.n}× {items[x.id]?.name ?? `#${x.id}`}</ItemHover></span>
+                              <span key={x.id}>{k > 0 && ", "}<ItemHover item={items[x.id]} link>{x.n}× {items[x.id]?.name ?? `#${x.id}`}</ItemHover></span>
                             ))}</span>
                           )}
                         </div>

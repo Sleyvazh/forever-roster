@@ -483,3 +483,5 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 .admin-sec + .admin-sec { border-top: 1px solid var(--line); }
 .admin-sec h3 { margin: 0; }
 .danger-zone h3 { color: var(--bad); }
+.ilink { color: inherit; text-decoration: none; }
+.ilink:hover > span:not(.iicon), .ilink:focus-visible > span:not(.iicon) { text-decoration: underline; text-underline-offset: 3px; }

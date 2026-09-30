@@ -18,8 +18,10 @@ export interface ItemDetails {
   set?: { id: number; name: string; items: string[]; bonuses: { n: number; text: string }[] };
   /** Prix de vente en pièces de cuivre. */
   sell?: number;
-  /** Nom du fichier d'icône (ex. inv_shoulder_08), servi depuis /icons/items/. */
+  /** Nom du fichier d'icône (ex. inv_shoulder_08, ou f<identifiant> si le nom est inconnu), servi depuis /icons/items/. */
   icon?: string;
+  /** Identifiant du fichier d'icône dans les données du jeu (pour le récupérer quand Blizzard ne le sert pas). */
+  iconId?: number;
 }
 
 export const BOND_LABEL: Record<number, string> = {

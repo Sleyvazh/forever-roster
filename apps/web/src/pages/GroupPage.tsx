@@ -323,7 +323,7 @@ function Crafters({ groupId }: { groupId: string }) {
           <thead><tr><th>Recette</th><th>Métier</th><th>Sait la faire</th><th>La recherche</th></tr></thead>
           <tbody>{data.recipes.map(r => (
             <tr key={r.spellId}>
-              <td><ItemHover item={r.item} className="with-icon">{r.item && <ItemIcon item={r.item} size={22} />}<span className={r.item ? `q${r.item.quality}` : ""}>{r.name}</span></ItemHover>{r.enchant && <span className="muted small"> · {r.enchant}</span>}</td>
+              <td><ItemHover item={r.item} className="with-icon" link>{r.item && <ItemIcon item={r.item} size={22} />}<span className={r.item ? `q${r.item.quality}` : ""}>{r.name}</span></ItemHover>{r.enchant && <span className="muted small"> · {r.enchant}</span>}</td>
               <td className="small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} <span className="muted num">{r.reqSkill}</span></td>
               <td>{r.known.length ? names(r.known) : <span className="muted">—</span>}</td>
               <td className="small">{r.wanted.length ? names(r.wanted) : <span className="muted">—</span>}</td>

@@ -1,4 +1,4 @@
-import { BOND_LABEL, compareItems, INVENTORY_LABEL, money, statLine, subclassFr, TRIGGER_LABEL } from "@forever/game-data";
+import { BOND_LABEL, compareItems, INVENTORY_LABEL, itemLinks, money, statLine, subclassFr, TRIGGER_LABEL } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { get, type GameItem, type ItemSources } from "../api";
@@ -136,20 +136,27 @@ export function FloatingTip({ rect, children }: { rect: DOMRect; children: React
   return <div className="itip" ref={ref} role="tooltip" style={pos}>{children}</div>;
 }
 
-/** Enveloppe : affiche l'infobulle de l'objet au survol ou au focus clavier. */
-export function ItemHover({ item, compare, compareLabel, children, className }: {
-  item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string;
+/**
+ * Enveloppe : affiche l'infobulle de l'objet au survol ou au focus clavier.
+ * Avec `link`, l'objet entier est un lien vers sa fiche Wowhead (nouvel onglet).
+ */
+export function ItemHover({ item, compare, compareLabel, children, className, link }: {
+  item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string; link?: boolean;
 }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   if (!item) return <>{children}</>;
   const show = (el: HTMLElement) => setRect(el.getBoundingClientRect());
-  return (
-    <span className={`ihover ${className ?? ""}`} tabIndex={0}
-      onMouseEnter={e => show(e.currentTarget)} onMouseLeave={() => setRect(null)}
-      onFocus={e => show(e.currentTarget)} onBlur={() => setRect(null)}>
-      {children}
-      {rect && <FloatingTip rect={rect}><ItemTooltipBody item={item} compare={compare} compareLabel={compareLabel} /></FloatingTip>}
-    </span>
-  );
+  const events = {
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => show(e.currentTarget), onMouseLeave: () => setRect(null),
+    onFocus: (e: React.FocusEvent<HTMLElement>) => show(e.currentTarget), onBlur: () => setRect(null),
+  };
+  const tip = rect && <FloatingTip rect={rect}><ItemTooltipBody item={item} compare={compare} compareLabel={compareLabel} /></FloatingTip>;
+  if (link) {
+    return (
+      <a className={`ihover ilink ${className ?? ""}`} href={itemLinks(item.id).wowhead} target="_blank" rel="noopener noreferrer" {...events}>
+        {children}<span className="sr-only"> (Wowhead, nouvel onglet)</span>{tip}
+      </a>
+    );
+  }
+  return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...events}>{children}{tip}</span>;
 }
-

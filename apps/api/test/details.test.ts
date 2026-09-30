@@ -102,3 +102,17 @@ describe("icône par l'apparence", () => {
     expect(icons.has(5)).toBe(false);
   });
 });
+
+describe("recettes en double", () => {
+  it("écarte la version dont l'objet n'existe pas, garde les vraies variantes", async () => {
+    const { dedupeRecipes } = await import("../src/gamedata/extract");
+    const r = (spellId: number, name: string, createdItemId: number | null, taughtBy: number[] = []) =>
+      ({ spellId, skillLine: 165, name, reqSkill: 1, trivialLow: 0, trivialHigh: 0, category: "", createdItemId, createdCount: 1, enchant: null, reagents: [], taughtBy, fromItem: true });
+    const { recipes, replaced } = dedupeRecipes([
+      r(1213751, "Dreamscale Breastplate", 234324, [234325]), r(24703, "Dreamscale Breastplate", 20380, [20382]),
+      r(10, "Rank", 1), r(11, "Rank", 2), r(12, "Lonely", 999),
+    ], new Set([20380, 20382, 1, 2]));
+    expect(recipes.map(x => x.spellId)).toEqual([10, 11, 12, 24703]);
+    expect([...replaced]).toEqual([[1213751, 24703]]);
+  });
+});

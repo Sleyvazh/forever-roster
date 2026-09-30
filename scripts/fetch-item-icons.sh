@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Télécharge les icônes d'objets manquantes dans icons/items/ (fichiers de Blizzard, jamais dans Git).
-# Les noms viennent de la base (colonne details.icon, remplie par l'import) ; chaque icône n'est
-# téléchargée qu'une fois, depuis le serveur d'images officiel de Blizzard. Caddy les sert sous /icons/items/.
+# Les noms viennent de la base (details.icon et details.iconId, remplis par l'import) ; chaque icône n'est
+# téléchargée qu'une fois : d'abord depuis le serveur d'images officiel de Blizzard, puis, pour les icônes
+# qu'il ne sert pas (récentes, propres à Forever), depuis les fichiers du jeu (wago.tools, format BLP
+# converti en JPEG par dist/blp-icons.js). Caddy les sert sous /icons/items/.
 # Appelé à la fin de scripts/import-gamedata.sh ; peut être relancé seul sans risque.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -9,27 +11,37 @@ DEST=icons/items
 CDN=https://render.worldofwarcraft.com/us/icons/56
 mkdir -p "$DEST"
 
-all=$(mktemp); todo=$(mktemp); fails=$(mktemp)
-trap 'rm -f "$all" "$todo" "$fails"' EXIT
-sudo docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At' > "$all" <<'SQL'
-SELECT DISTINCT details->>'icon' FROM game_items WHERE details ? 'icon';
+all=$(mktemp); pairs=$(mktemp); todo=$(mktemp); fails=$(mktemp); blp=$(mktemp)
+trap 'rm -f "$all" "$pairs" "$todo" "$fails" "$blp"' EXIT
+sudo docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F " "' > "$all" <<'SQL'
+SELECT DISTINCT details->>'icon', coalesce(details->>'iconId', '') FROM game_items WHERE details ? 'icon';
 SQL
 
 # Seuls des noms simples sont acceptés : ils servent à construire une URL et un chemin de fichier.
-grep -E '^[a-z0-9_-]{1,100}$' "$all" | while read -r n; do [ -s "$DEST/$n.jpg" ] || echo "$n"; done > "$todo" || true
-total=$(wc -l < "$all"); count=$(wc -l < "$todo")
+grep -E '^[a-z0-9_-]{1,100} [0-9]*$' "$all" | sort -u -k1,1 > "$pairs" || true
+while read -r n fid; do [ -s "$DEST/$n.jpg" ] || echo "$n $fid"; done < "$pairs" > "$todo"
+total=$(wc -l < "$pairs"); count=$(wc -l < "$todo")
 echo "Icônes d'objets : $total au total, $count à télécharger."
 [ "$count" -eq 0 ] && exit 0
 
 export DEST CDN
-xargs -P 8 -n 1 sh -c '
+# 1. Serveur d'images de Blizzard (noms connus ; « f<identifiant> » = nom inconnu, directement à l'étape 2)
+cut -d" " -f1 "$todo" | grep -v -E '^f[0-9]+$' | xargs -r -P 8 -n 1 sh -c '
   n=$1; part="$DEST/$n.jpg.part"
   if curl -fsS --retry 2 --max-time 20 -o "$part" "$CDN/$n.jpg" 2>/dev/null \
      && [ "$(od -An -tx1 -N3 "$part" | tr -d " ")" = "ffd8ff" ]; then
     mv "$part" "$DEST/$n.jpg"
   else
     rm -f "$part"; echo "$n"
-  fi' _ < "$todo" > "$fails"
+  fi' _ > "$fails"
 
-missing=$(wc -l < "$fails")
-echo "$((count - missing)) icônes téléchargées$( [ "$missing" -gt 0 ] && echo ", $missing introuvables (ex. $(head -3 "$fails" | paste -sd, -))")."
+cdn=$(( $(cut -d" " -f1 "$todo" | grep -cv -E '^f[0-9]+$' || true) - $(wc -l < "$fails") ))
+echo "Serveur d'images de Blizzard : $cdn icônes téléchargées."
+
+# 2. Le reste depuis les fichiers du jeu, par identifiant (« identifiant nom » pour le convertisseur)
+awk -v F="$fails" 'BEGIN { while ((getline l < F) > 0) failed[l] = 1 }
+  ($1 ~ /^f[0-9]+$/ || $1 in failed) && $2 != "" { print $2, $1 }' "$todo" | sort -u > "$blp"
+if [ -s "$blp" ]; then
+  echo "Fichiers du jeu : $(wc -l < "$blp") icônes à convertir…"
+  sudo docker compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$PWD/$DEST:/out" api node dist/blp-icons.js /out < "$blp"
+fi

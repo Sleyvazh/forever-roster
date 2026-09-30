@@ -199,3 +199,28 @@ export function extract(tables: Tables): { items: ItemRow[]; recipes: RecipeRow[
   }
   return { items, recipes };
 }
+
+/**
+ * Recettes en double (même métier, même nom) : le client Forever contient aussi celles de la Saison de la Découverte,
+ * dont l'objet fabriqué n'existe pas sur Forever (ex. Dreamscale Breastplate 24703 et 1213751). On garde celle dont
+ * l'objet est connu (sinon la plus ancienne) ; `replaced` donne, pour chaque recette écartée, celle qui la remplace.
+ */
+export function dedupeRecipes(recipes: RecipeRow[], knownItems: Set<number>) {
+  const score = (r: RecipeRow) => (r.createdItemId && knownItems.has(r.createdItemId) ? 2 : 0) + (r.taughtBy.some(t => knownItems.has(t)) ? 1 : 0);
+  const byName = new Map<string, RecipeRow[]>();
+  for (const r of recipes) {
+    const k = `${r.skillLine}:${r.name.toLowerCase()}`;
+    byName.set(k, [...(byName.get(k) ?? []), r]);
+  }
+  const keep: RecipeRow[] = [];
+  const replaced = new Map<number, number>();
+  for (const group of byName.values()) {
+    const best = [...group].sort((a, b) => score(b) - score(a) || a.spellId - b.spellId)[0]!;
+    // Seulement si une version a un objet connu et l'autre non : deux vraies variantes (ex. rangs) restent toutes les deux
+    for (const r of group) {
+      if (r === best || score(r) >= 2 || score(best) < 2) keep.push(r);
+      else replaced.set(r.spellId, best.spellId);
+    }
+  }
+  return { recipes: keep.sort((a, b) => a.spellId - b.spellId), replaced };
+}

@@ -14,7 +14,7 @@
 import { createDb } from "../db/client";
 import { readFile } from "node:fs/promises";
 import { itemsFromCache, mergeCache, parseDbCache } from "./dbcache";
-import { extract, fillFromEra, readItems } from "./extract";
+import { dedupeRecipes, extract, fillFromEra, readItems } from "./extract";
 import { addDetails, appearanceIcons, iconNames } from "./details";
 import { downloadDetailTables, downloadItemTables, downloadTables, latestBuild, latestEraBuild, listfileLines, readDetailTables, readItemTables, readTables } from "./source";
 import { gameDataStatus, storeGameData } from "./store";
@@ -93,17 +93,26 @@ if (!dir && !process.argv.includes("--no-icons")) {
     const missing = new Set<number>();
     for (const it of data.items) {
       const name = it.iconFileId ? names.get(it.iconFileId) : undefined;
-      if (name) { it.details = { ...it.details, icon: name }; n++; }
-      else if (it.iconFileId) missing.add(it.iconFileId);
+      if (name) { it.details = { ...it.details, icon: name, iconId: it.iconFileId }; n++; }
+      else if (it.iconFileId) {
+        // Nom inconnu : fichier nommé d'après son identifiant, récupéré dans les fichiers du jeu (scripts/fetch-item-icons.sh)
+        it.details = { ...it.details, icon: `f${it.iconFileId}`, iconId: it.iconFileId };
+        missing.add(it.iconFileId);
+      }
     }
     console.log(`${n} objets avec une icône (${names.size} icônes différentes).`);
-    if (missing.size) console.log(`${missing.size} fichiers d'icône absents de la liste communautaire (ex. ${[...missing].slice(0, 5).join(", ")}).`);
+    if (missing.size) console.log(`${missing.size} fichiers d'icône absents de la liste communautaire (ex. ${[...missing].slice(0, 5).join(", ")}) : récupérés par leur identifiant.`);
   } catch (err) { console.warn(`Icônes ignorées : ${(err as Error).message}`); }
 }
 
+// Recettes en double (versions de la Saison de la Découverte présentes dans le client)
+const dedup = dedupeRecipes(data.recipes, new Set(data.items.map(i => i.id)));
+if (dedup.replaced.size) console.log(`Recettes : ${dedup.replaced.size} doublons écartés (version dont l'objet n'existe pas sur Forever).`);
+data.recipes = dedup.recipes;
+
 const { db, pool } = createDb(url);
 try {
-  await storeGameData(db, data, build, { eraBuild, cacheBuild, cacheItems });
+  await storeGameData(db, data, build, { eraBuild, cacheBuild, cacheItems, replacedRecipes: dedup.replaced });
   console.log("Import terminé :", await gameDataStatus(db));
 } finally {
   await pool.end();
