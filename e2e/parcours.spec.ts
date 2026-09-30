@@ -67,9 +67,24 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.reload();
     await expect(page.locator(".dhead h2")).toContainText("Tournicoti");
     await expect(page.locator("#f-spec-main")).toHaveValue("Feral Cat");
+    // Import d'un build ForeverChanges : répartition calculée, puis appliquée à la spé principale
+    await page.fill("#f-import", "https://foreverchanges.pro/talents/priest?b=5");
+    await expect(page.locator(".bi-result")).toContainText("Ce build est pour la classe Priest");
+    await page.fill("#f-import", "https://foreverchanges.pro/talents/druid?b=050022-5520002123032213051-05");
+    await expect(page.locator(".bi-result")).toContainText("plus que les 0 disponibles");
+    await page.fill("#f-level", "60");
+    await page.locator("#f-level").blur();
+    await expect(page.locator(".bi-result")).toContainText("Build complet : 51/51 points.");
+    await page.getByRole("button", { name: "Appliquer à la spé principale" }).click();
+    await expect(page.locator("#f-tal-main")).toHaveValue("9/37/5");
+    await expect(page.locator(".tt.main .tt-pts").first()).toHaveText("37");
+    await page.getByRole("button", { name: "Grille" }).click();
+    await expect(page.locator(".build").first().locator(".tt-slot.on")).toHaveCount(18);
+    await page.getByRole("button", { name: "Jauges" }).click();
   });
 
   await test.step("portrait : recadrage puis envoi (sous la CSP de production)", async () => {
+    await page.getByRole("button", { name: "Changer le portrait de Tournicoti" }).click();
     await page.locator(".upl input[type=file]").setInputFiles(path.resolve("e2e/fixtures/portrait.png"));
     const save = page.locator(".upl .btn.primary");
     await expect(save).toBeEnabled();

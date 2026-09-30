@@ -66,9 +66,9 @@ test("captures d'écran de la documentation", async ({ page, browser }) => {
   await db.connect();
   const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
   const mine = await db.query(
-    `INSERT INTO characters (user_id, name, race, cls, spec1, spec2, level, talents, professions, sort_order) VALUES
-     ($1, 'Thalwen', 'Tauren', 'Druid', 'Feral Bear', 'Feral Cat', 60, '0/31/20', $2, 0),
-     ($1, 'Korrin', 'Orc', 'Hunter', 'Beast Mastery', 'Marksmanship', 42, '31/20/0', $3, 1) RETURNING id`,
+    `INSERT INTO characters (user_id, name, race, cls, spec1, spec2, level, talents, talent_link, talents2, professions, sort_order) VALUES
+     ($1, 'Thalwen', 'Tauren', 'Druid', 'Feral Bear', 'Restoration', 60, '9/37/5', 'https://foreverchanges.pro/talents/druid?b=050022-5520002123032213051-05', '14/0/35', $2, 0),
+     ($1, 'Korrin', 'Orc', 'Hunter', 'Beast Mastery', 'Marksmanship', 42, '31/2/0', '', '', $3, 1) RETURNING id`,
     [me, profs({ name: "Leatherworking", skill: 300 }, { name: "Skinning", skill: 300 }), profs({ name: "Engineering", skill: 210 }, { name: "Mining", skill: 225 })],
   );
   const group = (await db.query("INSERT INTO groups (name) VALUES ('Les Veilleurs du Crépuscule') RETURNING id")).rows[0].id as string;

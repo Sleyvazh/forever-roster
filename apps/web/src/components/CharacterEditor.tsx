@@ -1,7 +1,7 @@
 import { NumberField } from "./NumberField";
 import {
   CLASSES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
-  SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
+  SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, parseTalentLink, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
 import type { Character, Prof } from "../api";
@@ -10,6 +10,8 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { ImageUpload, Portrait } from "./ImageUpload";
 import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
+import { TalentTrees, type TreeView } from "./TalentTrees";
+import { useViewPref } from "../prefs";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
@@ -34,13 +36,24 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
   const race = RACES[c.race];
   const roles = [...new Set([roleOf(c.spec1), roleOf(c.spec2)].filter(Boolean))];
   const pick = (t: Tab) => { setTab(t); sessionStorage.setItem("fr-tab", t); };
+  const [portraitOpen, setPortraitOpen] = useState(false);
+  const canPortrait = editable && !!onPortrait;
+  const face = <Portrait id={c.portraitId} size={64} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={44} /> : <ClassIcon cls={c.cls} size={44} />) : null} />;
 
   return (
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }}>
         <div>
           <h2 className="with-icon">
-            <Portrait id={c.portraitId} size={48} className="round head-portrait" fallback={c.cls ? <ClassIcon cls={c.cls} size={34} /> : null} />
+            {canPortrait ? (
+              <button type="button" className="hportrait" aria-expanded={portraitOpen} aria-controls="portrait-panel"
+                aria-label={`Changer le portrait de ${c.name}`} title="Changer le portrait" onClick={() => setPortraitOpen(o => !o)}>
+                {face}
+                <span className="hp-cam" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                </span>
+              </button>
+            ) : <span className="hportrait static">{face}</span>}
             <span>{c.name}</span>
           </h2>
           <div className="line">
@@ -53,12 +66,21 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
           {roles.map(r => <span key={r} className={`role ${r}`}>{r}</span>)}
         </div>
       </div>
+      {canPortrait && portraitOpen && (
+        <div className="portrait-panel" id="portrait-panel">
+          <ImageUpload title="Portrait du perso" hint="Une capture de la tête de ton perso en jeu (PNG, JPEG ou WebP), recadrée en 200 × 200. Visible par les membres de tes groupes."
+            currentId={c.portraitId} round
+            onUpload={async blob => { const r = await uploadImage<{ portraitId: string }>(`/characters/${c.id}/portrait`, blob); onPortrait!(r.portraitId); setPortraitOpen(false); }}
+            onRemove={async () => { await del(`/characters/${c.id}/portrait`); onPortrait!(null); }} />
+          <button type="button" className="btn sm ghost" onClick={() => setPortraitOpen(false)}>Fermer</button>
+        </div>
+      )}
       <div className="tabs" role="tablist">
         {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}{k === "legacy" && <span className="tag gold tab-tag">Aperçu</span>}</button>)}
       </div>
       <fieldset disabled={!editable} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <div className="pane">
-          {tab === "profil" && <Profil c={c} onChange={onChange} editable={editable} onPortrait={onPortrait} />}
+          {tab === "profil" && <Profil c={c} onChange={onChange} editable={editable} />}
           {tab === "metiers" && <Metiers c={c} onChange={onChange} editable={editable} />}
           {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable={editable} />}
           {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
@@ -71,7 +93,8 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
 
 type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean; onPortrait?: EditorProps["onPortrait"] };
 
-function Profil({ c, onChange, editable, onPortrait }: SubProps) {
+function Profil({ c, onChange, editable }: SubProps) {
+  const [view, setView] = useViewPref<TreeView>("trees", "gauges", ["gauges", "grid"]);
   const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
@@ -113,24 +136,26 @@ function Profil({ c, onChange, editable, onPortrait }: SubProps) {
         {race && <div className="bonus"><span className="lbl">Raciaux {c.race}</span><br />{race.racials}</div>}
       </div>
 
-      {editable && onPortrait && (
-        <div className="sec">
-          <h3>Portrait</h3>
-          <ImageUpload title="Tête du perso" hint="Une capture de ton perso en jeu (PNG, JPEG ou WebP), recadrée en 200 × 200. Visible par les membres de tes groupes."
-            currentId={c.portraitId}
-            onUpload={async blob => { const r = await uploadImage<{ portraitId: string }>(`/characters/${c.id}/portrait`, blob); onPortrait(r.portraitId); }}
-            onRemove={async () => { await del(`/characters/${c.id}/portrait`); onPortrait(null); }} />
-        </div>
-      )}
-
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
-        <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
+        <div className="row between" style={{ alignItems: "baseline" }}>
+          <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
+          {cl && (
+            <div className="seg" role="group" aria-label="Affichage des arbres">
+              <button type="button" aria-pressed={view === "gauges"} className={view === "gauges" ? "on" : ""} onClick={() => setView("gauges")}>Jauges</button>
+              <button type="button" aria-pressed={view === "grid"} className={view === "grid" ? "on" : ""} onClick={() => setView("grid")}>Grille</button>
+            </div>
+          )}
+        </div>
         {!cl && <p className="hint">Choisis une classe pour afficher les spés et les arbres.</p>}
+        {cl && editable && (
+          <BuildImport cls={c.cls} avail={avail}
+            onApply={(which, link, split) => onChange(which === "main" ? { talentLink: link, talents: split } : { talentLink2: link, talents2: split })} />
+        )}
         {cl && (
           <div className="builds">
-            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink}
+            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} view={view} avail={avail}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2}
+            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} view={view} avail={avail}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -145,15 +170,22 @@ function Profil({ c, onChange, editable, onPortrait }: SubProps) {
 
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
-/** Un build : intitulé de spé (avec son rôle), répartition des points et lien vers le calculateur. */
-function Build({ id, title, cls, specs, spec, talents, link, onChange }: {
-  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string;
+/** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
+function Build({ id, title, cls, specs, spec, talents, link, view, avail, onChange }: {
+  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; view: TreeView; avail: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
   const cl = CLASSES[cls as ClassName];
   const def = specDef(cls, spec);
   const split = (talents || "0/0/0").split("/").map(n => parseInt(n, 10) || 0);
   const total = split.reduce((a, b) => a + b, 0);
+  const parsed = link ? parseTalentLink(link) : null;
+  const blocks = parsed?.ok && parsed.cls === cls ? parsed.blocks : null;
+  /** Lien collé : la répartition suit automatiquement s'il vient du calculateur pour cette classe. */
+  const setLink = (value: string) => {
+    const r = parseTalentLink(value);
+    onChange(r.ok && r.cls === cls ? { link: value, talents: r.split } : { link: value });
+  };
   return (
     <div className="build">
       <div className="build-head">
@@ -173,22 +205,65 @@ function Build({ id, title, cls, specs, spec, talents, link, onChange }: {
         <div className="fld"><label htmlFor={`f-tal-${id}`}>Répartition (ex. 9/37/5)</label>
           <input id={`f-tal-${id}`} className="num" type="text" placeholder="0/0/0" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={talents} onChange={e => onChange({ talents: e.target.value })} />
         </div>
-        <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build (https uniquement)</label>
-          <input id={`f-link-${id}`} type="url" placeholder={`https://foreverchanges.pro/talents/${cl?.slug ?? ""}…`} value={link} onChange={e => onChange({ link: e.target.value })} />
+        <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build (calculateur ForeverChanges)</label>
+          <input id={`f-link-${id}`} type="url" placeholder={`https://foreverchanges.pro/talents/${cl?.slug ?? ""}…`} value={link} onChange={e => setLink(e.target.value)} />
         </div>
       </div>
-      {cl && (
-        <div className="stack" style={{ gap: 8 }}>
-          {cl.trees.map((t, i) => (
-            <div className={`trow${def?.tree === i ? " main" : ""}`} key={t}><span>{t}</span><Bar pct={(split[i] ?? 0) / 51 * 100} /><b>{split[i] ?? 0}</b></div>
-          ))}
-        </div>
-      )}
+      {parsed?.ok && parsed.cls && parsed.cls !== cls && <div className="warnmsg">Ce lien est un build {parsed.cls} : la répartition n'a pas été reprise.</div>}
+      {cl && <TalentTrees cls={cls} points={split} blocks={blocks} mainTree={def?.tree} view={view} />}
+      {view === "grid" && !blocks && <p className="hint" style={{ margin: 0 }}>Le détail talent par talent s'affiche quand le lien ForeverChanges du build est renseigné.</p>}
       <div className="row small">
-        <span className="muted">Total <span className="num">{total}</span>/51</span>
+        <span className="muted">Total <span className="num">{total}</span>/{avail}</span>
         {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}
       </div>
-      {total > 51 && <div className="warnmsg">{total} points au total : le maximum au niveau 60 est de 51.</div>}
+      {total > avail && <div className="warnmsg">{total} points au total : le maximum au niveau actuel est de {avail} (51 au niveau 60).</div>}
+    </div>
+  );
+}
+
+/** Coller un lien du calculateur : répartition détectée, erreurs signalées, puis application à l'une des deux spés. */
+function BuildImport({ cls, avail, onApply }: { cls: string; avail: number; onApply: (which: "main" | "off", link: string, split: string) => void }) {
+  const [value, setValue] = useState("");
+  const [done, setDone] = useState<string | null>(null);
+  const r = value.trim() ? parseTalentLink(value) : null;
+  const trees = CLASSES[cls as ClassName]?.trees ?? [];
+  let problem: string | null = null, info: string | null = null;
+  if (r?.ok) {
+    const total = r.points.reduce((a, b) => a + b, 0);
+    if (r.cls !== cls) problem = `Ce build est pour la classe ${r.cls ?? "inconnue"}, ce perso est ${cls}.`;
+    else if (total > avail) problem = `${total} points : c'est plus que les ${avail} disponibles à ce niveau.`;
+    else info = total < avail ? `${avail - total} point${avail - total > 1 ? "s" : ""} non dépensé${avail - total > 1 ? "s" : ""} (${total}/${avail}).` : `Build complet : ${total}/${avail} points.`;
+  }
+  const top = r?.ok ? r.points.indexOf(Math.max(...r.points)) : -1;
+  const apply = (which: "main" | "off") => {
+    if (!r?.ok || problem) return;
+    onApply(which, value.trim(), r.split);
+    setDone(`Build appliqué à ${which === "main" ? "la spé principale" : "l'off-spec"}.`); setValue("");
+  };
+  return (
+    <div className="bimport">
+      <label htmlFor="f-import">Importer un build ForeverChanges</label>
+      <input id="f-import" type="url" placeholder="Colle ici le lien copié depuis le calculateur de talents…" value={value}
+        onChange={e => { setValue(e.target.value); setDone(null); }} />
+      {done && !value && <div className="okmsg" role="status">{done}</div>}
+      {r && (
+        <div className={`bi-result ${r.ok && !problem ? "ok" : "bad"}`} aria-live="polite">
+          {!r.ok ? <span className="bi-msg bad">{r.error}</span> : (
+            <>
+              <div className="bi-head">
+                <span className="num bi-split">{r.points.map((p, i) => <b key={i} className={i === top && p ? "top" : ""}>{i ? "/" : ""}{p}</b>)}</span>
+                {r.cls && trees[top] && r.cls === cls && <span>arbre principal <strong>{trees[top]}</strong></span>}
+              </div>
+              {problem && <span className="bi-msg bad">{problem}</span>}
+              {info && <span className="bi-msg ok">{info}</span>}
+              <div className="row">
+                <button type="button" className="btn sm primary" disabled={!!problem} onClick={() => apply("main")}>Appliquer à la spé principale</button>
+                <button type="button" className="btn sm" disabled={!!problem} onClick={() => apply("off")}>Appliquer à l'off-spec</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
