@@ -1,9 +1,9 @@
-import { CLASSES, GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
+import { GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characterRecipes, characters, gameItems, gameRecipes, gameTalents, gameTalentTrees, groupMembers, users } from "../db/schema";
+import { characterRecipes, characters, gameItems, gameRecipes, groupMembers, users } from "../db/schema";
 import { gameDataStatus } from "../gamedata/store";
 import { notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -98,20 +98,6 @@ export async function gameDataRoutes(app: FastifyInstance) {
           .map(k => ({ name: k.name, owner: k.owner, mine: k.userId === u.id })),
       })),
     };
-  });
-
-  /** Arbres de talents d'une classe : positions, rangs, prérequis et texte de chaque rang. */
-  app.get("/talents/:cls", async (req, reply) => {
-    const { cls } = parse(z.object({ cls: z.enum(Object.keys(CLASSES) as [string, ...string[]]) }), req.params);
-    const [trees, talents] = await Promise.all([
-      db.select({ tree: gameTalentTrees.tree, name: gameTalentTrees.name, icon: gameTalentTrees.icon }).from(gameTalentTrees)
-        .where(eq(gameTalentTrees.cls, cls)).orderBy(asc(gameTalentTrees.tree)),
-      db.select({ id: gameTalents.id, tree: gameTalents.tree, tier: gameTalents.tier, col: gameTalents.col, linkIndex: gameTalents.linkIndex,
-        maxRank: gameTalents.maxRank, name: gameTalents.name, icon: gameTalents.icon, prereq: gameTalents.prereq, ranks: gameTalents.ranks })
-        .from(gameTalents).where(eq(gameTalents.cls, cls)).orderBy(asc(gameTalents.tree), asc(gameTalents.linkIndex)),
-    ]);
-    reply.header("Cache-Control", "private, max-age=3600");
-    return { trees, talents };
   });
 
   app.get("/items/:id", async (req) => {

@@ -570,50 +570,18 @@ button.hportrait { cursor: pointer; }
 .bi-split { font: 600 24px/1 var(--f-mono); } .bi-split b { font-weight: 600; } .bi-split b.top { color: var(--gold); }
 .bi-msg { font-size: 13px; } .bi-msg.ok { color: var(--ok); } .bi-msg.bad { color: var(--bad); }
 
-/* Arbres de talents */
-.ttrees.gauges { display: grid; gap: 10px; }
-.ttrees.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
-.ttrees.grid .tt-head { gap: 5px; }
-.ttrees.grid .tt-name { font-size: 12px; }
-.ttrees.grid .tt-pts { font-size: 15px; }
-.tt { display: grid; gap: 6px; min-width: 0; }
+/* Arbres de talents : une ligne par arbre */
+.ttrees { display: grid; gap: 6px; }
+.tt { display: grid; grid-template-columns: 20px minmax(90px, auto) minmax(0, 1fr) 26px; gap: 8px; align-items: center; min-width: 0; }
 .tt.tt-empty { opacity: .55; }
-.tt-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tt-head .sicon, .tt-head .cicon { border-radius: 5px; flex: none; }
-.ticon-empty { display: inline-block; border-radius: 5px; background: var(--panel); border: 1px solid var(--line); }
-.tt-name { min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tt-pts { margin-left: auto; font-size: 18px; }
+.tt .sicon, .tt .cicon { border-radius: 4px; }
+.ticon-empty { display: inline-block; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
+.tt-name { min-width: 0; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-pts { font-size: 15px; text-align: right; }
 .tt.main .tt-name, .tt.main .tt-pts { color: var(--cc); }
 .tt-gauge { position: relative; height: 10px; border-radius: 5px; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
 .tt-gauge i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--cc, var(--gold)) 45%, transparent), var(--cc, var(--gold))); }
 .tt-gauge .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); }
-.tt-tiers { display: flex; gap: 3px; }
-.tt-tiers span { flex: 1; text-align: center; font: 500 9.5px/1.5 var(--f-mono); color: var(--ink-3); border-radius: 3px; background: var(--panel); }
-.tt-tiers span.on { background: var(--cc, var(--gold)); color: var(--panel); }
-.tt-tiers span.cap { flex: 1.3; border: 1px dashed var(--line-2); }
-.tt-tiers span.cap.on { border: 0; background: var(--gold); color: var(--panel); }
-.tt-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.tt-slot { aspect-ratio: 1; max-width: 100%; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); display: grid; place-items: end end; padding: 1px 3px; font: 600 9.5px/1 var(--f-mono); color: var(--ink-3); }
-.tt-slot.on { border-color: var(--cc, var(--gold)); background: color-mix(in srgb, var(--cc, var(--gold)) 26%, var(--panel)); color: var(--ink); }
-.tt-slot.max { border-color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
-@media (max-width: 520px) { .ttrees.grid { grid-template-columns: minmax(0, 1fr); } }
+.tt-gauge .cap { position: absolute; top: 1px; bottom: 1px; width: 3px; margin-left: -1px; border-radius: 1px; background: var(--line-2); }
+.tt-gauge .cap.on { background: var(--gold); box-shadow: 0 0 4px var(--gold); }
 
-/* Arbres en grille : disposition réelle du jeu */
-.builds.wide { grid-template-columns: minmax(0, 1fr); }
-.tg { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px; border-radius: 6px;
-  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--cc, var(--gold)) 12%, transparent), transparent 70%), var(--panel); border: 1px solid var(--line); }
-.tg-arrows { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); pointer-events: none; z-index: 0; }
-.tg-arrows line { stroke: var(--line-2); stroke-width: 2; }
-.tg-arrows line.on { stroke: var(--gold); }
-.tg-slot { position: relative; z-index: 1; aspect-ratio: 1; max-width: 52px; width: 100%; justify-self: center; border-radius: 6px; overflow: visible;
-  background: var(--panel-2); box-shadow: 0 0 0 1px var(--line-2); cursor: default; }
-.tg-slot img, .tg-ph { width: 100%; height: 100%; border-radius: 6px; display: grid; place-items: center; object-fit: cover; filter: grayscale(1) brightness(.55); }
-.tg-ph { font: 600 11px/1 var(--f-mono); color: var(--ink-3); filter: none; }
-.tg-slot.on img { filter: none; }
-.tg-slot.on { box-shadow: 0 0 0 2px var(--ok); }
-.tg-slot.max { box-shadow: 0 0 0 2px var(--gold); }
-.tg-slot.locked { opacity: .6; }
-.tg-slot b { position: absolute; right: -4px; bottom: -6px; padding: 1px 3px; border-radius: 3px; font-size: 9.5px; line-height: 1.2; background: #0b1022; color: #cfd3dc; border: 1px solid var(--line-2); }
-.tg-slot.on b { color: #1eff00; border-color: color-mix(in srgb, #1eff00 50%, transparent); }
-.tg-slot.max b { color: #ffd100; border-color: color-mix(in srgb, #ffd100 50%, transparent); }
-.tg-slot:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

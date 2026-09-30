@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Télécharge les icônes d'objets et de talents manquantes dans icons/items/ (fichiers de Blizzard, jamais dans Git).
+# Télécharge les icônes d'objets manquantes dans icons/items/ (fichiers de Blizzard, jamais dans Git).
 # Les noms viennent de la base (details.icon et details.iconId, remplis par l'import) ; chaque icône n'est
 # téléchargée qu'une fois : d'abord depuis le serveur d'images officiel de Blizzard, puis, pour les icônes
 # qu'il ne sert pas (récentes, propres à Forever), depuis les fichiers du jeu (wago.tools, format BLP
@@ -20,9 +20,7 @@ done
 all=$(mktemp); pairs=$(mktemp); todo=$(mktemp); fails=$(mktemp); blp=$(mktemp)
 trap 'rm -f "$all" "$pairs" "$todo" "$fails" "$blp"' EXIT
 sudo docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F " "' > "$all" <<'SQL'
-SELECT DISTINCT details->>'icon', coalesce(details->>'iconId', '') FROM game_items WHERE details ? 'icon'
-UNION SELECT icon, coalesce(icon_id::text, '') FROM game_talents WHERE icon IS NOT NULL
-UNION SELECT icon, coalesce(icon_id::text, '') FROM game_talent_trees WHERE icon IS NOT NULL;
+SELECT DISTINCT details->>'icon', coalesce(details->>'iconId', '') FROM game_items WHERE details ? 'icon';
 SQL
 
 # Seuls des noms simples sont acceptés : ils servent à construire une URL et un chemin de fichier.

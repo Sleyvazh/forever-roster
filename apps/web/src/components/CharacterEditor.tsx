@@ -10,8 +10,7 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { ImageUpload, Portrait } from "./ImageUpload";
 import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
-import { TalentTrees, type TreeView } from "./TalentTrees";
-import { useViewPref } from "../prefs";
+import { TalentTrees } from "./TalentTrees";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
@@ -94,7 +93,6 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
 type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean; onPortrait?: EditorProps["onPortrait"] };
 
 function Profil({ c, onChange, editable }: SubProps) {
-  const [view, setView] = useViewPref<TreeView>("trees", "gauges", ["gauges", "grid"]);
   const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
@@ -139,12 +137,6 @@ function Profil({ c, onChange, editable }: SubProps) {
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
         <div className="row between" style={{ alignItems: "baseline" }}>
           <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
-          {cl && (
-            <div className="seg" role="group" aria-label="Affichage des arbres">
-              <button type="button" aria-pressed={view === "gauges"} className={view === "gauges" ? "on" : ""} onClick={() => setView("gauges")}>Jauges</button>
-              <button type="button" aria-pressed={view === "grid"} className={view === "grid" ? "on" : ""} onClick={() => setView("grid")}>Grille</button>
-            </div>
-          )}
         </div>
         {!cl && <p className="hint">Choisis une classe pour afficher les spés et les arbres.</p>}
         {cl && editable && (
@@ -152,10 +144,10 @@ function Profil({ c, onChange, editable }: SubProps) {
             onApply={(which, link, split) => onChange(which === "main" ? { talentLink: link, talents: split } : { talentLink2: link, talents2: split })} />
         )}
         {cl && (
-          <div className={`builds${view === "grid" ? " wide" : ""}`}>
-            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} view={view} avail={avail} level={c.level}
+          <div className="builds">
+            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} view={view} avail={avail} level={c.level}
+            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -171,8 +163,8 @@ function Profil({ c, onChange, editable }: SubProps) {
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, cls, specs, spec, talents, link, view, avail, level, onChange }: {
-  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; view: TreeView; avail: number; level: number;
+function Build({ id, title, cls, specs, spec, talents, link, avail, level, onChange }: {
+  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
   const cl = CLASSES[cls as ClassName];
@@ -180,7 +172,6 @@ function Build({ id, title, cls, specs, spec, talents, link, view, avail, level,
   const split = (talents || "0/0/0").split("/").map(n => parseInt(n, 10) || 0);
   const total = split.reduce((a, b) => a + b, 0);
   const parsed = link ? parseTalentLink(link) : null;
-  const blocks = parsed?.ok && parsed.cls === cls ? parsed.blocks : null;
   /** Lien collé : la répartition suit automatiquement s'il vient du calculateur pour cette classe. */
   const setLink = (value: string) => {
     const r = parseTalentLink(value);
@@ -210,8 +201,7 @@ function Build({ id, title, cls, specs, spec, talents, link, view, avail, level,
         </div>
       </div>
       {parsed?.ok && parsed.cls && parsed.cls !== cls && <div className="warnmsg">Ce lien est un build {parsed.cls} : la répartition n'a pas été reprise.</div>}
-      {cl && <TalentTrees cls={cls} points={split} blocks={blocks} mainTree={def?.tree} view={view} />}
-      {view === "grid" && !blocks && <p className="hint" style={{ margin: 0 }}>Le détail talent par talent s'affiche quand le lien ForeverChanges du build est renseigné.</p>}
+      {cl && <TalentTrees cls={cls} points={split} mainTree={def?.tree} />}
       <div className="row small">
         <span className="muted">Total <span className="num">{total}</span>/51</span>
         {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}

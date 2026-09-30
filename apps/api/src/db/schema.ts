@@ -265,32 +265,6 @@ export const gameRecipes = pgTable("game_recipes", {
   fromItem: boolean("from_item").notNull().default(false),
 }, t => [index("game_recipes_skill_idx").on(t.skillLine), index("game_recipes_created_item_idx").on(t.createdItemId)]);
 
-/** Talents par classe (table Talent du jeu) : position dans l'arbre, rangs, prérequis et texte de chaque rang. */
-export const gameTalents = pgTable("game_talents", {
-  id: integer("id").primaryKey(),
-  cls: text("cls").notNull(),
-  tree: smallint("tree").notNull(),
-  tier: smallint("tier").notNull(),
-  col: smallint("col").notNull(),
-  /** Position du talent dans le lien du calculateur ForeverChanges (palier puis colonne). */
-  linkIndex: smallint("link_index").notNull(),
-  maxRank: smallint("max_rank").notNull(),
-  name: text("name").notNull(),
-  icon: text("icon"),
-  iconId: integer("icon_id"),
-  prereq: jsonb("prereq").$type<{ id: number; rank: number } | null>(),
-  ranks: jsonb("ranks").$type<string[]>().notNull().default([]),
-}, t => [index("game_talents_cls_idx").on(t.cls)]);
-
-/** Arbres de talents (onglets) de chaque classe. */
-export const gameTalentTrees = pgTable("game_talent_trees", {
-  cls: text("cls").notNull(),
-  tree: smallint("tree").notNull(),
-  name: text("name").notNull(),
-  icon: text("icon"),
-  iconId: integer("icon_id"),
-}, t => [primaryKey({ columns: [t.cls, t.tree] })]);
-
 export const gameMeta = pgTable("game_meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
