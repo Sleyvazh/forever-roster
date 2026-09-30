@@ -5,12 +5,13 @@ import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
 import { LaunchPill } from "./Countdown";
 import { ClassIcon } from "./Icons";
+import { Logo } from "./Logo";
 import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
 
 const Brand = () => (
   <Link to="/" className="brand" aria-label="Forever Roster, accueil">
-    <img src="/favicon.svg" width="30" height="30" alt="" />
+    <Logo size={32} />
     <strong>Forever Roster</strong>
   </Link>
 );

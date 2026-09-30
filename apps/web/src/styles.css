@@ -317,6 +317,9 @@ table.gear { min-width: 720px; }
 .bar-in::before { left: 12px; } .bar-in::after { right: 12px; }
 .brand { justify-self: start; display: flex; align-items: center; gap: 10px; text-decoration: none; white-space: nowrap; }
 .brand strong { font: 400 21px/1 var(--f-disp); letter-spacing: .04em; color: var(--gold); }
+.brand .logo { color: var(--gold); flex: 0 0 auto; transition: transform .2s ease; }
+.brand:hover .logo { transform: rotate(-6deg); }
+@media (prefers-reduced-motion: reduce) { .brand .logo { transition: none; } }
 .nav { display: flex; gap: 4px; height: 100%; }
 .nav a { position: relative; display: flex; align-items: center; padding: 0 14px; text-decoration: none; color: var(--ink-2); font-weight: 500; white-space: nowrap; }
 .nav a:hover { color: var(--ink); }
