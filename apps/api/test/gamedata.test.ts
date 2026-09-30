@@ -15,7 +15,7 @@ beforeAll(async () => {
   const tables = await readTables(FIXTURES);
   const data = extract(tables);
   data.items = fillFromEra(data.items, readItems({ ...(await readItemTables(ERA)), ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items);
-  await storeGameData(env.app.ctx.db, data, "1.60.1.70009", "1.15.9.69722");
+  await storeGameData(env.app.ctx.db, data, "1.60.1.70009", { eraBuild: "1.15.9.69722" });
 });
 afterAll(async () => { await env.close(); });
 

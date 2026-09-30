@@ -197,6 +197,7 @@ L'import télécharge 12 tables (≈ 1 minute) et remplace les données en une s
 
 ```bash
 cd ~/forever-roster
+bash scripts/import-gamedata.sh                                                 # dernière version (+ cache du client s'il est là)
 sudo docker compose exec api node dist/import-gamedata.js                       # dernière version de Forever
 sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  # version précise
 ```
@@ -207,6 +208,19 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 - **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
 - **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever n'est jamais remplacé. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
 - **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
+
+### Objets révélés en jeu (cache du client)
+
+Environ 40 % des objets de Forever ne sont pas dans les fichiers du jeu : le serveur les envoie aux clients quand un joueur les découvre, et chaque client les garde dans `Cache\ADB\<langue>\DBCache.bin`. Pour les ajouter au site :
+
+1. Fermer le jeu, puis copier le fichier sur le serveur (depuis le PC, PowerShell) :
+   ```powershell
+   ssh forever "mkdir -p ~/forever-roster/gamedata"
+   scp "C:\Games\World of Warcraft\_classic_beta_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
+   ```
+2. Sur le serveur : `bash scripts/import-gamedata.sh`. Le script utilise `gamedata/DBCache.bin` s'il existe (dossier ignoré par Git).
+
+Les objets du cache complètent les fichiers du jeu sans jamais les remplacer, et passent avant le complément Classic Era. Plus le client a joué, plus il en contient : recommencer de temps en temps (après la sortie : `_classic_` au lieu de `_classic_beta_`). Si Blizzard change le format, l'import s'arrête sans rien écrire (« le format du client a changé »).
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 
