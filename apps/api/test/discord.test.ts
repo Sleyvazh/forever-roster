@@ -43,10 +43,10 @@ describe("liaison du compte Discord", () => {
     const stolen = await other.c.get(`/api/auth/discord/callback?code=abc&state=${url.searchParams.get("state")}`);
     expect(stolen.headers.location).toBe(`${ORIGIN}/account?error=discord_state`);
 
-    expect(await linkDiscord(c, "111111111111111111", "Flo")).toBe(`${ORIGIN}/account?discord=linked`);
-    expect((await c.get("/api/auth/me")).json().user.discordUsername).toBe("Flo");
+    expect(await linkDiscord(c, "111111111111111111", "Aldric")).toBe(`${ORIGIN}/account?discord=linked`);
+    expect((await c.get("/api/auth/me")).json().user.discordUsername).toBe("Aldric");
     // Le même Discord ne peut pas être lié à un second compte
-    expect(await linkDiscord(other.c, "111111111111111111", "Flo")).toBe(`${ORIGIN}/account?error=discord_taken`);
+    expect(await linkDiscord(other.c, "111111111111111111", "Aldric")).toBe(`${ORIGIN}/account?error=discord_taken`);
     expect((await c.del("/api/account/discord")).statusCode).toBe(200);
     expect((await c.get("/api/auth/me")).json().user.discordUsername).toBeNull();
   });

@@ -22,7 +22,7 @@ const view = (over: Partial<RaidView> = {}): RaidView => ({
   channelId: "123456789012345678",
   messageId: null,
   signups: [
-    { displayName: "Flo", characterName: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank", status: "present", note: "", guest: false, group: null },
+    { displayName: "Aldric", characterName: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank", status: "present", note: "", guest: false, group: null },
     { displayName: "Bob", characterName: null, cls: "Priest", spec: "Holy Heal", role: "Heal", status: "late", note: "", guest: true, group: null },
     { displayName: "Zed_*", characterName: null, cls: "", spec: "", role: null, status: "absent", note: "", guest: true, group: null },
     { displayName: "Ann", characterName: "Annie", cls: "Mage", spec: "Frost", role: "DPS", status: "tentative", note: "", guest: false, group: null },

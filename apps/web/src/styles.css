@@ -205,21 +205,23 @@ table.gear { min-width: 720px; }
 .recipes-body { display: grid; gap: 10px; padding: 0 12px 12px; }
 .rfilters { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 6px; }
 .rfilters input { grid-column: 1 / -1; }
-.rlist { list-style: none; margin: 0; padding: 0; display: grid; max-height: 420px; overflow: auto; border-top: 1px solid var(--line); }
-.rlist li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start; padding: 7px 2px; border-bottom: 1px solid var(--line); }
+.rlist { list-style: none; margin: 0; padding: 0; display: grid; max-height: 420px; overflow: auto; scrollbar-gutter: stable; border-top: 1px solid var(--line); }
+.rlist li { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 7px 10px 7px 4px; border-bottom: 1px solid var(--line); }
 .rlist li.known { background: color-mix(in srgb, var(--ok) 7%, transparent); }
 .rlist li.wanted { background: color-mix(in srgb, var(--gold) 9%, transparent); }
-.rcheck { padding-top: 2px; }
-.rcheck input { width: 16px; height: 16px; accent-color: var(--ok); }
 .rmain { min-width: 0; display: grid; gap: 2px; }
 .rname { font-weight: 600; overflow-wrap: anywhere; }
 .rmeta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; color: var(--ink-3); }
 .rmeta .num { font-family: var(--f-mono); color: var(--ink-2); }
 .rmeta .warn, .rmeta .warn .num { color: var(--warn); }
 .rmeta .reag { flex-basis: 100%; }
-.rwant { background: none; border: 0; font-size: 18px; line-height: 1; color: var(--ink-3); cursor: pointer; padding: 0 4px; }
-.rwant.on { color: var(--gold); }
-.rwant:disabled { cursor: default; }
+.rmarks { display: inline-flex; border: 1px solid var(--line-2); border-radius: 6px; overflow: hidden; flex: none; }
+.rmark { background: var(--panel); border: 0; padding: 4px 9px; font: 600 12px/1.3 var(--f-body); color: var(--ink-3); cursor: pointer; white-space: nowrap; }
+.rmark + .rmark { border-left: 1px solid var(--line-2); }
+.rmark:hover { color: var(--ink); background: var(--panel-2); }
+.rmark.known.on { background: color-mix(in srgb, var(--ok) 22%, var(--panel)); color: var(--ok); }
+.rmark.wanted.on { background: color-mix(in srgb, var(--gold) 24%, var(--panel)); color: var(--gold); }
+.rmark:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
 .ext { margin-left: 6px; font-size: 12px; text-decoration: none; color: var(--ink-3); }
 .ext:hover { color: var(--gold); }
 
@@ -466,9 +468,18 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 .iicon { --qc: var(--line-2); position: relative; flex: none; display: inline-grid; place-items: center; border-radius: 5px; overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--qc) 80%, #000); background: #0b1022; box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); }
 .iicon img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.iicon.none { background: color-mix(in srgb, var(--qc) 18%, var(--panel-2)); }
+.iicon.none { background: color-mix(in srgb, var(--qc) 14%, #151a2b); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qc) 55%, transparent); }
+.iicon.none svg { width: 64%; height: 64%; stroke: color-mix(in srgb, var(--qc) 60%, #ffffff); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .gicon.has-img { padding: 0; overflow: visible; background: none; border: 0; }
 .gicon.has-img .iicon { border-width: 2px; }
 .ihover { display: inline-flex; align-items: center; gap: 6px; border-radius: 3px; cursor: help; }
 .ihover:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .with-icon { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Onglet Administration d'un groupe (officiers) */
+.admin { display: grid; }
+.admin-sec { padding: 18px 0; }
+.admin-sec:first-child { padding-top: 0; }
+.admin-sec + .admin-sec { border-top: 1px solid var(--line); }
+.admin-sec h3 { margin: 0; }
+.danger-zone h3 { color: var(--bad); }

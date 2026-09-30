@@ -96,7 +96,10 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
     const key = ["char-recipes", characterId];
     const before = qc.getQueryData<{ recipes: { spellId: number; status: RecipeStatus; skillLine: number }[] }>(key);
     qc.setQueryData(key, { recipes: [...(before?.recipes ?? []).filter(r => r.spellId !== spellId), ...(next ? [{ spellId, status: next, skillLine: line }] : [])] });
-    try { await put(`/characters/${characterId}/recipes/${spellId}`, { status: next }); }
+    try {
+      await put(`/characters/${characterId}/recipes/${spellId}`, { status: next });
+      void qc.invalidateQueries({ queryKey: ["item-sources"] }); // « Connu par » dans les infobulles
+    }
     catch (e) { qc.setQueryData(key, before); setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); }
   };
 
@@ -142,9 +145,6 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                   const tooHigh = skill < r.reqSkill;
                   return (
                     <li key={r.spellId} className={mark ? `on ${mark}` : ""}>
-                      <label className="rcheck" title="Je connais ce patron">
-                        <input type="checkbox" checked={mark === "known"} onChange={e => void setMark(r.spellId, e.target.checked ? "known" : null)} aria-label={`Je connais ${r.name}`} />
-                      </label>
                       <div className="rmain">
                         <div className="rname">
                           <ItemHover item={made} className="with-icon">
@@ -164,11 +164,14 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                           )}
                         </div>
                       </div>
-                      <button type="button" className={`rwant${mark === "wanted" ? " on" : ""}`} aria-pressed={mark === "wanted"}
-                        title={mark === "wanted" ? "Retirer des recherchés" : "Je recherche ce patron"}
-                        onClick={() => void setMark(r.spellId, mark === "wanted" ? null : "wanted")}>
-                        {mark === "wanted" ? "★" : "☆"}<span className="sr-only">Recherché</span>
-                      </button>
+                      <div className="rmarks" role="group" aria-label={`Statut de ${r.name}`}>
+                        <button type="button" className={`rmark known${mark === "known" ? " on" : ""}`} aria-pressed={mark === "known"}
+                          aria-label={`Je connais ${r.name}`} title={mark === "known" ? "Décocher" : "Je connais ce patron"}
+                          onClick={() => void setMark(r.spellId, mark === "known" ? null : "known")}>{mark === "known" ? "✓ " : ""}Connu</button>
+                        <button type="button" className={`rmark wanted${mark === "wanted" ? " on" : ""}`} aria-pressed={mark === "wanted"}
+                          aria-label={`Je recherche ${r.name}`} title={mark === "wanted" ? "Retirer des recherchés" : "Je recherche ce patron"}
+                          onClick={() => void setMark(r.spellId, mark === "wanted" ? null : "wanted")}>Recherché</button>
+                      </div>
                     </li>
                   );
                 })}

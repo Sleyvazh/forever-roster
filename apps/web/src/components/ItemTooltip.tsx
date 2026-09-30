@@ -2,6 +2,7 @@ import { BOND_LABEL, compareItems, INVENTORY_LABEL, money, statLine, subclassFr,
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { get, type GameItem, type ItemSources } from "../api";
+import { glyphFor } from "./ItemGlyphs";
 
 /* Icônes introuvables sur le serveur (pas encore téléchargées) : retenues pour toute la page. */
 const failedIcons = new Set<string>();
@@ -19,11 +20,17 @@ export function useIconFailures() {
 export const iconUsable = (icon?: string) => !!icon && !failedIcons.has(icon);
 
 /** Icône d'objet servie par notre serveur (/icons/items/, fichiers de Blizzard hors dépôt) ; repli : cadre de la couleur de qualité. */
-export function ItemIcon({ item, size = 36, className }: { item?: Pick<GameItem, "quality" | "details"> | null; size?: number; className?: string }) {
+export function ItemIcon({ item, size = 36, className }: { item?: Pick<GameItem, "quality" | "details" | "inventoryType"> | null; size?: number; className?: string }) {
   useIconFailures();
   const icon = item?.details?.icon;
   const style = { width: size, height: size, ["--qc" as string]: item ? `var(--q${item.quality})` : "var(--line-2)" };
-  if (!iconUsable(icon)) return <span className={`iicon none ${className ?? ""}`} style={style} aria-hidden="true" />;
+  if (!iconUsable(icon)) {
+    return (
+      <span className={`iicon none ${className ?? ""}`} style={style} aria-hidden="true">
+        <svg><use href={`#g-${glyphFor(item?.inventoryType)}`} /></svg>
+      </span>
+    );
+  }
   return (
     <span className={`iicon ${className ?? ""}`} style={style} aria-hidden="true">
       <img src={`/icons/items/${icon}.jpg`} width={size} height={size} alt="" loading="lazy" decoding="async" onError={() => markFailed(icon!)} />

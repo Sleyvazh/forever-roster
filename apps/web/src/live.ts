@@ -18,7 +18,7 @@ function refresh(qc: QueryClient, e: LiveEvent) {
     case "raid": inv(["raids", e.g]); inv(["raid", e.r]); break;
     case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); break;
     case "group": inv(["group", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); break;
-    case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); break;
+    case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
     case "membership": inv(["groups"]); break;
   }
 }

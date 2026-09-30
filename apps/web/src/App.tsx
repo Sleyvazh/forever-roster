@@ -1,3 +1,4 @@
+import { GlyphSprite } from "./components/ItemGlyphs";
 import { Link, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./auth";
 import { TopBar } from "./components/TopBar";
@@ -12,6 +13,7 @@ import { RaidPage } from "./pages/RaidPage";
 export function App() {
   return (
     <>
+      <GlyphSprite />
       <TopBar />
       <div className="shell">
         <main>

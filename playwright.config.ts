@@ -6,6 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "e2e",
+  // Captures de la documentation : seulement avec CAPTURES=1 (voir e2e/captures.spec.ts)
+  testIgnore: process.env.CAPTURES ? [] : ["**/captures.spec.ts"],
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   workers: 1,

@@ -15,7 +15,7 @@ import { createDb } from "../db/client";
 import { readFile } from "node:fs/promises";
 import { itemsFromCache, mergeCache, parseDbCache } from "./dbcache";
 import { extract, fillFromEra, readItems } from "./extract";
-import { addDetails, iconNames } from "./details";
+import { addDetails, appearanceIcons, iconNames } from "./details";
 import { downloadDetailTables, downloadItemTables, downloadTables, latestBuild, latestEraBuild, listfileLines, readDetailTables, readItemTables, readTables } from "./source";
 import { gameDataStatus, storeGameData } from "./store";
 
@@ -78,6 +78,10 @@ if (!process.argv.includes("--no-era") && (eraDir || !dir)) {
 console.log("Tables des infobulles :");
 const detailTables = dir ? await readDetailTables(dir, m => console.log(m)) : await downloadDetailTables(build, fetch, m => console.log(m));
 addDetails(data.items, { ...detailTables, ItemEffect: tables.ItemEffect, ItemXItemEffect: tables.ItemXItemEffect, SpellEffect: tables.SpellEffect });
+const byAppearance = appearanceIcons(detailTables);
+let fromAppearance = 0;
+for (const it of data.items) if (!it.iconFileId && byAppearance.has(it.id)) { it.iconFileId = byAppearance.get(it.id); fromAppearance++; }
+if (fromAppearance) console.log(`Icônes : ${fromAppearance} objets sans icône propre complétés par leur apparence.`);
 const withStats = data.items.filter(i => i.details?.stats?.length || i.details?.armor || i.details?.dmg).length;
 console.log(`Infobulles : ${withStats} objets avec stats, armure ou dégâts.`);
 if (!dir && !process.argv.includes("--no-icons")) {
@@ -86,11 +90,14 @@ if (!dir && !process.argv.includes("--no-icons")) {
     console.log(`Noms des icônes (listfile communautaire, ${ids.size} fichiers)…`);
     const names = await iconNames(ids, listfileLines());
     let n = 0;
+    const missing = new Set<number>();
     for (const it of data.items) {
       const name = it.iconFileId ? names.get(it.iconFileId) : undefined;
       if (name) { it.details = { ...it.details, icon: name }; n++; }
+      else if (it.iconFileId) missing.add(it.iconFileId);
     }
     console.log(`${n} objets avec une icône (${names.size} icônes différentes).`);
+    if (missing.size) console.log(`${missing.size} fichiers d'icône absents de la liste communautaire (ex. ${[...missing].slice(0, 5).join(", ")}).`);
   } catch (err) { console.warn(`Icônes ignorées : ${(err as Error).message}`); }
 }
 

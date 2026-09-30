@@ -261,3 +261,21 @@ export async function iconNames(fileIds: Set<number>, lines: AsyncIterable<strin
   }
   return out;
 }
+
+/**
+ * Icône par l'apparence : beaucoup d'objets (surtout ceux ajoutés par Forever) ont Item.IconFileDataID = 0,
+ * et le jeu prend alors l'icône de leur apparence (ItemModifiedAppearance → ItemAppearance.DefaultIconFileDataID).
+ * On garde l'apparence de plus petit OrderIndex (celle de base).
+ */
+export function appearanceIcons(tables: Pick<DetailTables, "ItemModifiedAppearance" | "ItemAppearance">) {
+  const icon = new Map<number, number>();
+  for (const r of tables.ItemAppearance ?? []) { const f = Number(r.DefaultIconFileDataID); if (f > 0) icon.set(Number(r.ID), f); }
+  const best = new Map<number, { order: number; fid: number }>();
+  for (const r of tables.ItemModifiedAppearance ?? []) {
+    const fid = icon.get(Number(r.ItemAppearanceID)); if (!fid) continue;
+    const item = Number(r.ItemID), order = Number(r.OrderIndex) || 0;
+    const cur = best.get(item);
+    if (!cur || order < cur.order) best.set(item, { order, fid });
+  }
+  return new Map([...best].map(([k, v]) => [k, v.fid]));
+}

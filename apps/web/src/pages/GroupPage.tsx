@@ -33,7 +33,7 @@ export function GroupPage() {
   const nav = useNavigate();
   const me = useMe();
   const myId = me.data?.user?.id;
-  const [tab, setTab] = useState<"raids" | "members" | "characters" | "crafters" | "journal">("raids");
+  const [tab, setTab] = useState<"raids" | "members" | "characters" | "crafters" | "admin">("raids");
   const [error, setError] = useState<string | null>(null);
 
   const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
@@ -49,7 +49,7 @@ export function GroupPage() {
   if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
   const { group, role, members } = detail.data;
 
-  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["journal", "Journal"] as [typeof tab, string]] : [])];
+  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["admin", "Administration"] as [typeof tab, string]] : [])];
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -65,7 +65,6 @@ export function GroupPage() {
         </div>
         <div className="row">
           {role !== "owner" && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })}>Quitter le groupe</button>}
-          {isOwner && <DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} />}
         </div>
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
@@ -78,11 +77,22 @@ export function GroupPage() {
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} />}
           {tab === "crafters" && <Crafters groupId={groupId} />}
-          {tab === "journal" && <Journal groupId={groupId} />}
+          {tab === "admin" && isOfficer && (
+            <div className="admin">
+              <Invites groupId={groupId} guard={guard} />
+              <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
+              <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>
+              {isOwner && (
+                <section className="stack admin-sec danger-zone">
+                  <h3>Zone sensible</h3>
+                  <p className="hint" style={{ margin: 0 }}>Supprime définitivement le groupe, ses raids, ses invitations et la liaison Discord. Les persos des membres ne sont pas touchés.</p>
+                  <div><DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} /></div>
+                </section>
+              )}
+            </div>
+          )}
         </div>
       </div>
-      {isOfficer && <Invites groupId={groupId} guard={guard} />}
-      {isOfficer && <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />}
     </div>
   );
 }
@@ -348,7 +358,7 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
   const refresh = () => qc.invalidateQueries({ queryKey: ["invites", groupId] });
 
   return (
-    <section className="panel pad stack">
+    <section className="stack admin-sec">
       <h3>Invitations</h3>
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">Utilisations max</label><NumberField id="i-uses" min={1} max={100} value={maxUses} onChange={setMaxUses} /></div>
@@ -385,7 +395,7 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
   const [copied, setCopied] = useState(false);
   const cmd = code ? `/forever-lier code:${code.code}` : "";
   return (
-    <section className="panel pad stack" aria-labelledby="dc-title">
+    <section className="stack admin-sec" aria-labelledby="dc-title">
       <div className="row between">
         <h3 id="dc-title" style={{ margin: 0 }}>Salon Discord</h3>
         <span className={`tag ${linked ? "ok" : ""}`}>{linked ? "Lié" : "Non lié"}</span>

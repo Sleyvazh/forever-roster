@@ -84,6 +84,8 @@ DATABASE_URL_E2E=postgres://forever:forever@localhost:5432/forever_e2e npm run t
 
 Un vrai navigateur rejoue le parcours d'un joueur : inscription, fiche, portrait, patrons, équipement, groupe. Le site testé est la version construite pour la production, servie avec les mêmes en-têtes que Caddy (lus dans `infra/Caddyfile`). Toute erreur JavaScript ou violation de la CSP fait échouer le test. C'est ce filet qui manquait quand un envoi d'image fonctionnait en développement mais pas en production.
 
+Les captures de `docs/screenshots` se régénèrent de la même façon, avec des joueurs et des persos fictifs, sans les icônes du jeu (elles ne sont jamais dans le dépôt) : `CAPTURES=1 npx playwright test e2e/captures.spec.ts` sur une base e2e vide.
+
 ## Déploiement
 
 L'app tourne sur un VPS Debian durci (SSH par clé uniquement, UFW, fail2ban, mises à jour automatiques), avec Docker Compose et Caddy pour le HTTPS.

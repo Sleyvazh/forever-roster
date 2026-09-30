@@ -86,3 +86,19 @@ describe("mise en forme (site)", () => {
     ]);
   });
 });
+
+describe("icône par l'apparence", () => {
+  it("prend l'icône de l'apparence de base quand Item.IconFileDataID vaut 0", async () => {
+    const { appearanceIcons } = await import("../src/gamedata/details");
+    const icons = appearanceIcons({
+      ItemAppearance: [{ ID: "10", DefaultIconFileDataID: "133148" }, { ID: "11", DefaultIconFileDataID: "999" }, { ID: "12", DefaultIconFileDataID: "0" }],
+      ItemModifiedAppearance: [
+        { ItemID: "252504", ItemAppearanceID: "11", OrderIndex: "1" },
+        { ItemID: "252504", ItemAppearanceID: "10", OrderIndex: "0" },
+        { ItemID: "5", ItemAppearanceID: "12", OrderIndex: "0" },
+      ],
+    });
+    expect(icons.get(252504)).toBe(133148);
+    expect(icons.has(5)).toBe(false);
+  });
+});

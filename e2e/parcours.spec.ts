@@ -88,7 +88,8 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("#p1-s")).toHaveValue("300");
     const card = page.locator("details.recipes").first();
     await card.locator("summary").click();
-    await card.getByLabel("Je connais Warbear Woolies").check();
+    await card.getByRole("button", { name: "Je connais Warbear Woolies" }).click();
+    await expect(card.getByRole("button", { name: "Je connais Warbear Woolies" })).toHaveAttribute("aria-pressed", "true");
     await expect(card.locator("summary")).toContainText("1 connu");
   });
 
@@ -180,6 +181,9 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   });
 
   await test.step("groupe : code de liaison d'un salon Discord", async () => {
+    await page.getByRole("tab", { name: "Administration" }).click();
+    await expect(page.getByRole("heading", { name: "Invitations" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Supprimer le groupe" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Salon Discord" })).toBeVisible();
     await page.getByRole("button", { name: "Générer un code de liaison" }).click();
     await expect(page.getByRole("textbox", { name: "Commande de liaison" })).toHaveValue(/^\/forever-lier code:[A-Z2-9]{8}$/);

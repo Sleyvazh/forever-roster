@@ -21,34 +21,12 @@ const SLOT_FR: Record<Slot, string> = {
   "Trinket 1": "Bijou 1", "Trinket 2": "Bijou 2", "Main Hand": "Main droite", "Off Hand": "Main gauche", "Ranged / Relic": "À distance / Relique",
 };
 
-/** Pictos provisoires, remplacés par les icônes du jeu quand elles seront servies par le serveur. */
+/** Pictogramme de chaque emplacement (vide, ou objet sans icône). */
 const GLYPH: Record<Slot, string> = {
   Head: "head", Neck: "neck", Shoulder: "shoulder", Back: "back", Chest: "chest", Wrist: "wrist", Hands: "hands", Waist: "waist",
   Legs: "legs", Feet: "feet", "Finger 1": "ring", "Finger 2": "ring", "Trinket 1": "trinket", "Trinket 2": "trinket",
   "Main Hand": "weapon", "Off Hand": "shield", "Ranged / Relic": "ranged",
 };
-
-function Sprite() {
-  return (
-    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-      <symbol id="g-head" viewBox="0 0 24 24"><path d="M5 15a7 7 0 0 1 14 0v4H5z" /><path d="M9 19v-4h6v4M12 8V5" /></symbol>
-      <symbol id="g-neck" viewBox="0 0 24 24"><path d="M6 3c0 6 3 9 6 9s6-3 6-9" /><path d="M12 12v2" /><circle cx="12" cy="17.5" r="3" /></symbol>
-      <symbol id="g-shoulder" viewBox="0 0 24 24"><path d="M3 15c2-6 6-8 9-8s7 2 9 8l-4 2-5-3-5 3z" /><path d="M8 10l-1-3M16 10l1-3" /></symbol>
-      <symbol id="g-back" viewBox="0 0 24 24"><path d="M8 4h8l3 16-7-3-7 3z" /><path d="M9 4c1 2 5 2 6 0" /></symbol>
-      <symbol id="g-chest" viewBox="0 0 24 24"><path d="M7 4l5 2 5-2 3 4-3 3v9H7v-9L4 8z" /><path d="M12 6v14" /></symbol>
-      <symbol id="g-wrist" viewBox="0 0 24 24"><path d="M6 7h12v10H6z" /><path d="M6 12h12M10 7v10M14 7v10" /></symbol>
-      <symbol id="g-hands" viewBox="0 0 24 24"><path d="M8 21v-6L6 11V6.5a1 1 0 0 1 2 0V10h1V4.5a1 1 0 0 1 2 0V10h1V4.5a1 1 0 0 1 2 0V10h1V6.5a1 1 0 0 1 2 0V14l-2 2v5z" /></symbol>
-      <symbol id="g-waist" viewBox="0 0 24 24"><path d="M3 9h18v6H3z" /><path d="M10 8h4v8h-4z" /></symbol>
-      <symbol id="g-legs" viewBox="0 0 24 24"><path d="M7 3h10l-1 18h-3l-1-11-1 11H8z" /></symbol>
-      <symbol id="g-feet" viewBox="0 0 24 24"><path d="M8 3h5v11l6 3v3H6l1-6z" /><path d="M8 8h5" /></symbol>
-      <symbol id="g-ring" viewBox="0 0 24 24"><circle cx="12" cy="15" r="5.5" /><path d="M10 6.5l2-3 2 3-2 3z" /></symbol>
-      <symbol id="g-trinket" viewBox="0 0 24 24"><path d="M12 3l7 7-7 11-7-11z" /><path d="M5 10h14M12 3v18" /></symbol>
-      <symbol id="g-weapon" viewBox="0 0 24 24"><path d="M4 20l9-9" /><path d="M13 5l6 6-3 3-6-6z" /><path d="M15 3l1 2M21 9l-2-1" /></symbol>
-      <symbol id="g-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3 8-7 9-4-1-7-4-7-9V6z" /></symbol>
-      <symbol id="g-ranged" viewBox="0 0 24 24"><path d="M6 3c9 2 13 8 15 17" /><path d="M6 3l15 17" /><path d="M3 12l6-3" /></symbol>
-    </svg>
-  );
-}
 
 interface Shown { name: string; id: number | null; quality: number | null; item?: GameItem }
 
@@ -115,7 +93,6 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
 
   return (
     <div className="sec">
-      <Sprite />
       <div className="gear-top">
         <h3 style={{ margin: 0 }}>Équipement</h3>
         <div className="theme-seg" role="group" aria-label="Vue">
