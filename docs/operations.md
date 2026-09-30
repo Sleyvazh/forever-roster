@@ -205,6 +205,7 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 
 - **Patrons des joueurs :** les patrons cochés sont liés à l'identifiant du sort de fabrication, qui ne change pas d'une version à l'autre. Un réimport ne les efface pas.
 - **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
+- **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever n'est jamais remplacé. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
 - **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).

@@ -61,7 +61,8 @@ export interface GearEntry { cur?: string; curId?: number | null; q?: number | n
 
 /* ---------- Données du jeu ---------- */
 
-export interface GameItem { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number }
+/** origin « era » : objet absent des fichiers du client Forever, complété avec Classic Era (stats possiblement différentes). */
+export interface GameItem { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin?: "forever" | "era" }
 export interface GameRecipe {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
   createdItemId: number | null; createdCount: number; enchant: string | null; reagents: { id: number; n: number }[]; taughtBy: number[]; fromItem: boolean;

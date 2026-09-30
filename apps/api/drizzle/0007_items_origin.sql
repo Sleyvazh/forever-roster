@@ -1,0 +1,1 @@
+ALTER TABLE "game_items" ADD COLUMN "origin" text DEFAULT 'forever' NOT NULL;

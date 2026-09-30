@@ -236,6 +236,8 @@ export const gameItems = pgTable("game_items", {
   inventoryType: integer("inventory_type").notNull(),
   /** Libellé lisible, ex. « Armure · Cuir » tel que fourni par le client. */
   kind: text("kind").notNull().default(""),
+  /** « forever » (client Forever) ou « era » (absent du client Forever, complété avec Classic Era). */
+  origin: text("origin", { enum: ["forever", "era"] }).notNull().default("forever"),
 }, t => [
   index("game_items_inv_idx").on(t.inventoryType),
 ]);

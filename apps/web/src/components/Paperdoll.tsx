@@ -204,6 +204,7 @@ function ItemTip({ slot, rect, g, view, items }: { slot: Slot; rect: DOMRect; g:
       {it && <div className="t-row">Niveau d'objet {it.itemLevel}{shown.quality != null ? ` · ${ITEM_QUALITIES[shown.quality] ?? ""}` : ""}</div>}
       {it && it.reqLevel > 0 && <div className="t-row">Requiert le niveau {it.reqLevel}</div>}
       {!it && <div className="t-src">Saisie libre (pas encore choisi dans la base)</div>}
+      {it?.origin === "era" && <div className="t-src">Données de Classic Era : l'objet n'est pas dans les fichiers du client Forever, ses stats peuvent différer.</div>}
       {g.got ? <div className="t-ok">✓ BiS obtenu</div> : other && other !== shown.name ? <div className="t-warn">Objectif : {other}</div> : null}
     </div>
   );

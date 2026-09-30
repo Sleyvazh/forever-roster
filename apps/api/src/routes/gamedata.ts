@@ -12,8 +12,8 @@ import { requireAuth } from "../lib/session";
 const escapeLike = (q: string) => q.replace(/[\\%_]/g, c => `\\${c}`);
 export const likeContains = (q: string) => `%${escapeLike(q)}%`;
 
-export const itemSummary = { id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel, kind: gameItems.kind, inventoryType: gameItems.inventoryType };
-export type ItemSummary = { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number };
+export const itemSummary = { id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel, kind: gameItems.kind, inventoryType: gameItems.inventoryType, origin: gameItems.origin };
+export type ItemSummary = { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin: "forever" | "era" };
 
 export async function itemsById(db: Db, ids: Iterable<number>): Promise<Record<number, ItemSummary>> {
   const list = [...new Set(ids)];

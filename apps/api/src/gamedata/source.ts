@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseCsv } from "./csv";
-import { TABLES, type TableName, type Tables } from "./extract";
+import { ITEM_TABLES, TABLES, type TableName, type Tables } from "./extract";
 
 const WAGO = "https://wago.tools";
 const UA = { "User-Agent": "forever-roster (+https://github.com/Sleyvazh/forever-roster)" };
@@ -15,6 +15,22 @@ const newer = (a: string, b: string) => {
 
 /** WoW Forever porte des numéros de version 1.60.x (Classic Era est en 1.15.x). */
 export const isForeverBuild = (v: string) => { const [maj, min] = versionKey(v); return maj === 1 && (min ?? 0) >= 60; };
+
+/** Classic Era (1.13 à 1.15) : sert à compléter les objets absents du client Forever. */
+export const isEraBuild = (v: string) => { const [maj, min] = versionKey(v); return maj === 1 && (min ?? 0) >= 13 && (min ?? 0) < 60; };
+
+/** Dernière version de Classic Era (hors serveurs de test) publiée sur wago.tools. */
+export async function latestEraBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string } | null> {
+  const res = await fetchImpl(`${WAGO}/api/builds`, { headers: UA });
+  if (!res.ok) throw new Error(`wago.tools /api/builds : HTTP ${res.status}`);
+  const data = await res.json() as Record<string, { version: string }[]>;
+  let best: { product: string; version: string } | null = null;
+  for (const [product, list] of Object.entries(data)) {
+    if (!Array.isArray(list) || !product.startsWith("wow_classic_era") || product.includes("ptr")) continue;
+    for (const b of list) if (b?.version && isEraBuild(b.version) && (!best || newer(b.version, best.version))) best = { product, version: b.version };
+  }
+  return best;
+}
 
 /** Dernière version de Forever publiée sur wago.tools, tous produits confondus (bêta puis live). */
 export async function latestBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string }> {
@@ -51,6 +67,22 @@ export async function downloadTables(build: string, fetchImpl: typeof fetch = fe
     log(`  ${name}…`);
     out[name] = parseCsv(await download(`${WAGO}/db2/${name}/csv?build=${encodeURIComponent(build)}`, fetchImpl));
   }
+  return out;
+}
+
+/** Tables des objets seules (ItemSparse, Item) d'une version, pour le complément Classic Era. */
+export async function downloadItemTables(build: string, fetchImpl: typeof fetch = fetch, log: (m: string) => void = () => {}) {
+  const out = {} as Pick<Tables, (typeof ITEM_TABLES)[number]>;
+  for (const name of ITEM_TABLES) {
+    log(`  ${name} (Classic Era)…`);
+    out[name] = parseCsv(await download(`${WAGO}/db2/${name}/csv?build=${encodeURIComponent(build)}`, fetchImpl));
+  }
+  return out;
+}
+
+export async function readItemTables(dir: string) {
+  const out = {} as Pick<Tables, (typeof ITEM_TABLES)[number]>;
+  for (const name of ITEM_TABLES) out[name] = parseCsv(await readFile(path.join(dir, `${name}.csv`), "utf8"));
   return out;
 }
 

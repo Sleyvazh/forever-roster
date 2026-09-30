@@ -20,7 +20,14 @@ export const TABLES = {
 export type TableName = keyof typeof TABLES;
 export type Tables = Record<TableName, Record<string, string>[]>;
 
-export interface ItemRow { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; classId: number; subclassId: number; inventoryType: number; kind: string }
+export interface ItemRow {
+  id: number; name: string; quality: number; itemLevel: number; reqLevel: number; classId: number; subclassId: number; inventoryType: number; kind: string;
+  /** « forever » : tables du client Forever ; « era » : objet absent de ces tables, complété avec Classic Era. */
+  origin: "forever" | "era";
+}
+/** Tables suffisantes pour lire les objets (import complémentaire depuis Classic Era). */
+export const ITEM_TABLES = ["ItemSparse", "Item"] as const;
+export type ItemTables = Pick<Tables, "ItemSparse" | "Item" | "ItemClass" | "ItemSubClass">;
 export interface RecipeRow {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
   createdItemId: number | null; createdCount: number; enchant: string | null; reagents: Reagent[]; taughtBy: number[]; fromItem: boolean;
@@ -43,17 +50,12 @@ export function checkColumns(tables: Tables) {
   }
 }
 
-/** Joint les tables du client en objets et recettes de métier prêts à insérer. */
-export function extract(tables: Tables): { items: ItemRow[]; recipes: RecipeRow[] } {
-  checkColumns(tables);
-  const professionLines = new Set(Object.values(PROFESSION_SKILL_LINES));
-
+/** Objets (ItemSparse + Item), avec le libellé de classe / sous-classe et la compétence requise des patrons. */
+export function readItems(tables: ItemTables, origin: ItemRow["origin"]) {
   const itemBase = new Map(tables.Item.map(r => [I(r.ID), r]));
   const className = new Map(tables.ItemClass.map(r => [I(r.ClassID), r.ClassName_lang ?? ""]));
   const subName = new Map(tables.ItemSubClass.map(r => [`${I(r.ClassID)}:${I(r.SubClassID)}`, r.DisplayName_lang || r.VerboseName_lang || ""]));
-
   const items: ItemRow[] = [];
-  const itemById = new Map<number, ItemRow>();
   const skillOfItem = new Map<number, [number, number]>();
   for (const s of tables.ItemSparse) {
     const id = I(s.ID), name = s.Display_lang ?? "";
@@ -62,13 +64,33 @@ export function extract(tables: Tables): { items: ItemRow[]; recipes: RecipeRow[
     const classId = I(b?.ClassID), subclassId = I(b?.SubclassID);
     const kind = [className.get(classId), subName.get(`${classId}:${subclassId}`)].filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i).join(" · ");
-    const row: ItemRow = {
+    items.push({
       id, name, quality: Math.max(0, Math.min(7, I(s.OverallQualityID))), itemLevel: I(s.ItemLevel), reqLevel: I(s.RequiredLevel),
-      classId, subclassId, inventoryType: I(b?.InventoryType), kind,
-    };
-    items.push(row); itemById.set(id, row);
+      classId, subclassId, inventoryType: I(b?.InventoryType), kind, origin,
+    });
     if (I(s.RequiredSkill)) skillOfItem.set(id, [I(s.RequiredSkill), I(s.RequiredSkillRank)]);
   }
+  return { items, skillOfItem };
+}
+
+/**
+ * Le client Forever ne contient pas tous les objets : une partie n'arrive que par le serveur du jeu
+ * (correctifs à chaud), que wago.tools ne publie pas. On complète avec les objets d'origine de Classic Era
+ * (identifiants < ERA_MAX_ID, donc hors Saison de la Découverte) absents des tables Forever.
+ */
+export const ERA_MAX_ID = 30000;
+export function fillFromEra(items: ItemRow[], era: ItemRow[]): ItemRow[] {
+  const have = new Set(items.map(i => i.id));
+  const extra = era.filter(i => i.id < ERA_MAX_ID && !have.has(i.id)).map(i => ({ ...i, origin: "era" as const }));
+  return [...items, ...extra];
+}
+
+/** Joint les tables du client en objets et recettes de métier prêts à insérer. */
+export function extract(tables: Tables): { items: ItemRow[]; recipes: RecipeRow[] } {
+  checkColumns(tables);
+  const professionLines = new Set(Object.values(PROFESSION_SKILL_LINES));
+
+  const { items, skillOfItem } = readItems(tables, "forever");
 
   const spellName = new Map(tables.SpellName.map(r => [I(r.ID), r.Name_lang ?? ""]));
   const effects = new Map<number, Record<string, string>[]>();

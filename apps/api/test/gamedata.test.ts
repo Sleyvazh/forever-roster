@@ -2,16 +2,20 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseCsv } from "../src/gamedata/csv";
-import { extract } from "../src/gamedata/extract";
-import { isForeverBuild, latestBuild, readTables } from "../src/gamedata/source";
+import { extract, fillFromEra, readItems } from "../src/gamedata/extract";
+import { isEraBuild, isForeverBuild, latestBuild, latestEraBuild, readItemTables, readTables } from "../src/gamedata/source";
 import { storeGameData } from "../src/gamedata/store";
 import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/gamedata");
+const ERA = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/gamedata-era");
 let env: TestEnv;
 beforeAll(async () => {
   env = await setup();
-  await storeGameData(env.app.ctx.db, extract(await readTables(FIXTURES)), "1.60.1.70009");
+  const tables = await readTables(FIXTURES);
+  const data = extract(tables);
+  data.items = fillFromEra(data.items, readItems({ ...(await readItemTables(ERA)), ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items);
+  await storeGameData(env.app.ctx.db, data, "1.60.1.70009", "1.15.9.69722");
 });
 afterAll(async () => { await env.close(); });
 
@@ -46,6 +50,29 @@ describe("import des tables du client", () => {
     expect(items.find(i => i.id === 19019)).toMatchObject({ name: "Thunderfury, Blessed Blade of the Windseeker", quality: 5, kind: "Weapon · Sword" });
   });
 
+  it("complète avec Classic Era les objets absents du client Forever", async () => {
+    const tables = await readTables(FIXTURES);
+    const forever = extract(tables).items;
+    const era = readItems({ ...(await readItemTables(ERA)), ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items;
+    const all = fillFromEra(forever, era);
+    // Ajouté : absent de Forever, objet d'origine
+    expect(all.find(i => i.id === 5404)).toMatchObject({ name: "Serpent's Shoulders", inventoryType: 3, kind: "Armor · Leather", origin: "era", reqLevel: 18 });
+    // Jamais remplacé : l'objet Forever reste la référence
+    expect(all.find(i => i.id === 2318)).toMatchObject({ name: "Light Leather", origin: "forever" });
+    // Saison de la Découverte exclue
+    expect(all.some(i => i.id === 211385)).toBe(false);
+    expect(all).toHaveLength(forever.length + 1);
+
+    expect(isEraBuild("1.15.9.69722")).toBe(true);
+    expect(isEraBuild("1.60.1.70124")).toBe(false);
+    const fake = (async () => Response.json({
+      wow_classic_era: [{ version: "1.15.8.60000" }, { version: "1.15.9.69722" }],
+      wow_classic_era_ptr: [{ version: "1.15.10.70000" }],
+      wow_classic_beta: [{ version: "1.60.1.70124" }],
+    })) as unknown as typeof fetch;
+    expect(await latestEraBuild(fake)).toEqual({ product: "wow_classic_era", version: "1.15.9.69722" });
+  });
+
   it("refuse une table dont la structure a changé", async () => {
     const t = await readTables(FIXTURES);
     t.SpellReagents = t.SpellReagents.map(({ Reagent_0: _, ...rest }) => rest);
@@ -56,7 +83,9 @@ describe("import des tables du client", () => {
 describe("API données du jeu", () => {
   it("donne l'état de l'import et cherche un objet par emplacement", async () => {
     const { c } = await signedIn(env);
-    expect((await c.get("/api/gamedata/status")).json()).toMatchObject({ build: "1.60.1.70009", recipes: 4 });
+    expect((await c.get("/api/gamedata/status")).json()).toMatchObject({ build: "1.60.1.70009", recipes: 4, eraBuild: "1.15.9.69722", eraItems: 1 });
+    const shoulders = (await c.get("/api/gamedata/items?q=serpent&slot=Shoulder")).json().items;
+    expect(shoulders).toEqual([expect.objectContaining({ id: 5404, name: "Serpent's Shoulders", origin: "era" })]);
     const head = (await c.get("/api/gamedata/items?q=helm&slot=Head")).json().items;
     expect(head.map((i: { name: string }) => i.name)).toEqual(["Helm of Might"]);
     expect((await c.get("/api/gamedata/items?q=hat&slot=Legs")).json().items).toEqual([]);

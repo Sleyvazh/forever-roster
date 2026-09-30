@@ -248,7 +248,7 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
             <li key={it.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}
               onMouseDown={e => { e.preventDefault(); pick(it); }} onMouseEnter={() => setActive(i)}>
               <span className={`q${it.quality}`}>{it.name}</span>
-              <small>{[it.kind, `niv. objet ${it.itemLevel}`, it.reqLevel ? `requiert ${it.reqLevel}` : ""].filter(Boolean).join(" · ")}</small>
+              <small>{[it.kind, `niv. objet ${it.itemLevel}`, it.reqLevel ? `requiert ${it.reqLevel}` : "", it.origin === "era" ? "données Classic Era" : ""].filter(Boolean).join(" · ")}</small>
             </li>
           ))}
         </ul>
