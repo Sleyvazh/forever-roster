@@ -7,6 +7,7 @@ import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { ensureRecurringRaids, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
 import { currentUser, requireAuth } from "../lib/session";
+import { bus } from "../lib/events";
 
 /** Raids récurrents d'un groupe : lecture pour les membres, gestion par les officiers. */
 const fields = z.object({
@@ -45,6 +46,7 @@ export async function templateRoutes(app: FastifyInstance) {
     const [t] = await db.insert(raidTemplates).values({ ...body, groupId: id, createdBy: u.id }).returning();
     const created = await ensureRecurringRaids(db, new Date(), t!.id);
     await audit(db, req, "raid_template_created", { userId: u.id, groupId: id, meta: { templateId: t!.id, name: t!.name, weekday: t!.weekday, time: t!.time } });
+    bus.group({ t: "raids", g: id });
     return reply.code(201).send({ template: view(t!), created });
   });
 
@@ -58,6 +60,7 @@ export async function templateRoutes(app: FastifyInstance) {
     if (!t) throw notFound("Raid récurrent introuvable.");
     const created = await ensureRecurringRaids(db, new Date(), t.id);
     await audit(db, req, "raid_template_updated", { userId: u.id, groupId: p.id, meta: { templateId: t.id, name: t.name } });
+    bus.group({ t: "raids", g: p.id });
     return { template: view(t), created };
   });
 
@@ -69,6 +72,7 @@ export async function templateRoutes(app: FastifyInstance) {
     const [t] = await db.delete(raidTemplates).where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
     if (!t) throw notFound("Raid récurrent introuvable.");
     await audit(db, req, "raid_template_deleted", { userId: u.id, groupId: p.id, meta: { templateId: t.id, name: t.name } });
+    bus.group({ t: "raids", g: p.id });
     return { ok: true };
   });
 }

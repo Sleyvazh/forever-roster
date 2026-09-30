@@ -137,8 +137,15 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Chamy;SHAMAN;DPS;Enhancement DPS;1;2;present;discord\nEND;2$/);
     await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Tournicoti");
     await expect(page.getByText("À inviter à la main (inscrits sans compte, pseudo Discord) : Chamy.")).toBeVisible();
+    // Temps réel : un second onglet ouvert sur le raid se met à jour sans recharger
+    const other = await page.context().newPage();
+    await other.goto(page.url());
+    await expect(other.getByText(/Tu es inscrit : Présent/)).toBeVisible();
+    await page.waitForTimeout(500); // connexion en direct du second onglet établie
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "En retard" }).click();
     await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
+    await expect(other.getByText("Tu es inscrit : En retard")).toBeVisible({ timeout: 5000 });
+    await other.close();
     await page.getByRole("link", { name: "Retour au groupe" }).click();
     await expect(page.getByRole("row", { name: /Molten Core/ })).toContainText("En retard");
   });

@@ -1,3 +1,4 @@
+import { charsChanged } from "../lib/events";
 import { and, asc, eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -23,6 +24,10 @@ export const toApi = (c: CharacterRow) => ({
 export async function characterRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
   app.addHook("preHandler", requireAuth);
+  // Toute modification d'un perso (fiche, équipement, métiers, patrons) : les groupes du joueur se mettent à jour en direct
+  app.addHook("onResponse", async (req, reply) => {
+    if (req.method !== "GET" && reply.statusCode < 400 && req.user) await charsChanged(db, req.user.id).catch(() => {});
+  });
 
   app.get("/", async (req) => {
     const u = currentUser(req);

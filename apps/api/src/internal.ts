@@ -8,6 +8,7 @@ import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
+import { bus } from "./lib/events";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 
 /**
@@ -135,6 +136,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     // Les raids à venir seront (re)publiés dans ce salon
     await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
     await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+    bus.group({ t: "group", g: g.id });
     return { group: { id: g.id, name: g.name } };
   });
 
@@ -155,6 +157,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
     }).returning({ id: raids.id });
     await audit(db, req, "raid_created", { userId: user.id, groupId: g.id, meta: { raidId: r!.id, name: body.name, via: "discord" } });
+    bus.group({ t: "raids", g: g.id });
     return view(r!.id);
   });
 

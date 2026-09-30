@@ -11,6 +11,8 @@ import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { MAX_RAIDS_PER_GROUP } from "../lib/recurring";
+import { mergeSlots, slotKey } from "../lib/compo";
+import { bus } from "../lib/events";
 
 const raidParams = z.object({ id: z.uuid(), raidId: z.uuid() });
 const raidFields = z.object({
@@ -22,7 +24,7 @@ const slot = z.object({
   group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
   characterId: z.uuid().optional(), signupId: z.uuid().optional(),
 }).refine(s => !!s.characterId !== !!s.signupId, "Une place contient un perso ou un inscrit sans compte.");
-const slotKey = (s: RaidSlot) => (s.characterId ? `c:${s.characterId}` : `s:${s.signupId}`);
+
 
 export async function raidRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
@@ -95,6 +97,7 @@ export async function raidRoutes(app: FastifyInstance) {
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
+    bus.group({ t: "raids", g: id });
     return reply.code(201).send({ raid: { id: r!.id } });
   });
 
@@ -107,36 +110,71 @@ export async function raidRoutes(app: FastifyInstance) {
     const signups = await listSignups(db, r.id);
     return {
       raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt },
+      version: r.updatedAt.toISOString(),
       canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
     };
   });
 
-  app.put("/:id/raids/:raidId", async (req) => {
+  /**
+   * Enregistre la compo et les infos du raid. Avec `base` (la version sur laquelle la page a travaillé),
+   * les modifications faites entre-temps par un autre officier sont fusionnées ; en cas de conflit : 409.
+   */
+  app.put("/:id/raids/:raidId", async (req, reply) => {
     const u = currentUser(req);
     const p = parse(raidParams, req.params);
     await requireRole(db, p.id, u.id, "officer");
     const current = await loadRaid(p.id, p.raidId);
-    const body = parse(raidFields.extend({ slots: z.array(slot).max(RAID_GROUPS * GROUP_SIZE) }), req.body);
+    const body = parse(raidFields.extend({
+      slots: z.array(slot).max(RAID_GROUPS * GROUP_SIZE),
+      base: z.object({
+        version: z.string().max(40), slots: z.array(slot).max(RAID_GROUPS * GROUP_SIZE),
+        name: z.string().max(60), scheduledAt: z.string().max(40).nullable(), description: z.string().max(1000),
+      }).optional(),
+    }), req.body);
 
-    const seatKeys = new Set(body.slots.map(s => `${s.group}:${s.pos}`));
-    if (seatKeys.size !== body.slots.length) throw badRequest("Deux personnages occupent la même place.");
-    if (new Set(body.slots.map(slotKey)).size !== body.slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
-    const chars = await slotCharacters(p.id, body.slots);
-    if (chars.length !== body.slots.filter(s => s.characterId).length) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
-    const guests = await slotGuests(p.raidId, body.slots);
-    if (guests.length !== body.slots.filter(s => s.signupId).length) throw badRequest("Certains inscrits sans compte ne sont pas inscrits à ce raid.");
+    let slots = body.slots, name = body.name, scheduledAtIso = body.scheduledAt ?? null, description = body.description;
+    let merged = false;
+    if (body.base && body.base.version !== current.updatedAt.toISOString()) {
+      // Compo actuelle, sans les places devenues vides (joueur parti, inscrit désinscrit)
+      const liveChars = new Set((await slotCharacters(p.id, current.slots)).map(c => c.id));
+      const liveGuests = new Set((await slotGuests(p.raidId, current.slots)).map(g => g.id));
+      const theirs = current.slots.filter(x => (x.characterId ? liveChars.has(x.characterId) : liveGuests.has(x.signupId!)));
+      const m = mergeSlots(body.base.slots, body.slots, theirs);
+      if (!m.ok) return reply.code(409).send({ error: `${m.reason} La compo a été rechargée : refais ton dernier déplacement.`, conflict: true });
+      slots = m.slots;
+      // Infos du raid : seuls les champs changés sur cette page s'appliquent
+      const curIso = current.scheduledAt?.toISOString() ?? null;
+      if (body.name === body.base.name) name = current.name;
+      if ((body.scheduledAt ?? null) === body.base.scheduledAt) scheduledAtIso = curIso;
+      if ((body.description ?? "") === body.base.description) description = current.description;
+      merged = true;
+    }
 
-    const scheduledAt = body.scheduledAt ? new Date(body.scheduledAt) : null;
+    const seatKeys = new Set(slots.map(s => `${s.group}:${s.pos}`));
+    if (seatKeys.size !== slots.length) throw badRequest("Deux personnages occupent la même place.");
+    if (new Set(slots.map(slotKey)).size !== slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
+    const chars = await slotCharacters(p.id, slots);
+    if (chars.length !== slots.filter(s => s.characterId).length) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
+    const guests = await slotGuests(p.raidId, slots);
+    if (guests.length !== slots.filter(s => s.signupId).length) throw badRequest("Certains inscrits sans compte ne sont pas inscrits à ce raid.");
+
+    const scheduledAt = scheduledAtIso ? new Date(scheduledAtIso) : null;
     const moved = (scheduledAt?.getTime() ?? null) !== (current.scheduledAt?.getTime() ?? null);
+    const updatedAt = new Date();
     await db.update(raids).set({
-      name: body.name, scheduledAt, slots: body.slots, updatedAt: new Date(),
+      name, scheduledAt, slots, updatedAt,
       // Nouvelle date : le rappel de la veille sera renvoyé
       ...(moved && { reminderSentAt: null }),
-      ...(body.description !== undefined && { description: body.description }),
+      ...(description !== undefined && { description }),
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
-    return withCoverage(body.slots, chars, guests, await signupSpecs(p.raidId));
+    bus.group({ t: "raid", g: p.id, r: p.raidId, by: u.id, byName: u.displayName });
+    return {
+      ...withCoverage(slots, chars, guests, await signupSpecs(p.raidId)),
+      version: updatedAt.toISOString(), merged,
+      raid: { name, scheduledAt: scheduledAt?.toISOString() ?? null, description: description ?? current.description },
+    };
   });
 
   /** Officiers : afficher (ou retirer) la composition dans l'annonce Discord. */
@@ -147,6 +185,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const r = await loadRaid(p.id, p.raidId);
     await db.update(raids).set({ rosterPublishedAt: new Date(), discordChangedAt: new Date() }).where(eq(raids.id, r.id));
     await audit(db, req, "raid_roster_published", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
+    bus.group({ t: "raid", g: p.id, r: r.id, by: u.id, byName: u.displayName });
     return { rosterPublished: true };
   });
 
@@ -157,6 +196,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const r = await loadRaid(p.id, p.raidId);
     await db.update(raids).set({ rosterPublishedAt: null, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
     await audit(db, req, "raid_roster_unpublished", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
+    bus.group({ t: "raid", g: p.id, r: r.id, by: u.id, byName: u.displayName });
     return { rosterPublished: false };
   });
 
@@ -217,6 +257,7 @@ export async function raidRoutes(app: FastifyInstance) {
     // L'annonce Discord éventuelle sera supprimée par le bot
     if (r.discordChannelId && r.discordMessageId) await db.insert(discordDeletions).values({ channelId: r.discordChannelId, messageId: r.discordMessageId });
     await audit(db, req, "raid_deleted", { userId: u.id, groupId: p.id, meta: { raidId: r.id, name: r.name } });
+    bus.group({ t: "raids", g: p.id });
     return { ok: true };
   });
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Db } from "../db/client";
 import { characters, discordDeletions, raids, raidSignups } from "../db/schema";
 import { badRequest } from "./http";
+import { bus } from "./events";
 
 /**
  * Inscriptions aux raids. Toute la logique est ici pour être partagée par le site et, plus tard,
@@ -12,7 +13,9 @@ import { badRequest } from "./http";
 
 /** Signale un changement au bot Discord (l'annonce du raid sera republiée). */
 export async function touchRaid(db: Db, raidId: string) {
-  await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.id, raidId));
+  const [r] = await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.id, raidId)).returning({ g: raids.groupId });
+  // Et aux pages ouvertes du site
+  if (r) bus.group({ t: "raid", g: r.g, r: raidId });
 }
 
 export const signupInput = z.object({
@@ -102,6 +105,7 @@ export async function dropSignupsInGroup(db: Db, groupId: string, userId: string
   const groupRaids = db.select({ id: raids.id }).from(raids).where(eq(raids.groupId, groupId));
   await db.delete(raidSignups).where(and(eq(raidSignups.userId, userId), inArray(raidSignups.raidId, groupRaids)));
   await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, groupId));
+  bus.group({ t: "raids", g: groupId });
 }
 
 /**

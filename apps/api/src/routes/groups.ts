@@ -18,6 +18,7 @@ import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
 import { likeContains } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
+import { bus } from "../lib/events";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -47,6 +48,7 @@ export async function groupRoutes(app: FastifyInstance) {
       return g!;
     });
     await audit(db, req, "group_created", { userId: u.id, groupId: g.id });
+    await bus.membership(db, u.id);
     return reply.code(201).send({ group: { id: g.id, name: g.name, role: "owner" } });
   });
 
@@ -71,6 +73,7 @@ export async function groupRoutes(app: FastifyInstance) {
     if (before && before.name !== name) {
       await db.update(groups).set({ name }).where(eq(groups.id, id));
       await audit(db, req, "group_renamed", { userId: u.id, groupId: id, meta: { from: before.name, to: name } });
+    bus.group({ t: "group", g: id });
     }
     return { ok: true, name };
   });
@@ -80,7 +83,9 @@ export async function groupRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "owner");
     await retireAnnouncements(db, id);
+    const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
+    for (const m of members) await bus.membership(db, m.u);
     return { ok: true };
   });
 
@@ -163,6 +168,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await db.update(groups).set({ discordGuildId: null, discordChannelId: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, id));
     await retireAnnouncements(db, id);
     await audit(db, req, "group_discord_unlinked", { userId: u.id, groupId: id });
+    bus.group({ t: "group", g: id });
     return { ok: true };
   });
 
@@ -183,6 +189,7 @@ export async function groupRoutes(app: FastifyInstance) {
       await tx.update(groupMembers).set({ role }).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
     });
     await audit(db, req, "group_role_changed", { userId: u.id, groupId: p.id, meta: { target: p.userId, from: target, to: role } });
+    bus.group({ t: "group", g: p.id });
     return { ok: true };
   });
 
@@ -199,6 +206,9 @@ export async function groupRoutes(app: FastifyInstance) {
     await db.delete(groupMembers).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
     await dropSignupsInGroup(db, p.id, p.userId);
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
+    bus.group({ t: "group", g: p.id });
+    bus.group({ t: "chars", g: p.id });
+    await bus.membership(db, p.userId);
     return { ok: true };
   });
 
@@ -228,6 +238,7 @@ export async function groupRoutes(app: FastifyInstance) {
       expiresAt: new Date(Date.now() + body.expiresInHours * 3600 * 1000),
     }).returning({ id: groupInvites.id, expiresAt: groupInvites.expiresAt });
     await audit(db, req, "invite_created", { userId: u.id, groupId: id, meta: { inviteId: inv!.id, maxUses: body.maxUses } });
+    bus.group({ t: "group", g: id });
     // Le lien n'est montré qu'une fois : seul son hash est conservé.
     return reply.code(201).send({ invite: { ...inv, url: `${cfg.APP_ORIGIN}/join#${raw}` } });
   });
@@ -240,6 +251,7 @@ export async function groupRoutes(app: FastifyInstance) {
       .where(and(eq(groupInvites.id, p.inviteId), eq(groupInvites.groupId, p.id))).returning({ id: groupInvites.id });
     if (!row) throw notFound("Invitation introuvable.");
     await audit(db, req, "invite_revoked", { userId: u.id, groupId: p.id, meta: { inviteId: p.inviteId } });
+    bus.group({ t: "group", g: p.id });
     return { ok: true };
   });
 
@@ -274,6 +286,9 @@ export async function groupRoutes(app: FastifyInstance) {
       return used.groupId;
     });
     await audit(db, req, "group_joined", { userId: u.id, groupId });
+    await bus.membership(db, u.id);
+    bus.group({ t: "group", g: groupId });
+    bus.group({ t: "chars", g: groupId });
     return { groupId };
   });
 

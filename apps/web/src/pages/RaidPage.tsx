@@ -2,15 +2,20 @@ import {
   CLASSES, computeCoverage, exclusiveBudget, GROUP_SIZE, RAID_EFFECTS, RAID_GROUPS, roleCounts, roleOf, type ClassName, type EffectKind,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, post, put, slotKey, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
 import { RaidExport } from "../components/RaidExport";
+import { useLiveListener, type LiveEvent } from "../live";
+import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
+interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
+/** Dernier état connu du serveur : base de la fusion quand deux officiers modifient la compo en même temps. */
+interface ServerState { version: string; slots: RaidSlot[]; name: string; scheduledAt: string | null; description: string }
 
 const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
 const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
@@ -42,15 +47,34 @@ export function RaidPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [filter, setFilter] = useState("");
-  const loaded = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const server = useRef<ServerState | null>(null);
+  /** Numéro de la dernière modification locale ; « pending » tant qu'elle n'est pas enregistrée. */
+  const edit = useRef(0);
+  const pending = useRef(false);
+  const myId = useMe().data?.user?.id;
 
+  const applyServer = (st: ServerState) => {
+    server.current = st;
+    setSlots(st.slots); setName(st.name); setWhen(toLocalInput(st.scheduledAt)); setDesc(st.description);
+  };
+  const fromResponse = (d: RaidResponse): ServerState =>
+    ({ version: d.version, slots: d.slots, name: d.raid.name, scheduledAt: d.raid.scheduledAt, description: d.raid.description });
+
+  // Premier chargement, puis chaque nouvelle version venue d'ailleurs (autre officier, autre onglet),
+  // sauf pendant une modification locale en cours : elle sera fusionnée à l'enregistrement.
   useEffect(() => {
-    if (raidQ.data && !loaded.current) {
-      loaded.current = true;
-      setSlots(raidQ.data.slots); setName(raidQ.data.raid.name); setWhen(toLocalInput(raidQ.data.raid.scheduledAt)); setDesc(raidQ.data.raid.description);
-    }
-  }, [raidQ.data]);
+    const d = raidQ.data;
+    if (!d || pending.current || d.version === server.current?.version) return;
+    applyServer(fromResponse(d));
+  }, [raidQ.data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useLiveListener(useCallback((e: LiveEvent) => {
+    if (e.t !== "raid" || e.r !== raidId || !e.by || e.by === myId || !e.byName) return;
+    setNotice(`${e.byName} vient de modifier ce raid.`);
+    window.setTimeout(() => setNotice(null), 5000);
+  }, [raidId, myId]));
 
   const canEdit = !!raidQ.data?.canEdit;
   const chars = useMemo(() => new Map((charsQ.data?.characters ?? []).map(c => [c.id, c])), [charsQ.data]);
@@ -87,13 +111,32 @@ export function RaidPage() {
     setSlots(next);
     if (!canEdit) return;
     window.clearTimeout(timer.current);
+    const mine = ++edit.current;
+    pending.current = true;
     setStatus("Enregistrement…");
     timer.current = window.setTimeout(async () => {
+      const base = server.current;
       try {
-        await put(`/groups/${groupId}/raids/${raidId}`, { name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, description: meta.desc, slots: next });
-        setStatus("Enregistré."); setError(null);
-        void qc.invalidateQueries({ queryKey: ["raids", groupId] });
-      } catch (e) { setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); setStatus(""); }
+        const res = await put<SaveResponse>(`/groups/${groupId}/raids/${raidId}`, {
+          name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, description: meta.desc, slots: next,
+          ...(base && { base }),
+        });
+        const st: ServerState = { version: res.version, slots: res.slots, ...res.raid };
+        if (edit.current === mine) {
+          pending.current = false;
+          // Fusion avec les changements d'un autre officier : on affiche le résultat
+          if (res.merged) applyServer(st); else server.current = st;
+        } else server.current = st;
+        setStatus(res.merged ? "Enregistré (fusionné avec les changements d'un autre officier)." : "Enregistré."); setError(null);
+      } catch (e) {
+        if (edit.current === mine) pending.current = false;
+        setStatus("");
+        if (e instanceof ApiError && e.status === 409) {
+          const fresh = await raidQ.refetch();
+          if (fresh.data) applyServer(fromResponse(fresh.data));
+        }
+        setError(e instanceof ApiError ? e.message : "Enregistrement impossible.");
+      }
     }, 600);
   };
 
@@ -157,6 +200,7 @@ export function RaidPage() {
       {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
       <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
       {error && <div className="alert error" role="alert">{error}</div>}
+      {notice && <div className="alert info" role="status">{notice}</div>}
       {canEdit && (
         <div className="panel pad row between roster-pub">
           <span>

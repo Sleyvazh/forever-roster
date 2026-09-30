@@ -4,7 +4,9 @@
 }
 
 {$DOMAIN:localhost} {
-	encode zstd gzip
+	# Pas de compression pour le flux en direct (/api/events) : elle retiendrait les événements.
+	@compress not path /api/events
+	encode @compress zstd gzip
 
 	# En-têtes de sécurité pour tout le site
 	header {
@@ -20,6 +22,13 @@
 	}
 
 	# API : Caddy transmet l'IP réelle du client (X-Forwarded-For), l'API a TRUST_PROXY=true.
+	# Événements en direct (Server-Sent Events) : transmis au fil de l'eau, connexion longue.
+	handle /api/events {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
 	handle /api/* {
 		reverse_proxy api:3000
 	}

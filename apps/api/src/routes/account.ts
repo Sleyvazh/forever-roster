@@ -1,3 +1,4 @@
+import { bus, groupsOf } from "../lib/events";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -14,6 +15,13 @@ import { verifyEmail } from "../lib/email-templates";
 export async function accountRoutes(app: FastifyInstance) {
   const { db, mailer } = app.ctx;
   app.addHook("preHandler", requireAuth);
+  // Pseudo ou avatar changés : listes des membres à jour en direct
+  app.addHook("onResponse", async (req, reply) => {
+    const path = req.routeOptions.url ?? "";
+    if (req.method !== "GET" && reply.statusCode < 400 && req.user && (path.endsWith("/profile") || path.endsWith("/avatar"))) {
+      for (const g of await groupsOf(db, req.user.id).catch(() => [])) bus.group({ t: "group", g });
+    }
+  });
 
   app.patch("/profile", async (req) => {
     const u = currentUser(req);

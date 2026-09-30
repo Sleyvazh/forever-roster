@@ -8,6 +8,7 @@ import { ClassIcon } from "./Icons";
 import { Logo } from "./Logo";
 import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
+import { useLiveEvents } from "../live";
 
 const Brand = () => (
   <Link to="/" className="brand" aria-label="Forever Roster, accueil">
@@ -74,6 +75,7 @@ const TAB_ICONS = {
 export function TopBar() {
   const me = useMe();
   const user = me.data?.user;
+  useLiveEvents(!!user);
   return (
     <>
       <header className="topnav">

@@ -59,6 +59,13 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - **Moindre privilège** : intent `Guilds` seul (le bot ne lit aucun message ni la liste des membres). Droits Discord : voir le salon, envoyer des messages, intégrer des liens. Bot privé (non public).
 - **Secrets** : `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` et `INTERNAL_API_SECRET` sont uniquement dans le `.env` du serveur (droits 600), saisis sans écho. Ils ne sont jamais dans le dépôt ni dans les journaux (en-tête `Authorization` masqué).
 
+## Mises à jour en direct (/api/events)
+
+- Flux Server-Sent Events réservé aux sessions valides. La connexion est coupée au bout de 15 minutes, et le navigateur se reconnecte : la session est donc revérifiée régulièrement.
+- Un événement ne contient aucune donnée : seulement « tel raid / tel groupe a changé » (et le pseudo de l'officier qui a modifié une compo). La page recharge ensuite par les routes habituelles, qui appliquent les contrôles d'accès.
+- Un utilisateur ne reçoit que les événements des groupes dont il est membre ; la liste est relue quand il rejoint, quitte ou est retiré d'un groupe.
+- Compo modifiée à plusieurs : chaque enregistrement porte la version de départ ; le serveur fusionne les changements indépendants et refuse (409) ceux qui se contredisent.
+
 ## Contrôle d'accès (Top 10 A01)
 
 - Chaque route vérifie le propriétaire ou le rôle dans le groupe côté serveur (`requireRole`).
