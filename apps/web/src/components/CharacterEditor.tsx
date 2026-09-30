@@ -44,7 +44,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
             <span>{c.name}</span>
           </h2>
           <div className="line">
-            Niv. <span className="num">{c.level}</span> · {c.race || "Race ?"} <span className="cls">{c.cls || "Classe ?"}</span>
+            Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls || "Classe ?"}</span> · {c.race || "Race ?"}
             {race && ` · ${race.faction}`}{c.owner && ` · Joueur : ${c.owner}`}
           </div>
         </div>

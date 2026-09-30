@@ -246,6 +246,10 @@ Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 
+### Emblèmes de faction
+
+`scripts/fetch-item-icons.sh` télécharge aussi les étendards de la Horde et de l'Alliance (icônes `inv_bannerpvp_01` et `inv_bannerpvp_02`) dans `icons/faction/`. Tant qu'ils manquent, le site affiche l'étiquette texte « HORDE » ou « ALLI ».
+
 ### Icônes des objets
 
 L'import retrouve le nom de l'icône de chaque objet (liste de fichiers communautaire), puis `scripts/import-gamedata.sh` appelle `scripts/fetch-item-icons.sh`. Ce script télécharge les icônes manquantes depuis le serveur d'images officiel de Blizzard (`render.worldofwarcraft.com`) dans `icons/items/`, une seule fois chacune (≈ 3 000 fichiers, ≈ 10 Mo). Les visiteurs ne contactent toujours que notre serveur. Seuls les noms simples (`a-z`, `0-9`, `_`, `-`) sont acceptés, et un fichier n'est gardé que s'il s'agit bien d'un JPEG.

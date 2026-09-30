@@ -35,3 +35,17 @@ export function SpecIcon({ cls, spec, size = 28, className }: { cls: string; spe
   if (!src) return <ClassIcon cls={cls} size={size} className={className} />;
   return <img key={src} className={`sicon ${className ?? ""}`} src={src} width={size} height={size} alt="" title={spec} loading="lazy" decoding="async" onError={() => setBad(b => [...b, src])} />;
 }
+
+/**
+ * Emblème de faction (icône du jeu téléchargée sur le serveur, icons/faction/) ;
+ * repli : l'étiquette texte, si l'image n'est pas encore là.
+ */
+export function FactionBadge({ faction, size = 26, short = false }: { faction: "Alliance" | "Horde"; size?: number; short?: boolean }) {
+  const [bad, setBad] = useState(false);
+  const label = short ? faction[0] : faction === "Alliance" ? "ALLI" : "HORDE";
+  if (bad) return <span className={`fac ${faction}`} title={faction}>{label}</span>;
+  return (
+    <img className={`fac-img ${faction}`} src={`/icons/faction/${faction.toLowerCase()}.jpg`} width={size} height={size}
+      alt={faction} title={faction} loading="lazy" decoding="async" onError={() => setBad(true)} />
+  );
+}

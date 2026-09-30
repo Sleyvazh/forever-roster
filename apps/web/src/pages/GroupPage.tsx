@@ -1,4 +1,4 @@
-import { CLASSES, RACES, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type ClassName, type SignupStatus } from "@forever/game-data";
+import { CLASSES, RACES, roleOf, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type ClassName, type Role, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -8,6 +8,7 @@ import { CharacterEditor } from "../components/CharacterEditor";
 import { CRAFTING } from "../components/GameData";
 import { Portrait } from "../components/ImageUpload";
 import { ItemHover, ItemIcon } from "../components/ItemTooltip";
+import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { NumberField } from "../components/NumberField";
 import { ROLE_LABEL } from "./GroupsPage";
 
@@ -75,7 +76,7 @@ export function GroupPage() {
         <div className="pane">
           {tab === "raids" && <Raids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
-          {tab === "characters" && <GroupCharacters groupId={groupId} />}
+          {tab === "characters" && <GroupCharacters groupId={groupId} members={members} />}
           {tab === "crafters" && <Crafters groupId={groupId} />}
           {tab === "admin" && isOfficer && (
             <div className="admin">
@@ -264,30 +265,67 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
   );
 }
 
-function GroupCharacters({ groupId }: { groupId: string }) {
+/** Persos des membres, regroupés par joueur : une fiche par perso, un clic ouvre sa fiche complète (lecture seule). */
+function GroupCharacters({ groupId, members }: { groupId: string; members: Member[] }) {
   const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
   const [open, setOpen] = useState<string | null>(null);
-  const opened = data?.characters.find(c => c.id === open);
+  const [filter, setFilter] = useState("");
+  const [role, setRole] = useState<"" | Role>("");
   if (!data) return <p className="muted">Chargement…</p>;
   if (!data.characters.length) return <p className="muted">Les membres n'ont pas encore de personnages.</p>;
+  const needle = filter.trim().toLowerCase();
+  const shown = data.characters.filter(c =>
+    (!needle || `${c.name} ${c.owner} ${c.cls} ${c.race} ${c.spec1} ${c.spec2}`.toLowerCase().includes(needle))
+    && (!role || roleOf(c.spec1) === role || roleOf(c.spec2) === role));
+  const byPlayer = members.map(m => ({ m, chars: shown.filter(c => c.userId === m.userId) })).filter(x => x.chars.length);
+  const opened = data.characters.find(c => c.id === open);
   return (
     <div className="stack">
-      <div className="tscroll"><table className="data">
-        <thead><tr><th>Perso</th><th>Joueur</th><th>Niv.</th><th>Race / classe</th><th>Spés</th><th>Métiers</th></tr></thead>
-        <tbody>{data.characters.map(c => {
+      <div className="row gc-tools">
+        <input type="text" aria-label="Filtrer les persos" placeholder="Filtrer (nom, joueur, classe, spé)…" value={filter} onChange={e => setFilter(e.target.value)} style={{ flex: "1 1 220px" }} />
+        <div className="seg" role="group" aria-label="Rôle">
+          {(["", "Tank", "Heal", "DPS"] as const).map(r => (
+            <button key={r || "all"} type="button" className={role === r ? "on" : ""} aria-pressed={role === r} onClick={() => setRole(r)}>{r || "Tous"}</button>
+          ))}
+        </div>
+      </div>
+      {!shown.length && <p className="muted">Aucun perso ne correspond.</p>}
+      <div className="gc-grid">
+        {byPlayer.flatMap(({ m, chars }) => chars.map(c => {
           const cl = CLASSES[c.cls as ClassName];
+          const race = RACES[c.race];
+          const profs = [c.professions.prof1, c.professions.prof2].filter(p => p.name);
           return (
-            <tr key={c.id}>
-              <td><button type="button" className="btn ghost sm" style={{ borderColor: cl?.color }} onClick={() => setOpen(o => o === c.id ? null : c.id)}>{c.name}</button></td>
-              <td>{c.owner}</td>
-              <td className="num">{c.level}</td>
-              <td>{c.race} <span style={{ color: cl?.color }}>{c.cls}</span> {RACES[c.race] && <span className={`fac ${RACES[c.race]!.faction}`}>{RACES[c.race]!.faction === "Alliance" ? "A" : "H"}</span>}</td>
-              <td>{[c.spec1, c.spec2].filter(Boolean).join(" / ")}</td>
-              <td className="small">{[c.professions.prof1, c.professions.prof2].filter(p => p.name).map(p => `${p.name} ${p.skill}`).join(" · ")}</td>
-            </tr>
+            <button key={c.id} type="button" className="gc-card" aria-expanded={open === c.id} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }}
+              onClick={() => setOpen(o => (o === c.id ? null : c.id))}>
+              <span className="cav" aria-hidden="true">
+                <Portrait id={c.portraitId} size={42} className="round"
+                  fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
+              </span>
+              <span className="gc-main">
+                <span className="gc-name" style={{ color: cl?.color }}>{c.name}</span>
+                <span className="gc-sub"><span className="lvl-pill num">{c.level}</span>{[c.cls, c.race].filter(Boolean).join(" · ")}</span>
+              </span>
+              {race ? <FactionBadge faction={race.faction} size={22} /> : <span />}
+              <span className="gc-specs">
+                {[c.spec1, c.spec2].filter(Boolean).map((sp, i) => (
+                  <span key={sp} className={`gc-spec${i ? " off" : ""}`}>
+                    {c.cls && <SpecIcon cls={c.cls} spec={sp} size={16} />}{sp}
+                    {roleOf(sp) && <span className={`role ${roleOf(sp)}`}>{roleOf(sp)}</span>}
+                  </span>
+                ))}
+              </span>
+              <span className="gc-foot">
+                <span className="gc-owner">
+                  <span className="avatar" style={{ width: 18, height: 18 }}><Portrait id={m.avatarId} size={18} fallback={<span style={{ fontSize: 10 }}>{m.displayName[0]}</span>} /></span>
+                  {m.displayName}
+                </span>
+                {profs.length > 0 && <span className="gc-profs">{profs.map(p => `${p.name} ${p.skill}`).join(" · ")}</span>}
+              </span>
+            </button>
           );
-        })}</tbody>
-      </table></div>
+        }))}
+      </div>
       {opened && <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
     </div>
   );

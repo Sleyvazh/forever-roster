@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, del, get, patch, post, put, type Character } from "../api";
 import { CharacterEditor } from "../components/CharacterEditor";
-import { ClassIcon } from "../components/Icons";
+import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
+import { Portrait } from "../components/ImageUpload";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -137,10 +138,13 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
   const specs = [c.spec1, c.spec2].filter(Boolean).join(" / ");
   return (
     <button type="button" className="card" aria-current={current ? "true" : "false"} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={onClick}>
-      <span className="lvl num">{c.level}</span>
-      <span className="nm">{c.cls && <ClassIcon cls={c.cls} size={18} className="inline" />}{c.name}</span>
-      {race ? <span className={`fac ${race.faction}`}>{race.faction === "Alliance" ? "ALLI" : "HORDE"}</span> : <span />}
-      <span className="sub">{[c.race, c.cls].filter(Boolean).join(" ") || "À configurer"}{specs && ` · ${specs}`}</span>
+      <span className="cav" aria-hidden="true">
+        <Portrait id={c.portraitId} size={42} className="round"
+          fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
+      </span>
+      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.name}</span>
+      {race ? <FactionBadge faction={race.faction} /> : <span />}
+      <span className="sub">{[c.cls, c.race].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}</span>
     </button>
   );
 }

@@ -9,7 +9,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST=icons/items
 CDN=https://render.worldofwarcraft.com/us/icons/56
-mkdir -p "$DEST"
+mkdir -p "$DEST" icons/faction
+
+# Emblèmes de faction (étendards de bataille du jeu) : icons/faction/horde.jpg et alliance.jpg
+for pair in "horde inv_bannerpvp_01" "alliance inv_bannerpvp_02"; do
+  set -- $pair
+  [ -s "icons/faction/$1.jpg" ] || curl -fsS --retry 2 --max-time 20 -o "icons/faction/$1.jpg" "$CDN/$2.jpg" || rm -f "icons/faction/$1.jpg"
+done
 
 all=$(mktemp); pairs=$(mktemp); todo=$(mktemp); fails=$(mktemp); blp=$(mktemp)
 trap 'rm -f "$all" "$pairs" "$todo" "$fails" "$blp"' EXIT
