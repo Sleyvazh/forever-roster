@@ -52,6 +52,9 @@ export const DETAIL_TABLES = {
   // Icône quand Item.IconFileDataID vaut 0 : celle de l'apparence de l'objet
   ItemModifiedAppearance: ["ItemID", "ItemAppearanceID", "OrderIndex"],
   ItemAppearance: ["ID", "DefaultIconFileDataID"],
+  // Arbres de talents (position, rangs, prérequis) et leurs onglets par classe
+  Talent: ["ID", "TierID", "ColumnIndex", "TabID", "SpellRank_0", "PrereqTalent_0", "PrereqRank_0"],
+  TalentTab: ["ID", "Name_lang", "OrderIndex", "ClassMask", "SpellIconID"],
 } as const;
 export type DetailTableName = keyof typeof DETAIL_TABLES;
 export type DetailTables = Partial<Record<DetailTableName, Record<string, string>[]>>;

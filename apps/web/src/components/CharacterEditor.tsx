@@ -152,10 +152,10 @@ function Profil({ c, onChange, editable }: SubProps) {
             onApply={(which, link, split) => onChange(which === "main" ? { talentLink: link, talents: split } : { talentLink2: link, talents2: split })} />
         )}
         {cl && (
-          <div className="builds">
-            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} view={view} avail={avail}
+          <div className={`builds${view === "grid" ? " wide" : ""}`}>
+            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} view={view} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} view={view} avail={avail}
+            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} view={view} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -171,8 +171,8 @@ function Profil({ c, onChange, editable }: SubProps) {
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, cls, specs, spec, talents, link, view, avail, onChange }: {
-  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; view: TreeView; avail: number;
+function Build({ id, title, cls, specs, spec, talents, link, view, avail, level, onChange }: {
+  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; view: TreeView; avail: number; level: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
   const cl = CLASSES[cls as ClassName];
@@ -213,10 +213,12 @@ function Build({ id, title, cls, specs, spec, talents, link, view, avail, onChan
       {cl && <TalentTrees cls={cls} points={split} blocks={blocks} mainTree={def?.tree} view={view} />}
       {view === "grid" && !blocks && <p className="hint" style={{ margin: 0 }}>Le détail talent par talent s'affiche quand le lien ForeverChanges du build est renseigné.</p>}
       <div className="row small">
-        <span className="muted">Total <span className="num">{total}</span>/{avail}</span>
+        <span className="muted">Total <span className="num">{total}</span>/51</span>
         {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}
       </div>
-      {total > avail && <div className="warnmsg">{total} points au total : le maximum au niveau actuel est de {avail} (51 au niveau 60).</div>}
+      {total > avail && (avail < 51 && total <= 51
+        ? <div className="hint">Ce build compte {total} points, mais le perso est niveau {level} ({avail} point{avail > 1 ? "s" : ""}) : pense à mettre à jour son niveau dans « Identité ».</div>
+        : <div className="warnmsg">{total} points au total : le maximum est de 51 au niveau 60.</div>)}
     </div>
   );
 }

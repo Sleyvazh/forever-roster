@@ -79,7 +79,8 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("#f-tal-main")).toHaveValue("9/37/5");
     await expect(page.locator(".tt.main .tt-pts").first()).toHaveText("37");
     await page.getByRole("button", { name: "Grille" }).click();
-    await expect(page.locator(".build").first().locator(".tt-slot.on")).toHaveCount(18);
+    await expect(page.locator(".build").first().locator(".tg-slot.on")).toHaveCount(3); // fixtures : 4 talents Feral placés comme dans le jeu
+    await expect(page.locator(".build").first().locator(".tg-slot.max")).toHaveCount(3); // 5/5, 5/5 et 2/2
     await page.getByRole("button", { name: "Jauges" }).click();
   });
 

@@ -1,5 +1,22 @@
 import { CLASS_SPECS, CLASSES, type ClassName, type SpecDef } from "@forever/game-data";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { get } from "../api";
+import { useGameVersion } from "./GameData";
 import { SpecIcon } from "./Icons";
+import { FloatingTip, iconUsable, useIconFailures } from "./ItemTooltip";
+
+interface Talent { id: number; tree: number; tier: number; col: number; linkIndex: number; maxRank: number; name: string; icon: string | null; prereq: { id: number; rank: number } | null; ranks: string[] }
+interface TalentData { trees: { tree: number; name: string; icon: string | null }[]; talents: Talent[] }
+
+/** Arbres de la classe (positions réelles du jeu), chargés une fois par version des données. */
+export function useTalentData(cls: string, enabled: boolean) {
+  const v = useGameVersion();
+  return useQuery({
+    queryKey: ["talents", cls, v], enabled: enabled && !!cls, staleTime: 60 * 60_000,
+    queryFn: () => get<TalentData>(`/gamedata/talents/${encodeURIComponent(cls)}?v=${v}`),
+  });
+}
 
 export type TreeView = "gauges" | "grid";
 const TIERS = [0, 5, 10, 15, 20, 25, 30];
@@ -21,7 +38,8 @@ export function TalentTrees({ cls, points, blocks, mainTree, view }: {
   const cl = CLASSES[cls as ClassName];
   if (!cl) return null;
   const top = points.indexOf(Math.max(...points));
-  const grid = view === "grid" && !!blocks;
+  const { data } = useTalentData(cls, view === "grid" && !!blocks);
+  const grid = view === "grid" && !!blocks && !!data?.talents.length;
   return (
     <div className={`ttrees ${grid ? "grid" : "gauges"}`}>
       {cl.trees.map((name, i) => {
@@ -35,17 +53,11 @@ export function TalentTrees({ cls, points, blocks, mainTree, view }: {
           </div>
         );
         if (grid) {
-          const digits = [...(blocks![i] ?? "")].map(Number);
-          const n = Math.max(digits.length, 16);
+          const list = (data?.talents ?? []).filter(t => t.tree === i);
           return (
             <div key={name} className={`tt${main ? " main" : ""}${p ? "" : " tt-empty"}`}>
               {head}
-              <div className="tt-grid" aria-label={`${p} points dans ${name}, ${digits.filter(Boolean).length} talents`}>
-                {Array.from({ length: Math.ceil(n / 4) * 4 }, (_, k) => {
-                  const d = digits[k] ?? 0;
-                  return <span key={k} className={`tt-slot${d ? " on" : ""}${d >= 5 ? " max" : ""}`} aria-hidden="true">{d || ""}</span>;
-                })}
-              </div>
+              <TreeGrid talents={list} digits={[...(blocks![i] ?? "")].map(Number)} spent={p} />
             </div>
           );
         }
@@ -64,6 +76,57 @@ export function TalentTrees({ cls, points, blocks, mainTree, view }: {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Un arbre à sa vraie disposition : 4 colonnes, un palier par ligne, flèches des prérequis, infobulle par talent. */
+function TreeGrid({ talents, digits, spent }: { talents: Talent[]; digits: number[]; spent: number }) {
+  useIconFailures();
+  const [tip, setTip] = useState<{ t: Talent; rect: DOMRect } | null>(null);
+  const rows = Math.max(7, ...talents.map(t => t.tier + 1));
+  const rank = (t: Talent) => Math.min(t.maxRank, digits[t.linkIndex] ?? 0);
+  const byId = new Map(talents.map(t => [t.id, t]));
+  const cx = (col: number) => (col + 0.5) * 25, cy = (tier: number) => (tier + 0.5) / rows * 100;
+  const show = (t: Talent) => (e: React.SyntheticEvent<HTMLElement>) => setTip({ t, rect: e.currentTarget.getBoundingClientRect() });
+  return (
+    <div className="tg" style={{ gridTemplateRows: `repeat(${rows}, auto)` }}>
+      <svg className="tg-arrows" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        {talents.filter(t => t.prereq && byId.has(t.prereq.id)).map(t => {
+          const from = byId.get(t.prereq!.id)!;
+          const on = rank(t) > 0;
+          return <line key={t.id} x1={cx(from.col)} y1={cy(from.tier)} x2={cx(t.col)} y2={cy(t.tier)} className={on ? "on" : ""} vectorEffect="non-scaling-stroke" />;
+        })}
+      </svg>
+      {talents.map(t => {
+        const r = rank(t);
+        const locked = r === 0 && spent < t.tier * 5;
+        return (
+          <span key={t.id} className={`tg-slot${r ? " on" : ""}${r && r >= t.maxRank ? " max" : ""}${locked ? " locked" : ""}`} tabIndex={0}
+            style={{ gridColumn: t.col + 1, gridRow: t.tier + 1 }} aria-label={`${t.name} : ${r}/${t.maxRank}`}
+            onMouseEnter={show(t)} onFocus={show(t)} onMouseLeave={() => setTip(null)} onBlur={() => setTip(null)}>
+            {iconUsable(t.icon ?? undefined) ? <img src={`/icons/items/${t.icon}.jpg`} alt="" loading="lazy" decoding="async" onError={e => { e.currentTarget.style.visibility = "hidden"; }} /> : <span className="tg-ph">{t.name.slice(0, 2)}</span>}
+            <b className="num">{r}/{t.maxRank}</b>
+          </span>
+        );
+      })}
+      {tip && (
+        <FloatingTip rect={tip.rect}>
+          <div className="t-name">{tip.t.name}</div>
+          <div className="t-row">Rang {rank(tip.t)}/{tip.t.maxRank}</div>
+          {tip.t.prereq && byId.get(tip.t.prereq.id) && rank(tip.t) === 0 && (
+            <div className="t-dim">Requiert {tip.t.prereq.rank} point{tip.t.prereq.rank > 1 ? "s" : ""} dans {byId.get(tip.t.prereq.id)!.name}</div>
+          )}
+          {tip.t.tier > 0 && rank(tip.t) === 0 && <div className="t-dim">Requiert {tip.t.tier * 5} points dans l'arbre</div>}
+          {rank(tip.t) > 0 && <div className="t-yellow" style={{ marginTop: 6 }}>{tip.t.ranks[rank(tip.t) - 1]}</div>}
+          {rank(tip.t) < tip.t.maxRank && tip.t.ranks[rank(tip.t)] && (
+            <>
+              <div className="t-row" style={{ marginTop: 6 }}>{rank(tip.t) ? "Rang suivant :" : ""}</div>
+              <div className="t-yellow">{tip.t.ranks[rank(tip.t)]}</div>
+            </>
+          )}
+        </FloatingTip>
+      )}
     </div>
   );
 }

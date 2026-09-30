@@ -279,3 +279,50 @@ export function appearanceIcons(tables: Pick<DetailTables, "ItemModifiedAppearan
   }
   return new Map([...best].map(([k, v]) => [k, v.fid]));
 }
+
+/* ---------- Talents ---------- */
+
+const CLASS_BY_MASK: Record<number, string> = { 1: "Warrior", 2: "Paladin", 4: "Hunter", 8: "Rogue", 16: "Priest", 64: "Shaman", 128: "Mage", 256: "Warlock", 1024: "Druid" };
+
+export interface TalentRow {
+  id: number; cls: string; tree: number; tier: number; col: number; maxRank: number; name: string;
+  /** Position dans le lien du calculateur : ordre palier puis colonne à l'intérieur de l'arbre. */
+  linkIndex: number;
+  iconId: number | null; icon?: string;
+  prereq: { id: number; rank: number } | null;
+  /** Texte de chaque rang (rang 1 en premier). */
+  ranks: string[];
+}
+export interface TalentTreeRow { cls: string; tree: number; name: string; iconId: number | null; icon?: string }
+
+/** Arbres de talents par classe, tels que le calculateur ForeverChanges les ordonne (voir parseTalentLink). */
+export function buildTalents(t: { Talent?: Row[]; TalentTab?: Row[]; SpellMisc?: Row[] }, spellName: Map<number, string>, spells: SpellTexts) {
+  const iconOf = new Map((t.SpellMisc ?? []).map(r => [I(r.SpellID), I(r.SpellIconFileDataID)]));
+  const tabs = new Map<number, TalentTreeRow>();
+  for (const r of t.TalentTab ?? []) {
+    const cls = CLASS_BY_MASK[I(r.ClassMask)];
+    if (!cls) continue; // arbres de familiers
+    tabs.set(I(r.ID), { cls, tree: I(r.OrderIndex), name: r.Name_lang ?? "", iconId: I(r.SpellIconID) || null });
+  }
+  const byTab = new Map<number, Row[]>();
+  for (const r of t.Talent ?? []) {
+    if (!tabs.has(I(r.TabID)) || !I(r.SpellRank_0)) continue;
+    (byTab.get(I(r.TabID)) ?? byTab.set(I(r.TabID), []).get(I(r.TabID))!).push(r);
+  }
+  const talents: TalentRow[] = [];
+  for (const [tabId, rows] of byTab) {
+    const tab = tabs.get(tabId)!;
+    rows.sort((a, b) => I(a.TierID) - I(b.TierID) || I(a.ColumnIndex) - I(b.ColumnIndex));
+    rows.forEach((r, linkIndex) => {
+      const spellIds = Array.from({ length: 9 }, (_, k) => I(r[`SpellRank_${k}`])).filter(Boolean);
+      const pre = I(r.PrereqTalent_0);
+      talents.push({
+        id: I(r.ID), cls: tab.cls, tree: tab.tree, tier: I(r.TierID), col: I(r.ColumnIndex), maxRank: spellIds.length, linkIndex,
+        name: spellName.get(spellIds[0]!) ?? "", iconId: iconOf.get(spellIds[0]!) || null,
+        prereq: pre ? { id: pre, rank: I(r.PrereqRank_0) + 1 } : null,
+        ranks: spellIds.map(id => spells.describe(id) ?? ""),
+      });
+    });
+  }
+  return { trees: [...tabs.values()], talents };
+}

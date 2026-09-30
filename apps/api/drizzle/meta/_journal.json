@@ -71,6 +71,13 @@
       "when": 1790766917250,
       "tag": "0009_recipes_created_item",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790781999424,
+      "tag": "0010_talents",
+      "breakpoints": true
     }
   ]
 }
