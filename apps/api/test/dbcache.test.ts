@@ -19,10 +19,13 @@ function cacheFile(records: { table: number; id: number; status?: number; data?:
 function sparse(name: string, ilvl: number, req: number, inv: number, quality: number) {
   const tail = Buffer.alloc(302);
   tail.writeUInt16LE(ilvl, 302 - 22); tail.writeUInt8(req, 302 - 4); tail.writeUInt8(inv, 302 - 3); tail.writeUInt8(quality, 302 - 2);
+  for (let k = 0; k < 10; k++) tail.writeInt32LE(-1, 116 + 4 * k);
+  tail.writeInt32LE(3, 116); tail.writeInt32LE(5555, 76); // +Agilité, 55,55 % du budget
+  tail.writeUInt32LE(959, 180); tail.writeUInt8(1, 302 - 9); tail.writeFloatLE(0.4, 4);
   return Buffer.concat([Buffer.from(`\0\0\0\0${name}\0`, "utf8"), tail]);
 }
 function item(cls: number, sub: number, inv: number) {
-  const b = Buffer.alloc(43); b.writeUInt8(cls, 0); b.writeUInt8(sub, 4); b.writeUInt8(inv, 6); return b;
+  const b = Buffer.alloc(43); b.writeUInt8(cls, 0); b.writeUInt8(sub, 4); b.writeUInt8(inv, 6); b.writeUInt32LE(135039, 13); return b;
 }
 const row = (id: number, name: string, origin: ItemRow["origin"]): ItemRow =>
   ({ id, name, quality: 1, itemLevel: 1, reqLevel: 0, classId: 0, subclassId: 0, inventoryType: 0, kind: "", origin });
@@ -40,7 +43,12 @@ describe("cache de correctifs du client (DBCache.bin)", () => {
     const cache = parseDbCache(buf);
     expect(cache.build).toBe(69977);
     const { rows } = itemsFromCache(cache, new Map([[4, "Armor"]]), new Map([["4:2", "Leather"]]));
-    expect(rows).toEqual([{ id: 5404, name: "Serpent's Shoulders", quality: 3, itemLevel: 23, reqLevel: 18, classId: 4, subclassId: 2, inventoryType: 3, kind: "Armor · Leather", origin: "forever" }]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 5404, name: "Serpent's Shoulders", quality: 3, itemLevel: 23, reqLevel: 18, classId: 4, subclassId: 2, inventoryType: 3, kind: "Armor · Leather", origin: "forever",
+      iconFileId: 135039, raw: { stats: [[3, 5555]], sellPrice: 959, bonding: 1, itemSet: 0, delay: 0 },
+    });
+    expect(rows[0]!.raw!.variance).toBeCloseTo(0.4);
   });
 
   it("ajoute sans jamais écraser un objet des fichiers du jeu, mais remplace un complément Classic Era", () => {

@@ -55,20 +55,33 @@ export function decodeItemSparse(data: Buffer) {
     i = end + 1;
   }
   if (data.length - i !== ITEM_SPARSE_TAIL) return null;
-  const len = data.length;
+  const len = data.length, t = i;
+  // Positions dans la partie fixe, dans l'ordre des colonnes de la table (vérifiées sur des objets connus)
+  const stats: [number, number][] = [];
+  for (let k = 0; k < 10; k++) {
+    const type = data.readInt32LE(t + 116 + 4 * k), alloc = data.readInt32LE(t + 76 + 4 * k);
+    if (type > 0 && alloc) stats.push([type, alloc]);
+  }
   return {
     name: strings[4]!,
     itemLevel: data.readUInt16LE(len - 22),
     reqLevel: data.readUInt8(len - 4),
     inventoryType: data.readUInt8(len - 3),
     quality: Math.min(7, data.readUInt8(len - 2)),
+    variance: data.readFloatLE(t + 4),
+    maxCount: data.readInt32LE(t + 160),
+    sellPrice: data.readUInt32LE(t + 180),
+    itemSet: data.readUInt16LE(t + 266),
+    delay: data.readUInt16LE(t + 272),
+    bonding: data.readUInt8(len - 9),
+    stats,
   };
 }
 
 /** Ligne Item : classe, sous-classe, emplacement. */
 export function decodeItem(data: Buffer) {
   if (data.length !== ITEM_SIZE) return null;
-  return { classId: data.readUInt8(0), subclassId: data.readUInt8(4), inventoryType: data.readUInt8(6) };
+  return { classId: data.readUInt8(0), subclassId: data.readUInt8(4), inventoryType: data.readUInt8(6), iconFileId: data.readUInt32LE(13) };
 }
 
 /**
@@ -91,7 +104,15 @@ export function itemsFromCache(cache: DbCache, className: Map<number, string>, s
     const classId = base?.classId ?? 0, subclassId = base?.subclassId ?? 0;
     const kind = [className.get(classId), subName.get(`${classId}:${subclassId}`)].filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i).join(" · ");
-    rows.push({ id, name: s.name, quality: s.quality, itemLevel: s.itemLevel, reqLevel: s.reqLevel, classId, subclassId, inventoryType: base?.inventoryType ?? s.inventoryType, kind, origin: "forever" });
+    const inventoryType = base?.inventoryType ?? s.inventoryType;
+    rows.push({
+      id, name: s.name, quality: s.quality, itemLevel: s.itemLevel, reqLevel: s.reqLevel, classId, subclassId, inventoryType, kind, origin: "forever",
+      raw: {
+        itemLevel: s.itemLevel, quality: s.quality, inventoryType, classId, subclassId, bonding: s.bonding, maxCount: s.maxCount,
+        sellPrice: s.sellPrice, delay: s.delay, variance: s.variance, itemSet: s.itemSet, stats: s.stats,
+      },
+      iconFileId: base?.iconFileId || undefined,
+    });
   }
   if (items.size && unreadable > items.size * 0.1) {
     throw new Error(`${unreadable} objets sur ${items.size} ne correspondent pas à la structure connue : le format du client a changé.`);

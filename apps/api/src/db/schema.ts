@@ -238,6 +238,8 @@ export const gameItems = pgTable("game_items", {
   kind: text("kind").notNull().default(""),
   /** « forever » (client Forever) ou « era » (absent du client Forever, complété avec Classic Era). */
   origin: text("origin", { enum: ["forever", "era"] }).notNull().default("forever"),
+  /** Infobulle calculée à l'import : stats, armure, dégâts, effets, set, icône (voir gamedata/details.ts). */
+  details: jsonb("details").$type<import("@forever/game-data").ItemDetails>().notNull().default({}),
 }, t => [
   index("game_items_inv_idx").on(t.inventoryType),
 ]);

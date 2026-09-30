@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseCsv } from "./csv";
-import { ITEM_TABLES, TABLES, type TableName, type Tables } from "./extract";
+import { checkDetailTable, DETAIL_TABLES, ITEM_TABLES, TABLES, type DetailTableName, type DetailTables, type TableName, type Tables } from "./extract";
 
 const WAGO = "https://wago.tools";
 const UA = { "User-Agent": "forever-roster (+https://github.com/Sleyvazh/forever-roster)" };
@@ -68,6 +68,39 @@ export async function downloadTables(build: string, fetchImpl: typeof fetch = fe
     out[name] = parseCsv(await download(`${WAGO}/db2/${name}/csv?build=${encodeURIComponent(build)}`, fetchImpl));
   }
   return out;
+}
+
+/** Tables des infobulles : chacune est facultative (absente ou modifiée → ignorée avec un avertissement). */
+export async function downloadDetailTables(build: string, fetchImpl: typeof fetch = fetch, log: (m: string) => void = () => {}): Promise<DetailTables> {
+  const out: DetailTables = {};
+  for (const name of Object.keys(DETAIL_TABLES) as DetailTableName[]) {
+    log(`  ${name}…`);
+    try { out[name] = checkDetailTable(name, parseCsv(await download(`${WAGO}/db2/${name}/csv?build=${encodeURIComponent(build)}`, fetchImpl, 2)), log); }
+    catch (err) { log(`  ${name} ignorée : ${(err as Error).message}`); }
+  }
+  return out;
+}
+
+export async function readDetailTables(dir: string, log: (m: string) => void = () => {}): Promise<DetailTables> {
+  const out: DetailTables = {};
+  for (const name of Object.keys(DETAIL_TABLES) as DetailTableName[]) {
+    try { out[name] = checkDetailTable(name, parseCsv(await readFile(path.join(dir, `${name}.csv`), "utf8")), log); } catch { /* table absente */ }
+  }
+  return out;
+}
+
+/** Listfile communautaire (numéro de fichier → chemin), lu ligne par ligne sans tout garder en mémoire. */
+export async function* listfileLines(fetchImpl: typeof fetch = fetch): AsyncGenerator<string> {
+  const res = await fetchImpl("https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile.csv", { headers: UA });
+  if (!res.ok || !res.body) throw new Error(`listfile : HTTP ${res.status}`);
+  const dec = new TextDecoder();
+  let buf = "";
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    buf += dec.decode(chunk, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) { yield buf.slice(0, i).replace(/\r$/, ""); buf = buf.slice(i + 1); }
+  }
+  if (buf) yield buf;
 }
 
 /** Tables des objets seules (ItemSparse, Item) d'une version, pour le complément Classic Era. */

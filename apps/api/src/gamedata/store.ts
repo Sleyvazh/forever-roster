@@ -10,7 +10,11 @@ export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: R
   extra: { eraBuild?: string | null; cacheBuild?: string | null; cacheItems?: number } = {}) {
   await db.transaction(async tx => {
     await tx.delete(gameItems);
-    for (const part of chunk(data.items, 2000)) await tx.insert(gameItems).values(part);
+    const rows = data.items.map(i => ({
+      id: i.id, name: i.name, quality: i.quality, itemLevel: i.itemLevel, reqLevel: i.reqLevel, classId: i.classId, subclassId: i.subclassId,
+      inventoryType: i.inventoryType, kind: i.kind, origin: i.origin, details: i.details ?? {},
+    }));
+    for (const part of chunk(rows, 1000)) await tx.insert(gameItems).values(part);
     await tx.delete(gameRecipes);
     for (const part of chunk(data.recipes, 1000)) await tx.insert(gameRecipes).values(part);
     const eraItems = data.items.filter(i => i.origin === "era").length;

@@ -1,0 +1,3 @@
+ID,NameSubtext_lang,Description_lang,AuraDescription_lang
+21992,,"Blasts your enemy with lightning, dealing $s1 Nature damage for $d.",
+21993,,"Improves your chance to hit by ${$s1/10}.1%.",

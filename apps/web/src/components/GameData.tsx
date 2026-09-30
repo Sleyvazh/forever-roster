@@ -1,3 +1,4 @@
+import { FloatingTip, ItemHover, ItemIcon, ItemTooltipBody } from "./ItemTooltip";
 import { ITEM_QUALITIES, itemLinks, PROFESSION_SKILL_LINES, type GEAR_SLOTS } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -136,14 +137,21 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                       </label>
                       <div className="rmain">
                         <div className="rname">
-                          <span className={made ? `q${made.quality}` : ""}>{made && r.createdCount > 1 ? `${r.createdCount}× ` : ""}{r.name}</span>
+                          <ItemHover item={made} className="with-icon">
+                            {made && <ItemIcon item={made} size={20} />}
+                            <span className={made ? `q${made.quality}` : ""}>{made && r.createdCount > 1 ? `${r.createdCount}× ` : ""}{r.name}</span>
+                          </ItemHover>
                           {made && <ExtLink id={made.id} />}
                           {r.enchant && <span className="muted small"> · {r.enchant}</span>}
                         </div>
                         <div className="rmeta">
                           <span className={tooHigh ? "warn" : ""}>Requiert <span className="num">{r.reqSkill}</span></span>
                           <span>{r.fromItem ? "Patron" : "Entraîneur"}</span>
-                          {r.reagents.length > 0 && <span className="reag">{r.reagents.map(x => `${x.n}× ${items[x.id]?.name ?? `#${x.id}`}`).join(", ")}</span>}
+                          {r.reagents.length > 0 && (
+                            <span className="reag">{r.reagents.map((x, k) => (
+                              <span key={x.id}>{k > 0 && ", "}<ItemHover item={items[x.id]}>{x.n}× {items[x.id]?.name ?? `#${x.id}`}</ItemHover></span>
+                            ))}</span>
+                          )}
                         </div>
                       </div>
                       <button type="button" className={`rwant${mark === "wanted" ? " on" : ""}`} aria-pressed={mark === "wanted"}
@@ -175,9 +183,11 @@ type Slot = (typeof GEAR_SLOTS)[number];
  * Champ texte avec recherche dans la base du jeu (combobox accessible au clavier).
  * Choisir un résultat enregistre l'identifiant et la qualité ; taper librement reste possible.
  */
-export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
+export function ItemPicker({ slot, label, name, itemId, quality, onChange, compareWith, compareLabel }: {
   slot: Slot; label: string; name: string; itemId?: number | null; quality?: number | null;
   onChange: (p: { name: string; id: number | null; quality?: number | null }) => void;
+  /** Objet auquel comparer les résultats dans leur infobulle (celui qu'on remplacerait). */
+  compareWith?: GameItem | null; compareLabel?: string;
 }) {
   const status = useGameStatus();
   const enabled = !!status.data?.items;
@@ -217,6 +227,15 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
     return () => { window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
   }, [open]);
 
+  // Infobulle du résultat actif (souris ou flèches du clavier), à côté de la liste
+  const optionRefs = useRef<(HTMLLIElement | null)[]>([]);
+  const [tipRect, setTipRect] = useState<DOMRect | null>(null);
+  useEffect(() => {
+    if (!open) { setTipRect(null); return; }
+    const el = optionRefs.current[active];
+    setTipRect(el ? el.getBoundingClientRect() : null);
+  }, [open, active, results, rect]);
+
   const type = (v: string) => {
     onChange({ name: v, id: null });
     window.clearTimeout(timer.current);
@@ -245,13 +264,21 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange }: {
         <ul className="picker-list" id={listId} role="listbox" style={rect ?? undefined}>
           {!results.length && <li className="muted small" role="option" aria-selected={false}>Aucun objet trouvé pour cet emplacement.</li>}
           {results.map((it, i) => (
-            <li key={it.id} id={`${listId}-${i}`} role="option" aria-selected={i === active}
+            <li key={it.id} id={`${listId}-${i}`} role="option" aria-selected={i === active} ref={el => { optionRefs.current[i] = el; }}
               onMouseDown={e => { e.preventDefault(); pick(it); }} onMouseEnter={() => setActive(i)}>
-              <span className={`q${it.quality}`}>{it.name}</span>
-              <small>{[it.kind, `niv. objet ${it.itemLevel}`, it.reqLevel ? `requiert ${it.reqLevel}` : "", it.origin === "era" ? "données Classic Era" : ""].filter(Boolean).join(" · ")}</small>
+              <ItemIcon item={it} size={28} />
+              <span className="po-txt">
+                <span className={`q${it.quality}`}>{it.name}</span>
+                <small>{[it.kind, `niv. objet ${it.itemLevel}`, it.reqLevel ? `requiert ${it.reqLevel}` : "", it.origin === "era" ? "données Classic Era" : ""].filter(Boolean).join(" · ")}</small>
+              </span>
             </li>
           ))}
         </ul>
+      )}
+      {open && results[active] && tipRect && (
+        <FloatingTip rect={tipRect}>
+          <ItemTooltipBody item={results[active]!} compare={compareWith && compareWith.id !== results[active]!.id ? compareWith : null} compareLabel={compareLabel ?? "Par rapport à"} />
+        </FloatingTip>
       )}
     </div>
   );

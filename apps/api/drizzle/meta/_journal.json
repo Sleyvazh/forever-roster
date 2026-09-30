@@ -57,6 +57,13 @@
       "when": 1790760075350,
       "tag": "0007_items_origin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790763248016,
+      "tag": "0008_items_details",
+      "breakpoints": true
     }
   ]
 }

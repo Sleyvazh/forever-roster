@@ -16,7 +16,7 @@ import { membership, outranks, requireRole } from "../lib/groups";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
-import { likeContains } from "./gamedata";
+import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { bus } from "../lib/events";
 
@@ -130,7 +130,7 @@ export async function groupRoutes(app: FastifyInstance) {
       .limit(2000);
 
     type Who = { characterId: string; name: string; owner: string };
-    const byRecipe = new Map<number, { spellId: number; name: string; skillLine: number; reqSkill: number; item: { id: number; name: string; quality: number } | null; enchant: string | null; known: Who[]; wanted: Who[] }>();
+    const byRecipe = new Map<number, { spellId: number; name: string; skillLine: number; reqSkill: number; item: ItemSummary | { id: number; name: string; quality: number } | null; enchant: string | null; known: Who[]; wanted: Who[] }>();
     for (const r of rows) {
       // Seulement les métiers actuels du perso (un patron d'un métier abandonné ne compte plus)
       if (!currentLines(r.professions).has(r.skillLine)) continue;
@@ -143,7 +143,11 @@ export async function groupRoutes(app: FastifyInstance) {
       e[r.status].push({ characterId: r.characterId, name: r.character, owner: r.owner });
     }
     const recipes = [...byRecipe.values()];
-    return { recipes: recipes.slice(0, 150), total: recipes.length };
+    // Infobulle complète des objets fabriqués affichés
+    const page = recipes.slice(0, 150);
+    const full = await itemsById(db, page.flatMap(r => (r.item ? [r.item.id] : [])));
+    for (const r of page) if (r.item && full[r.item.id]) r.item = full[r.item.id]!;
+    return { recipes: page, total: recipes.length };
   });
 
   /* ----- Discord ----- */

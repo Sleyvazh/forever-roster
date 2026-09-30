@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
 import { ItemPicker } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
+import { FloatingTip, ItemIcon, ItemTooltipBody } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
 
 type Slot = (typeof GEAR_SLOTS)[number];
@@ -97,8 +98,8 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
         onMouseLeave={() => setTip(null)}
         onFocus={e => shown && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
         onBlur={() => setTip(null)}>
-        <span className={`gicon${shown ? "" : " none"}`} style={shown?.quality != null ? { ["--qc" as string]: `var(--q${shown.quality})` } : undefined}>
-          <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>
+        <span className={`gicon${shown ? "" : " none"}${shown?.item?.details?.icon ? " has-img" : ""}`} style={shown?.quality != null ? { ["--qc" as string]: `var(--q${shown.quality})` } : undefined}>
+          {shown?.item?.details?.icon ? <ItemIcon item={shown.item} size={42} /> : <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>}
           {g.got && <span className="got" aria-hidden="true">✓</span>}
         </span>
         <span className="gtxt">
@@ -146,14 +147,16 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
         </aside>
         <div className="dcol right">{RIGHT.map(slotEl)}</div>
         <div className="dweapons">{WEAPONS.map(slotEl)}</div>
-        {editable && open && <SlotEditor slot={open} g={c.gear[open] ?? {}} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
+        {editable && open && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
       </div>
-      {tip && <ItemTip slot={tip.slot} rect={tip.rect} g={c.gear[tip.slot] ?? {}} view={view} items={items} />}
+      {tip && <ItemTip slot={tip.slot} rect={tip.rect} g={c.gear[tip.slot] ?? {}} view={view} items={items}
+        owned={new Set(GEAR_SLOTS.map(s => shownFor(c.gear[s] ?? {}, view, items)?.name).filter((n): n is string => !!n))} />}
     </div>
   );
 }
 
-function SlotEditor({ slot, g, onSet, onClose }: { slot: Slot; g: GearEntry; onSet: (p: Partial<GearEntry>) => void; onClose: () => void }) {
+function SlotEditor({ slot, g, items, onSet, onClose }: { slot: Slot; g: GearEntry; items: Record<number, GameItem>; onSet: (p: Partial<GearEntry>) => void; onClose: () => void }) {
+  const cur = g.curId ? items[g.curId] : null;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [slot]);
   return (
@@ -161,7 +164,7 @@ function SlotEditor({ slot, g, onSet, onClose }: { slot: Slot; g: GearEntry; onS
       <div className="row between"><b>{SLOT_FR[slot]}</b><button type="button" className="btn sm ghost" onClick={onClose}>Fermer</button></div>
       <div className="grid">
         <div className="fld"><span className="lbl">Équipé</span>
-          <ItemPicker slot={slot} label={`Équipé : ${SLOT_FR[slot]}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q}
+          <ItemPicker slot={slot} label={`Équipé : ${SLOT_FR[slot]}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q} compareWith={cur} compareLabel="Par rapport à"
             onChange={p => onSet({ cur: p.name, curId: p.id, ...(p.quality !== undefined && { q: p.quality }) })} />
         </div>
         <div className="fld"><label htmlFor={`gq-${slot}`}>Qualité (saisie libre)</label>
@@ -170,7 +173,7 @@ function SlotEditor({ slot, g, onSet, onClose }: { slot: Slot; g: GearEntry; onS
           </select>
         </div>
         <div className="fld"><span className="lbl">Objectif BiS</span>
-          <ItemPicker slot={slot} label={`Objectif BiS : ${SLOT_FR[slot]}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ}
+          <ItemPicker slot={slot} label={`Objectif BiS : ${SLOT_FR[slot]}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ} compareWith={cur} compareLabel="Gain par rapport à"
             onChange={p => onSet({ bis: p.name, bisId: p.id, bisQ: p.quality ?? (p.id ? g.bisQ : null) })} />
         </div>
         <label className="row" style={{ gap: 8 }}>
@@ -181,31 +184,28 @@ function SlotEditor({ slot, g, onSet, onClose }: { slot: Slot; g: GearEntry; onS
   );
 }
 
-function ItemTip({ slot, rect, g, view, items }: { slot: Slot; rect: DOMRect; g: GearEntry; view: View; items: Record<number, GameItem> }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number }>({ left: rect.right + 8, top: rect.top });
+function ItemTip({ slot, rect, g, view, items, owned }: { slot: Slot; rect: DOMRect; g: GearEntry; view: View; items: Record<number, GameItem>; owned: Set<string> }) {
   const shown = shownFor(g, view, items);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const w = el.offsetWidth, h = el.offsetHeight;
-    let left = rect.right + 8, top = rect.top;
-    if (left + w > innerWidth - 12) left = rect.left - w - 8;
-    if (left < 12) { left = Math.max(12, Math.min(rect.left, innerWidth - w - 12)); top = rect.bottom + 6; }
-    if (top + h > innerHeight - 12) top = Math.max(12, rect.top - h - 6);
-    setPos({ left, top });
-  }, [rect]);
   if (!shown) return null;
-  const it = shown.item;
   const other = view === "cur" ? g.bis?.trim() : null;
+  const status = g.got ? <div className="t-ok">✓ BiS obtenu</div> : other && other !== shown.name ? <div className="t-warn">Objectif : {other}</div> : null;
+  // Objet de la base : infobulle complète, comparée à l'objectif (vue Équipé) ou à l'objet équipé (vue BiS)
+  if (shown.item) {
+    const cur = g.curId ? items[g.curId] : undefined, bis = g.bisId ? items[g.bisId] : undefined;
+    const compare = view === "cur" ? (bis && bis.id !== shown.item.id ? bis : null) : (cur && cur.id !== shown.item.id ? cur : null);
+    return (
+      <FloatingTip rect={rect}>
+        <ItemTooltipBody item={shown.item} owned={owned} compare={compare}
+          compareLabel={view === "cur" ? "Par rapport à l'objectif BiS" : "Gain par rapport à l'équipé"} note={status} />
+      </FloatingTip>
+    );
+  }
   return (
-    <div className="itip" ref={ref} role="tooltip" style={pos}>
+    <FloatingTip rect={rect}>
       <div className={`t-name${shown.quality != null ? ` tq${shown.quality}` : ""}`}>{shown.name}</div>
-      <div className="t-row">{SLOT_FR[slot]}{it?.kind ? ` · ${it.kind}` : ""}</div>
-      {it && <div className="t-row">Niveau d'objet {it.itemLevel}{shown.quality != null ? ` · ${ITEM_QUALITIES[shown.quality] ?? ""}` : ""}</div>}
-      {it && it.reqLevel > 0 && <div className="t-row">Requiert le niveau {it.reqLevel}</div>}
-      {!it && <div className="t-src">Saisie libre (pas encore choisi dans la base)</div>}
-      {it?.origin === "era" && <div className="t-src">Données de Classic Era : l'objet n'est pas dans les fichiers du client Forever, ses stats peuvent différer.</div>}
-      {g.got ? <div className="t-ok">✓ BiS obtenu</div> : other && other !== shown.name ? <div className="t-warn">Objectif : {other}</div> : null}
-    </div>
+      <div className="t-row">{SLOT_FR[slot]}</div>
+      <div className="t-src">Saisie libre (pas encore choisi dans la base)</div>
+      {status}
+    </FloatingTip>
   );
 }

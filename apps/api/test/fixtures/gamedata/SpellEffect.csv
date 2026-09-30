@@ -5,3 +5,5 @@ ID,SpellID,EffectIndex,Effect,EffectItemType,EffectBasePointsF,EffectMiscValue_0
 4,19999,0,36,0,0,0,19100
 5,7418,0,53,0,0,41,0
 6,78,0,2,0,11,0,0
+90,21992,0,2,0,300,0,0
+91,21993,0,6,0,20,0,0

@@ -1,0 +1,1 @@
+ALTER TABLE "game_items" ADD COLUMN "details" jsonb DEFAULT '{}'::jsonb NOT NULL;

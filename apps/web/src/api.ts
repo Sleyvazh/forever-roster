@@ -62,7 +62,10 @@ export interface GearEntry { cur?: string; curId?: number | null; q?: number | n
 /* ---------- Données du jeu ---------- */
 
 /** origin « era » : objet absent des fichiers du client Forever, complété avec Classic Era (stats possiblement différentes). */
-export interface GameItem { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin?: "forever" | "era" }
+export interface GameItem {
+  id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin?: "forever" | "era";
+  details?: import("@forever/game-data").ItemDetails;
+}
 export interface GameRecipe {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
   createdItemId: number | null; createdCount: number; enchant: string | null; reagents: { id: number; n: number }[]; taughtBy: number[]; fromItem: boolean;
@@ -72,7 +75,7 @@ export type RecipeStatus = "known" | "wanted";
 export interface Crafter { characterId: string; name: string; owner: string }
 export interface CraftersRecipe {
   spellId: number; name: string; skillLine: number; reqSkill: number; enchant: string | null;
-  item: { id: number; name: string; quality: number } | null; known: Crafter[]; wanted: Crafter[];
+  item: GameItem | null; known: Crafter[]; wanted: Crafter[];
 }
 
 export type GroupRole = "owner" | "officer" | "member";

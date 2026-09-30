@@ -1,0 +1,108 @@
+import { BOND_LABEL, compareItems, INVENTORY_LABEL, money, statLine, TRIGGER_LABEL } from "@forever/game-data";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { GameItem } from "../api";
+
+/** Icône d'objet servie par notre serveur (/icons/items/, fichiers de Blizzard hors dépôt) ; repli : cadre de la couleur de qualité. */
+export function ItemIcon({ item, size = 36, className }: { item?: Pick<GameItem, "quality" | "details"> | null; size?: number; className?: string }) {
+  const icon = item?.details?.icon;
+  const [failed, setFailed] = useState<string | null>(null);
+  const style = { width: size, height: size, ["--qc" as string]: item ? `var(--q${item.quality})` : "var(--line-2)" };
+  if (!icon || failed === icon) return <span className={`iicon none ${className ?? ""}`} style={style} aria-hidden="true" />;
+  return (
+    <span className={`iicon ${className ?? ""}`} style={style} aria-hidden="true">
+      <img src={`/icons/items/${icon}.jpg`} width={size} height={size} alt="" loading="lazy" decoding="async" onError={() => setFailed(icon)} />
+    </span>
+  );
+}
+
+/**
+ * Infobulle d'objet comme en jeu : qualité, lien, emplacement, armure ou dégâts, caractéristiques,
+ * niveaux, effets, set, prix. `compare` ajoute les écarts avec un autre objet (équipé ou objectif BiS).
+ */
+export function ItemTooltipBody({ item, compare, compareLabel, owned, note }: {
+  item: GameItem; compare?: GameItem | null; compareLabel?: string; owned?: Set<string>; note?: ReactNode;
+}) {
+  const d = item.details ?? {};
+  const lines = (d.stats ?? []).map(([t, v]) => statLine(t, v));
+  const primary = lines.filter(l => l.kind === "primary"), equip = lines.filter(l => l.kind === "equip");
+  const sub = item.kind.split(" · ").at(-1);
+  const diffs = compare ? compareItems(compare, item) : [];
+  const setOwned = d.set ? d.set.items.filter(n => owned?.has(n)).length : 0;
+  return (
+    <>
+      <div className="t-head">
+        <ItemIcon item={item} size={38} />
+        <div>
+          <div className={`t-name tq${item.quality}`}>{item.name}</div>
+          {d.bond ? <div className="t-row">{BOND_LABEL[d.bond]}</div> : null}
+          {d.unique && <div className="t-row">Unique</div>}
+        </div>
+      </div>
+      {(INVENTORY_LABEL[item.inventoryType] || sub) && (
+        <div className="t-row t-split"><span>{INVENTORY_LABEL[item.inventoryType] ?? ""}</span><span>{sub}</span></div>
+      )}
+      {d.dmg && (
+        <>
+          <div className="t-row t-split"><span>{d.dmg.min} - {d.dmg.max} Dégâts</span><span>Vitesse {d.dmg.speed.toFixed(2).replace(".", ",")}</span></div>
+          <div className="t-row">({String(d.dmg.dps).replace(".", ",")} dégâts par seconde)</div>
+        </>
+      )}
+      {d.armor ? <div className="t-row">{d.armor} Armure</div> : null}
+      {primary.map((l, i) => <div key={`p${i}`} className="t-row">{l.text}</div>)}
+      {item.reqLevel > 0 && <div className="t-row">Niveau {item.reqLevel} requis</div>}
+      <div className="t-row t-ilvl">Niveau d'objet {item.itemLevel}</div>
+      {equip.map((l, i) => <div key={`e${i}`} className="t-green">Équipé : {l.text}</div>)}
+      {(d.effects ?? []).map((e, i) => <div key={`f${i}`} className="t-green">{TRIGGER_LABEL[e.trigger]} : {e.text}</div>)}
+      {d.set && (
+        <div className="t-set">
+          <div className="t-yellow">{d.set.name} ({setOwned}/{d.set.items.length})</div>
+          {d.set.items.map(n => <div key={n} className={owned?.has(n) ? "t-row t-in" : "t-dim t-in"}>{n}</div>)}
+          {d.set.bonuses.map((b, i) => <div key={i} className={setOwned >= b.n ? "t-green" : "t-dim"}>({b.n}) Ensemble : {b.text}</div>)}
+        </div>
+      )}
+      {d.sell ? <div className="t-row t-sell">Prix de vente : {money(d.sell)}</div> : null}
+      {item.origin === "era" && <div className="t-src">Données de Classic Era : l'objet n'est pas encore connu sur Forever, ses stats peuvent différer.</div>}
+      {compare && diffs.length > 0 && (
+        <div className="t-cmp">
+          <div className="t-src">{compareLabel ?? "Par rapport à"} {compare.name} :</div>
+          {diffs.map(x => <div key={x.label} className={x.delta > 0 ? "t-up" : "t-down"}>{x.delta > 0 ? "+" : ""}{String(x.delta).replace(".", ",")} {x.label}</div>)}
+        </div>
+      )}
+      {note}
+    </>
+  );
+}
+
+/** Infobulle flottante, placée à côté de l'élément survolé sans jamais sortir de l'écran. */
+export function FloatingTip({ rect, children }: { rect: DOMRect; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: rect.right + 8, top: rect.top });
+  useLayoutEffect(() => {
+    const el = ref.current; if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let left = rect.right + 8, top = rect.top;
+    if (left + w > innerWidth - 12) left = rect.left - w - 8;
+    if (left < 12) { left = Math.max(12, Math.min(rect.left, innerWidth - w - 12)); top = rect.bottom + 6; }
+    if (top + h > innerHeight - 12) top = Math.max(12, innerHeight - h - 12);
+    setPos({ left, top });
+  }, [rect]);
+  return <div className="itip" ref={ref} role="tooltip" style={pos}>{children}</div>;
+}
+
+/** Enveloppe : affiche l'infobulle de l'objet au survol ou au focus clavier. */
+export function ItemHover({ item, compare, compareLabel, children, className }: {
+  item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string;
+}) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  if (!item) return <>{children}</>;
+  const show = (el: HTMLElement) => setRect(el.getBoundingClientRect());
+  return (
+    <span className={`ihover ${className ?? ""}`} tabIndex={0}
+      onMouseEnter={e => show(e.currentTarget)} onMouseLeave={() => setRect(null)}
+      onFocus={e => show(e.currentTarget)} onBlur={() => setRect(null)}>
+      {children}
+      {rect && <FloatingTip rect={rect}><ItemTooltipBody item={item} compare={compare} compareLabel={compareLabel} /></FloatingTip>}
+    </span>
+  );
+}
+

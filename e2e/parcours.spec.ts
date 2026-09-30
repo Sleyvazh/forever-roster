@@ -100,6 +100,9 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("button", { name: "Fermer" }).click();
     await page.getByRole("button", { name: /^Tête : Helm of Might/ }).hover();
     await expect(page.locator(".itip")).toContainText("Niveau d'objet 66");
+    await expect(page.locator(".itip")).toContainText("608 Armure");
+    await expect(page.locator(".itip")).toContainText("+19 Force");
+    await expect(page.locator(".itip")).toContainText("Battlegear of Might");
   });
 
   await test.step("groupe : l'onglet Artisans montre le patron coché", async () => {

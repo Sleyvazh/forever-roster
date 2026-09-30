@@ -1,5 +1,7 @@
 import { PROFESSION_SKILL_LINES } from "@forever/game-data";
+import type { ItemDetails } from "@forever/game-data";
 import type { Reagent } from "../db/schema";
+import { rawFromSparse, type RawItem } from "./details";
 
 /** Tables du client utilisées, avec les colonnes indispensables (contrôlées à l'import). */
 export const TABLES = {
@@ -24,6 +26,39 @@ export interface ItemRow {
   id: number; name: string; quality: number; itemLevel: number; reqLevel: number; classId: number; subclassId: number; inventoryType: number; kind: string;
   /** « forever » : tables du client Forever ; « era » : objet absent de ces tables, complété avec Classic Era. */
   origin: "forever" | "era";
+  /** Données brutes pour l'infobulle (calculée ensuite par addDetails), identifiant du fichier d'icône. */
+  raw?: RawItem;
+  iconFileId?: number;
+  details?: ItemDetails;
+}
+
+/**
+ * Tables des infobulles (barèmes, sorts, sets). Facultatives : si l'une manque ou change de structure,
+ * l'import continue et les infobulles perdent seulement la partie concernée.
+ */
+export const DETAIL_TABLES = {
+  RandPropPoints: ["ID", "EpicF_0", "SuperiorF_0", "GoodF_0"],
+  ItemArmorTotal: ["ItemLevel", "Cloth", "Leather", "Mail", "Plate"],
+  ItemArmorQuality: ["ID", "Qualitymod_0"],
+  ArmorLocation: ["ID", "Clothmodifier", "Leathermodifier", "Chainmodifier", "Platemodifier"],
+  ItemArmorShield: ["ItemLevel", "Quality_0"],
+  ItemDamageOneHand: ["ItemLevel", "Quality_0"],
+  ItemDamageTwoHand: ["ItemLevel", "Quality_0"],
+  Spell: ["ID", "Description_lang"],
+  ItemSet: ["ID", "Name_lang", "ItemID_0"],
+  ItemSetSpell: ["ItemSetID", "SpellID", "Threshold"],
+  SpellMisc: ["SpellID", "DurationIndex"],
+  SpellDuration: ["ID", "Duration"],
+} as const;
+export type DetailTableName = keyof typeof DETAIL_TABLES;
+export type DetailTables = Partial<Record<DetailTableName, Record<string, string>[]>>;
+
+/** Garde une table de détail seulement si elle a les colonnes attendues. */
+export function checkDetailTable(name: DetailTableName, rows: Record<string, string>[] | undefined, warn: (m: string) => void) {
+  if (!rows?.length) return undefined;
+  const missing = DETAIL_TABLES[name].filter(c => !(c in rows[0]!));
+  if (missing.length) { warn(`Table ${name} ignorée (colonnes manquantes : ${missing.join(", ")}).`); return undefined; }
+  return rows;
 }
 /** Tables suffisantes pour lire les objets (import complémentaire depuis Classic Era). */
 export const ITEM_TABLES = ["ItemSparse", "Item"] as const;
@@ -64,9 +99,11 @@ export function readItems(tables: ItemTables, origin: ItemRow["origin"]) {
     const classId = I(b?.ClassID), subclassId = I(b?.SubclassID);
     const kind = [className.get(classId), subName.get(`${classId}:${subclassId}`)].filter(Boolean)
       .filter((v, i, a) => a.indexOf(v) === i).join(" · ");
+    const inventoryType = I(b?.InventoryType);
     items.push({
       id, name, quality: Math.max(0, Math.min(7, I(s.OverallQualityID))), itemLevel: I(s.ItemLevel), reqLevel: I(s.RequiredLevel),
-      classId, subclassId, inventoryType: I(b?.InventoryType), kind, origin,
+      classId, subclassId, inventoryType, kind, origin,
+      raw: { ...rawFromSparse(s), classId, subclassId, inventoryType }, iconFileId: I(b?.IconFileDataID) || undefined,
     });
     if (I(s.RequiredSkill)) skillOfItem.set(id, [I(s.RequiredSkill), I(s.RequiredSkillRank)]);
   }

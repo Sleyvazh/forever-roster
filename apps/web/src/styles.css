@@ -228,7 +228,8 @@ table.gear { min-width: 720px; }
 .picker input { flex: 1; min-width: 0; }
 .picker-list { position: fixed; z-index: 50; margin: 0; padding: 4px; list-style: none;
   background: var(--panel); border: 1px solid var(--line-2); border-radius: 6px; box-shadow: var(--shadow); max-height: 320px; overflow: auto; }
-.picker-list li { display: grid; gap: 1px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.picker-list li { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.picker-list li .po-txt { display: grid; gap: 1px; min-width: 0; }
 .picker-list li[aria-selected="true"] { background: var(--panel-2); }
 .picker-list li small { color: var(--ink-3); font-size: 12px; }
 
@@ -278,12 +279,23 @@ table.gear { min-width: 720px; }
 .pbar i { display: block; height: 100%; background: #2f9b2a; }
 
 /* Infobulle d'objet (toujours sombre, comme dans le jeu) */
-.itip { position: fixed; z-index: 60; width: 270px; max-width: calc(100vw - 32px); padding: 10px 12px; border-radius: 6px; background: #0b1022; color: #e8e6df;
+.itip { position: fixed; z-index: 70; width: 300px; max-width: calc(100vw - 32px); padding: 10px 12px; border-radius: 6px; background: #0b1022; color: #e8e6df;
   border: 1px solid #b89449; box-shadow: inset 0 0 0 2px #0b1022, inset 0 0 0 3px rgba(184,148,73,.35), 0 10px 30px -10px rgba(0,0,0,.6); font-size: 13.5px; line-height: 1.4; pointer-events: none; }
 .itip .t-name { font-weight: 700; font-size: 15px; }
 .itip .t-row { color: #cfd3dc; }
 .itip .t-src { color: #9aa3b6; font-size: 12.5px; margin-top: 4px; }
 .itip .t-ok { color: #5fd35a; font-size: 12.5px; } .itip .t-warn { color: #f0b43c; font-size: 12.5px; }
+.itip .t-head { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 2px; }
+.itip .t-split { display: flex; justify-content: space-between; gap: 12px; }
+.itip .t-ilvl { color: #ffd100; }
+.itip .t-green { color: #1eff00; }
+.itip .t-yellow { color: #ffd100; margin-top: 8px; }
+.itip .t-dim { color: #8b8f99; }
+.itip .t-in { padding-left: 10px; }
+.itip .t-set .t-green, .itip .t-set .t-dim:not(.t-in) { margin-top: 2px; }
+.itip .t-sell { color: #cfd3dc; margin-top: 6px; font-size: 12.5px; }
+.itip .t-cmp { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(184,148,73,.35); font-size: 12.5px; }
+.itip .t-up { color: #1eff00; } .itip .t-down { color: #ff5a4d; }
 .itip .tq0 { color: #9d9d9d; } .itip .tq1 { color: #f2f2f2; } .itip .tq2 { color: #1eff00; } .itip .tq3 { color: #3d9cff; } .itip .tq4 { color: #b65cff; } .itip .tq5 { color: #ff8000; }
 
 /* Édition d'un emplacement */
@@ -445,3 +457,14 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 .numfield button:last-child { border-left: 1px solid var(--line); border-radius: 0 3px 3px 0; }
 .numfield button:hover:not(:disabled) { color: var(--gold); background: var(--gold-soft); }
 .numfield button:disabled { opacity: .35; cursor: default; }
+
+/* Icônes d'objets (fichiers du jeu servis par notre serveur) */
+.iicon { --qc: var(--line-2); position: relative; flex: none; display: inline-grid; place-items: center; border-radius: 5px; overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--qc) 80%, #000); background: #0b1022; box-shadow: inset 0 0 0 1px rgba(0,0,0,.4); }
+.iicon img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.iicon.none { background: color-mix(in srgb, var(--qc) 18%, var(--panel-2)); }
+.gicon.has-img { padding: 0; overflow: visible; background: none; border: 0; }
+.gicon.has-img .iicon { border-width: 2px; }
+.ihover { display: inline-flex; align-items: center; gap: 6px; border-radius: 3px; cursor: help; }
+.ihover:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.with-icon { display: inline-flex; align-items: center; gap: 6px; }

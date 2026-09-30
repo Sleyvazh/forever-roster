@@ -6,6 +6,7 @@
  *   node dist/import-gamedata.js --dir ./csv    fichiers <Table>.csv déjà téléchargés
  *   options : --no-era (sans complément Classic Era), --era-dir ./era (ItemSparse.csv et Item.csv de Classic Era)
  *             --cache <DBCache.bin | -> : objets révélés en jeu, lus dans le cache du client (« - » : entrée standard)
+ *             --no-icons : ne pas chercher les noms d'icônes (listfile communautaire)
  *
  * Les objets absents du client Forever (envoyés par le serveur du jeu, non publiés par wago.tools)
  * sont complétés avec ceux de Classic Era, marqués « era ».
@@ -14,7 +15,8 @@ import { createDb } from "../db/client";
 import { readFile } from "node:fs/promises";
 import { itemsFromCache, mergeCache, parseDbCache } from "./dbcache";
 import { extract, fillFromEra, readItems } from "./extract";
-import { downloadItemTables, downloadTables, latestBuild, latestEraBuild, readItemTables, readTables } from "./source";
+import { addDetails, iconNames } from "./details";
+import { downloadDetailTables, downloadItemTables, downloadTables, latestBuild, latestEraBuild, listfileLines, readDetailTables, readItemTables, readTables } from "./source";
 import { gameDataStatus, storeGameData } from "./store";
 
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -70,6 +72,26 @@ if (!process.argv.includes("--no-era") && (eraDir || !dir)) {
     eraBuild = null;
     console.warn(`Complément Classic Era ignoré : ${(err as Error).message}`);
   }
+}
+
+// Infobulles : barèmes, sorts et sets, puis noms des icônes
+console.log("Tables des infobulles :");
+const detailTables = dir ? await readDetailTables(dir, m => console.log(m)) : await downloadDetailTables(build, fetch, m => console.log(m));
+addDetails(data.items, { ...detailTables, ItemEffect: tables.ItemEffect, ItemXItemEffect: tables.ItemXItemEffect, SpellEffect: tables.SpellEffect });
+const withStats = data.items.filter(i => i.details?.stats?.length || i.details?.armor || i.details?.dmg).length;
+console.log(`Infobulles : ${withStats} objets avec stats, armure ou dégâts.`);
+if (!dir && !process.argv.includes("--no-icons")) {
+  try {
+    const ids = new Set(data.items.map(i => i.iconFileId).filter((v): v is number => !!v));
+    console.log(`Noms des icônes (listfile communautaire, ${ids.size} fichiers)…`);
+    const names = await iconNames(ids, listfileLines());
+    let n = 0;
+    for (const it of data.items) {
+      const name = it.iconFileId ? names.get(it.iconFileId) : undefined;
+      if (name) { it.details = { ...it.details, icon: name }; n++; }
+    }
+    console.log(`${n} objets avec une icône (${names.size} icônes différentes).`);
+  } catch (err) { console.warn(`Icônes ignorées : ${(err as Error).message}`); }
 }
 
 const { db, pool } = createDb(url);
