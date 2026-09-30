@@ -12,3 +12,6 @@ else
   echo "Pas de $CACHE : import sans les objets révélés en jeu."
   sudo docker compose exec api node dist/import-gamedata.js "$@"
 fi
+
+# Icônes des objets (téléchargées une seule fois chacune)
+if [ "${SKIP_ICONS:-}" != "1" ]; then bash scripts/fetch-item-icons.sh; fi

@@ -263,7 +263,7 @@ export const gameRecipes = pgTable("game_recipes", {
   /** Objets « Patron / Plans / Recette » qui enseignent ce sort. Vide = appris chez un entraîneur. */
   taughtBy: jsonb("taught_by").$type<number[]>().notNull().default([]),
   fromItem: boolean("from_item").notNull().default(false),
-}, t => [index("game_recipes_skill_idx").on(t.skillLine)]);
+}, t => [index("game_recipes_skill_idx").on(t.skillLine), index("game_recipes_created_item_idx").on(t.createdItemId)]);
 
 export const gameMeta = pgTable("game_meta", {
   key: text("key").primaryKey(),

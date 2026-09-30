@@ -2,9 +2,9 @@ import { CLASSES, GEAR_SLOTS, ITEM_QUALITIES, type ClassName } from "@forever/ga
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
-import { ItemPicker } from "./GameData";
+import { ItemPicker, useGameVersion } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
-import { FloatingTip, ItemIcon, ItemTooltipBody } from "./ItemTooltip";
+import { FloatingTip, iconUsable, ItemIcon, ItemTooltipBody, useIconFailures } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
 
 type Slot = (typeof GEAR_SLOTS)[number];
@@ -70,9 +70,11 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
   const cls = CLASSES[c.cls as ClassName];
 
   const ids = [...new Set(GEAR_SLOTS.flatMap(s => [c.gear[s]?.curId, c.gear[s]?.bisId]).filter((v): v is number => !!v))].sort((a, b) => a - b);
+  const v = useGameVersion();
+  useIconFailures(); // réaffiche le pictogramme d'emplacement si une icône est introuvable
   const itemsQ = useQuery({
-    queryKey: ["items-batch", ids.join(",")],
-    queryFn: () => get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${ids.join(",")}`),
+    queryKey: ["items-batch", ids.join(","), v],
+    queryFn: () => get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${ids.join(",")}&v=${v}`),
     enabled: ids.length > 0,
     staleTime: 10 * 60_000,
   });
@@ -88,6 +90,7 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
   const slotEl = (slot: Slot) => {
     const g = c.gear[slot] ?? {};
     const shown = shownFor(g, view, items);
+    const iconOk = iconUsable(shown?.item?.details?.icon);
     const act = () => { setTip(null); if (editable) setOpen(o => (o === slot ? null : slot)); };
     return (
       <div key={slot} role="button" tabIndex={0} className="gslot" aria-expanded={editable ? open === slot : undefined}
@@ -98,8 +101,8 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
         onMouseLeave={() => setTip(null)}
         onFocus={e => shown && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
         onBlur={() => setTip(null)}>
-        <span className={`gicon${shown ? "" : " none"}${shown?.item?.details?.icon ? " has-img" : ""}`} style={shown?.quality != null ? { ["--qc" as string]: `var(--q${shown.quality})` } : undefined}>
-          {shown?.item?.details?.icon ? <ItemIcon item={shown.item} size={42} /> : <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>}
+        <span className={`gicon${shown ? "" : " none"}${iconOk ? " has-img" : ""}`} style={shown?.quality != null ? { ["--qc" as string]: `var(--q${shown.quality})` } : undefined}>
+          {iconOk ? <ItemIcon item={shown!.item} size={42} /> : <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>}
           {g.got && <span className="got" aria-hidden="true">✓</span>}
         </span>
         <span className="gtxt">

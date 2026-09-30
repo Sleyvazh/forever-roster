@@ -1,19 +1,58 @@
-import { BOND_LABEL, compareItems, INVENTORY_LABEL, money, statLine, TRIGGER_LABEL } from "@forever/game-data";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { GameItem } from "../api";
+import { BOND_LABEL, compareItems, INVENTORY_LABEL, money, statLine, subclassFr, TRIGGER_LABEL } from "@forever/game-data";
+import { useQuery } from "@tanstack/react-query";
+import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { get, type GameItem, type ItemSources } from "../api";
+
+/* Icônes introuvables sur le serveur (pas encore téléchargées) : retenues pour toute la page. */
+const failedIcons = new Set<string>();
+const listeners = new Set<() => void>();
+let failures = 0;
+function markFailed(icon: string) {
+  if (failedIcons.has(icon)) return;
+  failedIcons.add(icon); failures++;
+  listeners.forEach(l => l());
+}
+/** Pour réafficher un repli quand une icône s'avère introuvable. */
+export function useIconFailures() {
+  return useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => failures);
+}
+export const iconUsable = (icon?: string) => !!icon && !failedIcons.has(icon);
 
 /** Icône d'objet servie par notre serveur (/icons/items/, fichiers de Blizzard hors dépôt) ; repli : cadre de la couleur de qualité. */
 export function ItemIcon({ item, size = 36, className }: { item?: Pick<GameItem, "quality" | "details"> | null; size?: number; className?: string }) {
+  useIconFailures();
   const icon = item?.details?.icon;
-  const [failed, setFailed] = useState<string | null>(null);
   const style = { width: size, height: size, ["--qc" as string]: item ? `var(--q${item.quality})` : "var(--line-2)" };
-  if (!icon || failed === icon) return <span className={`iicon none ${className ?? ""}`} style={style} aria-hidden="true" />;
+  if (!iconUsable(icon)) return <span className={`iicon none ${className ?? ""}`} style={style} aria-hidden="true" />;
   return (
     <span className={`iicon ${className ?? ""}`} style={style} aria-hidden="true">
-      <img src={`/icons/items/${icon}.jpg`} width={size} height={size} alt="" loading="lazy" decoding="async" onError={() => setFailed(icon)} />
+      <img src={`/icons/items/${icon}.jpg`} width={size} height={size} alt="" loading="lazy" decoding="async" onError={() => markFailed(icon!)} />
     </span>
   );
 }
+
+/** « Où l'obtenir » : recettes, patrons et artisans connus (chargé seulement pour un objet fabriqué). */
+function ItemSourcesBlock({ id }: { id: number }) {
+  const q = useQuery({ queryKey: ["item-sources", id], queryFn: () => get<ItemSources>(`/gamedata/items/${id}/sources`), staleTime: 60_000 });
+  const list = q.data?.crafted ?? [];
+  if (q.isPending) return <div className="t-src t-where">Où l'obtenir…</div>;
+  if (!list.length) return null;
+  return (
+    <div className="t-where">
+      <div className="t-yellow">Où l'obtenir</div>
+      {list.map(r => (
+        <div key={r.spellId} className="t-row">
+          Fabriqué : {r.profession} ({r.reqSkill})
+          <div className="t-dim t-in">{r.trainer ? "Appris chez un entraîneur" : r.patterns.length ? r.patterns.map(p => p.name).join(", ") : "Patron inconnu"}</div>
+          <div className={`t-in ${r.crafters.length ? "t-green" : "t-dim"}`}>
+            {r.crafters.length ? `Connu par : ${r.crafters.map(c => (c.mine ? `${c.name} (toi)` : `${c.name} (${c.owner})`)).join(", ")}` : "Personne dans tes groupes ne le connaît."}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 /**
  * Infobulle d'objet comme en jeu : qualité, lien, emplacement, armure ou dégâts, caractéristiques,
@@ -25,7 +64,7 @@ export function ItemTooltipBody({ item, compare, compareLabel, owned, note }: {
   const d = item.details ?? {};
   const lines = (d.stats ?? []).map(([t, v]) => statLine(t, v));
   const primary = lines.filter(l => l.kind === "primary"), equip = lines.filter(l => l.kind === "equip");
-  const sub = item.kind.split(" · ").at(-1);
+  const sub = subclassFr(item.kind.split(" · ").at(-1));
   const diffs = compare ? compareItems(compare, item) : [];
   const setOwned = d.set ? d.set.items.filter(n => owned?.has(n)).length : 0;
   return (
@@ -61,6 +100,7 @@ export function ItemTooltipBody({ item, compare, compareLabel, owned, note }: {
         </div>
       )}
       {d.sell ? <div className="t-row t-sell">Prix de vente : {money(d.sell)}</div> : null}
+      {item.crafted && <ItemSourcesBlock id={item.id} />}
       {item.origin === "era" && <div className="t-src">Données de Classic Era : l'objet n'est pas encore connu sur Forever, ses stats peuvent différer.</div>}
       {compare && diffs.length > 0 && (
         <div className="t-cmp">

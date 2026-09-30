@@ -1,13 +1,8 @@
-import { and, asc, desc, eq, gt, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PROFESSION_SKILL_LINES, SECONDARY_PROFESSIONS } from "@forever/game-data";
-import type { Professions } from "../db/schema";
-
-/** Lignes de compétence des métiers actuels d'un perso (deux principaux + secondaires). */
-const currentLines = (p: Professions) => new Set(
-  [p.prof1.name, p.prof2.name, ...Object.values(SECONDARY_PROFESSIONS).map(s => s.name)].filter(Boolean).map(n => PROFESSION_SKILL_LINES[n]),
-);
+import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES } from "@forever/game-data";
+import { currentLines } from "../lib/professions";
 import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
@@ -98,7 +93,12 @@ export async function groupRoutes(app: FastifyInstance) {
       .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, id)))
       .innerJoin(users, eq(users.id, characters.userId))
       .orderBy(asc(users.displayName), asc(characters.sortOrder));
-    return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner })) };
+    // Progression d'équipement (survol dans la compo) : niveaux d'objet des pièces équipées
+    const ids = [...new Set(rows.flatMap(r => GEAR_SLOTS.map(s => r.c.gear[s]?.curId).filter((v): v is number => !!v)))];
+    const levels = ids.length
+      ? new Map((await db.select({ id: gameItems.id, lvl: gameItems.itemLevel }).from(gameItems).where(inArray(gameItems.id, ids))).map(x => [x.id, x.lvl]))
+      : new Map<number, number>();
+    return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner, gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })) };
   });
 
   /** « Qui crafte quoi ? » : patrons connus et recherchés par les persos du groupe. */

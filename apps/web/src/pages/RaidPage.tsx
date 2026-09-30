@@ -11,6 +11,32 @@ import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
+import { FloatingTip } from "../components/ItemTooltip";
+
+/** Carte d'un joueur au survol : spé, inscription, métiers, niveau d'objet moyen et BiS obtenus. */
+function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
+  const cl = CLASSES[e.cls as ClassName];
+  const st = c?.gearStats;
+  const profs = c ? [c.professions.prof1, c.professions.prof2].filter(p => p.name) : [];
+  return (
+    <>
+      <div className="t-name" style={{ color: cl?.color }}>{e.name}</div>
+      <div className="t-row">{[e.level ? `Niveau ${e.level}` : null, e.spec || e.cls].filter(Boolean).join(" · ")}</div>
+      <div className="t-dim">{e.guest ? "Inscrit depuis Discord, sans compte sur le site" : `Joueur : ${e.owner}`}</div>
+      {e.signup && <div className="t-row">Inscription : {SIGNUP_LABEL[e.signup.status]}{e.signup.note ? ` — « ${e.signup.note} »` : ""}</div>}
+      {profs.length > 0 && <div className="t-row">Métiers : {profs.map(p => `${p.name} ${p.skill}`).join(", ")}</div>}
+      {st && (
+        <div className="t-where">
+          <div className="t-row t-split"><span>Niveau d'objet moyen</span><b className="t-ilvl">{st.ilvl != null ? String(st.ilvl).replace(".", ",") : "—"}</b></div>
+          <div className="t-dim">{st.filled}/{st.total} emplacements renseignés</div>
+          <div className="t-row t-split"><span>BiS obtenus</span><b>{st.got}/{st.total}</b></div>
+          <div className="pbar" aria-hidden="true"><i style={{ width: `${Math.round(st.got / st.total * 100)}%` }} /></div>
+          {st.bis < st.total && <div className="t-dim">{st.bis} objectif{st.bis > 1 ? "s" : ""} BiS choisi{st.bis > 1 ? "s" : ""}</div>}
+        </div>
+      )}
+    </>
+  );
+}
 
 interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
 interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
@@ -93,6 +119,14 @@ export function RaidPage() {
     return m;
   }, [charsQ.data, raidQ.data, signupByChar]); // eslint-disable-line react-hooks/exhaustive-deps
   const entryAt = (s: RaidSlot) => entries.get(slotKey(s));
+  const [hover, setHover] = useState<{ key: string; rect: DOMRect } | null>(null);
+  const hoverProps = (e: Entry) => ({
+    onMouseEnter: (ev: React.MouseEvent<HTMLElement>) => setHover({ key: e.key, rect: ev.currentTarget.getBoundingClientRect() }),
+    onMouseLeave: () => setHover(null),
+    onFocus: (ev: React.FocusEvent<HTMLElement>) => setHover({ key: e.key, rect: ev.currentTarget.getBoundingClientRect() }),
+    onBlur: () => setHover(null),
+  });
+  const hovered = hover ? entries.get(hover.key) : undefined;
   const placed = new Set(slots.map(slotKey));
   const matches = (e: Entry) => !filter || `${e.name} ${e.owner} ${e.cls} ${e.spec}`.toLowerCase().includes(filter.toLowerCase());
   const allChars = charsQ.data?.characters ?? [];
@@ -220,6 +254,9 @@ export function RaidPage() {
       )}
       {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
+      {hover && hovered && (
+        <FloatingTip rect={hover.rect}><PlayerCard e={hovered} c={"characterId" in hovered.ref ? chars.get(hovered.ref.characterId) : undefined} /></FloatingTip>
+      )}
       <div className="raid">
         <div className="rgroups">
           {Array.from({ length: RAID_GROUPS }, (_, gi) => gi + 1).map(g => {
@@ -236,6 +273,7 @@ export function RaidPage() {
                     <div key={p} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
                       <button type="button" className={`slot${c ? " filled" : ""}${pick && !sel ? " target" : ""}${sel ? " selected" : ""}`}
                         style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => clickSlot(g, p)} disabled={!canEdit && !c}
+                        {...(c ? hoverProps(c) : {})}
                         aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
                         {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{c.spec || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
                         {c && <span className={`role ${roleOf(c.spec) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(c.spec) ?? "?"}</span>}
@@ -264,7 +302,7 @@ export function RaidPage() {
                     {i === 0 && benchSigned.length > 0 && <div className="lbl">Inscrits</div>}
                     {i === benchSigned.length && benchOthers.length > 0 && <div className="lbl">Autres persos du groupe (non inscrits)</div>}
                     <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
-                      <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })}>
+                      <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })} {...hoverProps(c)}>
                         <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, c.spec || c.cls || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
                         {su && su.status !== "present" && <span className="tag">{SIGNUP_LABEL[su.status]}</span>}
                       </button>

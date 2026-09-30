@@ -135,6 +135,16 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     expect(found.recipes[0]).toMatchObject({ spellId: 19080, item: { name: "Warbear Woolies", quality: 4 }, known: [{ name: "Tournicoti", owner: "Tanneur" }], wanted: [] });
     const wanted = (await other.c.get(`/api/groups/${g.id}/crafters?profession=Leatherworking`)).json().recipes.find((r: { spellId: number }) => r.spellId === 19100);
     expect(wanted.wanted).toHaveLength(1);
+    // « Où l'obtenir » : recette, patron et artisans des groupes du joueur (pas pour un inconnu)
+    expect((await other.c.get("/api/gamedata/items/batch?ids=15065,16866")).json().items).toMatchObject({ 15065: { crafted: true }, 16866: { crafted: false } });
+    const src = (await other.c.get("/api/gamedata/items/15065/sources")).json();
+    expect(src.crafted).toEqual([{
+      spellId: 19080, recipe: "Warbear Woolies", profession: "Leatherworking", reqSkill: 285, trainer: false,
+      patterns: [{ id: 15090, name: "Pattern: Warbear Woolies", quality: 3 }], crafters: [{ name: "Tournicoti", owner: "Tanneur", mine: false }],
+    }]);
+    expect((await lw.c.get("/api/gamedata/items/15065/sources")).json().crafted[0].crafters).toEqual([{ name: "Tournicoti", owner: "Tanneur", mine: true }]);
+    expect((await outsider.c.get("/api/gamedata/items/15065/sources")).json().crafted[0].crafters).toEqual([]);
+    expect((await other.c.get("/api/gamedata/items/16866/sources")).json()).toEqual({ crafted: [] });
     expect((await outsider.c.get(`/api/groups/${g.id}/crafters`)).statusCode).toBe(404);
     expect((await other.c.get(`/api/groups/${g.id}/crafters?q=bracer`)).json().recipes).toEqual([]);
     // Changer de métier retire ses patrons de l'onglet Artisans
@@ -156,5 +166,9 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     const r = await c.patch(`/api/characters/${ch.id}`, { gear: { Head: { cur: "Helm of Might", curId: 16866, q: 4, bis: "Helm of Might", bisId: 16866, bisQ: 4 } } });
     expect(r.statusCode).toBe(200);
     expect(r.json().character.gear.Head.curId).toBe(16866);
+    // Progression affichée au survol dans la compo
+    const g = (await c.post("/api/groups", { name: "Stuffés" })).json().group;
+    const list = (await c.get(`/api/groups/${g.id}/characters`)).json().characters;
+    expect(list[0].gearStats).toEqual({ ilvl: 66, filled: 1, got: 0, bis: 1, total: 17 });
   });
 });

@@ -11,6 +11,15 @@ export function useGameStatus() {
   return useQuery({ queryKey: ["gamedata-status"], queryFn: () => get<GameStatus>("/gamedata/status"), staleTime: 10 * 60_000 });
 }
 
+/**
+ * Version des données du jeu (date du dernier import), ajoutée aux adresses mises en cache :
+ * après un réimport, le navigateur recharge les objets au lieu de garder l'ancienne version.
+ */
+export function useGameVersion() {
+  const at = useGameStatus().data?.importedAt;
+  return at ? String(Date.parse(at) / 1000 | 0) : "0";
+}
+
 /** Métiers qui ont des recettes (la cueillette, le dépeçage et la pêche n'en ont pas). */
 export const CRAFTING = new Set(["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Leatherworking", "Mining", "Tailoring", "Cooking", "First Aid"]);
 
@@ -32,13 +41,14 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const status = useGameStatus();
+  const v = useGameVersion();
   const mine = useQuery({
     queryKey: ["char-recipes", characterId],
     queryFn: () => get<{ recipes: { spellId: number; status: RecipeStatus; skillLine: number }[] }>(`/characters/${characterId}/recipes`),
   });
   const list = useQuery({
-    queryKey: ["recipes", profession],
-    queryFn: () => get<{ recipes: GameRecipe[]; items: Record<number, GameItem> }>(`/gamedata/professions/${encodeURIComponent(profession)}/recipes`),
+    queryKey: ["recipes", profession, v],
+    queryFn: () => get<{ recipes: GameRecipe[]; items: Record<number, GameItem> }>(`/gamedata/professions/${encodeURIComponent(profession)}/recipes?v=${v}`),
     enabled: open && !!status.data?.recipes,
     staleTime: 60 * 60_000,
   });
@@ -197,9 +207,10 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange, compa
   const [term, setTerm] = useState("");
   const timer = useRef<number | undefined>(undefined);
 
+  const v = useGameVersion();
   const search = useQuery({
-    queryKey: ["items", slot, term],
-    queryFn: () => get<{ items: GameItem[] }>(`/gamedata/items?slot=${encodeURIComponent(slot)}&q=${encodeURIComponent(term)}&limit=12`),
+    queryKey: ["items", slot, term, v],
+    queryFn: () => get<{ items: GameItem[] }>(`/gamedata/items?slot=${encodeURIComponent(slot)}&q=${encodeURIComponent(term)}&limit=12&v=${v}`),
     enabled: enabled && focus && term.length >= 2,
     staleTime: 5 * 60_000,
   });

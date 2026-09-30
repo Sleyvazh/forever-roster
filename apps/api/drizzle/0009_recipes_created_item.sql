@@ -1,0 +1,1 @@
+CREATE INDEX "game_recipes_created_item_idx" ON "game_recipes" USING btree ("created_item_id");

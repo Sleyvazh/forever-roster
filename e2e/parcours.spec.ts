@@ -111,6 +111,12 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("button", { name: "Créer" }).click();
     await page.getByRole("tab", { name: "Artisans" }).click();
     await expect(page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ })).toBeVisible();
+    // Infobulle de l'objet fabriqué : « Où l'obtenir » avec le patron et qui le connaît
+    await page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ }).locator(".ihover").first().hover();
+    await expect(page.locator(".itip")).toContainText("Où l'obtenir");
+    await expect(page.locator(".itip")).toContainText("Pattern: Warbear Woolies");
+    await expect(page.locator(".itip")).toContainText("Connu par : Tournicoti (toi)");
+    await page.mouse.move(0, 0);
   });
 
   await test.step("raid : création, inscription et composition", async () => {
@@ -125,6 +131,11 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     // L'officier place l'inscrit : le rôle affiché suit la spé choisie pour ce raid
     await page.getByRole("button", { name: "Ajouter Tournicoti au raid" }).click();
     await expect(page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ })).toContainText("Tank");
+    // Survol : niveau d'objet moyen et BiS du joueur
+    await page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ }).hover();
+    await expect(page.locator(".itip")).toContainText("Niveau d'objet moyen66");
+    await expect(page.locator(".itip")).toContainText("BiS obtenus0/17");
+    await page.mouse.move(0, 0);
     // Inscrit sans compte (fait depuis le bot Discord) : placé comme un perso du site
     await expect(page.getByRole("status").filter({ hasText: "Enregistré." })).toBeVisible();
     const raidId = page.url().split("/raids/")[1]!;

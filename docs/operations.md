@@ -245,6 +245,17 @@ Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 
+### Icônes des objets
+
+L'import retrouve le nom de l'icône de chaque objet (liste de fichiers communautaire), puis `scripts/import-gamedata.sh` appelle `scripts/fetch-item-icons.sh`. Ce script télécharge les icônes manquantes depuis le serveur d'images officiel de Blizzard (`render.worldofwarcraft.com`) dans `icons/items/`, une seule fois chacune (≈ 3 000 fichiers, ≈ 10 Mo). Les visiteurs ne contactent toujours que notre serveur. Seuls les noms simples (`a-z`, `0-9`, `_`, `-`) sont acceptés, et un fichier n'est gardé que s'il s'agit bien d'un JPEG.
+
+```bash
+bash scripts/fetch-item-icons.sh                 # relançable à tout moment
+SKIP_ICONS=1 bash scripts/import-gamedata.sh     # import sans téléchargement d'icônes
+```
+
+Une icône absente (objet propre à Forever dont le fichier n'est pas encore dans la liste communautaire) est remplacée par le pictogramme de l'emplacement sur la fiche d'équipement, et par un cadre de la couleur de qualité ailleurs.
+
 ## Bot Discord
 
 Le bot publie les raids dans un salon Discord, avec des boutons d'inscription sur le modèle de Raid-Helper. Il tourne dans le conteneur `bot`, sans port ouvert : il se connecte à Discord en sortie, et à l'API par le port interne 3001, qui n'est joignable que sur le réseau Docker. Tant que `DISCORD_BOT_TOKEN` est vide, il reste en veille.

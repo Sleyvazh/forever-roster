@@ -295,6 +295,10 @@ table.gear { min-width: 720px; }
 .itip .t-set .t-green, .itip .t-set .t-dim:not(.t-in) { margin-top: 2px; }
 .itip .t-sell { color: #cfd3dc; margin-top: 6px; font-size: 12.5px; }
 .itip .t-cmp { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(184,148,73,.35); font-size: 12.5px; }
+.itip .t-where { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(184,148,73,.35); }
+.itip .t-where > .t-yellow:first-child { margin-top: 0; }
+.itip .t-where .t-row + .t-row { margin-top: 4px; }
+.itip .pbar { background: #1a2036; border-color: #2c3450; margin: 3px 0 2px; }
 .itip .t-up { color: #1eff00; } .itip .t-down { color: #ff5a4d; }
 .itip .tq0 { color: #9d9d9d; } .itip .tq1 { color: #f2f2f2; } .itip .tq2 { color: #1eff00; } .itip .tq3 { color: #3d9cff; } .itip .tq4 { color: #b65cff; } .itip .tq5 { color: #ff8000; }
 

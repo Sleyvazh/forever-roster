@@ -108,3 +108,32 @@ export function compareItems(a: { itemLevel: number; details?: ItemDetails | nul
   for (const t of new Set([...sa.keys(), ...sb.keys()])) push(statName(t), (sb.get(t) ?? 0) - (sa.get(t) ?? 0));
   return out;
 }
+
+/** Type d'objet en français (armures et armes ; le client ne fournit que l'anglais). */
+const SUBCLASS_FR: Record<string, string> = {
+  Cloth: "Tissu", Leather: "Cuir", Mail: "Mailles", Plate: "Plaques", Shield: "Bouclier", Shields: "Bouclier", Buckler: "Targe",
+  Miscellaneous: "Divers", Libram: "Libram", Librams: "Libram", Idol: "Idole", Idols: "Idole", Totem: "Totem", Totems: "Totem",
+  Axe: "Hache", "One-Handed Axes": "Hache", "Two-Handed Axes": "Hache", Bow: "Arc", Bows: "Arc", Gun: "Arme à feu", Guns: "Arme à feu",
+  Mace: "Masse", "One-Handed Maces": "Masse", "Two-Handed Maces": "Masse", Polearm: "Arme d'hast", Polearms: "Arme d'hast",
+  Sword: "Épée", "One-Handed Swords": "Épée", "Two-Handed Swords": "Épée", Staff: "Bâton", Staves: "Bâton",
+  "Fist Weapon": "Arme de pugilat", "Fist Weapons": "Arme de pugilat", Dagger: "Dague", Daggers: "Dague",
+  Thrown: "Armes de jet", Spear: "Lance", Spears: "Lance", Crossbow: "Arbalète", Crossbows: "Arbalète", Wand: "Baguette", Wands: "Baguette",
+  "Fishing Pole": "Canne à pêche", "Fishing Poles": "Canne à pêche",
+};
+export const subclassFr = (name: string | undefined) => (name ? SUBCLASS_FR[name] ?? name : "");
+
+/** Progression d'équipement d'un perso : niveau d'objet moyen (objets équipés connus) et BiS obtenus. */
+export interface GearStats { ilvl: number | null; filled: number; got: number; bis: number; total: number }
+export function gearStats(
+  gear: Partial<Record<string, { curId?: number | null; bisId?: number | null; bis?: string; got?: boolean } | undefined>>,
+  slots: readonly string[], levelOf: (id: number) => number | undefined,
+): GearStats {
+  const levels = slots.map(s => gear[s]?.curId).map(id => (id ? levelOf(id) : undefined)).filter((v): v is number => !!v);
+  return {
+    ilvl: levels.length ? Math.round(levels.reduce((a, b) => a + b, 0) / levels.length * 10) / 10 : null,
+    filled: levels.length,
+    got: slots.filter(s => gear[s]?.got).length,
+    bis: slots.filter(s => gear[s]?.bisId || gear[s]?.bis).length,
+    total: slots.length,
+  };
+}

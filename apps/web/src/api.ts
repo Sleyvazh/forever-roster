@@ -55,6 +55,8 @@ export interface Character {
   gear: Record<string, GearEntry>;
   legacy: Record<string, { name: string; rank: number; max: number }[]>;
   notes: string; portraitId: string | null; sortOrder: number; updatedAt: string; owner?: string;
+  /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
+  gearStats?: import("@forever/game-data").GearStats;
 }
 
 export interface GearEntry { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }
@@ -65,6 +67,12 @@ export interface GearEntry { cur?: string; curId?: number | null; q?: number | n
 export interface GameItem {
   id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin?: "forever" | "era";
   details?: import("@forever/game-data").ItemDetails;
+  /** Fabriqué par une recette de métier : l'infobulle charge alors « Où l'obtenir ». */
+  crafted?: boolean;
+}
+export interface ItemSources {
+  crafted: { spellId: number; recipe: string; profession: string; reqSkill: number; trainer: boolean;
+    patterns: { id: number; name: string; quality: number }[]; crafters: { name: string; owner: string; mine: boolean }[] }[];
 }
 export interface GameRecipe {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;

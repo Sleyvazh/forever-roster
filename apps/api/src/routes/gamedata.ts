@@ -1,19 +1,28 @@
 import { GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
-import { and, asc, desc, eq, gt, ilike, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { gameItems, gameRecipes } from "../db/schema";
+import { characterRecipes, characters, gameItems, gameRecipes, groupMembers, users } from "../db/schema";
 import { gameDataStatus } from "../gamedata/store";
 import { notFound, parse } from "../lib/http";
-import { requireAuth } from "../lib/session";
+import { currentUser, requireAuth } from "../lib/session";
+import { currentLines, professionOf } from "../lib/professions";
 
 /** Échappe les jokers de LIKE : une recherche « 100% » ne doit pas devenir un motif. */
 const escapeLike = (q: string) => q.replace(/[\\%_]/g, c => `\\${c}`);
 export const likeContains = (q: string) => `%${escapeLike(q)}%`;
 
-export const itemSummary = { id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel, kind: gameItems.kind, inventoryType: gameItems.inventoryType, origin: gameItems.origin, details: gameItems.details };
-export type ItemSummary = { id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number; origin: "forever" | "era"; details: import("@forever/game-data").ItemDetails };
+export const itemSummary = {
+  id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel,
+  kind: gameItems.kind, inventoryType: gameItems.inventoryType, origin: gameItems.origin, details: gameItems.details,
+  /** Fabriqué par au moins une recette de métier (l'infobulle affiche alors « Où l'obtenir »). */
+  crafted: sql<boolean>`exists (select 1 from ${gameRecipes} where ${gameRecipes.createdItemId} = ${gameItems.id})`,
+};
+export type ItemSummary = {
+  id: number; name: string; quality: number; itemLevel: number; reqLevel: number; kind: string; inventoryType: number;
+  origin: "forever" | "era"; details: import("@forever/game-data").ItemDetails; crafted: boolean;
+};
 
 export async function itemsById(db: Db, ids: Iterable<number>): Promise<Record<number, ItemSummary>> {
   const list = [...new Set(ids)];
@@ -50,6 +59,45 @@ export async function gameDataRoutes(app: FastifyInstance) {
     const { ids } = parse(z.object({ ids: z.string().regex(/^\d{1,9}(,\d{1,9}){0,59}$/, "liste d'identifiants attendue") }), req.query);
     reply.header("Cache-Control", "private, max-age=600");
     return { items: await itemsById(db, ids.split(",").map(Number)) };
+  });
+
+  /**
+   * « Où l'obtenir » : recettes qui fabriquent l'objet, patrons qui les enseignent, et persos qui les connaissent
+   * parmi les membres des groupes du joueur (les mêmes qu'il voit déjà dans l'onglet Artisans) et ses propres persos.
+   */
+  app.get("/items/:id/sources", async (req, reply) => {
+    const u = currentUser(req);
+    const { id } = parse(z.object({ id: z.coerce.number().int().positive() }), req.params);
+    const recipes = await db.select({
+      spellId: gameRecipes.spellId, name: gameRecipes.name, skillLine: gameRecipes.skillLine, reqSkill: gameRecipes.reqSkill,
+      taughtBy: gameRecipes.taughtBy, fromItem: gameRecipes.fromItem,
+    }).from(gameRecipes).where(eq(gameRecipes.createdItemId, id)).orderBy(asc(gameRecipes.reqSkill)).limit(10);
+    reply.header("Cache-Control", "private, no-cache");
+    if (!recipes.length) return { crafted: [] };
+
+    const myGroups = db.select({ g: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, u.id));
+    const people = db.selectDistinct({ userId: groupMembers.userId }).from(groupMembers).where(inArray(groupMembers.groupId, myGroups));
+    const known = await db.select({
+      spellId: characterRecipes.spellId, name: characters.name, owner: users.displayName, userId: characters.userId, professions: characters.professions,
+    }).from(characterRecipes)
+      .innerJoin(characters, eq(characters.id, characterRecipes.characterId))
+      .innerJoin(users, eq(users.id, characters.userId))
+      .where(and(
+        inArray(characterRecipes.spellId, recipes.map(r => r.spellId)),
+        eq(characterRecipes.status, "known"),
+        or(eq(characters.userId, u.id), inArray(characters.userId, people)),
+      ))
+      .orderBy(asc(characters.name)).limit(200);
+    const teach = await itemsById(db, recipes.flatMap(r => r.taughtBy));
+    return {
+      crafted: recipes.map(r => ({
+        spellId: r.spellId, recipe: r.name, profession: professionOf(r.skillLine), reqSkill: r.reqSkill,
+        patterns: r.taughtBy.flatMap(t => (teach[t] ? [{ id: t, name: teach[t]!.name, quality: teach[t]!.quality }] : [])),
+        trainer: !r.fromItem && r.taughtBy.length === 0,
+        crafters: known.filter(k => k.spellId === r.spellId && currentLines(k.professions).has(r.skillLine))
+          .map(k => ({ name: k.name, owner: k.owner, mine: k.userId === u.id })),
+      })),
+    };
   });
 
   app.get("/items/:id", async (req) => {
