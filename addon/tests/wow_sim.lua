@@ -38,13 +38,13 @@ function UnitLevel() return 60 end
 function UnitFactionGroup() return "Horde", "Horde" end
 function GetBuildInfo() return "1.60.1", "70170", "Oct 1 2026", 16001 end
 function GetInventoryItemID(_, slot) return slot == 1 and 16866 or nil end
-function GetNumSkillLines() return 0 end -- perso sans métier
+-- Comme le client Forever : pas de liste des compétences (GetNumSkillLines absent)
 GetNumCrafts = function() return 0 end
 -- Métiers par l'API moderne (pas de GetNumTradeSkills)
 C_TradeSkillUI = {
   GetAllRecipeIDs = function() return { 2152, 2153 } end,
   GetRecipeInfo = function(id) return { learned = id == 2152 } end,
-  GetBaseProfessionInfo = function() return { professionName = "Leatherworking" } end,
+  GetBaseProfessionInfo = function() return { professionName = "Leatherworking", skillLevel = 150, maxSkillLevel = 225 } end,
 }
 function IsInRaid() return false end
 function IsInGroup() return false end
@@ -101,6 +101,12 @@ run("aide")
 
 if failures > 0 then os.exit(1) end
 local export = ns.Export.Build()
+assert(export:find("\nP;Leatherworking;150;225\n"), "compétence lue dans la fenêtre de métier")
+-- API moderne des métiers : GetProfessions (indices avec des trous) + GetProfessionInfo
+function GetProfessions() return nil, nil, nil, 4, 5, nil end
+function GetProfessionInfo(i) if i == 4 then return "Pêche", 0, 75, 150 elseif i == 5 then return "Cooking", 0, 120, 150 end end
+export = ns.Export.Build()
+assert(export:find("\nP;Pêche;75;150\n") and export:find("\nP;Cooking;120;150\n"), "métiers par GetProfessions")
 assert(export:match("^FRC;1;Tournicoti;") and export:find("\nG;1;16866\n"), "export de base")
 assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end

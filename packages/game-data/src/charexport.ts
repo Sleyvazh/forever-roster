@@ -14,6 +14,9 @@ const SLOT_BY_INVSLOT: Record<number, Slot> = {
 const RACE_BY_FILE: Record<string, string> = {
   Human: "Human", Dwarf: "Dwarf", NightElf: "Night Elf", Gnome: "Gnome", Orc: "Orc", Scourge: "Undead", Undead: "Undead", Tauren: "Tauren", Troll: "Troll",
 };
+/** Race du jeu → race du site. Les Skyborne ont un seul nom de fichier : la faction départage High Order et Windshaper. */
+const raceFromGame = (file: string, faction: string) =>
+  file === "Skyborne" ? (faction === "Horde" ? "Skyborne (Windshaper)" : faction === "Alliance" ? "Skyborne (High Order)" : null) : RACE_BY_FILE[file] ?? null;
 /** Noms des métiers tels que le jeu les affiche (anglais ou français) → nom du site. */
 const PROFESSION_NAMES: Record<string, string> = {
   alchemy: "Alchemy", alchimie: "Alchemy", blacksmithing: "Blacksmithing", forge: "Blacksmithing", enchanting: "Enchanting", enchantement: "Enchanting",
@@ -32,6 +35,8 @@ export interface CharacterExport {
   professions: { name: string; skill: number; max: number; primary: boolean }[];
   /** Patrons connus : identifiant du sort de fabrication, ou de l'objet fabriqué quand le jeu ne donne que lui. */
   recipes: { profession: string | null; spellId?: number; itemId?: number }[];
+  /** Fenêtres de métier du jeu que le site ne gère pas (ex. Poisons du voleur) : leurs patrons sont ignorés. */
+  ignored: string[];
   talents: ExportedTalentNode[];
 }
 
@@ -49,9 +54,9 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const clsToken = head[4] ?? "";
   const cls = (Object.keys(CLASSES) as ClassName[]).find(c => c.toUpperCase() === clsToken) ?? null;
   const data: CharacterExport = {
-    name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: RACE_BY_FILE[head[5] ?? ""] ?? null,
+    name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
-    gear: {}, professions: [], recipes: [], talents: [],
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [],
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -65,6 +70,11 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
       const key = f[2] ?? "", id = int(key.slice(1));
       if (id <= 0) continue;
       const profession = professionFromGame(f[1] ?? "");
+      if (!profession) {
+        const raw = (f[1] ?? "").slice(0, 40);
+        if (raw && !data.ignored.includes(raw)) data.ignored.push(raw);
+        continue;
+      }
       if (key[0] === "s") data.recipes.push({ profession, spellId: id });
       else if (key[0] === "i") data.recipes.push({ profession, itemId: id });
     } else if (f[0] === "T") {

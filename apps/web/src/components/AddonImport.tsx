@@ -32,8 +32,8 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
   const count: Record<Part, string> = {
     identity: d ? `niveau ${d.level}${d.cls ? ` · ${d.cls}` : ""}${d.race ? ` · ${d.race}` : ""}` : "",
     gear: `${gearCount} pièce${gearCount > 1 ? "s" : ""}`,
-    professions: d ? d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun" : "",
-    recipes: d ? `${d.recipes.length} patron${d.recipes.length > 1 ? "s" : ""}${d.recipes.length ? "" : " (ouvre tes fenêtres de métier en jeu avant d'exporter)"}` : "",
+    professions: d ? d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun lu (addon 0.1.3 requis)" : "",
+    recipes: d ? `${d.recipes.length} patron${d.recipes.length > 1 ? "s" : ""}${d.recipes.length ? "" : " (ouvre tes fenêtres de métier en jeu avant d'exporter)"}${d.ignored.length ? ` · ignorés : ${d.ignored.join(", ")}` : ""}` : "",
     talents: d ? (build ? `répartition ${build.split} (spé principale)` : `${spent} point${spent > 1 ? "s" : ""} dans ${d.talents.filter(t => t.rank > 0).length} talents`) : "",
   };
   const toggle = (p: Part) => setParts(s => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });

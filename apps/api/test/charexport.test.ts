@@ -28,4 +28,17 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(parseCharacterExport(SAMPLE.replace(/\nEND;\d+$/, ""))).toMatchObject({ ok: false });
     expect(parseCharacterExport(SAMPLE.replace("FRC;1;", "FRC;2;"))).toMatchObject({ ok: false });
   });
+  it("ignore les patrons des fenêtres que le site ne gère pas (Poisons)", () => {
+    const text = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1790960455;0.1.2\nR;Cooking;s2541\nR;Poisons;s8681\nR;First Aid;s3275\nEND;3";
+    const r = parseCharacterExport(text);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.data.recipes).toEqual([{ profession: "Cooking", spellId: 2541 }, { profession: "First Aid", spellId: 3275 }]);
+    expect(r.data.ignored).toEqual(["Poisons"]);
+  });
+  it("reconnaît les Skyborne selon la faction", () => {
+    const head = (faction: string) => `FRC;1;Greta;Beta;DRUID;Skyborne;20;${faction};1790960521;0.1.2\nEND;0`;
+    const race = (faction: string) => { const r = parseCharacterExport(head(faction)); return r.ok ? r.data.race : "erreur"; };
+    expect(race("Alliance")).toBe("Skyborne (High Order)");
+    expect(race("Horde")).toBe("Skyborne (Windshaper)");
+  });
 });

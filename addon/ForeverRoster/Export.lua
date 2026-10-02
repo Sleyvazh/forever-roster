@@ -30,7 +30,16 @@ local function scan(numFn, infoFn, recipeLinkFn, itemLinkFn, nameFn)
   if n > 0 then ns.print(n .. " patron(s) de " .. prof .. " ajouté(s) à l'export.") end
 end
 
+-- Compétence du métier ouvert, gardée pour l'export (repli si le jeu ne liste pas les compétences)
+local function remember(prof, rank, maxRank)
+  if not prof or prof == "" or not tonumber(rank) then return end
+  local db = ns.charDB()
+  db.skills = db.skills or {}
+  db.skills[prof] = { tonumber(rank), tonumber(maxRank) or 0 }
+end
+
 local function scanTradeSkill()
+  if GetTradeSkillLine then remember(GetTradeSkillLine()) end
   scan(GetNumTradeSkills, function(i) local name, kind = GetTradeSkillInfo(i) return name, kind end,
     GetTradeSkillRecipeLink, GetTradeSkillItemLink, function() return (GetTradeSkillLine()) end)
 end
@@ -45,6 +54,7 @@ local function scanModern()
   local line = T.GetBaseProfessionInfo and T.GetBaseProfessionInfo() or (T.GetTradeSkillLine and { professionName = (T.GetTradeSkillLine()) })
   local prof = type(line) == "table" and (line.professionName or line.parentProfessionName) or nil
   if not prof or prof == "" then return end
+  remember(prof, line.skillLevel, line.maxSkillLevel)
   local db = ns.charDB()
   db.recipes[prof] = db.recipes[prof] or {}
   local n = 0
@@ -78,15 +88,36 @@ function E.Build()
       if id then lines[#lines + 1] = { "G", slot, id } end
     end
   end)
-  -- Métiers et compétences (noms tels qu'affichés par le jeu ; le site reconnaît l'anglais et le français)
+  -- Métiers et compétences (noms tels qu'affichés par le jeu ; le site reconnaît l'anglais et le français).
+  -- Trois sources, selon l'API du client : liste des compétences (Classic), GetProfessions (moderne),
+  -- puis la dernière compétence vue dans chaque fenêtre de métier.
+  local seen, profs = {}, 0
+  local function add(name, rank, maxRank)
+    if not name or name == "" or seen[name] then return end
+    seen[name] = true
+    lines[#lines + 1] = { "P", name, tonumber(rank) or 0, tonumber(maxRank) or 0 }
+    profs = profs + 1
+  end
   ns.safe("métiers", function()
-    if not GetNumSkillLines then return end
-    for i = 1, GetNumSkillLines() do
+    if not (GetNumSkillLines and GetSkillLineInfo) then return end
+    for i = 1, GetNumSkillLines() or 0 do
       local name, isHeader, _, rank, _, _, maxRank = GetSkillLineInfo(i)
-      if name and not isHeader then lines[#lines + 1] = { "P", name, rank or 0, maxRank or 0 } end
+      if not isHeader then add(name, rank, maxRank) end
+    end
+  end)
+  ns.safe("métiers", function()
+    if not (GetProfessions and GetProfessionInfo) then return end
+    local idx = { GetProfessions() }
+    for i = 1, 6 do
+      if idx[i] then
+        local name, _, rank, maxRank = GetProfessionInfo(idx[i])
+        add(name, rank, maxRank)
+      end
     end
   end)
   local db = ns.charDB()
+  for prof, v in pairs(db.skills or {}) do add(prof, v[1], v[2]) end
+  if profs == 0 then ns.print("aucun métier lu : ouvre une fois chaque fenêtre de métier, puis refais /fr export.") end
   for prof, list in pairs(db.recipes or {}) do
     for key in pairs(list) do lines[#lines + 1] = { "R", prof, key } end
   end
