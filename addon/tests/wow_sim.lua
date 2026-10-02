@@ -1,0 +1,93 @@
+-- Simulation minimale de l'API de WoW : charge l'addon dans l'ordre du .toc et lance ses commandes.
+-- lua5.1 addon/tests/wow_sim.lua (depuis la racine du dépôt). Échoue si une commande lève une erreur.
+local printed = {}
+function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") end
+
+-- Cadres : toute méthode existe et ne fait rien (sauf texte et visibilité, utiles aux vérifications)
+local function frame()
+  local f = { shown = false, text = "", scripts = {} }
+  return setmetatable(f, { __index = function(t, k)
+    if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
+    if k == "IsShown" then return function(self) return self.shown end end
+    if k == "SetText" then return function(self, v) self.text = v end end
+    if k == "GetText" then return function(self) return self.text end end
+    if k == "SetScript" then return function(self, n, fn) rawget(self, "scripts")[n] = fn end end
+    if k == "GetStringHeight" then return function() return 100 end end
+    if k:match("^Create") then return function() return frame() end end
+    return function() end
+  end })
+end
+local events = {}
+function CreateFrame() local f = frame() f.RegisterEvent = function(_, e) events[e] = f end return f end
+UIParent, UISpecialFrames, RAID_CLASS_COLORS = frame(), {}, { DRUID = { colorStr = "ffff7c0a" } }
+SlashCmdList = {}
+function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+function wipe(t) for k in pairs(t) do t[k] = nil end return t end
+function tinsert(t, v) table.insert(t, v) end
+function date(f, t) return os.date(f, t) end
+C_Timer = { After = function(_, fn) fn() end }
+GetAddOnMetadata = function() return "0.1.1" end
+function UnitName() return "Tournicoti" end
+function GetRealmName() return "Forever EU" end
+function UnitClass() return "Druide", "DRUID" end
+function UnitRace() return "Tauren", "Tauren" end
+function UnitLevel() return 60 end
+function UnitFactionGroup() return "Horde", "Horde" end
+function GetBuildInfo() return "1.60.1", "70170", "Oct 1 2026", 16001 end
+function GetInventoryItemID(_, slot) return slot == 1 and 16866 or nil end
+function GetNumSkillLines() return 0 end -- perso sans métier
+function IsInRaid() return false end
+function IsInGroup() return false end
+function GetNumGroupMembers() return 0 end
+function GetNumSubgroupMembers() return 0 end
+function UnitIsGroupLeader() return true end
+function UnitIsGroupAssistant() return false end
+function InCombatLockdown() return false end
+function Ambiguate(n) return n end
+function time() return 1790000000 end
+
+local ns = {}
+for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
+  if line:match("%.lua$") then assert(loadfile("addon/ForeverRoster/" .. line))("ForeverRoster", ns) end
+end
+-- Déclenche ADDON_LOADED par le gestionnaire enregistré
+local handler = events.ADDON_LOADED.scripts.OnEvent
+handler(events.ADDON_LOADED, "ADDON_LOADED", "ForeverRoster")
+
+local failures = 0
+local function run(cmd)
+  local before = #printed
+  SlashCmdList.FOREVERROSTER(cmd)
+  for i = before + 1, #printed do if printed[i]:find("erreur") then failures = failures + 1 io.stderr:write("ÉCHEC /fr " .. cmd .. " : " .. printed[i] .. "\n") end end
+end
+
+-- 1. Sans système de talents (C_Traits absent)
+run("export")
+-- 2. Avec un système de talents simulé
+C_ClassTalents = { GetActiveConfigID = function() return 42 end }
+C_Traits = {
+  GetConfigInfo = function() return { treeIDs = { 7 } } end,
+  GetTreeNodes = function() return { 101, 102 } end,
+  GetNodeInfo = function(_, id) return { ID = id, posX = 600, posY = 1200, currentRank = id == 101 and 2 or 0, maxRanks = 3, entryIDs = { id * 10 }, isVisible = true } end,
+  GetEntryInfo = function(_, e) return { definitionID = e + 1 } end,
+  GetDefinitionInfo = function(d) return { spellID = d * 2 } end,
+  GetTreeInfo = function() return { ID = 7 } end,
+}
+function GetSpellInfo(id) return "Talent " .. id, nil, 136000 end
+run("export")
+run("talents")
+assert(ForeverRosterDB.debug and #ForeverRosterDB.debug.talents.nodes == 2, "diagnostic des talents")
+-- 3. Système de talents qui lève une erreur : l'export continue sans les talents
+C_Traits.GetConfigInfo = function() error("API différente") end
+run("export")
+-- 4. Compo
+run("compo")
+assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
+assert(ns.Compo.Status()[1].state == "ok", "le joueur est dans son propre groupe")
+run("aide")
+
+if failures > 0 then os.exit(1) end
+local export = ns.Export.Build()
+assert(export:match("^FRC;1;Tournicoti;") and export:find("\nG;1;16866\n"), "export de base")
+print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
+print("wow_sim : tout est bon")

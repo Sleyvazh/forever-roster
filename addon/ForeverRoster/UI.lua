@@ -125,7 +125,9 @@ function U.ShowExport()
     local again = button(export, "Actualiser", 110, function() U.ShowExport() end)
     again:SetPoint("BOTTOMRIGHT", -14, 12)
   end
-  export.value = ns.Export.Build()
+  local ok, value = pcall(ns.Export.Build)
+  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
+  export.value = value
   export.text:SetText(export.value)
   export:Show()
   export.text:SetFocus()

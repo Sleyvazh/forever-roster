@@ -51,7 +51,14 @@ local HELP = {
 
 SLASH_FOREVERROSTER1 = "/fr"
 SLASH_FOREVERROSTER2 = "/foreverroster"
-SlashCmdList.FOREVERROSTER = function(msg)
+-- Une erreur dans une commande s'affiche dans le chat (WoW masque les erreurs Lua par défaut)
+function ns.safe(label, fn, ...)
+  local ok, err = pcall(fn, ...)
+  if not ok then ns.print("|cffff6060erreur (" .. label .. ")|r " .. tostring(err) .. " : envoie une capture de ce message.") end
+  return ok
+end
+
+local function run(msg)
   local cmd = strtrim((msg or ""):lower())
   if cmd == "" or cmd == "compo" then
     ns.UI.ShowCompo()
@@ -64,3 +71,4 @@ SlashCmdList.FOREVERROSTER = function(msg)
     for _, line in ipairs(HELP) do print("  " .. line) end
   end
 end
+SlashCmdList.FOREVERROSTER = function(msg) ns.safe("/fr " .. (msg or ""), run, msg) end

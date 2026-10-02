@@ -47,22 +47,28 @@ end
 
 function E.Build()
   local lines = {}
-  for _, slot in ipairs(SLOTS) do
-    local id = GetInventoryItemID("player", slot)
-    if id then lines[#lines + 1] = { "G", slot, id } end
-  end
+  ns.safe("équipement", function()
+    for _, slot in ipairs(SLOTS) do
+      local id = GetInventoryItemID("player", slot)
+      if id then lines[#lines + 1] = { "G", slot, id } end
+    end
+  end)
   -- Métiers et compétences (noms tels qu'affichés par le jeu ; le site reconnaît l'anglais et le français)
-  if GetNumSkillLines then
+  ns.safe("métiers", function()
+    if not GetNumSkillLines then return end
     for i = 1, GetNumSkillLines() do
       local name, isHeader, _, rank, _, _, maxRank = GetSkillLineInfo(i)
       if name and not isHeader then lines[#lines + 1] = { "P", name, rank or 0, maxRank or 0 } end
     end
-  end
+  end)
   local db = ns.charDB()
   for prof, list in pairs(db.recipes or {}) do
     for key in pairs(list) do lines[#lines + 1] = { "R", prof, key } end
   end
-  local talents = ns.Talents.Capture()
+  -- Chaque partie est protégée : une erreur (API du jeu différente) n'empêche pas d'exporter le reste
+  local okT, talents, why = pcall(ns.Talents.Capture)
+  if not okT then ns.print("talents non exportés : " .. tostring(talents)) talents = nil
+  elseif not talents then ns.print("talents non exportés : " .. tostring(why)) end
   if talents then
     for _, n in ipairs(talents.nodes) do
       if n.visible then lines[#lines + 1] = { "T", n.id, n.rank, n.max, n.x, n.y, n.spell, n.sub, n.tree } end

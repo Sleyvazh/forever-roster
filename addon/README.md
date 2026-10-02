@@ -22,5 +22,6 @@ Copier le dossier `ForeverRoster` dans `World of Warcraft\_classic_beta_\Interfa
 
 ```bash
 for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
-lua5.1 addon/tests/format_test.lua
+lua5.1 addon/tests/format_test.lua   # formats d'échange avec le site
+lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'addon et commandes
 ```

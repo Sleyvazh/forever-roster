@@ -24,18 +24,21 @@ function T.Capture()
   local nodes = {}
   for _, treeID in ipairs(cfg and cfg.treeIDs or {}) do
     for _, nodeID in ipairs(C_Traits.GetTreeNodes(treeID) or {}) do
-      local n = C_Traits.GetNodeInfo(configID, nodeID)
-      if n and n.ID and n.ID ~= 0 then
+      local okN, n = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+      if okN and n and n.ID and n.ID ~= 0 then
         local entryID = (n.activeEntry and n.activeEntry.entryID) or (n.entryIDs and n.entryIDs[1])
         local spellID
         if entryID then
-          local e = C_Traits.GetEntryInfo(configID, entryID)
-          if e and e.definitionID then
-            local d = C_Traits.GetDefinitionInfo(e.definitionID)
-            spellID = d and (d.spellID or d.overriddenSpellID)
-          end
+          pcall(function()
+            local e = C_Traits.GetEntryInfo(configID, entryID)
+            if e and e.definitionID then
+              local d = C_Traits.GetDefinitionInfo(e.definitionID)
+              spellID = d and (d.spellID or d.overriddenSpellID)
+            end
+          end)
         end
-        local name, icon = spellInfo(spellID)
+        local okS, name, icon = pcall(spellInfo, spellID)
+        if not okS then name, icon = nil, nil end
         nodes[#nodes + 1] = {
           id = nodeID, tree = treeID, sub = n.subTreeID or 0, x = n.posX or 0, y = n.posY or 0,
           rank = n.currentRank or n.activeRank or 0, max = n.maxRanks or 0, spell = spellID or 0, name = name, icon = icon,
@@ -92,7 +95,8 @@ function T.Dump()
     return out
   end)
   d.talents = ok and res or ("erreur : " .. tostring(res))
-  d.capture = T.Capture()
+  local okC, cap, why = pcall(T.Capture)
+  d.capture = okC and (cap or why) or ("erreur : " .. tostring(cap))
   ForeverRosterDB.debug = d
   ns.print("diagnostic des talents enregistré (" .. (ok and #res.nodes or 0) .. " nœuds). Fais /reload, puis envoie le fichier ForeverRoster.lua de WTF\\Account\\<compte>\\SavedVariables.")
 end

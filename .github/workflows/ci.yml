@@ -34,6 +34,7 @@ jobs:
           sudo apt-get install -y -qq lua5.1 > /dev/null
           for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
           lua5.1 addon/tests/format_test.lua
+          lua5.1 addon/tests/wow_sim.lua
           git diff --exit-code addon/tests/sample.frc
       - run: npm test
       - run: npm run build
