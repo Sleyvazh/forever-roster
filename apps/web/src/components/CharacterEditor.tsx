@@ -15,6 +15,10 @@ import { useViewPref } from "../prefs";
 import { AddonImport } from "./AddonImport";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
+export type EditorTab = Tab;
+/** Onglets de la fiche dans l'adresse (/persos/:id/:onglet). */
+export const EDITOR_TAB_SLUG: Record<Tab, string> = { profil: "profil", metiers: "metiers", stuff: "equipement", legacy: "notes" };
+export const editorTabFromSlug = (slug?: string): Tab => (Object.entries(EDITOR_TAB_SLUG).find(([, s]) => s === slug)?.[0] as Tab | undefined) ?? "profil";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
 
 export interface EditorProps {
@@ -25,18 +29,22 @@ export interface EditorProps {
   footer?: React.ReactNode;
   /** Portrait changé (envoyé directement, hors sauvegarde automatique). */
   onPortrait?: (id: string | null) => void;
+  /** Onglet piloté par l'appelant (adresse de la page) ; sinon gardé le temps de la session. */
+  tab?: Tab;
+  onTab?: (t: Tab) => void;
 }
 
 const Bar = ({ pct, color }: { pct: number; color?: string }) => (
   <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, ...(color ? { background: color } : {}) }} /></div>
 );
 
-export function CharacterEditor({ character: c, editable, onChange, footer, onPortrait }: EditorProps) {
-  const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem("fr-tab") as Tab) || "profil");
+export function CharacterEditor({ character: c, editable, onChange, footer, onPortrait, tab: tabProp, onTab }: EditorProps) {
+  const [tabState, setTab] = useState<Tab>(() => (sessionStorage.getItem("fr-tab") as Tab) || "profil");
+  const tab = tabProp ?? tabState;
   const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
   const roles = [...new Set([roleOf(c.spec1), roleOf(c.spec2)].filter(Boolean))];
-  const pick = (t: Tab) => { setTab(t); sessionStorage.setItem("fr-tab", t); };
+  const pick = (t: Tab) => { if (onTab) { onTab(t); return; } setTab(t); sessionStorage.setItem("fr-tab", t); };
   const [portraitOpen, setPortraitOpen] = useState(false);
   const canPortrait = editable && !!onPortrait;
   const face = <Portrait id={c.portraitId} size={64} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={44} /> : <ClassIcon cls={c.cls} size={44} />) : null} />;

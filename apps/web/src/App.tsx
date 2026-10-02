@@ -1,5 +1,5 @@
 import { GlyphSprite } from "./components/ItemGlyphs";
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./auth";
 import { TopBar } from "./components/TopBar";
 import { AccountPage } from "./pages/AccountPage";
@@ -25,9 +25,10 @@ export function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/join" element={<JoinPage />} />
-            <Route path="/" element={<RequireAuth><CharactersPage /></RequireAuth>} />
+            <Route path="/" element={<RequireAuth><Navigate to="/persos" replace /></RequireAuth>} />
+            <Route path="/persos/:charId?/:tab?" element={<RequireAuth><CharactersPage /></RequireAuth>} />
             <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
-            <Route path="/groups/:groupId" element={<RequireAuth><GroupPage /></RequireAuth>} />
+            <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupPage /></RequireAuth>} />
             <Route path="/groups/:groupId/raids/:raidId" element={<RequireAuth><RaidPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
             <Route path="/addon" element={<RequireAuth><AddonPage /></RequireAuth>} />

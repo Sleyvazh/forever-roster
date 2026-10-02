@@ -99,6 +99,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
 
   await test.step("métiers : cocher un patron", async () => {
     await page.getByRole("tab", { name: "Métiers" }).click();
+    // Perso et onglet dans l'adresse : rechargement et retour arrière
+    await expect(page).toHaveURL(/\/persos\/[0-9a-f-]{36}\/metiers$/);
+    await page.reload();
+    await expect(page.getByRole("tab", { name: "Métiers" })).toHaveAttribute("aria-selected", "true");
+    await page.goBack();
+    await expect(page.getByRole("tab", { name: "Profil & talents" })).toHaveAttribute("aria-selected", "true");
+    await page.goForward();
     await page.selectOption("#p1-n", "Leatherworking");
     await page.fill("#p1-s", "300");
     await page.locator("#p1-s").press("ArrowDown");
@@ -146,6 +153,8 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#g-name", "Les Testeurs");
     await page.getByRole("button", { name: "Créer" }).click();
     await page.getByRole("tab", { name: "Artisans" }).click();
+    await expect(page).toHaveURL(/\/groups\/[0-9a-f-]{36}\/artisans$/);
+    await page.reload();
     await expect(page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ })).toBeVisible();
     // Infobulle de l'objet fabriqué : « Où l'obtenir » avec le patron et qui le connaît
     await page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ }).locator(".ihover").first().hover();

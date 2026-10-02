@@ -30,13 +30,15 @@ const EVENT_LABEL: Record<string, string> = {
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
 };
 
+type GroupTab = "raids" | "members" | "characters" | "crafters" | "admin";
+const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", crafters: "artisans", admin: "admin" };
+
 export function GroupPage() {
-  const { groupId = "" } = useParams();
+  const { groupId = "", tab: tabSlug } = useParams();
   const qc = useQueryClient();
   const nav = useNavigate();
   const me = useMe();
   const myId = me.data?.user?.id;
-  const [tab, setTab] = useState<"raids" | "members" | "characters" | "crafters" | "admin">("raids");
   const [error, setError] = useState<string | null>(null);
 
   const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
@@ -52,7 +54,11 @@ export function GroupPage() {
   if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
   const { group, role, members } = detail.data;
 
-  const tabs: [typeof tab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["admin", "Administration"] as [typeof tab, string]] : [])];
+  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
+  // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
+  const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
+  const tab: GroupTab = tabs.some(([k]) => k === wanted) ? wanted : "raids";
+  const setTab = (t: GroupTab) => nav(`/groups/${groupId}${t === "raids" ? "" : `/${GROUP_TAB_SLUG[t]}`}`);
 
   return (
     <div className="stack" style={{ gap: 20 }}>

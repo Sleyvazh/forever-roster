@@ -1,8 +1,9 @@
 import { CLASSES, RACES, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, put, type Character } from "../api";
-import { CharacterEditor } from "../components/CharacterEditor";
+import { CharacterEditor, EDITOR_TAB_SLUG, editorTabFromSlug, type EditorTab } from "../components/CharacterEditor";
 import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { Portrait } from "../components/ImageUpload";
 
@@ -49,12 +50,23 @@ export function CharactersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters") });
   const [local, setLocal] = useState<Character[]>([]);
-  const [sel, setSel] = useState<string | null>(null);
+  // Perso et onglet dans l'adresse : /persos/:charId/:tab (retour arrière, lien direct)
+  const params = useParams();
+  const nav = useNavigate();
+  const tab = editorTabFromSlug(params.tab);
+  const urlFor = (id: string, t: EditorTab = tab) => `/persos/${id}${t === "profil" ? "" : `/${EDITOR_TAB_SLUG[t]}`}`;
+  const sel = params.charId && local.some(c => c.id === params.charId) ? params.charId : (local[0]?.id ?? null);
+  const setSel = (id: string) => nav(urlFor(id));
   const [confirmDel, setConfirmDel] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
-  useEffect(() => { if (data) { setLocal(prev => data.characters.map(sc => prev.find(p => p.id === sc.id) ?? sc)); setSel(s => s && data.characters.some(c => c.id === s) ? s : data.characters[0]?.id ?? null); } }, [data]);
+  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => prev.find(p => p.id === sc.id) ?? sc)); }, [data]);
+  // Adresse sans perso (ou perso supprimé) : on montre le premier, sans ajouter d'étape à l'historique
+  useEffect(() => {
+    if (!data || !data.characters.length) return;
+    if (!params.charId || !data.characters.some(c => c.id === params.charId)) nav(urlFor(data.characters[0]!.id), { replace: true });
+  }, [data, params.charId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = local.find(c => c.id === sel) ?? null;
   const saver = useAutosave(current?.id ?? null, saved => qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => c.id === saved.id ? saved : c) }));
@@ -70,8 +82,7 @@ export function CharactersPage() {
     try {
       const r = await post<{ character: Character }>("/characters", { name: "Nouveau perso" });
       qc.setQueryData<{ characters: Character[] }>(["characters"], d => ({ characters: [...(d?.characters ?? []), r.character] }));
-      sessionStorage.setItem("fr-tab", "profil"); // un nouveau perso s'ouvre sur son identité
-      setSel(r.character.id);
+      nav(urlFor(r.character.id, "profil")); // un nouveau perso s'ouvre sur son identité
     } catch (e) { setError(e instanceof ApiError ? e.message : "Création impossible."); }
   };
   const remove = async () => {
@@ -111,6 +122,8 @@ export function CharactersPage() {
               key={current.id}
               character={current}
               editable
+              tab={tab}
+              onTab={t => nav(urlFor(current.id, t))}
               onChange={edit}
               onPortrait={portraitId => {
                 setLocal(list => list.map(c => c.id === current.id ? { ...c, portraitId } : c));
