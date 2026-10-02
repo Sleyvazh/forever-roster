@@ -78,13 +78,12 @@ export async function gameDataRoutes(app: FastifyInstance) {
     const myGroups = db.select({ g: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, u.id));
     const people = db.selectDistinct({ userId: groupMembers.userId }).from(groupMembers).where(inArray(groupMembers.groupId, myGroups));
     const known = await db.select({
-      spellId: characterRecipes.spellId, name: characters.name, owner: users.displayName, userId: characters.userId, professions: characters.professions,
+      spellId: characterRecipes.spellId, status: characterRecipes.status, name: characters.name, owner: users.displayName, userId: characters.userId, professions: characters.professions,
     }).from(characterRecipes)
       .innerJoin(characters, eq(characters.id, characterRecipes.characterId))
       .innerJoin(users, eq(users.id, characters.userId))
       .where(and(
         inArray(characterRecipes.spellId, recipes.map(r => r.spellId)),
-        eq(characterRecipes.status, "known"),
         or(eq(characters.userId, u.id), inArray(characters.userId, people)),
       ))
       .orderBy(asc(characters.name)).limit(200);
@@ -94,7 +93,10 @@ export async function gameDataRoutes(app: FastifyInstance) {
         spellId: r.spellId, recipe: r.name, profession: professionOf(r.skillLine), reqSkill: r.reqSkill,
         patterns: r.taughtBy.flatMap(t => (teach[t] ? [{ id: t, name: teach[t]!.name, quality: teach[t]!.quality }] : [])),
         trainer: !r.fromItem && r.taughtBy.length === 0,
-        crafters: known.filter(k => k.spellId === r.spellId && currentLines(k.professions).has(r.skillLine))
+        crafters: known.filter(k => k.status === "known" && k.spellId === r.spellId && currentLines(k.professions).has(r.skillLine))
+          .map(k => ({ name: k.name, owner: k.owner, mine: k.userId === u.id })),
+        /** Persos qui recherchent ce patron (à qui le donner si on le trouve). */
+        wanted: known.filter(k => k.status === "wanted" && k.spellId === r.spellId && currentLines(k.professions).has(r.skillLine))
           .map(k => ({ name: k.name, owner: k.owner, mine: k.userId === u.id })),
       })),
     };

@@ -166,11 +166,13 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     const src = (await other.c.get("/api/gamedata/items/15065/sources")).json();
     expect(src.crafted).toEqual([{
       spellId: 19080, recipe: "Warbear Woolies", profession: "Leatherworking", reqSkill: 285, trainer: false,
-      patterns: [{ id: 15090, name: "Pattern: Warbear Woolies", quality: 3 }], crafters: [{ name: "Tournicoti", owner: "Tanneur", mine: false }],
+      patterns: [{ id: 15090, name: "Pattern: Warbear Woolies", quality: 3 }], crafters: [{ name: "Tournicoti", owner: "Tanneur", mine: false }], wanted: [],
     }]);
     expect((await lw.c.get("/api/gamedata/items/15065/sources")).json().crafted[0].crafters).toEqual([{ name: "Tournicoti", owner: "Tanneur", mine: true }]);
     expect((await outsider.c.get("/api/gamedata/items/15065/sources")).json().crafted[0].crafters).toEqual([]);
     expect((await other.c.get("/api/gamedata/items/16866/sources")).json()).toEqual({ crafted: [] });
+    // Patron recherché : affiché dans « Où l'obtenir » (à qui le donner si on le trouve)
+    expect((await other.c.get("/api/gamedata/items/4000/sources")).json().crafted[0]).toMatchObject({ crafters: [], wanted: [{ name: "Tournicoti", owner: "Tanneur", mine: false }] });
     expect((await outsider.c.get(`/api/groups/${g.id}/crafters`)).statusCode).toBe(404);
     expect((await other.c.get(`/api/groups/${g.id}/crafters?q=bracer`)).json().recipes).toEqual([]);
     // Changer de métier retire ses patrons de l'onglet Artisans

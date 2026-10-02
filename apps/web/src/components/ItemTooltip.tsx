@@ -50,10 +50,13 @@ function ItemSourcesBlock({ id }: { id: number }) {
       {list.map(r => (
         <div key={r.spellId} className="t-row">
           Fabriqué : {r.profession} ({r.reqSkill})
-          <div className="t-dim t-in">{r.trainer ? "Appris chez un entraîneur" : r.patterns.length ? r.patterns.map(p => p.name).join(", ") : "Patron inconnu"}</div>
+          <div className="t-dim t-in">{r.trainer ? "Appris chez un entraîneur" : r.patterns.length ? [...new Set(r.patterns.map(p => p.name))].join(", ") : "Patron inconnu"}</div>
           <div className={`t-in ${r.crafters.length ? "t-green" : "t-dim"}`}>
             {r.crafters.length ? `Connu par : ${r.crafters.map(c => (c.mine ? `${c.name} (toi)` : `${c.name} (${c.owner})`)).join(", ")}` : "Personne dans tes groupes ne le connaît."}
           </div>
+          {!!r.wanted?.length && <div className="t-in t-yellow">
+            Recherché par : {r.wanted!.map(c => (c.mine ? `${c.name} (toi)` : `${c.name} (${c.owner})`)).join(", ")}
+          </div>}
         </div>
       ))}
     </div>

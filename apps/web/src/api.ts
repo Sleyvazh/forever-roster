@@ -74,7 +74,7 @@ export interface GameItem {
 }
 export interface ItemSources {
   crafted: { spellId: number; recipe: string; profession: string; reqSkill: number; trainer: boolean;
-    patterns: { id: number; name: string; quality: number }[]; crafters: { name: string; owner: string; mine: boolean }[] }[];
+    patterns: { id: number; name: string; quality: number }[]; crafters: { name: string; owner: string; mine: boolean }[]; wanted?: { name: string; owner: string; mine: boolean }[] }[];
 }
 export interface GameRecipe {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
