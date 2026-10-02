@@ -2,7 +2,9 @@
 
 Addon WoW pour le client de WoW Forever (interface 16001). Il fait le lien avec le site par copier-coller (un addon n'a pas accès à internet).
 
-Une seule fenêtre, ouverte par **ta touche** (Échap > Options > Raccourcis > AddOns > Forever Roster), le **bouton de la minicarte** ou `/fr`, avec quatre onglets :
+**Synchro rapide** : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent une petite fenêtre avec une seule case. Ton export y est déjà sélectionné : Ctrl+C, la fenêtre se ferme, puis Ctrl+V sur n'importe quelle page du site. Ou Ctrl+V dans la case pour coller ce que tu as copié sur le site (« Copier pour le jeu ») : chargé, puis fermeture.
+
+La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a quatre onglets :
 
 | Onglet | Rôle |
 |---|---|
@@ -13,12 +15,12 @@ Une seule fenêtre, ouverte par **ta touche** (Échap > Options > Raccourcis > A
 
 | Commande | Rôle |
 |---|---|
-| Raccourcis (AddOns > Forever Roster) | « Synchro avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
+| Raccourcis (AddOns > Forever Roster) | « Synchro rapide avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/fr` | Ouvrir ou fermer la fenêtre |
 | `/fr synchro`, `raids`, `compo`, `patrons` | Ouvrir un onglet |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export |
-| `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro, glisser : déplacer ; pastille : persos à envoyer) |
+| `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer ; pastille : persos à envoyer) |
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 

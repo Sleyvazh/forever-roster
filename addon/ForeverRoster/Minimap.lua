@@ -48,7 +48,7 @@ function M.Create()
   button.badge.text:SetPoint("CENTER", 0, 0)
   button.badge:Hide()
   button:SetScript("OnClick", function(_, which)
-    if which == "RightButton" then ns.UI.Show("synchro") else ns.UI.Toggle() end
+    if which == "RightButton" then ns.UI.Quick() else ns.UI.Toggle() end
   end)
   button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", onDrag) end)
   button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
@@ -58,7 +58,7 @@ function M.Create()
     local n = M.count or 0
     if n > 0 then GameTooltip:AddLine(n .. " perso(s) à envoyer au site", 1, 0.82, 0) end
     GameTooltip:AddLine("Clic : ouvrir la fenêtre", 1, 1, 1)
-    GameTooltip:AddLine("Clic droit : synchro avec le site", 1, 1, 1)
+    GameTooltip:AddLine("Clic droit : synchro rapide avec le site", 1, 1, 1)
     GameTooltip:AddLine("Glisser : déplacer le bouton", 0.6, 0.64, 0.71)
     GameTooltip:Show()
   end)

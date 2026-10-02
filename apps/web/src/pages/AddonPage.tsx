@@ -19,7 +19,7 @@ export function AddonPage() {
       <div className="page-head"><div><div className="eyebrow">Addon Forever Roster</div><h1>Le jeu et le site</h1></div></div>
       <p className="muted" style={{ margin: 0, maxWidth: 760 }}>
         Un addon n'a pas accès à internet : les échanges passent par un copier-coller, réduit au minimum. Avant de jouer :
-        « Copier pour le jeu » en haut du site, ta touche de synchro en jeu, Ctrl+V. Après : ta touche, Ctrl+C, puis Ctrl+V sur n'importe quelle page du site.
+        « Copier pour le jeu » en haut du site, ta touche de synchro en jeu, Ctrl+V. Après : ta touche, Ctrl+C, puis Ctrl+V sur n'importe quelle page du site. La petite fenêtre de synchro se ferme toute seule.
       </p>
       <div className="addon-steps">
         <Install />
@@ -124,7 +124,7 @@ function FromGame() {
   return (
     <Step n={3} title="Du jeu vers le site : mettre à jour mes persos">
       <p className="hint" style={{ margin: 0 }}>
-        En jeu : ta touche de synchro, Ctrl+C, Échap. Puis ici, <strong>sur n'importe quelle page du site, Ctrl+V</strong> suffit : une fenêtre
+        En jeu : ta touche de synchro, Ctrl+C (la fenêtre se ferme toute seule). Puis ici, <strong>sur n'importe quelle page du site, Ctrl+V</strong> suffit : une fenêtre
         te propose la mise à jour. Seuls les persos qui ont changé depuis ton dernier envoi sont dans l'export.
       </p>
       {mine.length > 0 && (
@@ -190,8 +190,8 @@ export function AddonResults({ results }: { results: ApplyResult[] }) {
 }
 
 const COMMANDS: [string, string][] = [
-  ["Ta touche de synchro", "Échap > Options > Raccourcis > AddOns > Forever Roster : « Synchro avec le site » (et « Ouvrir ou fermer la fenêtre »)"],
-  ["/fr", "Ouvrir ou fermer la fenêtre (comme le bouton de la minicarte ; clic droit : synchro)"],
+  ["Ta touche de synchro", "Échap > Options > Raccourcis > AddOns > Forever Roster : « Synchro rapide avec le site » : une seule case, ton export déjà sélectionné (Ctrl+C) ou tu y colles les données du site (Ctrl+V). Aussi « Ouvrir ou fermer la fenêtre »"],
+  ["/fr", "Ouvrir ou fermer la fenêtre (comme le bouton de la minicarte ; clic droit : synchro rapide)"],
   ["/fr synchro · raids · compo · patrons", "Ouvrir directement un onglet"],
   ["/fr cherche + Maj+clic sur un objet", "Marquer un patron vu ailleurs (hôtel des ventes, chat) comme recherché, ou l'en retirer"],
   ["/fr oublier Nom-Royaume", "Retirer de l'export un perso supprimé"],

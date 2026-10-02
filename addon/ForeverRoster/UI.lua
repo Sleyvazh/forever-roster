@@ -305,11 +305,8 @@ local function headerBar(parent, y, text)
 end
 
 -- Synchro : coller ce qui vient du site (chargé tout seul), copier ce qui part vers le site (Ctrl+C = envoyé)
-local function onPaste(self, user)
-  if not user then return end
-  local text = self:GetText() or ""
-  if not text:match("END;%d+%s*$") then return end -- collage pas encore complet
-  local p = self.page
+-- Texte collé venant du site : données des groupes (FRG) ou compo d'un raid (FRR). Renvoie ok, message.
+function U.LoadFromSite(text)
   local ok, err
   if text:find("FRG;", 1, true) then
     ok, err = ns.Group.Load(text)
@@ -327,11 +324,20 @@ local function onPaste(self, user)
   else
     err = "Texte non reconnu : sur le site, « Copier pour le jeu » ou « Export pour le jeu » d'un raid."
   end
-  if ok then self:SetText("") self:ClearFocus() U.Refresh() else p.loadStatus:SetText("|cffff6b5e" .. tostring(err) .. "|r") end
+  if ok then return true, ForeverRosterDB.lastLoad.text end
+  return false, tostring(err)
+end
+
+local function onPaste(self, user)
+  if not user then return end
+  local text = self:GetText() or ""
+  if not text:match("END;%d+%s*$") then return end -- collage pas encore complet
+  local ok, msg = U.LoadFromSite(text)
+  if ok then self:SetText("") self:ClearFocus() U.Refresh() else self.page.loadStatus:SetText("|cffff6b5e" .. msg .. "|r") end
 end
 
 local function buildSynchro(p)
-  hint(p, "Ouvre cet onglet avec ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le bouton de la minicarte.")
+  hint(p, "Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide.")
   headerBar(p, -32, "1 · Du site vers le jeu")
   p.input = textArea(p, 6, -74, 526, 34)
   p.input.page = p
@@ -499,3 +505,82 @@ function U.LootAlert(itemId, link)
   alert.announce:SetScript("OnClick", function() G.Announce(itemId, link) alert:Hide() end)
   alert:Show()
 end
+
+-- Synchro rapide (ta touche, clic droit sur la minicarte) : une seule case. L'export y est déjà sélectionné :
+-- Ctrl+C l'envoie (puis la fenêtre se ferme). Ou Ctrl+V colle les données du site : chargées, puis fermeture.
+local quick, quickGen = nil, 0
+local function closeQuickSoon()
+  local gen = quickGen -- rouverte entre-temps : on la laisse ouverte
+  C_Timer.After(1.2, function() if quick and quickGen == gen then quick:Hide() end end)
+end
+local function buildQuick()
+  quick = window("ForeverRosterQuick", "Forever Roster  ·  Synchro rapide", 460, 196)
+  quick:ClearAllPoints() quick:SetPoint("TOP", 0, -140)
+  quick.status = quick:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  quick.status:SetPoint("TOPLEFT", 66, -32) quick.status:SetWidth(378) quick.status:SetJustifyH("LEFT")
+  quick.box = textArea(quick, 18, -86, 424, 56)
+  quick.box:SetScript("OnEscapePressed", function() quick:Hide() end)
+  quick.box:SetScript("OnTextChanged", function(self, user)
+    if not user then return end
+    local text = self:GetText() or ""
+    if text == quick.value then return end
+    -- Collage depuis le site : chargé dès qu'il est complet
+    if text:find("FR[GR];") then
+      if not text:match("END;%d+%s*$") then return end
+      local ok, msg = U.LoadFromSite(text)
+      self:SetText("")
+      self:ClearFocus()
+      if ok then
+        quick.status:SetText(GREEN .. "Chargé : " .. msg .. ".|r")
+        U.Refresh()
+        closeQuickSoon()
+      else
+        quick.status:SetText("|cffff6b5e" .. msg .. "|r")
+      end
+      return
+    end
+    -- Autre frappe : l'export reste intact et sélectionné
+    self:SetText(quick.value or "")
+    self:HighlightText()
+  end)
+  quick.box:SetScript("OnKeyDown", function(_, key)
+    if key == "C" and IsControlKeyDown() and quick.included and #quick.included > 0 then
+      ns.Export.MarkSent(quick.included)
+      quick.status:SetText(GREEN .. "Copié. Sur le site, Ctrl+V sur n'importe quelle page.|r")
+      U.Refresh()
+      closeQuickSoon()
+    end
+  end)
+  quick.foot = quick:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  quick.foot:SetPoint("BOTTOMLEFT", 18, 16) quick.foot:SetWidth(250) quick.foot:SetJustifyH("LEFT")
+  local more = button(quick, "Fenêtre complète", 140, function() quick:Hide() U.Show("synchro") end)
+  more:SetPoint("BOTTOMRIGHT", -16, 10)
+  quick.allBtn = button(quick, "Tout renvoyer", 120, function() U.Quick(true) end)
+  quick.allBtn:SetPoint("RIGHT", more, "LEFT", -6, 0)
+  U.quick = quick
+end
+
+function U.Quick(all)
+  if not quick then buildQuick() end
+  if quick:IsShown() and all == nil then quick:Hide() return end
+  quickGen = quickGen + 1
+  local ok, value, included = pcall(ns.Export.Build, { all = all == true })
+  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
+  quick.value, quick.included = value, included
+  local names = {}
+  for _, e in ipairs(included) do names[#names + 1] = colored(e.snap.header and e.snap.header.class, (e.snap.header and e.snap.header.name) or e.key) end
+  if #included > 0 then
+    quick.status:SetText(GOLD .. "Vers le site|r : " .. table.concat(names, ", ") .. " (" .. #included .. " perso" .. (#included > 1 and "s" or "") .. ")\n" ..
+      "Ctrl+C pour copier, puis Ctrl+V sur le site.\n" .. GREY .. "Ou Ctrl+V ici pour coller ce que tu as copié sur le site.|r")
+  else
+    quick.status:SetText(GREY .. "Rien de nouveau à envoyer au site.|r\n" ..
+      "Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »).")
+  end
+  local last = ForeverRosterDB.lastLoad
+  quick.foot:SetText(last and (GREY .. "Données du site : " .. date("%d/%m %H:%M", last.at) .. "|r") or (GREY .. "Données du site : jamais chargées|r"))
+  quick.box:SetText(value)
+  quick:Show()
+  quick.box:SetFocus()
+  quick.box:HighlightText()
+end
+

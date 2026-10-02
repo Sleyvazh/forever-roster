@@ -8,6 +8,7 @@ local function frame()
   local f = { shown = false, text = "", scripts = {} }
   return setmetatable(f, { __index = function(t, k)
     if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
+    if k == "Hide" then return function(self) self.shown = false local h = rawget(self, "scripts").OnHide if h then h(self) end end end
     if k == "IsShown" then return function(self) return self.shown end end
     if k == "SetText" then return function(self, v) self.text = v end end
     if k == "GetText" then return function(self) return self.text end end
@@ -182,7 +183,24 @@ assert(select(2, ns.Export.Build({})) and #select(2, ns.Export.Build({})) == 0, 
 ns.Group.SignUp("g9", "r9", "present", 0)
 assert(#ns.Export.Pending() == 1, "inscription : à renvoyer")
 assert(BINDING_NAME_FOREVERROSTER_SYNC and ForeverRoster_Sync and ForeverRoster_Toggle, "raccourcis clavier")
+-- Synchro rapide (touche, clic droit minicarte) : une seule case, l'export déjà sélectionné
 ForeverRoster_Sync()
+local q = ns.UI.quick
+assert(q and q:IsShown() and q.box:GetText():find("^FRC;2;Tournicoti;"), "synchro rapide : export prêt")
+rawget(q.box, "scripts").OnKeyDown(q.box, "C")
+assert(#ns.Export.Pending() == 0 and not q:IsShown(), "synchro rapide : Ctrl+C = envoyé, fenêtre fermée")
+ForeverRoster_Sync()
+assert(q:IsShown() and q.box:GetText() == "" and q.status:GetText():find("Rien de nouveau"), "synchro rapide : rien à envoyer")
+q.box:SetText("n'importe quoi")
+rawget(q.box, "scripts").OnTextChanged(q.box, true)
+assert(q.box:GetText() == "", "synchro rapide : la frappe ne casse pas l'export")
+q.box:SetText("FRG;1;g8;1789990000;Groupe rapide\nR;r8;0;Molten Core;;\nEND;1")
+rawget(q.box, "scripts").OnTextChanged(q.box, true)
+found = false
+for _, g in ipairs(ns.Group.List()) do if g.name == "Groupe rapide" then found = true end end
+assert(found and not q:IsShown(), "synchro rapide : données du site collées puis fermeture")
+ForeverRoster_Sync() ForeverRoster_Sync()
+assert(not q:IsShown(), "synchro rapide : la touche ouvre et ferme")
 -- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))

@@ -111,7 +111,7 @@ Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport`
 
 # FRG, version 1 : données des groupes, du site vers le jeu
 
-Sur le site : « Copier pour le jeu », en haut de chaque page (un bloc FRG par groupe, à la suite), ou un seul groupe depuis son onglet **Raids**. En jeu : onglet **Synchro** (raccourci clavier, clic droit sur le bouton de la minicarte ou `/fr synchro`), Ctrl+V : chargé dès que le texte collé est complet. La zone de collage reconnaît aussi l'« Export pour le jeu » d'un raid (FRR, onglet Compo). Plusieurs groupes remplacent ceux déjà chargés ; un seul groupe est ajouté ou mis à jour. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
+Sur le site : « Copier pour le jeu », en haut de chaque page (un bloc FRG par groupe, à la suite), ou un seul groupe depuis son onglet **Raids**. En jeu : synchro rapide (raccourci clavier ou clic droit sur le bouton de la minicarte) ou onglet **Synchro** (`/fr synchro`), Ctrl+V : chargé dès que le texte collé est complet. La zone de collage reconnaît aussi l'« Export pour le jeu » d'un raid (FRR, onglet Compo). Plusieurs groupes remplacent ceux déjà chargés ; un seul groupe est ajouté ou mis à jour. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
 
 ```
 FRG;1;<groupe>;<généré le>;<nom du groupe>
