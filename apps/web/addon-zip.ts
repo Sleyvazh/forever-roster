@@ -5,6 +5,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { crc32, deflateRawSync } from "node:zlib";
 import type { Plugin } from "vite";
 
@@ -44,6 +45,16 @@ export function zip(files: { name: string; data: Buffer }[], date = new Date(202
   return Buffer.concat([...locals, ...central, end]);
 }
 
+function addonFiles() {
+  return readdirSync(ADDON_DIR).filter(f => /\.(lua|toc)$/.test(f)).sort()
+    .map(f => ({ name: `ForeverRoster/${f}`, data: readFileSync(path.join(ADDON_DIR, f)) }));
+}
+
+/** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */
+export function addonSha256() {
+  try { return createHash("sha256").update(zip(addonFiles())).digest("hex"); } catch { return ""; }
+}
+
 export function addonZip(): Plugin {
   let outDir = "dist";
   return {
@@ -51,10 +62,10 @@ export function addonZip(): Plugin {
     apply: "build",
     configResolved(c) { outDir = path.resolve(c.root, c.build.outDir); },
     closeBundle() {
-      const files = readdirSync(ADDON_DIR).filter(f => /\.(lua|toc)$/.test(f)).sort()
-        .map(f => ({ name: `ForeverRoster/${f}`, data: readFileSync(path.join(ADDON_DIR, f)) }));
+      const data = zip(addonFiles());
       mkdirSync(path.join(outDir, "downloads"), { recursive: true });
-      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip"), zip(files));
+      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip"), data);
+      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip.sha256"), `${createHash("sha256").update(data).digest("hex")}  ForeverRoster.zip\n`);
     },
   };
 }

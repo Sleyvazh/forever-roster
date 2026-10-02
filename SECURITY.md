@@ -91,6 +91,14 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - Stockage en base (≈ 10 Ko par image), donc compris dans les sauvegardes. L'identifiant change à chaque envoi, et l'ancienne image est supprimée.
 - Lecture sur `/api/images/:id`, réservée au propriétaire et aux membres de ses groupes, avec un 404 pour les autres. Réponse en `image/webp` avec `nosniff` et `Content-Disposition: inline`, sous la CSP stricte de l'API.
 
+## Addon en jeu et échanges par copier-coller
+
+- **Aucun secret dans l'addon :** il n'a ni jeton ni session. Un addon WoW n'a pas d'accès réseau ni disque (hors sa sauvegarde dans `WTF`), et ne peut pas lancer d'actions protégées : les échanges passent par le copier-coller du joueur, connecté au site comme d'habitude (session, CSRF).
+- **Téléchargement :** `/downloads/ForeverRoster.zip` est construit avec le front à partir de `addon/ForeverRoster` (seulement des `.lua` et `.toc`, chemins fixes, pas de traversée possible), servi en HTTPS avec `Content-Disposition: attachment` et `Cache-Control: no-cache`. Le zip est reproductible ; son empreinte SHA-256 est affichée sur la page Addon (et dans `ForeverRoster.zip.sha256`) et le code source est public.
+- **Du jeu vers le site (FRC) :** le texte collé est lu champ par champ (nombres, identifiants UUID, statuts et emplacements sur liste blanche, 50 persos et 2 000 lignes au plus), puis envoyé aux routes habituelles, qui revérifient tout (zod) et le droit d'accès : un joueur ne modifie que ses propres fiches, et ne s'inscrit qu'aux raids de ses groupes. Le texte n'est jamais interprété comme du HTML (React échappe l'affichage).
+- **Du site vers le jeu (FRG, FRR) :** réservé aux membres du groupe ; il ne contient que ce qu'ils voient déjà sur le site (prénoms des persos, raids, patrons, BiS). Le site retire `;`, `|` et les retours à la ligne, et l'addon retire de nouveau `|` (couleurs, liens et textures du jeu) et borne la longueur de chaque texte avant de l'afficher ou de l'annoncer dans le chat. L'addon ne fait que lire ces données : jamais `loadstring` ni exécution de texte.
+- **Chat :** l'addon n'écrit dans le raid ou le groupe que sur un clic (« Annoncer »).
+
 ## En-têtes et transport (ASVS V14)
 
 - Caddy : HTTPS automatique, HSTS, CSP stricte (`default-src 'self'`, pas de script inline, `frame-ancestors 'none'`), `nosniff`, `Referrer-Policy`, `Permissions-Policy`, `COOP`.

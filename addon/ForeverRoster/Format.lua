@@ -15,6 +15,13 @@ local function split(line)
 end
 F.split = split
 
+-- Texte venu du site, affiché ou annoncé en jeu : sans « | » (codes du jeu : couleurs, liens, textures), longueur bornée.
+local function txt(s, max)
+  s = tostring(s or ""):gsub("|", "")
+  return s:sub(1, max or 80)
+end
+F.txt = txt
+
 -- Retire ce qui casserait une ligne : « ; », « | » (échappement du chat) et retours à la ligne.
 function F.clean(s)
   return (tostring(s or ""):gsub("[;|\r\n]", " "))
@@ -27,11 +34,11 @@ function F.ParseFRR(text)
     local f = split(line)
     if f[1] == "FRR" then
       if tonumber(f[2]) ~= 1 then return nil, "Version d'export non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
-      raid = { id = f[3], time = tonumber(f[4]) or 0, name = f[5] or "" }
+      raid = { id = txt(f[3], 40), time = tonumber(f[4]) or 0, name = txt(f[5], 60) }
     elseif f[1] == "M" then
       members[#members + 1] = {
         -- Prénom seul : le jeu ignore le nom de famille de Forever (« Greta Coulé » → Greta)
-        name = (f[2] or ""):match("^%S+") or "", class = f[3], role = f[4], spec = f[5],
+        name = txt(f[2], 40):match("^%S+") or "", class = txt(f[3], 12), role = txt(f[4], 8), spec = txt(f[5], 30),
         group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = f[8] or "", source = f[9] or "site",
       }
     elseif f[1] == "END" then
@@ -46,7 +53,7 @@ end
 -- Données d'un groupe (FRG v1) : raids à venir (R) et patrons recherchés / connus (P), indexés par l'objet patron.
 local function names(field)
   local out = {}
-  for n in tostring(field or ""):gmatch("[^,]+") do out[#out + 1] = n end
+  for n in tostring(field or ""):gmatch("[^,]+") do if #out < 40 then out[#out + 1] = txt(n, 40) end end
   return out
 end
 -- Un ou plusieurs groupes à la suite (la page Addon du site donne tous les groupes du joueur d'un coup).
@@ -65,14 +72,14 @@ function F.ParseFRG(text)
     if f[1] == "FRG" then
       if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
       if tonumber(f[2]) ~= 1 then return nil, "Version non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
-      cur, count, n = { id = f[3], at = tonumber(f[4]) or 0, name = f[5] or "", raids = {}, patterns = {}, bis = {} }, nil, 0
+      cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {} }, nil, 0
     elseif cur and f[1] == "R" then
       n = n + 1
-      cur.raids[#cur.raids + 1] = { id = f[2], time = tonumber(f[3]) or 0, name = f[4] or "", status = f[5] ~= "" and f[5] or nil, char = f[6] ~= "" and f[6] or nil }
+      cur.raids[#cur.raids + 1] = { id = txt(f[2], 40), time = tonumber(f[3]) or 0, name = txt(f[4], 60), status = (f[5] or "") ~= "" and txt(f[5], 12) or nil, char = (f[6] or "") ~= "" and txt(f[6], 40) or nil }
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])
-      if id then cur.patterns[id] = { recipe = f[3] or "", wanted = names(f[4]), known = names(f[5]) } end
+      if id then cur.patterns[id] = { recipe = txt(f[3], 80), wanted = names(f[4]), known = names(f[5]) } end
     elseif cur and f[1] == "B" then
       n = n + 1
       local id = tonumber(f[2])

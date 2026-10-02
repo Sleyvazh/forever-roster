@@ -1,10 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { addonVersion, addonZip } from "./addon-zip";
+import { addonSha256, addonVersion, addonZip } from "./addon-zip";
 
 export default defineConfig({
   plugins: [react(), addonZip()],
-  define: { __ADDON_VERSION__: JSON.stringify(addonVersion()) },
+  define: { __ADDON_VERSION__: JSON.stringify(addonVersion()), __ADDON_SHA256__: JSON.stringify(addonSha256()) },
   server: {
     port: 5173,
     // En dev, le front et l'API partagent la même origine grâce au proxy : cookies SameSite et CSRF identiques à la prod.

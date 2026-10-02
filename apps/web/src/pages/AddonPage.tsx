@@ -6,6 +6,7 @@ import { ALL_PARTS, applyExtras, buildPatch, PARTS, type Part } from "../addonIm
 import { ClassIcon } from "../components/Icons";
 
 declare const __ADDON_VERSION__: string;
+declare const __ADDON_SHA256__: string;
 
 /**
  * Page Addon : installer l'addon, envoyer en jeu les données de ses groupes (raids, patrons et BiS suivis),
@@ -50,6 +51,16 @@ function Install() {
         <li>Relance le jeu, ou tape <code>/reload</code>.</li>
         <li>Clique sur le livre autour de la minicarte, ou tape <code>/fr</code> : une seule fenêtre, avec les onglets Raids, Compo, Patrons et Export.</li>
       </ol>
+      <details className="addon-safety">
+        <summary>Sécurité : ce que fait (et ne fait pas) l'addon</summary>
+        <ul className="addon-list">
+          <li>Le zip ne contient que des fichiers texte <code>.lua</code> et <code>.toc</code> : aucun programme à installer ni à lancer sur ton PC.</li>
+          <li>Un addon tourne dans le jeu, sans accès à internet, à tes fichiers ou à ton compte : il ne connaît ni ton mot de passe, ni ta session sur le site. Les échanges passent uniquement par ton copier-coller.</li>
+          <li>Il n'envoie rien dans le chat sans un clic de ta part (« Annoncer ») et n'agit pas à ta place en combat.</li>
+          <li>Le code est public : <a href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/ForeverRoster" target="_blank" rel="noopener noreferrer">addon/ForeverRoster sur GitHub</a>.</li>
+          {__ADDON_SHA256__ && <li>Empreinte SHA-256 du zip, pour vérifier qu'il est intact (PowerShell : <code>Get-FileHash ForeverRoster.zip</code>) : <code className="sha">{__ADDON_SHA256__}</code></li>}
+        </ul>
+      </details>
     </Step>
   );
 }

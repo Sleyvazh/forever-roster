@@ -41,6 +41,14 @@
 		file_server
 	}
 
+	# Addon à télécharger : toujours la dernière version (revalidé), proposé en fichier, jamais de repli sur index.html
+	handle /downloads/* {
+		root * /srv
+		header Cache-Control "no-cache"
+		header Content-Disposition "attachment"
+		file_server
+	}
+
 	# Front React (SPA) : fichiers statiques, repli sur index.html pour les routes du client.
 	handle {
 		root * /srv
