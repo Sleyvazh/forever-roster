@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addonExport, inviteMacros, sameCharacter } from "./addon";
+import { addonExport, groupAddonExport, inviteMacros, sameCharacter } from "./addon";
 import { weeklyOccurrences, zonedParts, zonedTime } from "./time";
 
 describe("fuseau du serveur de jeu", () => {
@@ -50,5 +50,17 @@ describe("export addon", () => {
     expect(sameCharacter("greta", "Gréta")).toBe(false);
     expect(sameCharacter("Sylvaë", "SYLVAË")).toBe(true);
     expect(sameCharacter("Greta", "Malveillance")).toBe(false);
+  });
+  it("données du groupe (FRG v1) : raids et patrons suivis", () => {
+    const text = groupAddonExport({ id: "g1", name: "Les; Veilleurs" }, 1791000000,
+      [{ id: "r1", name: "Molten Core", at: 1791100000, status: "present", character: "Greta Coulé" }, { id: "r2", name: "Onyxia", at: 0, status: null, character: null }],
+      [{ itemId: 15090, recipe: "Warbear Woolies", wanted: ["Sley", "Greta Coulé", "Sley"], known: ["Tournicoti"] }, { itemId: 1, recipe: "Vide", wanted: [], known: [] }]);
+    expect(text.split("\n")).toEqual([
+      "FRG;1;g1;1791000000;Les  Veilleurs",
+      "R;r1;1791100000;Molten Core;present;Greta",
+      "R;r2;0;Onyxia;;",
+      "P;15090;Warbear Woolies;Greta,Sley;Tournicoti",
+      "END;3",
+    ]);
   });
 });

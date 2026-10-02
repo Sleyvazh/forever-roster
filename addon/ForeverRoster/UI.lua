@@ -133,3 +133,122 @@ function U.ShowExport()
   export.text:SetFocus()
   export.text:HighlightText()
 end
+
+-- Groupe : données du site (raids à venir, patrons suivis), inscriptions en jeu, patrons des sacs
+local groupWin
+local rows = {}
+local function row(i)
+  if rows[i] then return rows[i] end
+  local r = CreateFrame("Frame", nil, groupWin.body)
+  r:SetSize(500, 40)
+  r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  r.text:SetPoint("TOPLEFT", 0, 0) r.text:SetWidth(500) r.text:SetJustifyH("LEFT")
+  r.buttons = {}
+  rows[i] = r
+  return r
+end
+local function rowButton(r, k, label, w, onClick)
+  local b = r.buttons[k]
+  if not b then b = button(r, label, w, nil) r.buttons[k] = b end
+  b:SetSize(w, 22) b:SetText(label) b:SetScript("OnClick", onClick)
+  b:ClearAllPoints()
+  b:SetPoint("TOPLEFT", (k - 1) * (w + 6), -18)
+  b:Show()
+  return b
+end
+
+function U.RefreshGroup()
+  if not groupWin or not groupWin:IsShown() then return end
+  local G, i, y = ns.Group, 0, 0
+  local function add(text, height, fill)
+    i = i + 1
+    local r = row(i)
+    for _, b in pairs(r.buttons) do b:Hide() end
+    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetHeight(height) r:Show()
+    r.text:SetText(text)
+    if fill then fill(r) end
+    y = y + height
+  end
+  local groups = G.List()
+  if #groups == 0 then
+    add("Aucun groupe chargé. Sur le site : ton groupe, onglet Raids, « Données pour l'addon », Copier, puis colle ici.", 40)
+  else
+    local names = {}
+    for _, g in ipairs(groups) do names[#names + 1] = g.name .. " (" .. date("%d/%m %H:%M", g.at) .. ")" end
+    add(GOLD .. "Groupes chargés|r : " .. table.concat(names, ", "), 24)
+    add(GOLD .. "Raids à venir|r  (inscription de " .. (UnitName("player") or "ce perso") .. ")", 22)
+    local raids = G.Raids()
+    if #raids == 0 then add("  aucun raid à venir", 20) end
+    for _, e in ipairs(raids) do
+      local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or "date à définir"
+      local site = e.onSite and ("  |cff9aa3b6site : " .. (G.LABEL[e.onSite] or e.onSite) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
+      local game = e.status and ("  |cff4fd35fen jeu : " .. G.LABEL[e.status] .. " (à envoyer)|r") or ""
+      add(e.raid.name .. "  |cff9aa3b6" .. when .. "|r" .. site .. game, 46, function(r)
+        for k, st in ipairs(G.STATUSES) do
+          rowButton(r, k, (e.status == st.key and "> " or "") .. st.label, 92, function()
+            G.SignUp(e.group.id, e.raid.id, st.key, e.raid.time)
+            U.RefreshGroup()
+          end)
+        end
+      end)
+    end
+    add(" ", 8)
+    add(GOLD .. "Patrons suivis dans tes sacs|r", 22)
+    local bag = G.BagPatterns()
+    if #bag == 0 then add("  aucun", 20) end
+    for _, p in ipairs(bag) do
+      local _, link = GetItemInfo and GetItemInfo(p.itemId)
+      local wanted = G.joinNames(p.who.wanted)
+      add((link or p.who.recipe) .. "  " .. (wanted and ("|cff4fd35frecherché par " .. wanted .. "|r") or "|cff9aa3b6personne ne le recherche|r"), 46, function(r)
+        rowButton(r, 1, "Annoncer", 110, function() G.Announce(p.itemId, link) end)
+      end)
+    end
+  end
+  for k = i + 1, #rows do rows[k]:Hide() end
+  groupWin.body:SetHeight(y + 10)
+end
+
+function U.ShowGroup()
+  if not groupWin then
+    groupWin = window("ForeverRosterGroup", "Forever Roster : groupe", 560, 560)
+    local hint = groupWin:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint:SetPoint("TOPLEFT", 14, -32) hint:SetWidth(530) hint:SetJustifyH("LEFT")
+    hint:SetText("Sur le site : ton groupe, onglet Raids, « Données pour l'addon », Copier, puis colle ici (Ctrl+V).")
+    groupWin.input = textArea(groupWin, 14, -52, 510, 50)
+    local load = button(groupWin, "Charger", 100, function()
+      local ok, err = ns.Group.Load(groupWin.input:GetText())
+      if ok then groupWin.input:SetText("") groupWin.input:ClearFocus() U.RefreshGroup() else ns.print(err) end
+    end)
+    load:SetPoint("TOPLEFT", 14, -112)
+    local refresh = button(groupWin, "Rafraîchir", 100, function() U.RefreshGroup() end)
+    refresh:SetPoint("LEFT", load, "RIGHT", 8, 0)
+    local sf = CreateFrame("ScrollFrame", nil, groupWin, "UIPanelScrollFrameTemplate")
+    sf:SetPoint("TOPLEFT", 14, -146) sf:SetPoint("BOTTOMRIGHT", -32, 14)
+    groupWin.body = CreateFrame("Frame", nil, sf)
+    groupWin.body:SetSize(510, 10)
+    sf:SetScrollChild(groupWin.body)
+    groupWin:SetScript("OnShow", U.RefreshGroup)
+  end
+  groupWin:Show()
+end
+ns.on("BAG_UPDATE_DELAYED", function() U.RefreshGroup() end)
+
+-- Alerte : patron suivi ramassé
+local alert
+function U.LootAlert(itemId, link, who)
+  if not alert then
+    alert = window("ForeverRosterLoot", "Forever Roster : patron ramassé", 420, 130)
+    alert:ClearAllPoints() alert:SetPoint("TOP", 0, -160)
+    alert.text = alert:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    alert.text:SetPoint("TOPLEFT", 14, -32) alert.text:SetWidth(390) alert.text:SetJustifyH("LEFT")
+    alert.announce = button(alert, "Annoncer au groupe", 160, nil)
+    alert.announce:SetPoint("BOTTOMLEFT", 14, 12)
+    local close = button(alert, "Fermer", 100, function() alert:Hide() end)
+    close:SetPoint("BOTTOMRIGHT", -14, 12)
+  end
+  local wanted, known = ns.Group.joinNames(who.wanted), ns.Group.joinNames(who.known, 5)
+  alert.text:SetText((link or who.recipe) .. "\n" .. (wanted and ("|cff4fd35fRecherché par " .. wanted .. "|r") or "|cff9aa3b6Personne ne le recherche.|r")
+    .. (known and ("\n|cff9aa3b6Déjà connu par " .. known .. "|r") or ""))
+  alert.announce:SetScript("OnClick", function() ns.Group.Announce(itemId, link) alert:Hide() end)
+  alert:Show()
+end

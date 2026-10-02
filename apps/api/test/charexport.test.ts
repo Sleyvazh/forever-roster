@@ -35,6 +35,13 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(r.data.recipes).toEqual([{ profession: "Cooking", spellId: 2541 }, { profession: "First Aid", spellId: 3275 }]);
     expect(r.data.ignored).toEqual(["Poisons"]);
   });
+  it("lit les inscriptions faites en jeu (une par raid, statuts valides)", () => {
+    const g = "6f1c2a10-0000-4000-8000-000000000001", r = "7a1c2a10-0000-4000-8000-000000000002";
+    const text = `FRC;1;Greta;Beta;DRUID;Skyborne;20;Alliance;1;0.2.0\nS;${g};${r};late\nS;${g};${r};present\nS;${g};pas-un-uuid;present\nS;${g};${r};banni\nEND;4`;
+    const res = parseCharacterExport(text);
+    if (!res.ok) throw new Error(res.error);
+    expect(res.data.signups).toEqual([{ groupId: g, raidId: r, status: "present" }]);
+  });
   it("reconnaît les Skyborne selon la faction", () => {
     const head = (faction: string) => `FRC;1;Greta;Beta;DRUID;Skyborne;20;${faction};1790960521;0.1.2\nEND;0`;
     const race = (faction: string) => { const r = parseCharacterExport(head(faction)); return r.ok ? r.data.race : "erreur"; };

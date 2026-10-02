@@ -98,5 +98,30 @@ END;<nombre de lignes entre l'en-tête et END>
 | `P` | Compétences du perso, nom tel qu'affiché par le jeu. Le client Forever n'a pas la liste des compétences de Classic : l'addon lit `GetProfessions` s'il existe, et sinon la compétence vue à l'ouverture de chaque fenêtre de métier. Le site reconnaît les métiers en anglais et en français et ignore le reste (armes, langues…). |
 | `R` | Patron connu, relevé à l'ouverture des fenêtres de métier : `s` + sort de fabrication, ou `i` + objet fabriqué quand le jeu ne donne que lui. Les fenêtres que le site ne gère pas (ex. Poisons du voleur) sont ignorées et signalées à l'import. |
 | `T` | Talent (système de talents de Forever, `C_Traits`) : identifiant du nœud, rang, rang max, position dans l'arbre, sort, sous-arbre et arbre. |
+| `S` | Inscription faite en jeu (`/fr groupe`) : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. |
 
 Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts`. Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.
+
+# FRG, version 1 : données d'un groupe, du site vers le jeu
+
+Sur le site : groupe, onglet **Raids**, « Données pour l'addon ». En jeu : `/fr groupe`, coller, **Charger**. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
+
+```
+FRG;1;<groupe>;<généré le>;<nom du groupe>
+R;<raid>;<date>;<nom>;<mon statut>;<mon perso>
+P;<objet patron>;<recette>;<recherché par>;<connu par>
+END;<nombre de lignes R et P>
+```
+
+| Ligne | Contenu |
+|---|---|
+| `R` | Raid à venir (ou commencé depuis moins de 3 h ; ceux sans date à la fin), 15 au plus. Date en secondes Unix (0 : à définir). Mon inscription sur le site et le prénom du perso choisi, vides si je ne suis pas inscrit. |
+| `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
+
+L'addon s'en sert pour :
+
+- **s'inscrire en jeu** : statut choisi par perso, envoyé au site par la ligne `S` du prochain `/fr export` ;
+- **les infobulles** : « Recherché par / Connu par » sur l'objet patron, partout (sacs, butin, hôtel des ventes, lien dans le chat) ;
+- **les sacs** : liste des patrons suivis présents, avec un bouton **Annoncer** ;
+- **le butin** : quand on ramasse un patron suivi, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet).
+

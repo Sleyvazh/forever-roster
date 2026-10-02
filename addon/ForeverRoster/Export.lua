@@ -121,6 +121,10 @@ function E.Build()
   for prof, list in pairs(db.recipes or {}) do
     for key in pairs(list) do lines[#lines + 1] = { "R", prof, key } end
   end
+  -- Inscriptions faites en jeu (fenêtre /fr groupe)
+  ns.safe("inscriptions", function()
+    for _, l in ipairs(ns.Group.SignupLines()) do lines[#lines + 1] = l end
+  end)
   -- Chaque partie est protégée : une erreur (API du jeu différente) n'empêche pas d'exporter le reste
   local okT, talents, why = pcall(ns.Talents.Capture)
   if not okT then ns.print("talents non exportés : " .. tostring(talents)) talents = nil

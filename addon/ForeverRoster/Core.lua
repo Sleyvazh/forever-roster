@@ -49,7 +49,7 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.version = ns.version
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", UI = "ShowCompo" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", UI = "ShowGroup" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060modules non chargés : " .. table.concat(missing, ", ") .. "|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)") end
@@ -58,6 +58,7 @@ end)
 local HELP = {
   "/fr compo : coller la compo exportée par le site (invitations, placement des groupes)",
   "/fr export : texte à coller sur le site pour mettre à jour ce perso",
+  "/fr groupe : raids à venir (inscription en jeu) et patrons recherchés de tes sacs",
   "/fr talents : diagnostic du système de talents (enregistré au prochain /reload)",
 }
 
@@ -76,6 +77,8 @@ local function run(msg)
     ns.UI.ShowCompo()
   elseif cmd == "export" then
     ns.UI.ShowExport()
+  elseif cmd == "groupe" or cmd == "patrons" or cmd == "raids" then
+    ns.UI.ShowGroup()
   elseif cmd == "talents" then
     ns.Talents.Dump()
   else

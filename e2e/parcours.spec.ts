@@ -153,6 +153,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".itip")).toContainText("Pattern: Warbear Woolies");
     await expect(page.locator(".itip")).toContainText("Connu par : Tournicoti (toi)");
     await page.mouse.move(0, 0);
+    // Données pour l'addon : le patron Warbear Woolies (objet 15090) et qui le connaît
+    await page.getByRole("tab", { name: "Raids" }).click();
+    await page.getByText("Données pour l'addon").click();
+    await expect(page.locator("#ga-text")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
   });
 
   await test.step("raid : création, inscription et composition", async () => {

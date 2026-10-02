@@ -11,6 +11,7 @@ import { ItemHover, ItemIcon } from "../components/ItemTooltip";
 import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { NumberField } from "../components/NumberField";
 import { useViewPref } from "../prefs";
+import { GroupAddonExport } from "../components/GroupAddonExport";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
@@ -180,6 +181,7 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
         </table></div>
       )}
       <Recurring groupId={groupId} canEdit={canEdit} guard={guard} />
+      <GroupAddonExport groupId={groupId} />
     </div>
   );
 }

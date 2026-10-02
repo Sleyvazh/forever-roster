@@ -2,7 +2,7 @@
  * Export d'un perso par l'addon (format FRC v1, voir docs/addon-format.md) : lecture côté site.
  * L'addon envoie ce que le jeu affiche ; on le traduit dans le vocabulaire du site (classes, races, métiers, emplacements).
  */
-import { CLASSES, GEAR_SLOTS, PRIMARY_PROFESSIONS, type ClassName } from "./core";
+import { CLASSES, GEAR_SLOTS, PRIMARY_PROFESSIONS, SIGNUP_STATUSES, type ClassName, type SignupStatus } from "./core";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 
@@ -38,8 +38,11 @@ export interface CharacterExport {
   /** Fenêtres de métier du jeu que le site ne gère pas (ex. Poisons du voleur) : leurs patrons sont ignorés. */
   ignored: string[];
   talents: ExportedTalentNode[];
+  /** Inscriptions faites en jeu (fenêtre « Groupe » de l'addon), à reporter sur le site. */
+  signups: { groupId: string; raidId: string; status: SignupStatus }[];
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const int = (s: string | undefined) => { const n = Number.parseInt(s ?? "", 10); return Number.isFinite(n) ? n : 0; };
 
 export function parseCharacterExport(text: string): { ok: true; data: CharacterExport } | { ok: false; error: string } {
@@ -56,7 +59,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const data: CharacterExport = {
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
-    gear: {}, professions: [], recipes: [], ignored: [], talents: [],
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [],
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -77,6 +80,11 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
       }
       if (key[0] === "s") data.recipes.push({ profession, spellId: id });
       else if (key[0] === "i") data.recipes.push({ profession, itemId: id });
+    } else if (f[0] === "S") {
+      const [, groupId = "", raidId = "", status = ""] = f;
+      if (UUID.test(groupId) && UUID.test(raidId) && (SIGNUP_STATUSES as readonly string[]).includes(status)) {
+        data.signups = data.signups.filter(s => s.raidId !== raidId).concat({ groupId, raidId, status: status as SignupStatus });
+      }
     } else if (f[0] === "T") {
       data.talents.push({ id: int(f[1]), rank: int(f[2]), max: int(f[3]), x: int(f[4]), y: int(f[5]), spell: int(f[6]), sub: int(f[7]), tree: int(f[8]) });
     }

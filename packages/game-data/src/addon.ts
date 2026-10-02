@@ -57,3 +57,34 @@ export function inviteMacros(names: string[], max = 255): string[] {
   if (cur) macros.push(cur);
   return macros;
 }
+
+/* ---------- Données du groupe pour l'addon (format « FRG », version 1) ---------- */
+
+export interface GroupExportRaid {
+  id: string; name: string;
+  /** Date du raid (secondes Unix, 0 si non fixée). */
+  at: number;
+  /** Mon inscription actuelle, et le perso choisi (prénom en jeu). */
+  status: SignupStatus | null; character: string | null;
+}
+export interface GroupExportPattern {
+  /** Objet « Patron / Plans / Recette » tel qu'il apparaît dans les sacs. */
+  itemId: number; recipe: string;
+  /** Persos du groupe qui le recherchent / qui connaissent déjà la recette. */
+  wanted: string[]; known: string[];
+}
+
+const list = (names: string[]) => [...new Set(names.map(gameName).filter(Boolean))].sort((a, b) => a.localeCompare(b)).join(",");
+
+/**
+ * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu) et patrons recherchés ou connus
+ * (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
+ */
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[]): string {
+  const lines = [
+    ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : ""].join(";")),
+    ...patterns.filter(p => p.wanted.length || p.known.length)
+      .map(p => ["P", p.itemId, clean(p.recipe), list(p.wanted), list(p.known)].join(";")),
+  ];
+  return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, `END;${lines.length}`].join("\n");
+}

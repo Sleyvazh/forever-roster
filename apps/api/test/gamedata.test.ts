@@ -186,6 +186,34 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     expect((await other.c.get(`/api/groups/${g.id}/crafters`)).json().recipes).toEqual([]);
   });
 
+  it("donne à l'addon les raids à venir et les patrons suivis du groupe (FRG)", async () => {
+    const lw = await signedIn(env, "Pelletier"), other = await signedIn(env, "Curieux"), outsider = await signedIn(env, "Passant");
+    const ch = (await lw.c.post("/api/characters", {
+      name: "Greta Coulé", race: "Tauren", cls: "Druid", spec1: "Feral Cat",
+      professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 },
+    })).json().character;
+    await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "wanted" });
+    const g = (await lw.c.post("/api/groups", { name: "Veilleurs" })).json().group;
+    const inv = (await lw.c.post(`/api/groups/${g.id}/invites`, { maxUses: 1, expiresInHours: 24 })).json().invite;
+    await other.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
+    const soon = new Date(Date.now() + 86400e3).toISOString(), past = new Date(Date.now() - 7 * 86400e3).toISOString();
+    const raid = (await lw.c.post(`/api/groups/${g.id}/raids`, { name: "Molten Core", scheduledAt: soon })).json().raid;
+    await lw.c.post(`/api/groups/${g.id}/raids`, { name: "Ancien raid", scheduledAt: past });
+    await lw.c.put(`/api/groups/${g.id}/raids/${raid.id}/signup`, { status: "present", characterId: ch.id });
+
+    const mine = (await lw.c.get(`/api/groups/${g.id}/addon-export`)).json();
+    const lines = mine.text.split("\n");
+    expect(lines[0]).toMatch(new RegExp(`^FRG;1;${g.id};\\d+;Veilleurs$`));
+    expect(lines).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;present;Greta`);
+    expect(mine.text).not.toContain("Ancien raid");
+    // Warbear Woolies : appris par le patron 15090, recherché par Greta (prénom seul)
+    expect(lines).toContain("P;15090;Warbear Woolies;Greta;");
+    expect(lines.at(-1)).toBe(`END;${lines.length - 2}`);
+    // Un autre membre : même patrons, sans inscription
+    expect((await other.c.get(`/api/groups/${g.id}/addon-export`)).json().text).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;;`);
+    expect((await outsider.c.get(`/api/groups/${g.id}/addon-export`)).statusCode).toBe(404);
+  });
+
   it("importe les patrons et les talents envoyés par l'addon", async () => {
     const { c } = await signedIn(env);
     const other = await signedIn(env);

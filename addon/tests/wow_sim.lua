@@ -46,6 +46,17 @@ C_TradeSkillUI = {
   GetRecipeInfo = function(id) return { learned = id == 2152 } end,
   GetBaseProfessionInfo = function() return { professionName = "Leatherworking", skillLevel = 150, maxSkillLevel = 225 } end,
 }
+-- Sacs, objets, chat, infobulles (API moderne)
+local BAG = { [0] = { 15090, 2589 }, [1] = {} }
+C_Container = { GetContainerNumSlots = function(bag) return BAG[bag] and #BAG[bag] or 0 end, GetContainerItemID = function(bag, slot) return BAG[bag] and BAG[bag][slot] end }
+NUM_BAG_SLOTS = 4
+function GetItemInfo(id) return "Objet " .. id, "|cff0070dd|Hitem:" .. id .. "::::::::60:::::|h[Objet " .. id .. "]|h|r" end
+local said = {}
+function SendChatMessage(text, channel) said[#said + 1] = channel .. ":" .. text end
+LOOT_ITEM_SELF = "Vous recevez le butin : %s."
+Enum = { TooltipDataType = { Item = 0 } }
+local tooltipHook
+TooltipDataProcessor = { AddTooltipPostCall = function(_, fn) tooltipHook = fn end }
 function IsInRaid() return false end
 function IsInGroup() return false end
 function GetNumGroupMembers() return 0 end
@@ -93,7 +104,33 @@ run("export")
 -- Ouverture d'une fenêtre de métier : patrons relevés par C_TradeSkillUI
 fire("TRADE_SKILL_SHOW")
 assert(ForeverRosterDB.chars["Tournicoti-Forever EU"].recipes.Leatherworking.s2152 and not ForeverRosterDB.chars["Tournicoti-Forever EU"].recipes.Leatherworking.s2153, "patrons appris seulement")
--- 4. Compo
+-- 4. Groupe : données du site, inscription en jeu, infobulle, sacs, butin
+fire("PLAYER_LOGIN")
+run("groupe")
+assert(ns.Group.Load("FRG;1;6f1c2a10-0000-4000-8000-000000000001;1789990000;Les Veilleurs\nR;7a1c2a10-0000-4000-8000-000000000002;1790100000;Molten Core;;\nP;15090;Warbear Woolies;Greta,Sley;Tournicoti\nEND;2"))
+ns.UI.RefreshGroup()
+local raids = ns.Group.Raids()
+assert(#raids == 1 and raids[1].raid.name == "Molten Core", "raid à venir")
+ns.Group.SignUp(raids[1].group.id, raids[1].raid.id, "late", raids[1].raid.time)
+assert(ns.Export.Build():find("\nS;6f1c2a10%-0000%-4000%-8000%-000000000001;7a1c2a10%-0000%-4000%-8000%-000000000002;late\n"), "inscription dans l'export")
+local bag = ns.Group.BagPatterns()
+assert(#bag == 1 and bag[1].itemId == 15090, "patron suivi dans les sacs")
+local tip = { lines = {} }
+function tip:AddLine(t) self.lines[#self.lines + 1] = t end
+assert(tooltipHook, "infobulles branchées")
+tooltipHook(tip, { id = 15090 })
+assert(table.concat(tip.lines, "\n"):find("Recherché par : |cff4fd35fGreta, Sley"), "infobulle du patron")
+ns.Group.OnLoot("Vous recevez le butin : |cff0070dd|Hitem:15090::::::::60:::::|h[Pattern: Warbear Woolies]|h|r.", "")
+assert(printed[#printed]:find("patron suivi ramassé"), "alerte au butin")
+IsInRaid = function() return true end
+ns.Group.Announce(15090)
+assert(said[1] and said[1]:find("^RAID:.*recherché par Greta, Sley"), "annonce au raid")
+IsInRaid = function() return false end
+-- Butin d'un autre joueur : pas d'alerte
+local before = #printed
+ns.Group.OnLoot("Bob reçoit le butin : |cff0070dd|Hitem:15090::::::::60:::::|h[Pattern: Warbear Woolies]|h|r.", "Bob")
+assert(#printed == before, "butin d'un autre ignoré")
+-- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
 assert(ns.Compo.Status()[1].state == "ok", "le joueur est dans son propre groupe")

@@ -1,11 +1,11 @@
-import { isValidCombo, parseCharacterExport, sameCharacter, PROFESSION_SKILL_LINES, professionsFromExport, type CharacterExport } from "@forever/game-data";
+import { isValidCombo, parseCharacterExport, sameCharacter, SIGNUP_LABEL, PROFESSION_SKILL_LINES, professionsFromExport, type CharacterExport } from "@forever/game-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, get, post, type Character, type GameItem } from "../api";
+import { ApiError, get, post, put, type Character, type GameItem } from "../api";
 import { linkFromRanks, useTalentData } from "./TalentTrees";
 
-type Part = "identity" | "gear" | "professions" | "recipes" | "talents";
-const PARTS: [Part, string][] = [["identity", "Niveau, race et classe"], ["gear", "Équipement porté"], ["professions", "Métiers"], ["recipes", "Patrons connus"], ["talents", "Talents"]];
+type Part = "identity" | "gear" | "professions" | "recipes" | "talents" | "signups";
+const PARTS: [Part, string][] = [["identity", "Niveau, race et classe"], ["gear", "Équipement porté"], ["professions", "Métiers"], ["recipes", "Patrons connus"], ["talents", "Talents"], ["signups", "Inscriptions aux raids"]];
 
 /**
  * Mise à jour d'une fiche depuis l'addon : on colle le texte de « /fr export », on voit ce qui sera repris,
@@ -34,6 +34,7 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
     gear: `${gearCount} pièce${gearCount > 1 ? "s" : ""}`,
     professions: d ? d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun lu (addon 0.1.3 requis)" : "",
     recipes: d ? `${d.recipes.length} patron${d.recipes.length > 1 ? "s" : ""}${d.recipes.length ? "" : " (ouvre tes fenêtres de métier en jeu avant d'exporter)"}${d.ignored.length ? ` · ignorés : ${d.ignored.join(", ")}` : ""}` : "",
+    signups: d ? (d.signups.length ? d.signups.map(s => SIGNUP_LABEL[s.status]).join(", ") : "aucune (fenêtre /fr groupe en jeu)") : "",
     talents: d ? (build ? `répartition ${build.split} (spé principale)` : `${spent} point${spent > 1 ? "s" : ""} dans ${d.talents.filter(t => t.rank > 0).length} talents`) : "",
   };
   const toggle = (p: Part) => setParts(s => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
@@ -73,7 +74,16 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
         await qc.invalidateQueries({ queryKey: ["char-recipes", c.id] });
         recipesMsg = ` ${res.known} patron${res.known > 1 ? "s" : ""} coché${res.known > 1 ? "s" : ""}${res.unknown ? `, ${res.unknown} inconnu${res.unknown > 1 ? "s" : ""} de la base` : ""}.`;
       }
-      setDone(`Fiche mise à jour depuis le jeu.${recipesMsg}`); setText("");
+      let signupsMsg = "";
+      if (parts.has("signups") && d.signups.length) {
+        let ok = 0;
+        for (const s of d.signups) {
+          try { await put(`/groups/${s.groupId}/raids/${s.raidId}/signup`, { status: s.status, characterId: c.id }); ok++; } catch { /* raid supprimé ou groupe quitté */ }
+        }
+        await qc.invalidateQueries({ queryKey: ["raids"] });
+        signupsMsg = ` ${ok} inscription${ok > 1 ? "s" : ""} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}.`;
+      }
+      setDone(`Fiche mise à jour depuis le jeu.${recipesMsg}${signupsMsg}`); setText("");
     } catch (e) { setError(e instanceof ApiError ? e.message : "Mise à jour impossible."); }
     finally { setBusy(false); }
   };
