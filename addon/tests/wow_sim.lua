@@ -100,8 +100,7 @@ C_Traits = {
 }
 function GetSpellInfo(id) return "Talent " .. id, nil, 136000 end
 run("export")
-run("talents")
-assert(ForeverRosterDB.debug and #ForeverRosterDB.debug.talents.nodes == 2, "diagnostic des talents")
+assert(#ns.Talents.Capture().nodes == 2, "talents lus")
 -- 3. Système de talents qui lève une erreur : l'export continue sans les talents
 C_Traits.GetConfigInfo = function() error("API différente") end
 run("export")

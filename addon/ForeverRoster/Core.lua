@@ -47,6 +47,8 @@ ns.on("ADDON_LOADED", function(name)
   if name ~= ADDON then return end
   ForeverRosterDB = ForeverRosterDB or {}
   ForeverRosterDB.version = ns.version
+  -- Anciens relevés de diagnostic (talents, interface) : plus utiles, retirés de la sauvegarde
+  ForeverRosterDB.debug = nil
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
   for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", UI = "Show", Minimap = "Create" }) do
@@ -61,7 +63,6 @@ local HELP = {
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
-  "/fr talents : diagnostic du système de talents (enregistré au prochain /reload)",
 }
 
 SLASH_FOREVERROSTER1 = "/fr"
@@ -98,8 +99,6 @@ local function run(msg)
     ns.print(key .. " retiré de l'export.")
   elseif cmd == "minicarte" or cmd == "minimap" then
     ns.Minimap.Toggle()
-  elseif cmd == "talents" then
-    ns.Talents.Dump()
   else
     ns.print("version " .. ns.version)
     for _, line in ipairs(HELP) do print("  " .. line) end

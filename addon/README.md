@@ -18,7 +18,6 @@ Une seule fenêtre, ouverte par le **bouton de la minicarte** ou `/fr`, avec qua
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export |
 | `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : export, glisser : déplacer) |
-| `/fr talents` | Diagnostic du système de talents de Forever, enregistré dans `SavedVariables\ForeverRoster.lua` au prochain `/reload` |
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 
