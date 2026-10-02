@@ -40,7 +40,7 @@ export function RaidExport({ raid, slots, chars, signups }: {
   }
   const text = addonExport(raid, members);
   // Invitations : persos placés du site seulement (le pseudo Discord d'un inscrit sans compte n'est pas un nom de perso)
-  const macros = inviteMacros(members.filter(m => m.group > 0 && m.source === "site").map(m => m.name));
+  const macros = inviteMacros(members.filter(m => m.group > 0 && m.source === "site").sort((a, b) => a.group - b.group || a.pos - b.pos).map(m => m.name));
   const guestsPlaced = members.filter(m => m.group > 0 && m.source === "discord").map(m => m.name);
 
   const copy = (key: string, value: string) => {
@@ -55,7 +55,7 @@ export function RaidExport({ raid, slots, chars, signups }: {
           <div className="row between"><label htmlFor="ex-addon">Texte pour l'addon Forever Roster (format FRR v1)</label>
             <button className="btn sm" type="button" onClick={() => copy("addon", text)}>{copied === "addon" ? "Copié" : "Copier"}</button></div>
           <textarea id="ex-addon" readOnly className="num" rows={Math.min(12, text.split("\n").length)} value={text} onFocus={e => e.currentTarget.select()} />
-          <p className="hint" style={{ margin: 0 }}>Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). À coller dans l'addon quand il sera prêt.</p>
+          <p className="hint" style={{ margin: 0 }}>Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). En jeu : <code>/fr compo</code>, colle ce texte, « Charger », puis « Inviter » et « Placer les groupes ». Seul le prénom est envoyé (le jeu ignore le nom de famille).</p>
         </div>
         <div className="stack" style={{ gap: 8 }}>
           <span className="lbl">Macros d'invitation ({macros.length})</span>
