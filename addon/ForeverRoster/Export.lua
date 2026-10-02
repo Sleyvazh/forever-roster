@@ -156,7 +156,11 @@ local pending = false
 local function autoSnapshot()
   if pending or not ForeverRosterDB then return end
   pending = true
-  C_Timer.After(1, function() pending = false ns.safe("relevé du perso", E.Snapshot, true) end)
+  C_Timer.After(1, function()
+    pending = false
+    ns.safe("relevé du perso", E.Snapshot, true)
+    if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
+  end)
 end
 E.autoSnapshot = autoSnapshot
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "TRAIT_CONFIG_UPDATED",
@@ -182,23 +186,68 @@ function E.Forget(key)
   if c then c.snapshot = nil end
 end
 
-local function block(c, snap)
+-- Lignes d'un perso pour l'export : relevé + inscriptions + patrons marqués en jeu
+local function linesOf(c, snap)
   local lines = {}
   for _, l in ipairs(snap.lines or {}) do lines[#lines + 1] = l end
   ns.safe("inscriptions", function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
   ns.safe("recherchés", function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
+  return ns.Format.Compact(lines)
+end
+
+local function block(c, snap)
   local h = {}
   for k, v in pairs(snap.header or {}) do h[k] = v end
   h.time, h.addon = snap.at or 0, ns.version
-  return ns.Format.BuildFRC(h, lines)
+  return ns.Format.BuildFRC(h, linesOf(c, snap))
 end
 
--- Export : un bloc FRC par perso relevé (le perso connecté est relevé à l'instant). onlyCurrent : ce perso seul.
-function E.Build(onlyCurrent)
-  E.Snapshot(false)
-  local blocks = {}
-  for _, e in ipairs(E.Characters()) do
-    if e.current or not onlyCurrent then blocks[#blocks + 1] = block(e.char, e.snap) end
+-- Empreinte du contenu d'un perso (sans la date du relevé) : sert à savoir s'il a changé depuis le dernier envoi
+local function hash(str)
+  local h = 5381
+  for i = 1, #str do h = (h * 33 + str:byte(i)) % 4294967296 end
+  return string.format("%08x", h) .. "-" .. #str
+end
+local function signature(c, snap)
+  local parts = { tostring(snap.header and snap.header.level) }
+  for _, l in ipairs(linesOf(c, snap)) do
+    local f = {}
+    for i, v in ipairs(l) do f[i] = tostring(v) end
+    parts[#parts + 1] = table.concat(f, ";")
   end
-  return table.concat(blocks, "\n")
+  return hash(table.concat(parts, "\n"))
+end
+
+-- Persos qui ont changé depuis leur dernier envoi
+function E.Pending()
+  local out = {}
+  for _, e in ipairs(E.Characters()) do
+    if e.char.sentSig ~= signature(e.char, e.snap) then out[#out + 1] = e end
+  end
+  return out
+end
+
+-- Export : un bloc FRC par perso. Par défaut, seulement les persos qui ont changé depuis le dernier envoi ;
+-- opts.all : tous les persos relevés ; opts.onlyCurrent : le perso connecté seul. Renvoie le texte et les persos inclus.
+function E.Build(opts)
+  opts = type(opts) == "table" and opts or { onlyCurrent = opts == true, all = true }
+  E.Snapshot(false)
+  local blocks, included = {}, {}
+  for _, e in ipairs(E.Characters()) do
+    local wanted = (opts.onlyCurrent and e.current) or (not opts.onlyCurrent and (opts.all or e.char.sentSig ~= signature(e.char, e.snap)))
+    if wanted then
+      blocks[#blocks + 1] = block(e.char, e.snap)
+      included[#included + 1] = e
+    end
+  end
+  return table.concat(blocks, "\n"), included
+end
+
+-- L'export a été copié (Ctrl+C) : ces persos sont à jour sur le site jusqu'au prochain changement
+function E.MarkSent(included)
+  for _, e in ipairs(included or {}) do
+    e.char.sentSig = signature(e.char, e.snap)
+    e.char.sentAt = time()
+  end
+  if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
 end

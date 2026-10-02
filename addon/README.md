@@ -2,22 +2,23 @@
 
 Addon WoW pour le client de WoW Forever (interface 16001). Il fait le lien avec le site par copier-coller (un addon n'a pas accès à internet).
 
-Une seule fenêtre, ouverte par le **bouton de la minicarte** ou `/fr`, avec quatre onglets :
+Une seule fenêtre, ouverte par **ta touche** (Échap > Options > Raccourcis > AddOns > Forever Roster), le **bouton de la minicarte** ou `/fr`, avec quatre onglets :
 
 | Onglet | Rôle |
 |---|---|
-| **Raids** | Coller les données du site (page Addon : tous tes groupes) ; raids à venir et inscription du perso connecté |
-| **Compo** | Coller l'**Export pour le jeu** d'un raid : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes** |
+| **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul. En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé, Échap ferme |
+| **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
+| **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes** |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
-| **Export** | Texte de **tous** tes persos relevés, à coller sur la page Addon du site |
 
 | Commande | Rôle |
 |---|---|
+| Raccourcis (AddOns > Forever Roster) | « Synchro avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/fr` | Ouvrir ou fermer la fenêtre |
-| `/fr raids`, `compo`, `patrons`, `export` | Ouvrir un onglet |
+| `/fr synchro`, `raids`, `compo`, `patrons` | Ouvrir un onglet |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export |
-| `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : export, glisser : déplacer) |
+| `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro, glisser : déplacer ; pastille : persos à envoyer) |
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 

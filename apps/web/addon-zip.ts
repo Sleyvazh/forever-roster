@@ -46,7 +46,7 @@ export function zip(files: { name: string; data: Buffer }[], date = new Date(202
 }
 
 function addonFiles() {
-  return readdirSync(ADDON_DIR).filter(f => /\.(lua|toc)$/.test(f)).sort()
+  return readdirSync(ADDON_DIR).filter(f => /\.(lua|toc|xml)$/.test(f)).sort()
     .map(f => ({ name: `ForeverRoster/${f}`, data: readFileSync(path.join(ADDON_DIR, f)) }));
 }
 

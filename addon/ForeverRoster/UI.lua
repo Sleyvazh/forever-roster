@@ -184,22 +184,17 @@ end
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
 local TABS = {
+  { key = "synchro", label = "Synchro", icon = "Interface\\Icons\\INV_Letter_15" },
   { key = "raids", label = "Raids", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
   { key = "compo", label = "Compo", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
   { key = "patrons", label = "Patrons", icon = "Interface\\Icons\\INV_Scroll_03" },
-  { key = "export", label = "Export", icon = "Interface\\Icons\\INV_Letter_15" },
 }
 local pages, refreshers = {}, {}
+U.pages = pages
 
 local function buildRaids(p)
-  hint(p, "Données du site : page " .. GOLD .. "Addon|r, « Copier les données de mes groupes », puis colle ici (Ctrl+V) et « Charger ».")
-  p.input = textArea(p, 6, -42, 526, 40)
-  local load = button(p, "Charger", 110, function()
-    local ok, err = ns.Group.Load(p.input:GetText())
-    if ok then p.input:SetText("") p.input:ClearFocus() U.Refresh() else ns.print(err) end
-  end)
-  load:SetPoint("TOPLEFT", 4, -94)
-  p.list = list(p, -126)
+  hint(p, "Inscris " .. (UnitName("player") or "ce perso") .. " aux raids de tes groupes. Les données du site se collent dans l'onglet " .. GOLD .. "Synchro|r.")
+  p.list = list(p, -40)
 end
 refreshers.raids = function(p)
   local G, L = ns.Group, p.list
@@ -207,7 +202,7 @@ refreshers.raids = function(p)
   local groups = G.List()
   if #groups == 0 then
     L.Header("Groupes")
-    L.Add(GREY .. "Aucun groupe chargé : sur le site, page Addon, « Copier les données de mes groupes », puis colle ci-dessus.|r")
+    L.Add(GREY .. "Aucun groupe chargé : sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle dans l'onglet Synchro.|r")
   else
     local names = {}
     for _, g in ipairs(groups) do names[#names + 1] = g.name .. GREY .. " (" .. date("%d/%m %H:%M", g.at) .. ")|r" end
@@ -232,18 +227,12 @@ refreshers.raids = function(p)
 end
 
 local function buildCompo(p)
-  hint(p, "Sur le site : page du raid, « Export pour le jeu », Copier, puis colle ici (Ctrl+V) et « Charger ».")
-  p.input = textArea(p, 6, -42, 526, 40)
-  local load = button(p, "Charger", 110, function()
-    local ok, err = ns.Compo.Load(p.input:GetText())
-    if ok then p.input:SetText("") p.input:ClearFocus() U.Refresh() else ns.print(err) end
-  end)
-  load:SetPoint("TOPLEFT", 4, -94)
-  local invite = button(p, "Inviter", 110, function() ns.Compo.Invite() end)
-  invite:SetPoint("LEFT", load, "RIGHT", 8, 0)
-  local arrange = button(p, "Placer les groupes", 160, function() ns.Compo.Arrange() end)
+  hint(p, "Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet " .. GOLD .. "Synchro|r.")
+  local invite = button(p, "Inviter", 120, function() ns.Compo.Invite() end)
+  invite:SetPoint("TOPLEFT", 4, -40)
+  local arrange = button(p, "Placer les groupes", 170, function() ns.Compo.Arrange() end)
   arrange:SetPoint("LEFT", invite, "RIGHT", 8, 0)
-  p.list = list(p, -126)
+  p.list = list(p, -72)
 end
 refreshers.compo = function(p)
   local L = p.list
@@ -304,32 +293,103 @@ refreshers.patrons = function(p)
   L.Done()
 end
 
-local function buildExport(p)
-  hint(p, "Ctrl+C pour copier, puis sur le site : page " .. GOLD .. "Addon|r, « Mettre à jour mes persos ». Tous tes persos relevés sont inclus.")
-  p.text = textArea(p, 6, -42, 526, 270)
-  p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
-  local again = button(p, "Actualiser", 120, function() U.Refresh() end)
-  again:SetPoint("TOPLEFT", 4, -324)
-  p.chars = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  p.chars:SetPoint("TOPLEFT", 6, -358) p.chars:SetWidth(530) p.chars:SetJustifyH("LEFT")
-end
-refreshers.export = function(p)
-  local ok, value = pcall(ns.Export.Build)
-  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
-  p.value = value
-  p.text:SetText(value)
-  local names = {}
-  for _, e in ipairs(ns.Export.Characters()) do
-    local h = e.snap.header or {}
-    names[#names + 1] = colored(h.class, h.name or e.key) .. GREY .. " niv. " .. (h.level or "?") .. ", relevé le " .. date("%d/%m %H:%M", e.snap.at or 0) .. "|r"
-  end
-  p.chars:SetText(GOLD .. "Persos inclus|r (" .. #names .. ") : " .. table.concat(names, " · ") ..
-    "\n" .. GREY .. "Connecte-toi une fois avec un perso pour l'ajouter. Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r")
-  p.text:SetFocus()
-  p.text:HighlightText()
+-- Barre de titre de section fixe (comme « General » sur la fiche de perso)
+local function headerBar(parent, y, text)
+  local bg = parent:CreateTexture(nil, "BACKGROUND")
+  bg:SetPoint("TOP", 0, y) bg:SetSize(340, 34)
+  if not atlas(bg, ART.header) then bg:SetColorTexture(0.25, 0.18, 0.08, 0.8) end
+  local fs = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+  fs:SetPoint("CENTER", bg, "CENTER", 0, 1)
+  fs:SetText(text)
+  return fs
 end
 
-local builders = { raids = buildRaids, compo = buildCompo, patrons = buildPatrons, export = buildExport }
+-- Synchro : coller ce qui vient du site (chargé tout seul), copier ce qui part vers le site (Ctrl+C = envoyé)
+local function onPaste(self, user)
+  if not user then return end
+  local text = self:GetText() or ""
+  if not text:match("END;%d+%s*$") then return end -- collage pas encore complet
+  local p = self.page
+  local ok, err
+  if text:find("FRG;", 1, true) then
+    ok, err = ns.Group.Load(text)
+    if ok then
+      local raids, patterns = 0, 0
+      for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
+      ForeverRosterDB.lastLoad = { at = time(), text = string.format("%d groupe(s), %d raid(s), %d patron(s) suivis", #ok, raids, patterns) }
+    end
+  elseif text:find("FRR;", 1, true) then
+    ok, err = ns.Compo.Load(text)
+    if ok then
+      local raid = ns.Compo.Get()
+      ForeverRosterDB.lastLoad = { at = time(), text = "compo « " .. (raid and raid.name or "?") .. " » (onglet Compo)" }
+    end
+  else
+    err = "Texte non reconnu : sur le site, « Copier pour le jeu » ou « Export pour le jeu » d'un raid."
+  end
+  if ok then self:SetText("") self:ClearFocus() U.Refresh() else p.loadStatus:SetText("|cffff6b5e" .. tostring(err) .. "|r") end
+end
+
+local function buildSynchro(p)
+  hint(p, "Ouvre cet onglet avec ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le bouton de la minicarte.")
+  headerBar(p, -32, "1 · Du site vers le jeu")
+  p.input = textArea(p, 6, -74, 526, 34)
+  p.input.page = p
+  p.input:SetScript("OnTextChanged", onPaste)
+  p.loadStatus = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.loadStatus:SetPoint("TOPLEFT", 6, -118) p.loadStatus:SetWidth(526) p.loadStatus:SetJustifyH("LEFT")
+  headerBar(p, -140, "2 · Du jeu vers le site")
+  p.text = textArea(p, 6, -182, 526, 180)
+  p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
+  p.text:SetScript("OnEscapePressed", function(self) self:ClearFocus() if main then main:Hide() end end)
+  -- Ctrl+C dans l'export : copié, donc envoyé (à coller sur le site)
+  p.text:SetScript("OnKeyDown", function(_, key)
+    if key == "C" and IsControlKeyDown() and p.included and #p.included > 0 then
+      ns.Export.MarkSent(p.included)
+      p.sent = true
+      C_Timer.After(0, function() U.Refresh() end)
+    end
+  end)
+  p.status = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  p.status:SetPoint("TOPLEFT", 6, -372) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
+  p.all = false
+  p.toggleAll = button(p, "Tout renvoyer", 150, function() p.all = not p.all p.sent = false U.Refresh() end)
+  p.toggleAll:SetPoint("TOPLEFT", 4, -400)
+  local again = button(p, "Actualiser", 120, function() p.sent = false U.Refresh() end)
+  again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
+  p.chars = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.chars:SetPoint("TOPLEFT", 6, -434) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
+end
+refreshers.synchro = function(p)
+  local last = ForeverRosterDB.lastLoad
+  p.loadStatus:SetText(last and (GREEN .. "Chargé le " .. date("%d/%m %H:%M", last.at) .. " : " .. last.text .. "|r")
+    or (GREY .. "Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul.|r"))
+  local ok, value, included = pcall(ns.Export.Build, { all = p.all })
+  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
+  p.value, p.included = value, included
+  p.toggleAll:SetText(p.all and "Seulement les changements" or "Tout renvoyer")
+  local names = {}
+  for _, e in ipairs(included) do names[#names + 1] = colored(e.snap.header and e.snap.header.class, (e.snap.header and e.snap.header.name) or e.key) end
+  if p.sent then
+    p.status:SetText(GREEN .. "Copié. Sur le site, appuie sur Ctrl+V sur n'importe quelle page.|r")
+  elseif #included == 0 then
+    local lastSent = 0
+    for _, e in ipairs(ns.Export.Characters()) do lastSent = math.max(lastSent, e.char.sentAt or 0) end
+    p.status:SetText(GREY .. "Rien de nouveau depuis ton dernier envoi" .. (lastSent > 0 and (" (" .. date("%d/%m %H:%M", lastSent) .. ")") or "") .. ". « Tout renvoyer » pour tout recopier.|r")
+  else
+    p.status:SetText(GOLD .. #included .. " perso(s) à envoyer|r : " .. table.concat(names, ", ") .. GREY .. "   Ctrl+C puis Échap.|r")
+  end
+  p.text:SetText(value)
+  local all = {}
+  for _, e in ipairs(ns.Export.Characters()) do
+    local h = e.snap.header or {}
+    all[#all + 1] = colored(h.class, h.name or e.key) .. GREY .. " (" .. (e.char.sentAt and ("envoyé le " .. date("%d/%m", e.char.sentAt)) or "jamais envoyé") .. ")|r"
+  end
+  p.chars:SetText(GREY .. "Persos relevés : |r" .. table.concat(all, ", ") .. GREY .. ". Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r")
+  if #included > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
+end
+
+local builders = { synchro = buildSynchro, raids = buildRaids, compo = buildCompo, patrons = buildPatrons }
 
 -- Onglet à icône sur le côté, comme ceux de la fiche de perso de Forever
 local function sideTab(parent, index, t)
@@ -368,7 +428,7 @@ local function sideTab(parent, index, t)
 end
 
 local function buildMain()
-  main = window("ForeverRosterMain", "Forever Roster", 600, 600)
+  main = window("ForeverRosterMain", "Forever Roster", 600, 620)
   main.tabs = {}
   for k, t in ipairs(TABS) do
     main.tabs[t.key] = sideTab(main, k, t)
@@ -383,7 +443,7 @@ end
 
 function U.Refresh()
   if not main or not main:IsShown() then return end
-  local tab = ForeverRosterDB.tab or "raids"
+  local tab = pages[ForeverRosterDB.tab] and ForeverRosterDB.tab or "synchro"
   local fn = refreshers[tab]
   if fn then ns.safe("affichage", fn, pages[tab]) end
 end
@@ -391,8 +451,9 @@ end
 -- Ouvre la fenêtre sur un onglet (le dernier utilisé par défaut)
 function U.Show(tab)
   if not main then buildMain() end
-  tab = pages[tab] and tab or ForeverRosterDB.tab or "raids"
+  tab = pages[tab] and tab or (pages[ForeverRosterDB.tab] and ForeverRosterDB.tab) or "synchro"
   ForeverRosterDB.tab = tab
+  if tab == "synchro" then pages.synchro.sent = false end
   for _, t in ipairs(TABS) do
     local on = t.key == tab
     if on then pages[t.key]:Show() main:SetWindowTitle("Forever Roster  ·  " .. t.label) else pages[t.key]:Hide() end
@@ -405,7 +466,7 @@ function U.Toggle()
 end
 -- Anciens noms (commandes /fr compo, /fr export)
 function U.ShowCompo() U.Show("compo") end
-function U.ShowExport() U.Show("export") end
+function U.ShowExport() U.Show("synchro") end
 function U.ShowGroup() U.Show("raids") end
 U.RefreshCompo = U.Refresh
 U.RefreshGroup = U.Refresh

@@ -33,6 +33,7 @@ jobs:
         run: |
           sudo apt-get install -y -qq lua5.1 > /dev/null
           for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
+          python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('addon/ForeverRoster/Bindings.xml')"
           lua5.1 addon/tests/format_test.lua
           lua5.1 addon/tests/wow_sim.lua
           git diff --exit-code addon/tests/sample.frc

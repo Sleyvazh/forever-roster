@@ -2,8 +2,8 @@
  * Application d'un export de l'addon (bloc FRC d'un perso) à une fiche : partagée par la fiche (« Importer depuis l'addon »)
  * et la page Addon (tous les persos d'un coup). L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
  */
-import { isValidCombo, PROFESSION_SKILL_LINES, professionsFromExport, SIGNUP_LABEL, type CharacterExport } from "@forever/game-data";
-import { get, post, put, type Character, type GameItem } from "./api";
+import { isValidCombo, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, SIGNUP_LABEL, type CharacterExport } from "@forever/game-data";
+import { ApiError, get, patch, post, put, type Character, type GameItem } from "./api";
 import { linkFromRanks, type Talent } from "./components/TalentTrees";
 
 export type Part = "identity" | "gear" | "professions" | "recipes" | "talents" | "signups";
@@ -88,4 +88,73 @@ export async function applyExtras(characterId: string, d: CharacterExport, parts
     out.push(`${plural(ok, "inscription")} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}`);
   }
   return out.join(" · ");
+}
+
+/* ---------- Plusieurs persos d'un coup (page Addon, collage n'importe où) ---------- */
+
+/** Fiche choisie pour un perso du jeu : id d'une fiche, « new » (la créer) ou « skip » (l'ignorer). */
+export type Target = string;
+export const blockKey = (d: CharacterExport) => `${d.name}-${d.realm}`;
+
+const MAP_KEY = "fr-addon-fiches";
+function rememberedMap(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(MAP_KEY) ?? "{}") as Record<string, string>; } catch { return {}; }
+}
+function remember(key: string, id: string) {
+  try { localStorage.setItem(MAP_KEY, JSON.stringify({ ...rememberedMap(), [key]: id })); } catch { /* préférence non gardée */ }
+}
+
+/** Fiche proposée : celle choisie la dernière fois, sinon même prénom et même classe, sinon une nouvelle fiche. */
+export function guessTarget(d: CharacterExport, mine: Character[]): Target {
+  const saved = rememberedMap()[blockKey(d)];
+  if (saved && mine.some(c => c.id === saved && (!c.cls || !d.cls || c.cls === d.cls))) return saved;
+  return mine.find(c => sameCharacter(d.name, c.name) && (!c.cls || !d.cls || c.cls === d.cls))?.id ?? "new";
+}
+
+export interface ApplyResult { name: string; ok: boolean; msg: string }
+
+/** Applique chaque bloc à sa fiche (créée au besoin) ; la date de dernière synchro est notée sur la fiche. */
+export async function applyBlocks(blocks: CharacterExport[], targetOf: (d: CharacterExport) => Target, parts: Set<Part>, mine: Character[]): Promise<ApplyResult[]> {
+  const out: ApplyResult[] = [];
+  for (const d of blocks) {
+    const t = targetOf(d);
+    if (t === "skip") continue;
+    try {
+      let c = mine.find(x => x.id === t);
+      if (t === "new") c = (await post<{ character: Character }>("/characters", { name: d.name })).character;
+      if (!c) throw new Error("fiche introuvable");
+      if (d.cls && c.cls && d.cls !== c.cls) { out.push({ name: d.name, ok: false, msg: `classe différente sur la fiche (${c.cls})` }); continue; }
+      // Une nouvelle fiche prend toujours niveau, race et classe
+      const p = await buildPatch(c, d, t === "new" ? new Set<Part>([...parts, "identity"]) : parts);
+      await patch(`/characters/${c.id}`, { ...p, addonSynced: true });
+      const extras = await applyExtras(c.id, d, parts);
+      remember(blockKey(d), c.id);
+      out.push({ name: d.name, ok: true, msg: `${t === "new" ? "fiche créée" : "fiche mise à jour"}${extras ? ` · ${extras}` : ""}` });
+    } catch (e) {
+      out.push({ name: d.name, ok: false, msg: e instanceof ApiError ? e.message : "mise à jour impossible" });
+    }
+  }
+  return out;
+}
+
+/** Résumé court d'un bloc (ce que l'export apporte). */
+export function blockSummary(d: CharacterExport) {
+  const parts = [`niv. ${d.level}`];
+  const gear = Object.keys(d.gear).length;
+  if (gear) parts.push(plural(gear, "pièce"));
+  if (d.recipes.length) parts.push(plural(d.recipes.length, "patron"));
+  if (d.talents.length) parts.push(`${d.talents.reduce((a, t) => a + t.rank, 0)} pts de talents`);
+  if (d.signups.length) parts.push(plural(d.signups.length, "inscription"));
+  if (d.wanted.length) parts.push(`${d.wanted.length} recherché${d.wanted.length > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+}
+
+/** « il y a 2 h », « hier », « il y a 9 jours » ; stale : plus d'une semaine. */
+export function syncAge(at?: string | null) {
+  if (!at) return { text: "jamais synchronisé", stale: true };
+  const h = (Date.now() - new Date(at).getTime()) / 3600_000;
+  if (h < 1) return { text: "synchro il y a moins d'une heure", stale: false };
+  if (h < 24) return { text: `synchro il y a ${Math.floor(h)} h`, stale: false };
+  const d = Math.floor(h / 24);
+  return { text: d === 1 ? "synchro hier" : `synchro il y a ${d} jours`, stale: d > 7 };
 }

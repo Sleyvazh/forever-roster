@@ -59,7 +59,8 @@ end)
 
 local HELP = {
   "/fr : ouvrir la fenêtre (onglets Raids, Compo, Patrons, Export) ; aussi par le bouton de la minicarte",
-  "/fr raids | compo | patrons | export : ouvrir directement un onglet",
+  "/fr synchro | raids | compo | patrons : ouvrir directement un onglet",
+  "Raccourcis : Échap > Options > Raccourcis > AddOns > Forever Roster",
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
@@ -74,7 +75,14 @@ function ns.safe(label, fn, ...)
   return ok
 end
 
-local TABS = { raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons", export = "export" }
+local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons" }
+
+-- Raccourcis clavier (Bindings.xml) : Échap > Options > Raccourcis > AddOns > Forever Roster
+BINDING_HEADER_FOREVERROSTER = "Forever Roster"
+BINDING_NAME_FOREVERROSTER_SYNC = "Synchro avec le site (coller / copier)"
+BINDING_NAME_FOREVERROSTER_TOGGLE = "Ouvrir ou fermer la fenêtre"
+function ForeverRoster_Sync() ns.safe("raccourci", ns.UI.Show, "synchro") end
+function ForeverRoster_Toggle() ns.safe("raccourci", ns.UI.Toggle) end
 
 local function run(msg)
   local raw = strtrim(msg or "")

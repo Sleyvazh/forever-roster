@@ -258,6 +258,11 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     const nodes = [{ id: 101, rank: 5, max: 5, x: 1200, y: 600, spell: 16934, sub: 0, tree: 7 }];
     expect((await c.patch(`/api/characters/${ch.id}`, { talentNodes: nodes })).json().character.talentNodes).toEqual(nodes);
     expect((await c.patch(`/api/characters/${ch.id}`, { talentNodes: [{ id: -1 }] })).statusCode).toBe(400);
+    // Date de dernière synchro avec l'addon
+    expect(ch.addonSyncedAt).toBeNull();
+    const synced = (await c.patch(`/api/characters/${ch.id}`, { addonSynced: true })).json().character;
+    expect(Date.now() - Date.parse(synced.addonSyncedAt)).toBeLessThan(60_000);
+    expect((await c.patch(`/api/characters/${ch.id}`, { addonSynced: false })).statusCode).toBe(400);
   });
 
   it("enregistre l'objet choisi dans la base pour l'équipement", async () => {

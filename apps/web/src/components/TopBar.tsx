@@ -9,6 +9,8 @@ import { Logo } from "./Logo";
 import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
 import { useLiveEvents } from "../live";
+import { CopyForGame } from "./CopyForGame";
+import { PasteImport } from "./PasteImport";
 
 const Brand = () => (
   <Link to="/" className="brand" aria-label="Forever Roster, accueil">
@@ -90,11 +92,13 @@ export function TopBar() {
             </nav>
           ) : <span />}
           <div className="bar-right">
+            {user && <CopyForGame />}
             <LaunchPill />
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>
       </header>
+      {user && <PasteImport />}
       {user && (
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/" end>{TAB_ICONS.persos}Mes persos</NavLink>

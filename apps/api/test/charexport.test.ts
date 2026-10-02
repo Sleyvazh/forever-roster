@@ -12,10 +12,13 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     const r = parseCharacterExport(SAMPLE);
     if (!r.ok) throw new Error(r.error);
     expect(r.data).toMatchObject({ name: "Tournicoti", realm: "Forever EU", cls: "Druid", race: "Tauren", level: 60, faction: "Horde", addon: "0.1.0" });
+    expect(SAMPLE.startsWith("FRC;2;")).toBe(true);
     expect(r.data.gear).toEqual({ Head: 16866, Legs: 15065 });
     expect(r.data.professions.map(p => p.name)).toEqual(["Leatherworking", "Skinning", "Cooking"]);
-    expect(r.data.recipes).toEqual([{ profession: "Leatherworking", spellId: 2152 }, { profession: "Leatherworking", itemId: 15065 }]);
-    expect(r.data.talents[0]).toEqual({ id: 104938, rank: 5, max: 5, x: 5620, y: 2130, spell: 16934, sub: 0, tree: 1089 });
+    expect(r.data.recipes).toEqual([{ profession: "Leatherworking", itemId: 15065 }, { profession: "Leatherworking", spellId: 2152 }]);
+    expect(r.data.talents).toEqual([
+      { id: 104938, rank: 5, max: 0, x: 0, y: 0, spell: 0, sub: 0, tree: 1089 }, { id: 104939, rank: 3, max: 0, x: 0, y: 0, spell: 0, sub: 0, tree: 1089 },
+    ]);
     expect(professionsFromExport(r.data.professions)).toEqual({
       prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 295 }, cooking: 150, fishing: 0, firstAid: 0,
     });
@@ -26,7 +29,7 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(professionFromGame("Arme d'hast")).toBeNull();
     expect(parseCharacterExport("FRR;1;x;0;Raid\nEND;0")).toMatchObject({ ok: false });
     expect(parseCharacterExport(SAMPLE.replace(/\nEND;\d+$/, ""))).toMatchObject({ ok: false });
-    expect(parseCharacterExport(SAMPLE.replace("FRC;1;", "FRC;2;"))).toMatchObject({ ok: false });
+    expect(parseCharacterExport(SAMPLE.replace("FRC;2;", "FRC;9;"))).toMatchObject({ ok: false });
   });
   it("ignore les patrons des fenêtres que le site ne gère pas (Poisons)", () => {
     const text = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1790960455;0.1.2\nR;Cooking;s2541\nR;Poisons;s8681\nR;First Aid;s3275\nEND;3";
@@ -41,6 +44,15 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     const res = parseCharacterExport(text);
     if (!res.ok) throw new Error(res.error);
     expect(res.data.signups).toEqual([{ groupId: g, raidId: r, status: "present" }]);
+  });
+  it("lit toujours l'ancien format (v1, une ligne par objet et par talent)", () => {
+    const v1 = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.2.0\nG;1;7997\nR;Cooking;s2541\nT;105721;3;3;1020;2730;14156;0;1111\nEND;3";
+    const r = parseCharacterExport(v1);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.data.gear).toEqual({ Head: 7997 });
+    expect(r.data.recipes).toEqual([{ profession: "Cooking", spellId: 2541 }]);
+    expect(r.data.talents[0]).toMatchObject({ id: 105721, rank: 3, max: 3, tree: 1111 });
+    expect(parseCharacterExport(v1.replace("FRC;1;", "FRC;3;"))).toMatchObject({ ok: false });
   });
   it("lit les patrons marqués recherchés en jeu", () => {
     const res = parseCharacterExport("FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.3.0\nW;15090;1\nW;9999;0\nW;15090;0\nW;abc;1\nEND;4");

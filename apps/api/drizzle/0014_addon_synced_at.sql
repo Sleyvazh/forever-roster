@@ -1,0 +1,1 @@
+ALTER TABLE "characters" ADD COLUMN "addon_synced_at" timestamp with time zone;

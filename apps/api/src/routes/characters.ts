@@ -19,7 +19,7 @@ export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
-  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null,
+  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null,
 });
 
 
@@ -73,12 +73,13 @@ export async function characterRoutes(app: FastifyInstance) {
   app.patch("/:id", async (req) => {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
-    const patch = parse(characterFields.partial(), req.body);
+    // addonSynced : la fiche vient d'être mise à jour depuis l'addon (date de dernière synchro)
+    const { addonSynced, ...patch } = parse(characterFields.partial().extend({ addonSynced: z.literal(true).optional() }), req.body);
     const [existing] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
     if (!existing) throw notFound("Personnage introuvable.");
     const next = { ...existing, ...patch };
     const err = crossCheck(next); if (err) throw badRequest(err);
-    const [row] = await db.update(characters).set({ ...patch, updatedAt: new Date() }).where(eq(characters.id, id)).returning();
+    const [row] = await db.update(characters).set({ ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }) }).where(eq(characters.id, id)).returning();
     return { character: toApi(row!) };
   });
 

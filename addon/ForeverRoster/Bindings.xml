@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="FOREVERROSTER_SYNC" header="FOREVERROSTER" category="ADDONS">
+		ForeverRoster_Sync()
+	</Binding>
+	<Binding name="FOREVERROSTER_TOGGLE" category="ADDONS">
+		ForeverRoster_Toggle()
+	</Binding>
+</Bindings>

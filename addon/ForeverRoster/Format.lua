@@ -93,9 +93,39 @@ function F.ParseFRG(text)
   return groups
 end
 
+-- Format court (FRC v2) : équipement sur une ligne, patrons regroupés par métier, seulement les talents pris.
+-- lines : lignes « longues » (G;emplacement;objet, R;métier;clé, T;nœud;rang;max;x;y;sort;sous-arbre;arbre, …).
+function F.Compact(lines)
+  local out, gear, recipes, profs, trees, treeOrder = {}, {}, {}, {}, {}, {}
+  for _, l in ipairs(lines) do
+    local kind = l[1]
+    if kind == "G" then gear[#gear + 1] = F.clean(l[2]) .. ":" .. F.clean(l[3])
+    elseif kind == "R" then
+      local prof = F.clean(l[2])
+      if not recipes[prof] then recipes[prof] = {} profs[#profs + 1] = prof end
+      local list = recipes[prof]
+      list[#list + 1] = F.clean(l[3])
+    elseif kind == "T" then
+      if (tonumber(l[3]) or 0) > 0 then
+        local tree = tostring(l[9] or 0)
+        if not trees[tree] then trees[tree] = {} treeOrder[#treeOrder + 1] = tree end
+        local list = trees[tree]
+        list[#list + 1] = l[2] .. ":" .. l[3]
+      end
+    else out[#out + 1] = l end
+  end
+  local compact = {}
+  if #gear > 0 then compact[#compact + 1] = { "G", table.concat(gear, ",") } end
+  for _, l in ipairs(out) do compact[#compact + 1] = l end
+  table.sort(profs)
+  for _, p in ipairs(profs) do table.sort(recipes[p]) compact[#compact + 1] = { "R", p, table.concat(recipes[p], ",") } end
+  for _, t in ipairs(treeOrder) do compact[#compact + 1] = { "T", t, table.concat(trees[t], ",") } end
+  return compact
+end
+
 -- lines : liste de tables de champs ; la ligne END donne le nombre de lignes utiles (détecte un copier-coller tronqué).
 function F.BuildFRC(header, lines)
-  local out = { table.concat({ "FRC", "1", F.clean(header.name), F.clean(header.realm), header.class or "", header.race or "",
+  local out = { table.concat({ "FRC", "2", F.clean(header.name), F.clean(header.realm), header.class or "", header.race or "",
     tostring(header.level or 0), header.faction or "", tostring(header.time or 0), F.clean(header.addon or "") }, ";") }
   for _, fields in ipairs(lines) do
     local parts = {}

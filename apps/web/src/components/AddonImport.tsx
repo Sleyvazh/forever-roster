@@ -2,7 +2,7 @@ import { parseCharacterExports, sameCharacter, type CharacterExport } from "@for
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, type Character } from "../api";
+import { ApiError, patch, type Character } from "../api";
 import { ALL_PARTS, applyExtras, buildPatch, PARTS, partSummary, type Part } from "../addonImport";
 import { linkFromRanks, useTalentData } from "./TalentTrees";
 
@@ -36,6 +36,7 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
     try {
       onChange(await buildPatch(c, d, parts, tdata.data?.talents));
       const extras = await applyExtras(c.id, d, parts);
+      await patch(`/characters/${c.id}`, { addonSynced: true });
       await Promise.all([qc.invalidateQueries({ queryKey: ["char-recipes", c.id] }), qc.invalidateQueries({ queryKey: ["raids"] })]);
       setDone(`Fiche mise à jour depuis le jeu.${extras ? ` ${extras}.` : ""}`); setText("");
     } catch (e) { setError(e instanceof ApiError ? e.message : "Mise à jour impossible."); }

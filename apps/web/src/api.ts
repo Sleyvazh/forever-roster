@@ -57,6 +57,8 @@ export interface Character {
   notes: string; portraitId: string | null; sortOrder: number; updatedAt: string; owner?: string;
   /** Talents lus en jeu par l'addon (null tant qu'aucun export). */
   talentNodes?: import("@forever/game-data").ExportedTalentNode[] | null;
+  /** Dernière mise à jour depuis l'addon. */
+  addonSyncedAt?: string | null;
   /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
   gearStats?: import("@forever/game-data").GearStats;
 }

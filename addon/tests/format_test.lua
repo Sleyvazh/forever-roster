@@ -37,15 +37,19 @@ check(r5 and #m5 == 0, "raid sans membre")
 -- FRC : export du perso (sert aussi de jeu d'essai au test du site)
 local text = F.BuildFRC(
   { name = "Tournicoti", realm = "Forever EU", class = "DRUID", race = "Tauren", level = 60, faction = "Horde", time = 1790000000, addon = "0.1.0" },
-  {
+  F.Compact({
     { "G", 1, 16866 }, { "G", 7, 15065 },
     { "P", "Leatherworking", 300, 300 }, { "P", "Skinning", 295, 300 }, { "P", "Cooking", 150, 225 }, { "P", "Unarmed", 300, 300 },
     { "R", "Leatherworking", "s2152" }, { "R", "Leatherworking", "i15065" },
     { "T", 104938, 5, 5, 5620, 2130, 16934, 0, 1089 }, { "T", 104939, 3, 5, 6220, 2130, 24894, 0, 1089 },
+    { "T", 104940, 0, 3, 5620, 2730, 16947, 0, 1089 },
     { "G", 13, "piège;|cff" },
-  })
-check(text:match("^FRC;1;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;0%.1%.0\n"), "en-tête FRC")
-check(text:match("\nEND;11$"), "ligne END")
+  }))
+check(text:match("^FRC;2;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;0%.1%.0\n"), "en-tête FRC")
+check(text:find("\nG;1:16866,7:15065,13:piège  cff\n", 1, true), "équipement sur une ligne")
+check(text:find("\nR;Leatherworking;i15065,s2152\n", 1, true), "patrons regroupés par métier")
+check(text:find("\nT;1089;104938:5,104939:3\n", 1, true), "seulement les talents pris")
+check(text:match("\nEND;7$"), "ligne END")
 check(text:find("piège  cff", 1, true), "« ; » et « | » retirés des valeurs")
 local out = io.open("addon/tests/sample.frc", "w") out:write(text) out:close()
 

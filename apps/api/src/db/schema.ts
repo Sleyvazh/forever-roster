@@ -118,6 +118,8 @@ export const characters = pgTable("characters", {
   gear: jsonb("gear").$type<Gear>().notNull().default({}),
   /** Talents lus en jeu par l'addon (système de talents de Forever) : un nœud par talent. Null tant qu'aucun export. */
   talentNodes: jsonb("talent_nodes").$type<TalentNode[] | null>(),
+  /** Dernière mise à jour de la fiche depuis l'addon (export collé sur le site). */
+  addonSyncedAt: ts("addon_synced_at"),
   legacy: jsonb("legacy").$type<Legacy>().notNull().default({}),
   notes: text("notes").notNull().default(""),
   /** Portrait du perso (capture de la tête en jeu, 200×200). */

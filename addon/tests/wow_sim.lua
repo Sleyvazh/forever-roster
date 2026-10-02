@@ -150,17 +150,39 @@ assert(#printed == before, "butin d'un autre ignoré")
 -- Plusieurs persos : un second perso relevé apparaît dans l'export, puis on l'oublie
 ForeverRosterDB.chars["Greta-Forever EU"] = { recipes = {}, snapshot = { header = { name = "Greta", realm = "Forever EU", class = "DRUID", race = "Tauren", level = 20, faction = "Horde" }, lines = { { "G", 1, 16866 } }, at = 1789000000 } }
 local all = ns.Export.Build()
-assert(all:find("^FRC;1;Tournicoti;") and all:find("\nFRC;1;Greta;Forever EU;DRUID;Tauren;20;Horde;1789000000;"), "export de tous les persos")
+assert(all:find("^FRC;2;Tournicoti;") and all:find("\nFRC;2;Greta;Forever EU;DRUID;Tauren;20;Horde;1789000000;"), "export de tous les persos")
 assert(not ns.Export.Build(true):find("Greta;Forever"), "export du perso seul")
 run("export")
 run("oublier Greta-Forever EU")
-assert(not ns.Export.Build():find("FRC;1;Greta"), "perso oublié")
+assert(not ns.Export.Build():find("FRC;2;Greta"), "perso oublié")
 -- Relevé automatique quand l'équipement change
 ForeverRosterDB.chars["Tournicoti-Forever EU"].snapshot = nil
 fire("PLAYER_EQUIPMENT_CHANGED")
 assert(ForeverRosterDB.chars["Tournicoti-Forever EU"].snapshot, "relevé automatique")
 run("minicarte")
 run("minicarte")
+-- Synchro : coller les données du site (chargées toutes seules), Ctrl+C = envoyé, changement = à renvoyer
+run("synchro")
+local sp = ns.UI.pages.synchro
+assert(sp, "onglet Synchro")
+sp.input:SetText("FRG;1;g9;1789990000;Autre groupe\nR;r9;0;Onyxia;;\nEND;1")
+rawget(sp.input, "scripts").OnTextChanged(sp.input, true)
+local found = false
+for _, g in ipairs(ns.Group.List()) do if g.name == "Autre groupe" then found = true end end
+assert(found and ForeverRosterDB.lastLoad and sp.input:GetText() == "", "données du site chargées au collage")
+sp.input:SetText("FRR;1;x;0;Raid du soir\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1")
+rawget(sp.input, "scripts").OnTextChanged(sp.input, true)
+assert(ns.Compo.Get().name == "Raid du soir", "compo chargée au collage")
+assert(#ns.Export.Pending() >= 1, "perso à envoyer")
+IsControlKeyDown = function() return true end
+ns.UI.Refresh()
+rawget(sp.text, "scripts").OnKeyDown(sp.text, "C")
+assert(#ns.Export.Pending() == 0, "Ctrl+C : marqué envoyé")
+assert(select(2, ns.Export.Build({})) and #select(2, ns.Export.Build({})) == 0, "rien de nouveau")
+ns.Group.SignUp("g9", "r9", "present", 0)
+assert(#ns.Export.Pending() == 1, "inscription : à renvoyer")
+assert(BINDING_NAME_FOREVERROSTER_SYNC and ForeverRoster_Sync and ForeverRoster_Toggle, "raccourcis clavier")
+ForeverRoster_Sync()
 -- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
@@ -175,7 +197,7 @@ function GetProfessions() return nil, nil, nil, 4, 5, nil end
 function GetProfessionInfo(i) if i == 4 then return "Pêche", 0, 75, 150 elseif i == 5 then return "Cooking", 0, 120, 150 end end
 export = ns.Export.Build()
 assert(export:find("\nP;Pêche;75;150\n") and export:find("\nP;Cooking;120;150\n"), "métiers par GetProfessions")
-assert(export:match("^FRC;1;Tournicoti;") and export:find("\nG;1;16866\n"), "export de base")
+assert(export:match("^FRC;2;Tournicoti;") and export:find("\nG;1:16866\n"), "export de base")
 assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon")

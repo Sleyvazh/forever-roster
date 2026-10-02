@@ -644,3 +644,28 @@ button.hportrait { cursor: pointer; }
 .addon-results { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .addon-results li.ok::before { content: "✓ "; color: var(--ok); }
 .addon-results li.bad::before { content: "✗ "; color: var(--warn); }
+
+/* Copier pour le jeu (barre du haut) */
+.copy-game { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.copy-game svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.copy-game.done { border-color: var(--ok); color: var(--ok); }
+@media (max-width: 900px) { .copy-game span { display: none; } }
+
+/* Export de l'addon collé n'importe où */
+.paste-import { position: fixed; right: 16px; bottom: 16px; z-index: 80; width: min(400px, calc(100vw - 32px)); display: grid; gap: 10px;
+  padding: 14px 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--gold); box-shadow: 0 12px 40px rgb(0 0 0 / .45); }
+.pi-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pi-close { background: none; border: 0; color: var(--ink-3); font-size: 16px; cursor: pointer; padding: 2px 6px; }
+.pi-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 50vh; overflow: auto; }
+.pi-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pi-list .with-icon { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pi-list select { max-width: 150px; }
+@media (max-width: 760px) { .paste-import { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Dernière synchro de chaque perso (page Addon) */
+.addon-sync { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.addon-sync li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.addon-sync .with-icon { display: flex; align-items: center; gap: 8px; }
+.addon-sync .fresh { color: var(--ok); }
+.addon-sync .stale { color: var(--warn); }
+

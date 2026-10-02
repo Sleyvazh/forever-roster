@@ -99,6 +99,13 @@
       "when": 1790952515271,
       "tag": "0013_forever_talents",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790972429786,
+      "tag": "0014_addon_synced_at",
+      "breakpoints": true
     }
   ]
 }

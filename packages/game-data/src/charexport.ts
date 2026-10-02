@@ -51,7 +51,9 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const head = lines[0]?.split(";") ?? [];
   if (head[0] !== "FRC") return { ok: false, error: "Ce n'est pas un export de perso : dans le jeu, tape /fr export et copie tout le texte." };
-  if (head[1] !== "1") return { ok: false, error: `Version d'export non gérée (${head[1] ?? "?"}) : mets le site ou l'addon à jour.` };
+  // v1 : une ligne par objet, patron et talent ; v2 (format court) : listes séparées par des virgules
+  const version = head[1] === "2" ? 2 : head[1] === "1" ? 1 : 0;
+  if (!version) return { ok: false, error: `Version d'export non gérée (${head[1] ?? "?"}) : mets le site ou l'addon à jour.` };
   const end = lines.at(-1)?.split(";");
   if (end?.[0] !== "END" || int(end[1]) !== lines.length - 2) return { ok: false, error: "Export incomplet : recopie tout le texte, jusqu'à la ligne END." };
   if (lines.length > 2000) return { ok: false, error: "Export trop long." };
@@ -66,22 +68,27 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
     if (f[0] === "G") {
-      const slot = SLOT_BY_INVSLOT[int(f[1])], id = int(f[2]);
-      if (slot && id > 0) data.gear[slot] = id;
+      const pairs = version === 2 ? (f[1] ?? "").split(",").map(p => p.split(":")) : [[f[1], f[2]]];
+      for (const [s, i] of pairs) {
+        const slot = SLOT_BY_INVSLOT[int(s)], id = int(i);
+        if (slot && id > 0) data.gear[slot] = id;
+      }
     } else if (f[0] === "P") {
       const name = professionFromGame(f[1] ?? "");
       if (name) data.professions.push({ name, skill: Math.min(300, int(f[2])), max: int(f[3]), primary: name in PRIMARY_PROFESSIONS });
     } else if (f[0] === "R") {
-      const key = f[2] ?? "", id = int(key.slice(1));
-      if (id <= 0) continue;
       const profession = professionFromGame(f[1] ?? "");
       if (!profession) {
         const raw = (f[1] ?? "").slice(0, 40);
         if (raw && !data.ignored.includes(raw)) data.ignored.push(raw);
         continue;
       }
-      if (key[0] === "s") data.recipes.push({ profession, spellId: id });
-      else if (key[0] === "i") data.recipes.push({ profession, itemId: id });
+      for (const key of (f[2] ?? "").split(",")) {
+        const id = int(key.slice(1));
+        if (id <= 0) continue;
+        if (key[0] === "s") data.recipes.push({ profession, spellId: id });
+        else if (key[0] === "i") data.recipes.push({ profession, itemId: id });
+      }
     } else if (f[0] === "S") {
       const [, groupId = "", raidId = "", status = ""] = f;
       if (UUID.test(groupId) && UUID.test(raidId) && (SIGNUP_STATUSES as readonly string[]).includes(status)) {
@@ -90,6 +97,13 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
     } else if (f[0] === "W") {
       const itemId = int(f[1]);
       if (itemId > 0) data.wanted = data.wanted.filter(w => w.itemId !== itemId).concat({ itemId, on: f[2] === "1" });
+    } else if (f[0] === "T" && version === 2) {
+      // Seulement les talents pris : arbre, puis nœud:rang
+      const tree = int(f[1]);
+      for (const p of (f[2] ?? "").split(",")) {
+        const [id, rank] = p.split(":");
+        if (int(id) > 0 && int(rank) > 0) data.talents.push({ id: int(id), rank: Math.min(20, int(rank)), max: 0, x: 0, y: 0, spell: 0, sub: 0, tree });
+      }
     } else if (f[0] === "T") {
       data.talents.push({ id: int(f[1]), rank: int(f[2]), max: int(f[3]), x: int(f[4]), y: int(f[5]), spell: int(f[6]), sub: int(f[7]), tree: int(f[8]) });
     }
