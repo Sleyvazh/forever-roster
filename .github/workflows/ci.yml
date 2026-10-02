@@ -63,7 +63,19 @@ jobs:
         with: { node-version: 24, cache: npm }
       - run: npm ci
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      # Chromium gardé en cache (clé = version de Playwright) ; les bibliothèques système s'installent à chaque fois
+      - name: Version de Playwright
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - run: npx playwright test
       - name: Rapport en cas d'échec
         if: failure()
