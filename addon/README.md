@@ -20,7 +20,10 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a qua
 | `/fr synchro`, `raids`, `compo`, `patrons` | Ouvrir un onglet |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export |
+| `/fr rappels` | Couper ou remettre le rappel de raid à la connexion |
 | `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer ; pastille : persos à envoyer) |
+
+Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans réponse ouvre une petite fenêtre « Tu viens ? » (Présent, En retard, Peut-être, Absent) ; un raid déjà répondu s'affiche dans le chat. Il se base sur les dernières données du site collées en jeu.
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 

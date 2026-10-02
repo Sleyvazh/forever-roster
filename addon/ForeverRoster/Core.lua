@@ -64,6 +64,7 @@ local HELP = {
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
+  "/fr rappels : couper ou remettre le rappel de raid à la connexion",
 }
 
 SLASH_FOREVERROSTER1 = "/fr"
@@ -100,11 +101,14 @@ local function run(msg)
   elseif cmd == "oublier" then
     local key = rest ~= "" and rest or nil
     if not (key and ForeverRosterDB.chars and ForeverRosterDB.chars[key] and ForeverRosterDB.chars[key].snapshot) then
-      ns.print("perso inconnu : écris son nom et son royaume comme dans l'onglet Export, par ex. /fr oublier Greta-Classic Beta PvP")
+      ns.print("perso inconnu : écris son nom et son royaume comme dans l'onglet Synchro, par ex. /fr oublier Greta-Classic Beta PvP")
       return
     end
     ns.Export.Forget(key)
     ns.print(key .. " retiré de l'export.")
+  elseif cmd == "rappels" then
+    ForeverRosterDB.noReminder = not ForeverRosterDB.noReminder or nil
+    ns.print(ForeverRosterDB.noReminder and "rappels de raid coupés." or "rappels de raid remis : à la connexion, raids des prochaines 24 h.")
   elseif cmd == "minicarte" or cmd == "minimap" then
     ns.Minimap.Toggle()
   else

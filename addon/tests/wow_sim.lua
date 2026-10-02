@@ -201,6 +201,22 @@ for _, g in ipairs(ns.Group.List()) do if g.name == "Groupe rapide" then found =
 assert(found and not q:IsShown(), "synchro rapide : données du site collées puis fermeture")
 ForeverRoster_Sync() ForeverRoster_Sync()
 assert(not q:IsShown(), "synchro rapide : la touche ouvre et ferme")
+-- Rappel de raid à la connexion : raid dans les 24 h sans réponse → « Tu viens ? » ; répondu → ligne dans le chat
+local soon = time() + 3 * 3600
+assert(ns.UI.LoadFromSite("FRG;1;g7;1789990000;Rappel\nR;r7;" .. soon .. ";Blackwing Lair;;\nR;r6;" .. (soon + 600) .. ";Zul'Gurub;present;Tournicoti\nEND;2"))
+fire("PLAYER_LOGIN")
+local rm = ns.UI.reminder
+assert(rm and rm:IsShown() and rm.text:GetText():find("Blackwing Lair") and rm.entry.raid.id == "r7", "rappel : raid sans réponse proposé")
+local chat = false
+for _, l in ipairs(printed) do if l:find("Zul'Gurub") and l:find("Présent") then chat = true end end
+assert(chat, "rappel : raid déjà répondu dans le chat")
+rawget(rm.buttons[1], "scripts").OnClick(rm.buttons[1])
+assert(ns.charDB().signups.r7.status == "present" and rm.entry == false and rm.text:GetText():find("Noté"), "rappel : inscription notée, invitation à synchroniser")
+assert(#select(1, ns.UI.SoonRaids()) == 0, "rappel : plus rien à demander")
+run("rappels")
+assert(ForeverRosterDB.noReminder, "/fr rappels coupe")
+run("rappels")
+assert(not ForeverRosterDB.noReminder, "/fr rappels remet")
 -- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))

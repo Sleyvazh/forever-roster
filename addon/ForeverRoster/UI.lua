@@ -1,4 +1,4 @@
--- Fenêtre unique à onglets (Raids, Compo, Patrons, Export) et alerte au butin, à l'habillage de l'interface de Forever.
+-- Fenêtre unique à onglets (Synchro, Raids, Compo, Patrons), synchro rapide, rappel de raid et alerte au butin, à l'habillage de l'interface de Forever.
 local _, ns = ...
 local U = {}
 ns.UI = U
@@ -584,3 +584,87 @@ function U.Quick(all)
   quick.box:HighlightText()
 end
 
+
+-- Rappel de raid à la connexion : un raid de tes groupes dans les 24 h, sans réponse (ni en jeu ni sur le site) →
+-- petite fenêtre « Tu viens ? ». Un raid déjà répondu : une ligne dans le chat. /fr rappels coupe ou remet les rappels.
+local function whenText(t)
+  local d, now = date("*t", t), date("*t", time())
+  local hm = date("%H:%M", t)
+  if d.year == now.year and d.yday == now.yday then return (d.hour >= 17 and "ce soir " or "aujourd'hui ") .. hm end
+  local tomorrow = date("*t", time() + 86400)
+  if d.year == tomorrow.year and d.yday == tomorrow.yday then return "demain " .. hm end
+  return date("%d/%m ", t) .. hm
+end
+U.whenText = whenText
+
+function U.SoonRaids()
+  local now, ask, known = time(), {}, {}
+  for _, e in ipairs(ns.Group.Raids()) do
+    if e.raid.time > now and e.raid.time <= now + 86400 then
+      if e.status or e.onSite then known[#known + 1] = e else ask[#ask + 1] = e end
+    end
+  end
+  return ask, known
+end
+
+local reminder
+local function buildReminder()
+  reminder = window("ForeverRosterReminder", "Forever Roster  ·  Raid", 420, 168, "Interface\\Icons\\INV_Misc_Head_Dragon_01")
+  reminder:ClearAllPoints() reminder:SetPoint("TOP", 0, -140)
+  reminder.text = reminder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  reminder.text:SetPoint("TOPLEFT", 66, -32) reminder.text:SetWidth(336) reminder.text:SetJustifyH("LEFT")
+  reminder.buttons = {}
+  for i, st in ipairs(ns.Group.STATUSES) do
+    local b = button(reminder, st.label, 92, function()
+      local e = reminder.entry
+      if not e then return end
+      ns.Group.SignUp(e.group.id, e.raid.id, st.key, e.raid.time)
+      if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
+      U.Refresh()
+      U.Reminder(true)
+    end)
+    b:SetPoint("BOTTOMLEFT", 16 + (i - 1) * 98, 44)
+    reminder.buttons[i] = b
+  end
+  reminder.foot = reminder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  reminder.foot:SetPoint("BOTTOMLEFT", 18, 18) reminder.foot:SetWidth(260) reminder.foot:SetJustifyH("LEFT")
+  reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
+  reminder.sync = button(reminder, "Synchro rapide", 120, function() reminder:Hide() U.Quick(false) end)
+  reminder.sync:SetPoint("BOTTOMRIGHT", -16, 12)
+  U.reminder = reminder
+end
+
+-- after : appelé après une réponse (raid suivant sans réponse, sinon invitation à envoyer au site)
+function U.Reminder(after)
+  local ask = U.SoonRaids()
+  if not reminder then buildReminder() end
+  local e = ask[1]
+  if not e then
+    if after and reminder:IsShown() then
+      reminder.entry = false
+      reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site.")
+      for _, b in ipairs(reminder.buttons) do b:Hide() end
+      reminder.foot:SetText("")
+    end
+    return false
+  end
+  reminder.entry = e
+  local who = UnitName("player") or "ce perso"
+  reminder.text:SetText(GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time) .. GREY .. "  ·  " .. (e.group.name or "") .. "|r\n" ..
+    "Tu viens avec " .. who .. " ?" .. (#ask > 1 and (GREY .. "  (" .. (#ask - 1) .. " autre" .. (#ask > 2 and "s" or "") .. " raid" .. (#ask > 2 and "s" or "") .. " ensuite)|r") or ""))
+  for _, b in ipairs(reminder.buttons) do b:Show() end
+  reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
+  reminder:Show()
+  return true
+end
+
+local function remindAtLogin()
+  if ForeverRosterDB.noReminder then return end
+  local _, known = U.SoonRaids()
+  for _, e in ipairs(known) do
+    local st = e.status or e.onSite
+    ns.print(GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time) .. " : " .. (ns.Group.LABEL[st] or st) .. ".")
+  end
+  U.Reminder()
+end
+ns.on("PLAYER_LOGIN", function() C_Timer.After(6, function() ns.safe("rappel de raid", remindAtLogin) end) end)

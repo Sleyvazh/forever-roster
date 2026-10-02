@@ -64,7 +64,7 @@ function G.SignUp(groupId, raidId, status, raidTime)
   local c = ns.charDB()
   c.signups = c.signups or {}
   c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0 }
-  ns.print("inscription notée : " .. (G.LABEL[status] or status) .. ". Elle part au site avec ton prochain export (onglet Export).")
+  ns.print("inscription notée : " .. (G.LABEL[status] or status) .. ". Elle part au site avec ta prochaine synchro.")
 end
 
 function G.SignupLines(c)

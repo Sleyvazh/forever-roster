@@ -195,6 +195,7 @@ const COMMANDS: [string, string][] = [
   ["/fr synchro · raids · compo · patrons", "Ouvrir directement un onglet"],
   ["/fr cherche + Maj+clic sur un objet", "Marquer un patron vu ailleurs (hôtel des ventes, chat) comme recherché, ou l'en retirer"],
   ["/fr oublier Nom-Royaume", "Retirer de l'export un perso supprimé"],
+  ["/fr rappels", "Couper ou remettre le rappel de raid à la connexion (raid des prochaines 24 h sans réponse : « Tu viens ? »)"],
   ["/fr minicarte", "Afficher ou masquer le bouton de la minicarte"],
 ];
 
