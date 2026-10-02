@@ -33,6 +33,11 @@ describe("import des tables du client", () => {
       wow: [{ version: "12.0.1.66000" }],
     })) as unknown as typeof fetch;
     expect(await latestBuild(fake)).toEqual({ product: "wow_classic_beta", version: "1.60.1.70009" });
+    // Une bêta régionale plus récente n'est prise que s'il n'y a rien d'autre
+    const withCn = (async () => Response.json({ wow_cn_beta: [{ version: "1.60.1.70178" }], wow_classic_beta: [{ version: "1.60.1.70124" }] })) as unknown as typeof fetch;
+    expect(await latestBuild(withCn)).toEqual({ product: "wow_classic_beta", version: "1.60.1.70124" });
+    const onlyCn = (async () => Response.json({ wow_cn_beta: [{ version: "1.60.1.70178" }] })) as unknown as typeof fetch;
+    expect(await latestBuild(onlyCn)).toEqual({ product: "wow_cn_beta", version: "1.60.1.70178" });
   });
 
   it("joint les recettes : produit, composants, patron, compétence requise", async () => {

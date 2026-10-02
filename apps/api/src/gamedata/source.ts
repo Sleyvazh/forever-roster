@@ -32,16 +32,26 @@ export async function latestEraBuild(fetchImpl: typeof fetch = fetch): Promise<{
   return best;
 }
 
-/** Dernière version de Forever publiée sur wago.tools, tous produits confondus (bêta puis live). */
+/** Produits régionaux (Chine, Corée, Taïwan) : contenu et calendrier parfois différents de la version européenne. */
+const isRegional = (product: string) => /_(cn|kr|tw)(_|$)/.test(product);
+
+/**
+ * Dernière version de Forever publiée sur wago.tools (bêta ou live), hors produits régionaux,
+ * sauf s'il n'existe qu'eux.
+ */
 export async function latestBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string }> {
   const res = await fetchImpl(`${WAGO}/api/builds`, { headers: UA });
   if (!res.ok) throw new Error(`wago.tools /api/builds : HTTP ${res.status}`);
   const data = await res.json() as Record<string, { version: string }[]>;
-  let best: { product: string; version: string } | null = null;
-  for (const [product, list] of Object.entries(data)) {
-    if (!Array.isArray(list)) continue;
-    for (const b of list) if (b?.version && isForeverBuild(b.version) && (!best || newer(b.version, best.version))) best = { product, version: b.version };
-  }
+  const pick = (allowRegional: boolean) => {
+    let best: { product: string; version: string } | null = null;
+    for (const [product, list] of Object.entries(data)) {
+      if (!Array.isArray(list) || (!allowRegional && isRegional(product))) continue;
+      for (const b of list) if (b?.version && isForeverBuild(b.version) && (!best || newer(b.version, best.version))) best = { product, version: b.version };
+    }
+    return best;
+  };
+  const best = pick(false) ?? pick(true);
   if (!best) throw new Error("Aucune version de WoW Forever trouvée sur wago.tools.");
   return best;
 }
