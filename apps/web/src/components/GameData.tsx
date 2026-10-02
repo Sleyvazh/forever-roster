@@ -125,10 +125,10 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                 <select aria-label="Source" value={source} onChange={e => setSource(e.target.value as Source)}>
                   <option value="item">Patrons (objets)</option><option value="trainer">Entraîneur</option><option value="all">Toutes les recettes</option>
                 </select>
-                <select aria-label="Type d'objet" value={category} onChange={e => setCategory(e.target.value)}>
+                <select className="rf-extra" aria-label="Type d'objet" value={category} onChange={e => setCategory(e.target.value)}>
                   <option value="">Tous les types</option>{categories.map(c => <option key={c}>{c}</option>)}
                 </select>
-                <select aria-label="Rareté" value={quality} onChange={e => setQuality(e.target.value)}>
+                <select className="rf-extra" aria-label="Rareté" value={quality} onChange={e => setQuality(e.target.value)}>
                   <option value="">Toutes raretés</option>{qualities.map(v => <option key={v} value={v}>{QUALITY_LABEL[v]}</option>)}
                 </select>
                 <select aria-label="Affichage" value={view} onChange={e => setView(e.target.value as View)}>

@@ -100,7 +100,7 @@ export function TalentTrees({ cls, points, mainTree, view = "gauges", ranks, tal
   );
 }
 
-const CELL = 30, GAP = 6;
+const CELL = 34, GAP = 8;
 
 /** Un arbre à sa vraie disposition : 4 colonnes, un palier par ligne, flèches des prérequis, infobulle par talent. */
 function TreeGrid({ talents, ranks, spent }: { talents: Talent[]; ranks: Map<number, number>; spent: number }) {

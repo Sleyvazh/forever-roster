@@ -29,7 +29,8 @@ function F.ParseFRR(text)
       raid = { id = f[3], time = tonumber(f[4]) or 0, name = f[5] or "" }
     elseif f[1] == "M" then
       members[#members + 1] = {
-        name = f[2], class = f[3], role = f[4], spec = f[5],
+        -- Prénom seul : le jeu ignore le nom de famille de Forever (« Greta Coulé » → Greta)
+        name = (f[2] or ""):match("^%S+") or "", class = f[3], role = f[4], spec = f[5],
         group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = f[8] or "", source = f[9] or "site",
       }
     elseif f[1] == "END" then

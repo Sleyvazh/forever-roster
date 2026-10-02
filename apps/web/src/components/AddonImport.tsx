@@ -1,4 +1,4 @@
-import { isValidCombo, parseCharacterExport, PROFESSION_SKILL_LINES, professionsFromExport, type CharacterExport } from "@forever/game-data";
+import { isValidCombo, parseCharacterExport, sameCharacter, PROFESSION_SKILL_LINES, professionsFromExport, type CharacterExport } from "@forever/game-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, get, post, type Character, type GameItem } from "../api";
@@ -93,7 +93,7 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
         {d && (
           <div className="bi-result ok">
             <div><strong>{d.name}</strong> <span className="muted">({d.realm}) · exporté le {new Date(d.time * 1000).toLocaleString("fr-FR")}</span></div>
-            {d.name.toLowerCase() !== c.name.toLowerCase() && <span className="bi-msg bad">Cet export est celui de {d.name}, pas de {c.name} : vérifie que c'est la bonne fiche.</span>}
+            {!sameCharacter(d.name, c.name) && <span className="bi-msg bad">Cet export est celui de {d.name}, pas de {c.name} : vérifie que c'est la bonne fiche.</span>}
             {classClash && <span className="bi-msg bad">Classe différente : {d.cls} en jeu, {c.cls} sur la fiche. Rien ne sera repris.</span>}
             {raceClash && <span className="bi-msg bad">Race différente : {d.race} en jeu, {c.race} sur la fiche (la race de la fiche est gardée).</span>}
             <div className="ai-parts">

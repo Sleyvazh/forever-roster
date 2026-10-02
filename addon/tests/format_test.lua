@@ -7,6 +7,8 @@ local function check(cond, msg) if not cond then failures = failures + 1 print("
 local raid, members = F.ParseFRR("FRR;1;4a1e;1794513600;Molten Core\r\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Bob;PRIEST;Heal;Holy Heal;0;0;tentative;discord\nEND;2\n")
 check(raid and raid.name == "Molten Core" and raid.time == 1794513600, "en-tête FRR")
 check(members and #members == 2 and members[1].group == 1 and members[2].source == "discord", "membres FRR")
+local r3, m3 = F.ParseFRR("FRR;1;x;0;Raid\nM;Greta Coulé;DRUID;DPS;Feral Cat;1;1;present;site\nEND;1")
+check(r3 and m3[1].name == "Greta", "nom de famille retiré pour le jeu")
 local r2, err = F.ParseFRR("FRR;1;x;0;Raid\nM;A;MAGE;DPS;Frost;1;1;present;site\nEND;2")
 check(r2 == nil and err:find("incomplet"), "export tronqué détecté")
 local r3, err3 = F.ParseFRR("FRR;2;x;0;Raid\nEND;0")

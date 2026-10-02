@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addonExport, inviteMacros } from "./addon";
+import { addonExport, inviteMacros, sameCharacter } from "./addon";
 import { weeklyOccurrences, zonedParts, zonedTime } from "./time";
 
 describe("fuseau du serveur de jeu", () => {
@@ -39,5 +39,16 @@ describe("export addon", () => {
     expect(macros.every(m => m.length <= 255)).toBe(true);
     expect(macros.join("\n").split("\n")).toHaveLength(40);
     expect(inviteMacros(["A", "A", ""])).toEqual(["/inv A"]);
+  });
+  it("nom de famille de Forever : le jeu n'utilise que le prénom", () => {
+    expect(inviteMacros(["Greta Coulé", "Sley"])).toEqual(["/inv Greta\n/inv Sley"]);
+    const text = addonExport({ id: "r1", name: "MC", scheduledAt: null }, [
+      { name: "Greta Coulé", cls: "Druid", spec: "Feral Cat", role: "DPS", group: 1, pos: 1, status: "present", source: "site" },
+    ]);
+    expect(text).toContain("\nM;Greta;DRUID;");
+    expect(sameCharacter("Greta", "Greta Coulé")).toBe(true);
+    expect(sameCharacter("greta", "Gréta")).toBe(false);
+    expect(sameCharacter("Sylvaë", "SYLVAË")).toBe(true);
+    expect(sameCharacter("Greta", "Malveillance")).toBe(false);
   });
 });

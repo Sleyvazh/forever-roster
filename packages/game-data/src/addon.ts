@@ -24,12 +24,22 @@ export interface ExportMember {
 
 const clean = (s: string) => s.replace(/[;\r\n|]/g, " ").trim();
 
+/**
+ * Nom du perso tel que le jeu le connaît : Forever permet un nom de famille (« Greta Coulé »),
+ * mais le jeu (invitations, export de l'addon) n'utilise que le prénom.
+ */
+export const gameName = (name: string) => clean(name).split(/\s+/)[0] ?? "";
+
+/** L'export du jeu (prénom seul) correspond-il à cette fiche (prénom + nom de famille éventuel) ? */
+export const sameCharacter = (exportName: string, ficheName: string) =>
+  gameName(exportName).normalize("NFC").toLocaleLowerCase("fr") === gameName(ficheName).normalize("NFC").toLocaleLowerCase("fr");
+
 export function addonExport(raid: { id: string; name: string; scheduledAt: string | null }, members: ExportMember[]): string {
   const unix = raid.scheduledAt ? Math.floor(new Date(raid.scheduledAt).getTime() / 1000) : 0;
   const sorted = [...members].sort((a, b) => (a.group || 99) - (b.group || 99) || a.pos - b.pos || a.name.localeCompare(b.name));
   const lines = [
     `FRR;${ADDON_FORMAT_VERSION};${raid.id};${unix};${clean(raid.name)}`,
-    ...sorted.map(m => ["M", clean(m.name), m.cls.toUpperCase(), m.role ?? "", clean(m.spec ?? ""), m.group, m.pos, m.status ?? "", m.source].join(";")),
+    ...sorted.map(m => ["M", m.source === "site" ? gameName(m.name) : clean(m.name), m.cls.toUpperCase(), m.role ?? "", clean(m.spec ?? ""), m.group, m.pos, m.status ?? "", m.source].join(";")),
     `END;${sorted.length}`,
   ];
   return lines.join("\n");
@@ -39,7 +49,7 @@ export function addonExport(raid: { id: string; name: string; scheduledAt: strin
 export function inviteMacros(names: string[], max = 255): string[] {
   const macros: string[] = [];
   let cur = "";
-  for (const n of [...new Set(names.map(clean).filter(Boolean))]) {
+  for (const n of [...new Set(names.map(gameName).filter(Boolean))]) {
     const line = `/inv ${n}`;
     if (cur && cur.length + 1 + line.length > max) { macros.push(cur); cur = ""; }
     cur = cur ? `${cur}\n${line}` : line;
