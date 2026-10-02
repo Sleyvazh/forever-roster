@@ -279,3 +279,81 @@ export function appearanceIcons(tables: Pick<DetailTables, "ItemModifiedAppearan
   }
   return new Map([...best].map(([k, v]) => [k, v.fid]));
 }
+
+/* ---------- Talents de Forever (système C_Traits) ---------- */
+
+const CLASS_BY_MASK: Record<number, string> = { 1: "Warrior", 2: "Paladin", 4: "Hunter", 8: "Rogue", 16: "Priest", 64: "Shaman", 128: "Mage", 256: "Warlock", 1024: "Druid" };
+/**
+ * Un arbre de classe contient les 3 spécialisations côte à côte, sur une grille de 600 unités :
+ * x ≈ 1020 / 5020 / 9080 pour la 1re colonne de chaque spé, y ≈ 2130 pour le 1er palier.
+ * Les nœuds hors de cette zone (cachés ou de test) sont ignorés.
+ */
+const SPEC_BASE_X = [1020, 5020, 9080], TIER0_Y = 2130, STEP = 600;
+
+export interface TalentRow {
+  id: number; cls: string; tree: number; tier: number; col: number; maxRank: number; name: string; spellId: number;
+  /** Position dans le lien du calculateur ForeverChanges : palier puis colonne, dans chaque spé. */
+  linkIndex: number;
+  iconId: number | null; icon?: string;
+  /** Talent requis (flèche de l'arbre). */
+  prereq: number | null;
+  description: string;
+}
+
+export function buildForeverTalents(
+  t: { TraitNode?: Row[]; TraitNodeEntry?: Row[]; TraitDefinition?: Row[]; TraitNodeXTraitNodeEntry?: Row[]; TraitEdge?: Row[]; SpellMisc?: Row[] },
+  main: { SpellName: Row[]; SkillLineAbility: Row[] }, spells: SpellTexts,
+): TalentRow[] {
+  if (!t.TraitNode?.length || !t.TraitNodeEntry || !t.TraitDefinition || !t.TraitNodeXTraitNodeEntry) return [];
+  const entry = new Map(t.TraitNodeEntry.map(r => [I(r.ID), r]));
+  const def = new Map(t.TraitDefinition.map(r => [I(r.ID), r]));
+  const firstEntry = new Map<number, { index: number; entry: number }>();
+  for (const r of t.TraitNodeXTraitNodeEntry) {
+    const node = I(r.TraitNodeID), index = I(r._Index), cur = firstEntry.get(node);
+    if (!cur || index < cur.index) firstEntry.set(node, { index, entry: I(r.TraitNodeEntryID) });
+  }
+  const spellName = new Map(main.SpellName.map(r => [I(r.ID), r.Name_lang ?? ""]));
+  const icon = new Map((t.SpellMisc ?? []).map(r => [I(r.SpellID), I(r.SpellIconFileDataID)]));
+  const classOfSpell = new Map<number, string>();
+  for (const r of main.SkillLineAbility) { const c = CLASS_BY_MASK[I(r.ClassMask)]; if (c) classOfSpell.set(I(r.Spell), c); }
+  const prereq = new Map((t.TraitEdge ?? []).map(r => [I(r.RightTraitNodeID), I(r.LeftTraitNodeID)]));
+
+  // Nœuds par arbre, avec leur sort
+  type N = { id: number; tree: number; x: number; y: number; maxRank: number; spellId: number; name: string; iconId: number };
+  const byTree = new Map<number, N[]>();
+  for (const r of t.TraitNode) {
+    const e = entry.get(firstEntry.get(I(r.ID))?.entry ?? 0), d = e ? def.get(I(e.TraitDefinitionID)) : undefined;
+    if (!e || !d) continue;
+    const spellId = I(d.SpellID);
+    const n: N = { id: I(r.ID), tree: I(r.TraitTreeID), x: I(r.PosX), y: I(r.PosY), maxRank: I(e.MaxRanks), spellId,
+      name: d.OverrideName_lang || spellName.get(spellId) || "", iconId: I(d.OverrideIcon) || icon.get(spellId) || 0 };
+    (byTree.get(n.tree) ?? byTree.set(n.tree, []).get(n.tree)!).push(n);
+  }
+  // Classe de chaque arbre : celle de la majorité de ses sorts ; on garde l'arbre le plus fourni par classe
+  const best = new Map<string, { tree: number; size: number }>();
+  for (const [tree, list] of byTree) {
+    const votes = new Map<string, number>();
+    for (const n of list) { const c = classOfSpell.get(n.spellId); if (c) votes.set(c, (votes.get(c) ?? 0) + 1); }
+    const top = [...votes].sort((a, b) => b[1] - a[1])[0];
+    if (!top || list.length < 20) continue;
+    const cur = best.get(top[0]);
+    if (!cur || list.length > cur.size) best.set(top[0], { tree, size: list.length });
+  }
+  const out: TalentRow[] = [];
+  for (const [cls, { tree }] of best) {
+    const placed = byTree.get(tree)!.flatMap(n => {
+      const spec = n.x < 4000 ? 0 : n.x < 8000 ? 1 : 2;
+      const col = Math.round((n.x - SPEC_BASE_X[spec]!) / STEP), tier = Math.round((n.y - TIER0_Y) / STEP);
+      return col >= 0 && col < 4 && tier >= 0 && tier < 9 ? [{ n, spec, col, tier }] : [];
+    });
+    for (let spec = 0; spec < 3; spec++) {
+      placed.filter(p => p.spec === spec).sort((a, b) => a.tier - b.tier || a.col - b.col).forEach((p, linkIndex) => {
+        out.push({
+          id: p.n.id, cls, tree: spec, tier: p.tier, col: p.col, maxRank: p.n.maxRank, name: p.n.name, spellId: p.n.spellId, linkIndex,
+          iconId: p.n.iconId || null, prereq: prereq.get(p.n.id) ?? null, description: spells.describe(p.n.spellId) ?? "",
+        });
+      });
+    }
+  }
+  return out;
+}

@@ -593,3 +593,25 @@ button.hportrait { cursor: pointer; }
 .ai-parts { display: grid; gap: 4px; }
 .ai-part { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; align-items: baseline; font-size: 13.5px; }
 .ai-part .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Arbres de talents de Forever en grille (disposition réelle du jeu) */
+.ttrees.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; }
+.tt-col { display: grid; gap: 6px; justify-items: center; padding: 8px 4px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
+.tt-col.main { border-color: color-mix(in srgb, var(--cc, var(--gold)) 60%, var(--line)); }
+.tt-colhead { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0 4px; min-width: 0; }
+.tt-colhead .tt-pts { margin-left: auto; }
+.tt-col.main .tt-name, .tt-col.main .tt-pts { color: var(--cc); }
+.tg { position: relative; }
+.tg-arrows { position: absolute; inset: 0; pointer-events: none; }
+.tg-arrows line { stroke: var(--line-2); stroke-width: 2; }
+.tg-arrows line.on { stroke: var(--gold); }
+.tg-slot { position: absolute; width: 30px; height: 30px; border-radius: 5px; background: var(--panel-2); box-shadow: 0 0 0 1px var(--line-2); }
+.tg-slot img, .tg-ph { width: 100%; height: 100%; border-radius: 5px; display: grid; place-items: center; object-fit: cover; filter: grayscale(1) brightness(.5); }
+.tg-ph { font: 600 10px/1 var(--f-mono); color: var(--ink-3); filter: none; }
+.tg-slot.on img { filter: none; }
+.tg-slot.on { box-shadow: 0 0 0 2px var(--ok); }
+.tg-slot.max { box-shadow: 0 0 0 2px var(--gold); }
+.tg-slot.locked { opacity: .55; }
+.tg-slot b { position: absolute; right: -5px; bottom: -6px; padding: 0 2px; border-radius: 3px; font-size: 8.5px; line-height: 1.25; background: #0b1022; color: #cfd3dc; border: 1px solid var(--line-2); }
+.tg-slot.on b { color: #1eff00; } .tg-slot.max b { color: #ffd100; }
+.tg-slot:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

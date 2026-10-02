@@ -52,6 +52,12 @@ export const DETAIL_TABLES = {
   // Icône quand Item.IconFileDataID vaut 0 : celle de l'apparence de l'objet
   ItemModifiedAppearance: ["ItemID", "ItemAppearanceID", "OrderIndex"],
   ItemAppearance: ["ID", "DefaultIconFileDataID"],
+  // Talents de Forever (système C_Traits) : arbres, nœuds, rangs, sorts, flèches
+  TraitNode: ["ID", "TraitTreeID", "PosX", "PosY"],
+  TraitNodeEntry: ["ID", "TraitDefinitionID", "MaxRanks"],
+  TraitDefinition: ["ID", "SpellID"],
+  TraitNodeXTraitNodeEntry: ["TraitNodeID", "TraitNodeEntryID"],
+  TraitEdge: ["LeftTraitNodeID", "RightTraitNodeID"],
 } as const;
 export type DetailTableName = keyof typeof DETAIL_TABLES;
 export type DetailTables = Partial<Record<DetailTableName, Record<string, string>[]>>;

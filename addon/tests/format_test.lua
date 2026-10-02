@@ -23,7 +23,7 @@ local text = F.BuildFRC(
     { "G", 1, 16866 }, { "G", 7, 15065 },
     { "P", "Leatherworking", 300, 300 }, { "P", "Skinning", 295, 300 }, { "P", "Cooking", 150, 225 }, { "P", "Unarmed", 300, 300 },
     { "R", "Leatherworking", "s2152" }, { "R", "Leatherworking", "i15065" },
-    { "T", 101, 5, 5, 1200, 600, 16934, 0, 7 }, { "T", 102, 0, 3, 600, 1200, 16862, 0, 7 },
+    { "T", 104938, 5, 5, 5620, 2130, 16934, 0, 1089 }, { "T", 104939, 3, 5, 6220, 2130, 24894, 0, 1089 },
     { "G", 13, "piège;|cff" },
   })
 check(text:match("^FRC;1;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;0%.1%.0\n"), "en-tête FRC")

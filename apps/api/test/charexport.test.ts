@@ -15,7 +15,7 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(r.data.gear).toEqual({ Head: 16866, Legs: 15065 });
     expect(r.data.professions.map(p => p.name)).toEqual(["Leatherworking", "Skinning", "Cooking"]);
     expect(r.data.recipes).toEqual([{ profession: "Leatherworking", spellId: 2152 }, { profession: "Leatherworking", itemId: 15065 }]);
-    expect(r.data.talents[0]).toEqual({ id: 101, rank: 5, max: 5, x: 1200, y: 600, spell: 16934, sub: 0, tree: 7 });
+    expect(r.data.talents[0]).toEqual({ id: 104938, rank: 5, max: 5, x: 5620, y: 2130, spell: 16934, sub: 0, tree: 1089 });
     expect(professionsFromExport(r.data.professions)).toEqual({
       prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 295 }, cooking: 150, fishing: 0, firstAid: 0,
     });

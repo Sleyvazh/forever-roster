@@ -3,8 +3,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseCsv } from "../src/gamedata/csv";
 import { extract, fillFromEra, readItems } from "../src/gamedata/extract";
-import { isEraBuild, isForeverBuild, latestBuild, latestEraBuild, readItemTables, readTables } from "../src/gamedata/source";
+import { isEraBuild, isForeverBuild, latestBuild, latestEraBuild, readDetailTables, readItemTables, readTables } from "../src/gamedata/source";
 import { storeGameData } from "../src/gamedata/store";
+import { buildForeverTalents, buildSpellTexts } from "../src/gamedata/details";
 import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures/gamedata");
@@ -15,7 +16,9 @@ beforeAll(async () => {
   const tables = await readTables(FIXTURES);
   const data = extract(tables);
   data.items = fillFromEra(data.items, readItems({ ...(await readItemTables(ERA)), ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items);
-  await storeGameData(env.app.ctx.db, data, "1.60.1.70009", { eraBuild: "1.15.9.69722" });
+  const detail = await readDetailTables(FIXTURES);
+  const talents = buildForeverTalents(detail, tables, buildSpellTexts({ ...detail, SpellEffect: tables.SpellEffect }));
+  await storeGameData(env.app.ctx.db, { ...data, talents }, "1.60.1.70009", { eraBuild: "1.15.9.69722" });
 });
 afterAll(async () => { await env.close(); });
 
@@ -104,6 +107,24 @@ describe("API données du jeu", () => {
     expect(Object.keys(batch).sort()).toEqual(["16866", "19019"]);
     expect(batch[16866]).toMatchObject({ name: "Helm of Might", quality: 4, itemLevel: 66 });
     expect((await c.get("/api/gamedata/items/batch?ids=1;DROP")).statusCode).toBe(400);
+  });
+
+  it("donne les arbres de talents de Forever comme le calculateur ForeverChanges", async () => {
+    const { c } = await signedIn(env);
+    const { talents } = (await c.get("/api/gamedata/talents/Druid")).json();
+    type T = { tree: number; tier: number; col: number; maxRank: number; name: string; linkIndex: number; prereq: number | null };
+    const grid = (tree: number) => Array.from({ length: 7 }, (_, tier) => [0, 1, 2, 3].map(col =>
+      (talents as T[]).find(t => t.tree === tree && t.tier === tier && t.col === col)?.maxRank ?? 0).join(""));
+    // Rangs max par palier (colonnes 0 à 3), relevés sur le calculateur pour Balance et Feral Combat
+    expect(grid(0)).toEqual(["0550", "3222", "3010", "1550", "2130", "0500", "0100"]);
+    expect(grid(1)).toEqual(["0550", "2323", "0212", "3132", "2103", "5050", "0100"]);
+    // Ordre du lien : palier puis colonne ; 19 talents dans Feral (lien …-5520002123032213051-…)
+    const feral = (talents as T[]).filter(t => t.tree === 1).sort((a, b) => a.linkIndex - b.linkIndex);
+    expect(feral).toHaveLength(19);
+    expect(feral.slice(0, 2).map(t => t.name)).toEqual(["Ferocity", "Heart of the Wild"]);
+    expect((talents as T[]).some(t => t.prereq)).toBe(true);
+    expect((await c.get("/api/gamedata/talents/Paladin")).json()).toEqual({ talents: [] });
+    expect((await c.get("/api/gamedata/talents/Murloc")).statusCode).toBe(400);
   });
 
   it("exige une session", async () => {

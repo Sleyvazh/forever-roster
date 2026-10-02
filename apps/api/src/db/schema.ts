@@ -268,6 +268,26 @@ export const gameRecipes = pgTable("game_recipes", {
   fromItem: boolean("from_item").notNull().default(false),
 }, t => [index("game_recipes_skill_idx").on(t.skillLine), index("game_recipes_created_item_idx").on(t.createdItemId)]);
 
+/** Talents de Forever par classe (système C_Traits) : position dans l'arbre de chaque spé, rang max, sort, flèche. */
+export const gameTalents = pgTable("game_talents", {
+  /** Identifiant du nœud (le même que dans l'export de l'addon). */
+  id: integer("id").primaryKey(),
+  cls: text("cls").notNull(),
+  /** Spé : 0, 1 ou 2, dans l'ordre des arbres de la classe. */
+  tree: smallint("tree").notNull(),
+  tier: smallint("tier").notNull(),
+  col: smallint("col").notNull(),
+  /** Position dans le lien du calculateur ForeverChanges (palier puis colonne). */
+  linkIndex: smallint("link_index").notNull(),
+  maxRank: smallint("max_rank").notNull(),
+  name: text("name").notNull(),
+  spellId: integer("spell_id").notNull(),
+  icon: text("icon"),
+  iconId: integer("icon_id"),
+  prereq: integer("prereq"),
+  description: text("description").notNull().default(""),
+}, t => [index("game_talents_cls_idx").on(t.cls)]);
+
 export const gameMeta = pgTable("game_meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

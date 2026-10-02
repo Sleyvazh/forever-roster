@@ -1,9 +1,9 @@
-import { GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
+import { CLASSES, GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characterRecipes, characters, gameItems, gameRecipes, groupMembers, users } from "../db/schema";
+import { characterRecipes, characters, gameItems, gameRecipes, gameTalents, groupMembers, users } from "../db/schema";
 import { gameDataStatus } from "../gamedata/store";
 import { notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -98,6 +98,16 @@ export async function gameDataRoutes(app: FastifyInstance) {
           .map(k => ({ name: k.name, owner: k.owner, mine: k.userId === u.id })),
       })),
     };
+  });
+
+  /** Arbres de talents de Forever d'une classe : positions, rangs max, sorts, flèches et textes. */
+  app.get("/talents/:cls", async (req, reply) => {
+    const { cls } = parse(z.object({ cls: z.enum(Object.keys(CLASSES) as [string, ...string[]]) }), req.params);
+    const talents = await db.select({ id: gameTalents.id, tree: gameTalents.tree, tier: gameTalents.tier, col: gameTalents.col, linkIndex: gameTalents.linkIndex,
+      maxRank: gameTalents.maxRank, name: gameTalents.name, icon: gameTalents.icon, prereq: gameTalents.prereq, description: gameTalents.description })
+      .from(gameTalents).where(eq(gameTalents.cls, cls)).orderBy(asc(gameTalents.tree), asc(gameTalents.linkIndex));
+    reply.header("Cache-Control", "private, max-age=3600");
+    return { talents };
   });
 
   app.get("/items/:id", async (req) => {

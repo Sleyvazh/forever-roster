@@ -2,6 +2,7 @@ import { isValidCombo, parseCharacterExport, PROFESSION_SKILL_LINES, professions
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, get, post, type Character, type GameItem } from "../api";
+import { linkFromRanks, useTalentData } from "./TalentTrees";
 
 type Part = "identity" | "gear" | "professions" | "recipes" | "talents";
 const PARTS: [Part, string][] = [["identity", "Niveau, race et classe"], ["gear", "Équipement porté"], ["professions", "Métiers"], ["recipes", "Patrons connus"], ["talents", "Talents"]];
@@ -24,12 +25,16 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
   const raceClash = !!(d?.race && c.race && d.race !== c.race);
   const gearCount = d ? Object.keys(d.gear).length : 0;
   const spent = d ? d.talents.reduce((a, t) => a + t.rank, 0) : 0;
+  // Talents en jeu → lien du calculateur et répartition, via les arbres de Forever de la classe
+  const tcls = d?.cls ?? c.cls;
+  const tdata = useTalentData(tcls, !!d?.talents.length);
+  const build = d && tdata.data ? linkFromRanks(tcls, tdata.data.talents, new Map(d.talents.map(t => [t.id, t.rank]))) : null;
   const count: Record<Part, string> = {
     identity: d ? `niveau ${d.level}${d.cls ? ` · ${d.cls}` : ""}${d.race ? ` · ${d.race}` : ""}` : "",
     gear: `${gearCount} pièce${gearCount > 1 ? "s" : ""}`,
     professions: d ? d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun" : "",
     recipes: d ? `${d.recipes.length} patron${d.recipes.length > 1 ? "s" : ""}${d.recipes.length ? "" : " (ouvre tes fenêtres de métier en jeu avant d'exporter)"}` : "",
-    talents: d ? `${spent} point${spent > 1 ? "s" : ""} dans ${d.talents.filter(t => t.rank > 0).length} talents` : "",
+    talents: d ? (build ? `répartition ${build.split} (spé principale)` : `${spent} point${spent > 1 ? "s" : ""} dans ${d.talents.filter(t => t.rank > 0).length} talents`) : "",
   };
   const toggle = (p: Part) => setParts(s => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
 
@@ -54,7 +59,10 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
         patch.gear = gear;
       }
       if (parts.has("professions") && d.professions.length) patch.professions = professionsFromExport(d.professions);
-      if (parts.has("talents") && d.talents.length) patch.talentNodes = d.talents;
+      if (parts.has("talents") && d.talents.length) {
+        patch.talentNodes = d.talents;
+        if (build) { patch.talents = build.split; patch.talentLink = build.link; }
+      }
       onChange(patch);
       let recipesMsg = "";
       if (parts.has("recipes") && d.recipes.length) {
@@ -100,7 +108,7 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
               <button type="button" className="btn primary sm" disabled={busy || classClash || !parts.size} onClick={() => void apply()}>
                 {busy ? "Mise à jour…" : "Mettre à jour la fiche"}
               </button>
-              <span className="hint">L'objectif BiS, les spés et les notes ne sont pas modifiés.</span>
+              <span className="hint">L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont pas modifiés.</span>
             </div>
           </div>
         )}

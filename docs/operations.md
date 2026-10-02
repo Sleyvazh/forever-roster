@@ -193,7 +193,7 @@ sudo docker compose up -d api
 
 Les recherches d'objets (onglet Équipement), les patrons (onglet Métiers) et l'onglet Artisans des groupes s'appuient sur les tables du client de WoW Forever, publiées en CSV par [wago.tools](https://wago.tools). ForeverChanges et forever-ref utilisent la même source. Wowhead n'a pas d'API publique et interdit l'aspiration de ses pages. Le site y renvoie donc seulement par des liens.
 
-L'import télécharge 12 tables, plus 12 tables de détail pour les infobulles (≈ 2 minutes), et remplace les données en une seule transaction :
+L'import télécharge 12 tables, plus 19 tables de détail pour les infobulles et les talents (≈ 2 minutes), et remplace les données en une seule transaction :
 
 ```bash
 cd ~/forever-roster
@@ -208,6 +208,7 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 - **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
 - **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever n'est jamais remplacé. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
 - **Infobulles :** armure, caractéristiques, dégâts des armes, effets « Équipé : » et bonus de set sont calculés à l'import à partir des barèmes du client (RandPropPoints, ItemArmor*, ItemDamage*, Spell*, ItemSet). Si une de ces tables manque ou change de structure, l'import continue et les infobulles se limitent au nom, à l'emplacement et au niveau. Pas encore affichés : durabilité et dégâts des armes à distance. Le nom de l'icône de chaque objet est retrouvé via la [liste de fichiers communautaire](https://github.com/wowdev/wow-listfile) (`--no-icons` pour sauter cette étape).
+- **Talents :** les arbres de Forever ne sont pas ceux de Classic. Le jeu utilise le système `C_Traits` : les talents viennent des tables Trait* (un arbre par classe, avec ses trois spés côte à côte). L'import en tire la position de chaque talent (palier, colonne), son rang maximal, son prérequis, son icône et sa description, dans l'ordre du calculateur ForeverChanges. La vue « Arbres » de la fiche lit donc les rangs d'un lien du calculateur, ou de l'export de l'addon. Le journal affiche « Talents : N talents pour 9 classes » ; si ces tables manquent, les talents déjà importés restent en place.
 - **Recettes en double :** le client contient aussi des recettes de la Saison de la Découverte, au même nom qu'une recette d'origine mais dont l'objet n'existe pas sur Forever. L'import garde la version dont l'objet est connu, et reporte sur elle les patrons que les joueurs avaient cochés sur l'autre.
 - **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
 

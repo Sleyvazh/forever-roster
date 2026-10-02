@@ -10,7 +10,8 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { ImageUpload, Portrait } from "./ImageUpload";
 import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
-import { TalentTrees } from "./TalentTrees";
+import { ranksFrom, TalentTrees, useTalentData, type Talent, type TreeView } from "./TalentTrees";
+import { useViewPref } from "../prefs";
 import { AddonImport } from "./AddonImport";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
@@ -101,6 +102,9 @@ function Profil({ c, onChange, editable }: SubProps) {
   const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
   const avail = talentPointsAt(c.level);
   const slug = cl?.slug ?? "warrior";
+  const [view, setView] = useViewPref<TreeView>("trees", "gauges", ["gauges", "grid"]);
+  const tdata = useTalentData(c.cls, !!cl);
+  const talents = tdata.data?.talents ?? [];
 
   const setClass = (cls: string) => {
     const sp: readonly string[] = CLASSES[cls as ClassName]?.specs ?? [];
@@ -139,6 +143,13 @@ function Profil({ c, onChange, editable }: SubProps) {
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
         <div className="row between" style={{ alignItems: "baseline" }}>
           <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
+          {cl && talents.length > 0 && (
+            <div className="seg" role="group" aria-label="Affichage des arbres">
+              {([["gauges", "Jauges"], ["grid", "Arbres"]] as const).map(([k, l]) => (
+                <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>
+              ))}
+            </div>
+          )}
         </div>
         {!cl && <p className="hint">Choisis une classe pour afficher les spés et les arbres.</p>}
         {cl && editable && (
@@ -147,9 +158,9 @@ function Profil({ c, onChange, editable }: SubProps) {
         )}
         {cl && (
           <div className="builds">
-            <Build id="main" title="Spé principale" cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
+            <Build id="main" title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" title="Off-spec" cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
+            <Build id="off" title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -165,8 +176,9 @@ function Profil({ c, onChange, editable }: SubProps) {
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, cls, specs, spec, talents, link, avail, level, onChange }: {
-  id: string; title: string; cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
+function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange }: {
+  id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"];
+  cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
   const cl = CLASSES[cls as ClassName];
@@ -174,6 +186,11 @@ function Build({ id, title, cls, specs, spec, talents, link, avail, level, onCha
   const split = (talents || "0/0/0").split("/").map(n => parseInt(n, 10) || 0);
   const total = split.reduce((a, b) => a + b, 0);
   const parsed = link ? parseTalentLink(link) : null;
+  // Rangs talent par talent : le lien du calculateur s'il est de cette classe, sinon le dernier export de l'addon
+  const linkOk = parsed?.ok && parsed.cls === cls;
+  const ranks = view === "grid" && treeTalents.length
+    ? ranksFrom(treeTalents, linkOk ? { blocks: parsed.blocks } : { nodes: nodes?.map(n => ({ id: n.id, rank: n.rank })) })
+    : null;
   /** Lien collé : la répartition suit automatiquement s'il vient du calculateur pour cette classe. */
   const setLink = (value: string) => {
     const r = parseTalentLink(value);
@@ -203,7 +220,10 @@ function Build({ id, title, cls, specs, spec, talents, link, avail, level, onCha
         </div>
       </div>
       {parsed?.ok && parsed.cls && parsed.cls !== cls && <div className="warnmsg">Ce lien est un build {parsed.cls} : la répartition n'a pas été reprise.</div>}
-      {cl && <TalentTrees cls={cls} points={split} mainTree={def?.tree} />}
+      {cl && <TalentTrees cls={cls} points={split} mainTree={def?.tree} view={view} ranks={ranks} talents={treeTalents} />}
+      {view === "grid" && treeTalents.length > 0 && !ranks && (
+        <div className="hint">{linkOk ? "Ce lien ne correspond pas aux arbres actuels de Forever (build d'une ancienne version ?)." : "Colle le lien du calculateur, ou importe tes talents depuis l'addon, pour voir l'arbre talent par talent."}</div>
+      )}
       <div className="row small">
         <span className="muted">Total <span className="num">{total}</span>/51</span>
         {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}

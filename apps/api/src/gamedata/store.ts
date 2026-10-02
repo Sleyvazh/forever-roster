@@ -1,12 +1,13 @@
 import { count, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { characterRecipes, gameItems, gameMeta, gameRecipes } from "../db/schema";
+import { characterRecipes, gameItems, gameMeta, gameRecipes, gameTalents } from "../db/schema";
 import type { ItemRow, RecipeRow } from "./extract";
+import type { TalentRow } from "./details";
 
 const chunk = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 
 /** Remplace le contenu des tables du jeu en une seule transaction : l'application ne voit jamais une base à moitié importée. */
-export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: RecipeRow[] }, build: string,
+export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: RecipeRow[]; talents?: TalentRow[] }, build: string,
   extra: { eraBuild?: string | null; cacheBuild?: string | null; cacheItems?: number; replacedRecipes?: Map<number, number> } = {}) {
   await db.transaction(async tx => {
     // Patrons cochés sur une recette écartée comme doublon : reportés sur celle qui la remplace
@@ -24,6 +25,12 @@ export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: R
     for (const part of chunk(rows, 1000)) await tx.insert(gameItems).values(part);
     await tx.delete(gameRecipes);
     for (const part of chunk(data.recipes, 1000)) await tx.insert(gameRecipes).values(part);
+    // Talents : remplacés seulement si l'import les a lus (sinon on garde ceux déjà en base)
+    if (data.talents?.length) {
+      await tx.delete(gameTalents);
+      for (const part of chunk(data.talents.map(({ id, cls, tree, tier, col, linkIndex, maxRank, name, spellId, icon, iconId, prereq, description }) =>
+        ({ id, cls, tree, tier, col, linkIndex, maxRank, name, spellId, icon: icon ?? null, iconId, prereq, description })), 500)) await tx.insert(gameTalents).values(part);
+    }
     const eraItems = data.items.filter(i => i.origin === "era").length;
     const meta = {
       build, importedAt: new Date().toISOString(), source: "wago.tools", eraBuild: extra.eraBuild ?? "", eraItems: String(eraItems),

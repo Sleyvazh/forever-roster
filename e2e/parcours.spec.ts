@@ -78,6 +78,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("button", { name: "Appliquer à la spé principale" }).click();
     await expect(page.locator("#f-tal-main")).toHaveValue("9/37/5");
     await expect(page.locator(".tt.main .tt-pts").first()).toHaveText("37");
+    // Vue « Arbres » : les vrais arbres de Forever, rangs lus depuis le lien
+    await page.getByRole("group", { name: "Affichage des arbres" }).getByRole("button", { name: "Arbres" }).click();
+    await expect(page.locator(".tt-col.main .tg-slot.on").first()).toBeVisible();
+    await expect(page.locator(".build").first().locator(".tt-col.main .tg-slot.on")).toHaveCount(14);
+    await page.locator(".build").first().getByLabel("Ferocity : 5/5").hover();
+    await expect(page.locator(".itip")).toContainText("Rang 5/5");
+    await page.mouse.move(0, 0);
   });
 
   await test.step("portrait : recadrage puis envoi (sous la CSP de production)", async () => {
@@ -124,8 +131,12 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#f-addon", readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
     await expect(page.locator(".addon-import .bi-result")).toContainText("Tournicoti");
     await expect(page.locator(".addon-import")).toContainText("2 patrons");
+    await expect(page.locator(".addon-import")).toContainText("répartition 0/8/0 (spé principale)");
     await page.getByRole("button", { name: "Mettre à jour la fiche" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Fiche mise à jour depuis le jeu." })).toContainText("2 patrons cochés");
+    await expect(page.locator("#f-tal-main")).toHaveValue("0/8/0");
+    await expect(page.locator("#f-link-main")).toHaveValue("https://foreverchanges.pro/talents/druid?b=-53");
+    await expect(page.locator(".build").first().locator(".tt-col.main .tg-slot.on")).toHaveCount(2);
     await page.getByRole("tab", { name: "Équipement" }).click();
     await expect(page.getByRole("button", { name: /^Jambes : Warbear Woolies/ })).toBeVisible();
   });

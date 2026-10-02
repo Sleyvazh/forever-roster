@@ -15,7 +15,7 @@ import { createDb } from "../db/client";
 import { readFile } from "node:fs/promises";
 import { itemsFromCache, mergeCache, parseDbCache } from "./dbcache";
 import { dedupeRecipes, extract, fillFromEra, readItems } from "./extract";
-import { addDetails, appearanceIcons, iconNames } from "./details";
+import { addDetails, appearanceIcons, buildForeverTalents, buildSpellTexts, iconNames } from "./details";
 import { downloadDetailTables, downloadItemTables, downloadTables, latestBuild, latestEraBuild, listfileLines, readDetailTables, readItemTables, readTables } from "./source";
 import { gameDataStatus, storeGameData } from "./store";
 
@@ -82,11 +82,15 @@ const byAppearance = appearanceIcons(detailTables);
 let fromAppearance = 0;
 for (const it of data.items) if (!it.iconFileId && byAppearance.has(it.id)) { it.iconFileId = byAppearance.get(it.id); fromAppearance++; }
 if (fromAppearance) console.log(`Icônes : ${fromAppearance} objets sans icône propre complétés par leur apparence.`);
+// Talents de Forever : arbres du système C_Traits (positions, rangs, sorts, flèches)
+const talents = buildForeverTalents(detailTables, tables, buildSpellTexts({ ...detailTables, SpellEffect: tables.SpellEffect }));
+if (talents.length) console.log(`Talents : ${talents.length} talents pour ${new Set(talents.map(x => x.cls)).size} classes.`);
+else console.warn("Talents : tables absentes, les arbres déjà en base sont conservés.");
 const withStats = data.items.filter(i => i.details?.stats?.length || i.details?.armor || i.details?.dmg).length;
 console.log(`Infobulles : ${withStats} objets avec stats, armure ou dégâts.`);
 if (!dir && !process.argv.includes("--no-icons")) {
   try {
-    const ids = new Set(data.items.map(i => i.iconFileId).filter((v): v is number => !!v));
+    const ids = new Set([...data.items.map(i => i.iconFileId), ...talents.map(x => x.iconId)].filter((v): v is number => !!v));
     console.log(`Noms des icônes (listfile communautaire, ${ids.size} fichiers)…`);
     const names = await iconNames(ids, listfileLines());
     let n = 0;
@@ -100,7 +104,8 @@ if (!dir && !process.argv.includes("--no-icons")) {
         missing.add(it.iconFileId);
       }
     }
-    console.log(`${n} objets avec une icône (${names.size} icônes différentes).`);
+    for (const x of talents) if (x.iconId) x.icon = names.get(x.iconId) ?? `f${x.iconId}`;
+    console.log(`${n} objets avec une icône (${names.size} icônes différentes, talents compris).`);
     if (missing.size) console.log(`${missing.size} fichiers d'icône absents de la liste communautaire (ex. ${[...missing].slice(0, 5).join(", ")}) : récupérés par leur identifiant.`);
   } catch (err) { console.warn(`Icônes ignorées : ${(err as Error).message}`); }
 }
@@ -112,7 +117,7 @@ data.recipes = dedup.recipes;
 
 const { db, pool } = createDb(url);
 try {
-  await storeGameData(db, data, build, { eraBuild, cacheBuild, cacheItems, replacedRecipes: dedup.replaced });
+  await storeGameData(db, { ...data, talents }, build, { eraBuild, cacheBuild, cacheItems, replacedRecipes: dedup.replaced });
   console.log("Import terminé :", await gameDataStatus(db));
 } finally {
   await pool.end();
