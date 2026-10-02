@@ -2,7 +2,7 @@
 ## Title: Forever Roster
 ## Notes: Compo de raid du site Forever Roster, export du perso vers le site.
 ## Author: Sleyvazh
-## Version: 0.1.1
+## Version: 0.1.2
 ## SavedVariables: ForeverRosterDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 

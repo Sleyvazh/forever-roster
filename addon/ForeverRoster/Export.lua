@@ -38,11 +38,36 @@ local function scanCraft()
   scan(GetNumCrafts, function(i) local name, _, kind = GetCraftInfo(i) return name, kind end,
     GetCraftRecipeLink, GetCraftItemLink, function() return (GetCraftDisplaySkillLine and GetCraftDisplaySkillLine()) or (GetCraftSkillLine and GetCraftSkillLine(1)) end)
 end
-ns.on("TRADE_SKILL_SHOW", function() C_Timer.After(0.3, scanTradeSkill) end)
-ns.on("TRADE_SKILL_UPDATE", function() C_Timer.After(0.3, scanTradeSkill) end)
+-- API moderne des métiers (C_TradeSkillUI) : la recette est directement l'identifiant du sort
+local function scanModern()
+  local T = C_TradeSkillUI
+  if not (T and T.GetAllRecipeIDs) then return end
+  local line = T.GetBaseProfessionInfo and T.GetBaseProfessionInfo() or (T.GetTradeSkillLine and { professionName = (T.GetTradeSkillLine()) })
+  local prof = type(line) == "table" and (line.professionName or line.parentProfessionName) or nil
+  if not prof or prof == "" then return end
+  local db = ns.charDB()
+  db.recipes[prof] = db.recipes[prof] or {}
+  local n = 0
+  for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
+    local info = T.GetRecipeInfo and T.GetRecipeInfo(id)
+    if (not info or info.learned) and not db.recipes[prof]["s" .. id] then db.recipes[prof]["s" .. id] = true n = n + 1 end
+  end
+  if n > 0 then ns.print(n .. " patron(s) de " .. prof .. " ajouté(s) à l'export.") end
+end
+local function onTradeSkill()
+  C_Timer.After(0.3, function()
+    ns.safe("patrons", function()
+      if GetNumTradeSkills then scanTradeSkill() else scanModern() end
+    end)
+  end)
+end
+ns.on("TRADE_SKILL_SHOW", onTradeSkill)
+ns.on("TRADE_SKILL_UPDATE", onTradeSkill)
+ns.on("TRADE_SKILL_LIST_UPDATE", onTradeSkill)
 if GetNumCrafts then
-  ns.on("CRAFT_SHOW", function() C_Timer.After(0.3, scanCraft) end)
-  ns.on("CRAFT_UPDATE", function() C_Timer.After(0.3, scanCraft) end)
+  local onCraft = function() C_Timer.After(0.3, function() ns.safe("patrons", scanCraft) end) end
+  ns.on("CRAFT_SHOW", onCraft)
+  ns.on("CRAFT_UPDATE", onCraft)
 end
 
 function E.Build()

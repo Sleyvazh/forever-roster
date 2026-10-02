@@ -75,6 +75,8 @@ function T.Dump()
   end
   table.sort(globals)
   d.globals = globals
+  d.missingEvents = ns.missingEvents
+  d.tradeskill = { classic = GetNumTradeSkills ~= nil, craft = GetNumCrafts ~= nil, modern = C_TradeSkillUI ~= nil and keys(C_TradeSkillUI) or false }
   local ok, res = pcall(function()
     local configID = C_ClassTalents.GetActiveConfigID()
     local out = { configID = configID }

@@ -17,8 +17,11 @@ local function frame()
     return function() end
   end })
 end
+-- Comme le vrai client, un événement inconnu lève une erreur (cas du client Forever avec les événements de métier Classic)
+local UNKNOWN = { TRADE_SKILL_UPDATE = true, CRAFT_SHOW = true, CRAFT_UPDATE = true }
 local events = {}
-function CreateFrame() local f = frame() f.RegisterEvent = function(_, e) events[e] = f end return f end
+function CreateFrame() local f = frame() f.RegisterEvent = function(_, e) if UNKNOWN[e] then error("Attempt to register unknown event \"" .. e .. "\"") end events[e] = f end return f end
+local function fire(e, ...) local f = events[e] if f then rawget(f, "scripts").OnEvent(f, e, ...) end end
 UIParent, UISpecialFrames, RAID_CLASS_COLORS = frame(), {}, { DRUID = { colorStr = "ffff7c0a" } }
 SlashCmdList = {}
 function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
@@ -36,6 +39,13 @@ function UnitFactionGroup() return "Horde", "Horde" end
 function GetBuildInfo() return "1.60.1", "70170", "Oct 1 2026", 16001 end
 function GetInventoryItemID(_, slot) return slot == 1 and 16866 or nil end
 function GetNumSkillLines() return 0 end -- perso sans métier
+GetNumCrafts = function() return 0 end
+-- Métiers par l'API moderne (pas de GetNumTradeSkills)
+C_TradeSkillUI = {
+  GetAllRecipeIDs = function() return { 2152, 2153 } end,
+  GetRecipeInfo = function(id) return { learned = id == 2152 } end,
+  GetBaseProfessionInfo = function() return { professionName = "Leatherworking" } end,
+}
 function IsInRaid() return false end
 function IsInGroup() return false end
 function GetNumGroupMembers() return 0 end
@@ -51,8 +61,8 @@ for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
   if line:match("%.lua$") then assert(loadfile("addon/ForeverRoster/" .. line))("ForeverRoster", ns) end
 end
 -- Déclenche ADDON_LOADED par le gestionnaire enregistré
-local handler = events.ADDON_LOADED.scripts.OnEvent
-handler(events.ADDON_LOADED, "ADDON_LOADED", "ForeverRoster")
+fire("ADDON_LOADED", "ForeverRoster")
+for _, line in ipairs(printed) do assert(not line:find("non chargés"), line) end
 
 local failures = 0
 local function run(cmd)
@@ -80,6 +90,9 @@ assert(ForeverRosterDB.debug and #ForeverRosterDB.debug.talents.nodes == 2, "dia
 -- 3. Système de talents qui lève une erreur : l'export continue sans les talents
 C_Traits.GetConfigInfo = function() error("API différente") end
 run("export")
+-- Ouverture d'une fenêtre de métier : patrons relevés par C_TradeSkillUI
+fire("TRADE_SKILL_SHOW")
+assert(ForeverRosterDB.chars["Tournicoti-Forever EU"].recipes.Leatherworking.s2152 and not ForeverRosterDB.chars["Tournicoti-Forever EU"].recipes.Leatherworking.s2153, "patrons appris seulement")
 -- 4. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
@@ -89,5 +102,6 @@ run("aide")
 if failures > 0 then os.exit(1) end
 local export = ns.Export.Build()
 assert(export:match("^FRC;1;Tournicoti;") and export:find("\nG;1;16866\n"), "export de base")
+assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon")

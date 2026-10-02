@@ -12,12 +12,18 @@ end
 -- Petit bus d'événements : ns.on("GROUP_ROSTER_UPDATE", fn)
 local frame = CreateFrame("Frame")
 local handlers = {}
+-- Un événement que ce client ne connaît pas est ignoré (le jeu refuserait sinon tout le fichier)
+ns.missingEvents = {}
 function ns.on(event, fn)
   if not handlers[event] then
+    if not pcall(frame.RegisterEvent, frame, event) then
+      ns.missingEvents[#ns.missingEvents + 1] = event
+      return false
+    end
     handlers[event] = {}
-    frame:RegisterEvent(event)
   end
   table.insert(handlers[event], fn)
+  return true
 end
 frame:SetScript("OnEvent", function(_, event, ...)
   for _, fn in ipairs(handlers[event] or {}) do
@@ -41,6 +47,12 @@ ns.on("ADDON_LOADED", function(name)
   if name ~= ADDON then return end
   ForeverRosterDB = ForeverRosterDB or {}
   ForeverRosterDB.version = ns.version
+  -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
+  local missing = {}
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", UI = "ShowCompo" }) do
+    if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
+  end
+  if #missing > 0 then ns.print("|cffff6060modules non chargés : " .. table.concat(missing, ", ") .. "|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)") end
 end)
 
 local HELP = {
