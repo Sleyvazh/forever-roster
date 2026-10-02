@@ -118,6 +118,18 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".itip")).toContainText("Battlegear of Might");
   });
 
+  await test.step("addon : mise à jour de la fiche depuis l'export du jeu", async () => {
+    await page.getByRole("tab", { name: "Profil & talents" }).click();
+    await page.getByText("Importer depuis l'addon").click();
+    await page.fill("#f-addon", readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
+    await expect(page.locator(".addon-import .bi-result")).toContainText("Tournicoti");
+    await expect(page.locator(".addon-import")).toContainText("2 patrons");
+    await page.getByRole("button", { name: "Mettre à jour la fiche" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Fiche mise à jour depuis le jeu." })).toContainText("2 patrons cochés");
+    await page.getByRole("tab", { name: "Équipement" }).click();
+    await expect(page.getByRole("button", { name: /^Jambes : Warbear Woolies/ })).toBeVisible();
+  });
+
   await test.step("groupe : l'onglet Artisans montre le patron coché", async () => {
     await page.getByRole("link", { name: "Groupes" }).first().click();
     await page.fill("#g-name", "Les Testeurs");

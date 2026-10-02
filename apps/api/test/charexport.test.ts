@@ -1,0 +1,31 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { parseCharacterExport, professionFromGame, professionsFromExport } from "@forever/game-data";
+
+// Écrit par le test Lua de l'addon (lua5.1 addon/tests/format_test.lua) : le site lit exactement ce que l'addon produit
+const SAMPLE = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../addon/tests/sample.frc"), "utf8");
+
+describe("export d'un perso par l'addon (FRC v1)", () => {
+  it("lit l'export produit par l'addon", () => {
+    const r = parseCharacterExport(SAMPLE);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.data).toMatchObject({ name: "Tournicoti", realm: "Forever EU", cls: "Druid", race: "Tauren", level: 60, faction: "Horde", addon: "0.1.0" });
+    expect(r.data.gear).toEqual({ Head: 16866, Legs: 15065 });
+    expect(r.data.professions.map(p => p.name)).toEqual(["Leatherworking", "Skinning", "Cooking"]);
+    expect(r.data.recipes).toEqual([{ profession: "Leatherworking", spellId: 2152 }, { profession: "Leatherworking", itemId: 15065 }]);
+    expect(r.data.talents[0]).toEqual({ id: 101, rank: 5, max: 5, x: 1200, y: 600, spell: 16934, sub: 0, tree: 7 });
+    expect(professionsFromExport(r.data.professions)).toEqual({
+      prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 295 }, cooking: 150, fishing: 0, firstAid: 0,
+    });
+  });
+  it("reconnaît les métiers en français et refuse un export abîmé", () => {
+    expect(professionFromGame("Travail du cuir")).toBe("Leatherworking");
+    expect(professionFromGame("Secourisme")).toBe("First Aid");
+    expect(professionFromGame("Arme d'hast")).toBeNull();
+    expect(parseCharacterExport("FRR;1;x;0;Raid\nEND;0")).toMatchObject({ ok: false });
+    expect(parseCharacterExport(SAMPLE.replace(/\nEND;\d+$/, ""))).toMatchObject({ ok: false });
+    expect(parseCharacterExport(SAMPLE.replace("FRC;1;", "FRC;2;"))).toMatchObject({ ok: false });
+  });
+});

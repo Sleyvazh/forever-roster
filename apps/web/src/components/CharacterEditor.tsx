@@ -11,6 +11,7 @@ import { ImageUpload, Portrait } from "./ImageUpload";
 import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
 import { TalentTrees } from "./TalentTrees";
+import { AddonImport } from "./AddonImport";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 const TABS: [Tab, string][] = [["profil", "Profil & talents"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Legacy & notes"]];
@@ -112,6 +113,7 @@ function Profil({ c, onChange, editable }: SubProps) {
 
   return (
     <>
+      {editable && <div className="sec" style={{ paddingBottom: 0 }}><AddonImport c={c} onChange={onChange} /></div>}
       <div className="sec">
         <h3>Identité</h3>
         <div className="grid">

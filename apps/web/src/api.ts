@@ -55,6 +55,8 @@ export interface Character {
   gear: Record<string, GearEntry>;
   legacy: Record<string, { name: string; rank: number; max: number }[]>;
   notes: string; portraitId: string | null; sortOrder: number; updatedAt: string; owner?: string;
+  /** Talents lus en jeu par l'addon (null tant qu'aucun export). */
+  talentNodes?: import("@forever/game-data").ExportedTalentNode[] | null;
   /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
   gearStats?: import("@forever/game-data").GearStats;
 }

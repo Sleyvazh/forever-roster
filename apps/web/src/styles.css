@@ -585,3 +585,11 @@ button.hportrait { cursor: pointer; }
 .tt-gauge .cap { position: absolute; top: 1px; bottom: 1px; width: 3px; margin-left: -1px; border-radius: 1px; background: var(--line-2); }
 .tt-gauge .cap.on { background: var(--gold); box-shadow: 0 0 4px var(--gold); }
 
+
+/* Import depuis l'addon */
+.addon-import { border: 1px dashed var(--line-2); border-radius: 6px; padding: 10px 14px; }
+.addon-import summary { cursor: pointer; font-weight: 600; }
+.addon-import textarea { width: 100%; font: 12.5px/1.4 var(--f-mono); }
+.ai-parts { display: grid; gap: 4px; }
+.ai-part { display: grid; grid-template-columns: auto auto 1fr; gap: 8px; align-items: baseline; font-size: 13.5px; }
+.ai-part .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

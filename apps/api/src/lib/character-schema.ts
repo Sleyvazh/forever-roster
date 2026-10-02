@@ -38,6 +38,11 @@ export const characterFields = z.object({
   gear: z.partialRecord(z.enum(GEAR_SLOTS), gearEntry),
   legacy: z.partialRecord(z.enum(LEGACY_TREES.map(t => t.key) as [string, ...string[]]), z.array(perk).max(30)),
   notes: z.string().max(5000),
+  /** Talents lus en jeu par l'addon (positions et rangs dans l'arbre de Forever). */
+  talentNodes: z.array(z.object({
+    id: z.int().min(0), rank: z.int().min(0).max(20), max: z.int().min(0).max(20), x: z.int().min(-100000).max(100000), y: z.int().min(-100000).max(100000),
+    spell: z.int().min(0), sub: z.int().min(0), tree: z.int().min(0),
+  })).max(500).nullable(),
 });
 
 export type CharacterInput = z.infer<typeof characterFields>;

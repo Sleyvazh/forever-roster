@@ -95,6 +95,7 @@ export interface Professions {
   cooking: number; fishing: number; firstAid: number;
 }
 /** curId / bisId : identifiant de l'objet dans la base du jeu (game_items), quand il a été choisi dans la recherche. */
+export interface TalentNode { id: number; rank: number; max: number; x: number; y: number; spell: number; sub: number; tree: number }
 export type Gear = Partial<Record<string, { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }>>;
 export type Legacy = Partial<Record<string, { name: string; rank: number; max: number }[]>>;
 
@@ -115,6 +116,8 @@ export const characters = pgTable("characters", {
   professions: jsonb("professions").$type<Professions>().notNull()
     .default({ prof1: { name: "", skill: 0 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 }),
   gear: jsonb("gear").$type<Gear>().notNull().default({}),
+  /** Talents lus en jeu par l'addon (système de talents de Forever) : un nœud par talent. Null tant qu'aucun export. */
+  talentNodes: jsonb("talent_nodes").$type<TalentNode[] | null>(),
   legacy: jsonb("legacy").$type<Legacy>().notNull().default({}),
   notes: text("notes").notNull().default(""),
   /** Portrait du perso (capture de la tête en jeu, 200×200). */

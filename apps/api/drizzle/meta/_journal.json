@@ -85,6 +85,13 @@
       "when": 1790783320500,
       "tag": "0011_drop_talents",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790950451489,
+      "tag": "0012_character_talent_nodes",
+      "breakpoints": true
     }
   ]
 }

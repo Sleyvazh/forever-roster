@@ -1,6 +1,13 @@
-# Format d'export pour l'addon (FRR, version 1)
+# Formats d'échange entre le site et l'addon
 
-La page d'un raid propose un **Export pour le jeu** : un texte à coller dans le futur addon Forever Roster, et des macros `/inv`. Ce document fixe le format, pour que l'addon et le site évoluent sans se casser.
+L'addon Forever Roster (`addon/ForeverRoster`) n'a pas accès à internet : les données passent par copier-coller.
+
+- **FRR** (site → jeu) : la page d'un raid propose un **Export pour le jeu**, à coller dans l'addon (`/fr compo`), et des macros `/inv`.
+- **FRC** (jeu → site) : `/fr export` affiche un texte à coller sur la fiche du perso (**Importer depuis l'addon**).
+
+Ce document fixe ces formats, pour que l'addon et le site évoluent sans se casser.
+
+# FRR, version 1 : compo d'un raid
 
 ## Principes
 
@@ -70,3 +77,24 @@ Tout ajout se fait **en fin de ligne** ou avec un **nouveau type de ligne**, ign
 ## Macros d'invitation
 
 Une macro WoW est limitée à 255 caractères. Le site découpe donc les `/inv Nom` en plusieurs macros, persos placés uniquement.
+
+# FRC, version 1 : un perso, du jeu vers le site
+
+```
+FRC;1;<nom>;<royaume>;<CLASSE>;<race>;<niveau>;<faction>;<date unix>;<version de l'addon>
+G;<emplacement>;<objet>
+P;<métier ou compétence>;<rang>;<rang max>
+R;<métier>;s<sort> | i<objet>
+T;<nœud>;<rang>;<rang max>;<x>;<y>;<sort>;<sous-arbre>;<arbre>
+END;<nombre de lignes entre l'en-tête et END>
+```
+
+| Ligne | Contenu |
+|---|---|
+| en-tête | `CLASSE` : jeton du jeu (`DRUID`…). `race` : jeton du jeu (`Tauren`, `Scourge` pour Undead, `NightElf`…). |
+| `G` | Objet porté : emplacement du jeu (1 tête, 2 cou, 3 épaules, 15 dos, 5 torse, 9 poignets, 10 mains, 6 taille, 7 jambes, 8 pieds, 11-12 doigts, 13-14 bijoux, 16 main droite, 17 main gauche, 18 distance), identifiant de l'objet. Chemise et tabard ne sont pas exportés. |
+| `P` | Toutes les compétences du perso, nom tel qu'affiché par le jeu. Le site reconnaît les métiers en anglais et en français et ignore le reste (armes, langues…). |
+| `R` | Patron connu, relevé à l'ouverture des fenêtres de métier : `s` + sort de fabrication, ou `i` + objet fabriqué quand le jeu ne donne que lui. |
+| `T` | Talent (système de talents de Forever, `C_Traits`) : identifiant du nœud, rang, rang max, position dans l'arbre, sort, sous-arbre et arbre. |
+
+Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts`. Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.

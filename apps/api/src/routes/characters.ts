@@ -1,12 +1,14 @@
 import { charsChanged } from "../lib/events";
-import { and, asc, eq, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { PROFESSION_SKILL_LINES } from "@forever/game-data";
 import { characterRecipes, characters, gameRecipes, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { canSee } from "../lib/visibility";
+import { currentLines } from "../lib/professions";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 
 const MAX_CHARACTERS = 50;
@@ -17,7 +19,7 @@ export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
-  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt,
+  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null,
 });
 
 
@@ -113,6 +115,40 @@ export async function characterRoutes(app: FastifyInstance) {
     await db.insert(characterRecipes).values({ characterId: id, spellId, status })
       .onConflictDoUpdate({ target: [characterRecipes.characterId, characterRecipes.spellId], set: { status, updatedAt: new Date() } });
     return { ok: true };
+  });
+
+  /**
+   * Patrons connus envoyés par l'addon : identifiants de sort de fabrication, ou d'objet fabriqué (le jeu ne donne
+   * parfois que lui). Ajoutés comme « connus » sans rien retirer ; un patron « recherché » devient « connu ».
+   */
+  app.post("/:id/recipes/import", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(idParam, req.params);
+    const body = parse(z.object({
+      spellIds: z.array(z.int().positive()).max(MAX_RECIPES).default([]),
+      itemIds: z.array(z.int().positive()).max(MAX_RECIPES).default([]),
+      /** Métiers lus en jeu dans le même export (la fiche peut ne pas être encore enregistrée). */
+      professions: z.array(z.enum(Object.keys(PROFESSION_SKILL_LINES) as [string, ...string[]])).max(12).default([]),
+    }), req.body);
+    const [ch] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
+    if (!ch) throw notFound("Personnage introuvable.");
+    const bySpell = body.spellIds.length
+      ? await db.select({ spellId: gameRecipes.spellId }).from(gameRecipes).where(inArray(gameRecipes.spellId, body.spellIds)) : [];
+    const byItem = body.itemIds.length
+      ? await db.select({ spellId: gameRecipes.spellId, skillLine: gameRecipes.skillLine, itemId: gameRecipes.createdItemId })
+        .from(gameRecipes).where(inArray(gameRecipes.createdItemId, body.itemIds)) : [];
+    // Un objet peut être fabriqué par plusieurs recettes : on garde celles des métiers du perso
+    const lines = currentLines(ch.professions);
+    for (const p of body.professions) lines.add(PROFESSION_SKILL_LINES[p]);
+    const spells = [...new Set([...bySpell.map(r => r.spellId), ...byItem.filter(r => lines.has(r.skillLine)).map(r => r.spellId)])].slice(0, MAX_RECIPES);
+    if (spells.length) {
+      await db.insert(characterRecipes).values(spells.map(spellId => ({ characterId: id, spellId, status: "known" as const })))
+        .onConflictDoUpdate({ target: [characterRecipes.characterId, characterRecipes.spellId], set: { status: "known", updatedAt: new Date() } });
+    }
+    // Inconnus : identifiants qui ne correspondent à aucune recette de la base (ou d'un autre métier)
+    const foundItems = new Set(byItem.filter(r => lines.has(r.skillLine)).map(r => r.itemId));
+    const unknown = body.spellIds.length - bySpell.length + body.itemIds.filter(i => !foundItems.has(i)).length;
+    return { known: spells.length, unknown };
   });
 
   /* ----- Portrait ----- */

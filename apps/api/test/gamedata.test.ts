@@ -165,6 +165,23 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     expect((await other.c.get(`/api/groups/${g.id}/crafters`)).json().recipes).toEqual([]);
   });
 
+  it("importe les patrons et les talents envoyés par l'addon", async () => {
+    const { c } = await signedIn(env);
+    const other = await signedIn(env);
+    const ch = (await c.post("/api/characters", {
+      name: "Addonnée", professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 },
+    })).json().character;
+    // 2152 par son sort, Warbear Woolies (19080) par l'objet fabriqué 15065, un identifiant inconnu
+    const r = await c.post(`/api/characters/${ch.id}/recipes/import`, { spellIds: [2152], itemIds: [15065, 999999], professions: ["Leatherworking"] });
+    expect(r.json()).toEqual({ known: 2, unknown: 1 });
+    const mine = (await c.get(`/api/characters/${ch.id}/recipes`)).json().recipes.map((x: { spellId: number; status: string }) => [x.spellId, x.status]).sort();
+    expect(mine).toEqual([[19080, "known"], [2152, "known"]]);
+    expect((await other.c.post(`/api/characters/${ch.id}/recipes/import`, { spellIds: [2152] })).statusCode).toBe(404);
+    const nodes = [{ id: 101, rank: 5, max: 5, x: 1200, y: 600, spell: 16934, sub: 0, tree: 7 }];
+    expect((await c.patch(`/api/characters/${ch.id}`, { talentNodes: nodes })).json().character.talentNodes).toEqual(nodes);
+    expect((await c.patch(`/api/characters/${ch.id}`, { talentNodes: [{ id: -1 }] })).statusCode).toBe(400);
+  });
+
   it("enregistre l'objet choisi dans la base pour l'équipement", async () => {
     const { c } = await signedIn(env);
     const ch = (await c.post("/api/characters", { name: "Stuff" })).json().character;
