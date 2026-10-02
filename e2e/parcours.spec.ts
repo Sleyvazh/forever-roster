@@ -58,7 +58,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   });
 
   await test.step("création d'un perso et sauvegarde automatique", async () => {
-    await page.getByRole("button", { name: "+ Ajouter un perso" }).first().click();
+    // Compte sans perso : les trois étapes de démarrage à la place de la liste
+    await expect(page.getByRole("heading", { name: "Trois étapes pour commencer" })).toBeVisible();
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/start.png", fullPage: true });
+    await page.getByRole("button", { name: "+ Créer mon perso" }).click();
     await page.fill("#f-name", "Tournicoti");
     await page.selectOption("#f-race", "Tauren");
     await page.selectOption("#f-cls", "Druid");
@@ -270,6 +273,44 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByRole("status").filter({ hasText: /raids? créés?\./ })).toBeVisible();
     await expect(page.getByRole("row", { name: /Zul'Gurub.*Vendredi à 20 h 30/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Zul'Gurub" }).first()).toBeVisible();
+  });
+
+  await test.step("cette semaine : bandeau de Mes persos, onglet, étapes", async () => {
+    // Molten Core ce soir : bandeau en haut de Mes persos, inscription en un clic
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e" });
+    await db.connect();
+    await db.query(`UPDATE raids SET scheduled_at = now() + interval '3 hours' WHERE name = 'Molten Core'`);
+    await db.end();
+    await page.getByRole("link", { name: "Mes persos" }).first().click();
+    const band = page.getByRole("region", { name: "Cette semaine" });
+    await expect(band).toContainText("Molten Core");
+    await expect(band).toContainText("2 viennent");
+    await expect(band).toContainText("En retard"); // statut choisi sur la page du raid, hors des trois boutons rapides
+    // Étapes restantes : l'addon est fait (synchro plus haut), le groupe aussi : plus de ligne
+    await expect(page.getByRole("note", { name: "Pour bien démarrer" })).toHaveCount(0);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/band.png", fullPage: true });
+    await band.getByRole("button", { name: "Peut-être" }).click();
+    await expect(band.getByRole("button", { name: "Peut-être" })).toHaveAttribute("aria-pressed", "true");
+    // Réduit à une ligne, choix gardé au rechargement
+    await band.getByRole("button", { name: "Réduire le bandeau" }).click();
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Cette semaine" })).toContainText("Peut-être");
+    await page.getByRole("button", { name: "Déplier le bandeau" }).click();
+    // Onglet Cette semaine : prochain raid, autres raids, à faire, groupes
+    await page.locator(".topnav").getByRole("link", { name: /Cette semaine/ }).click();
+    await expect(page.getByRole("heading", { name: "Cette semaine" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Mes groupes" })).toContainText("Les Testeurs");
+    await expect(page.getByRole("region", { name: "Prochain raid" })).toContainText("Molten Core");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/semaine.png", fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/semaine-mobile.png", fullPage: true });
+    await page.getByRole("link", { name: "Mes persos" }).last().click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/band-mobile.png", fullPage: true });
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
   await test.step("groupe : code de liaison d'un salon Discord", async () => {

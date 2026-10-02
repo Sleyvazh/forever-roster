@@ -15,11 +15,11 @@ const LIVE = "fr-live";
 function refresh(qc: QueryClient, e: LiveEvent) {
   const inv = (queryKey: unknown[]) => void qc.invalidateQueries({ queryKey });
   switch (e.t) {
-    case "raid": inv(["raids", e.g]); inv(["raid", e.r]); break;
-    case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); break;
-    case "group": inv(["group", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); break;
+    case "raid": inv(["raids", e.g]); inv(["raid", e.r]); inv(["week"]); break;
+    case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
+    case "group": inv(["group", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
     case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
-    case "membership": inv(["groups"]); break;
+    case "membership": inv(["groups"]); inv(["week"]); break;
   }
 }
 

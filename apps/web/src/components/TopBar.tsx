@@ -11,6 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useLiveEvents } from "../live";
 import { CopyForGame } from "./CopyForGame";
 import { PasteImport } from "./PasteImport";
+import { useWeek } from "./Week";
 
 const Brand = () => (
   <Link to="/" className="brand" aria-label="Forever Roster, accueil">
@@ -72,7 +73,14 @@ const TAB_ICONS = {
   persos: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4.5 4-6.5 8-6.5s7 2 8 6.5" /></svg>,
   groupes: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3" /><circle cx="16.5" cy="9" r="3" /><path d="M2.5 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5M11 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5" /></svg>,
   addon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z" /><path d="M9 4v5h6V4M8 14h8M8 17h5" /></svg>,
+  semaine: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /></svg>,
 };
+
+/** Pastille de l'onglet Cette semaine : nombre de choses à faire. */
+function TodoBadge() {
+  const n = useWeek().data?.todo.length ?? 0;
+  return n > 0 ? <span className="nav-badge num" aria-label={`${n} à faire`}>{n}</span> : null;
+}
 
 /** Bandeau du haut : logo, onglets, compte à rebours, menu du compte. Sur téléphone, onglets en bas de l'écran. */
 export function TopBar() {
@@ -87,6 +95,7 @@ export function TopBar() {
           {user ? (
             <nav className="nav" aria-label="Navigation principale">
               <NavLink to="/persos">Mes persos</NavLink>
+              <NavLink to="/semaine">Cette semaine<TodoBadge /></NavLink>
               <NavLink to="/groups">Groupes</NavLink>
               <NavLink to="/addon">Addon</NavLink>
             </nav>
@@ -102,6 +111,7 @@ export function TopBar() {
       {user && (
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
+          <NavLink to="/semaine">{TAB_ICONS.semaine}Semaine<TodoBadge /></NavLink>
           <NavLink to="/groups">{TAB_ICONS.groupes}Groupes</NavLink>
           <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
         </nav>

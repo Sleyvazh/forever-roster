@@ -6,6 +6,7 @@ import { ApiError, del, get, patch, post, put, type Character } from "../api";
 import { CharacterEditor, EDITOR_TAB_SLUG, editorTabFromSlug, type EditorTab } from "../components/CharacterEditor";
 import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { Portrait } from "../components/ImageUpload";
+import { StartSteps, WeekBand } from "../components/Week";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -69,7 +70,10 @@ export function CharactersPage() {
   }, [data, params.charId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = local.find(c => c.id === sel) ?? null;
-  const saver = useAutosave(current?.id ?? null, saved => qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => c.id === saved.id ? saved : c) }));
+  const saver = useAutosave(current?.id ?? null, saved => {
+    qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => c.id === saved.id ? saved : c) });
+    void qc.invalidateQueries({ queryKey: ["week"] }); // classe ou spé renseignée : « à faire » à jour
+  });
 
   const edit = (p: Partial<Character>) => {
     if (!current) return;
@@ -82,6 +86,7 @@ export function CharactersPage() {
     try {
       const r = await post<{ character: Character }>("/characters", { name: "Nouveau perso" });
       qc.setQueryData<{ characters: Character[] }>(["characters"], d => ({ characters: [...(d?.characters ?? []), r.character] }));
+      void qc.invalidateQueries({ queryKey: ["week"] });
       nav(urlFor(r.character.id, "profil")); // un nouveau perso s'ouvre sur son identité
     } catch (e) { setError(e instanceof ApiError ? e.message : "Création impossible."); }
   };
@@ -89,7 +94,7 @@ export function CharactersPage() {
     if (!current) return;
     await del(`/characters/${current.id}`);
     setConfirmDel(false);
-    await qc.invalidateQueries({ queryKey: ["characters"] });
+    await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["week"] })]);
   };
   const saveOrder = async (ids: string[]) => {
     setLocal(list => ids.map(id => list.find(c => c.id === id)!));
@@ -102,16 +107,14 @@ export function CharactersPage() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
         <div><div className="eyebrow">Roster personnel</div><h1>Mes personnages</h1></div>
-        <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>
+        {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>}
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
       {local.length === 0 ? (
-        <div className="panel empty">
-          <h2>Aucun personnage pour l'instant</h2>
-          <p>Ajoute ton premier perso : race, classe, spés, talents, métiers et objectifs BiS.</p>
-          <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>
-        </div>
-      ) : (
+        <StartSteps onCreate={() => void add()} />
+      ) : (<>
+        <StartSteps compact onCreate={() => void add()} />
+        <WeekBand />
         <div className="split">
           <aside className="stack">
             <p className="hint" style={{ margin: 0 }}>Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner.</p>
@@ -140,7 +143,7 @@ export function CharactersPage() {
             />
           )}
         </div>
-      )}
+      </>)}
     </div>
   );
 }

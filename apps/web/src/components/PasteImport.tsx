@@ -50,7 +50,7 @@ export function PasteImport() {
     setBusy(true);
     const out = await applyBlocks(blocks, targetOf, ALL_PARTS, mine);
     await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["character"] }),
-      qc.invalidateQueries({ queryKey: ["char-recipes"] }), qc.invalidateQueries({ queryKey: ["raids"] })]);
+      qc.invalidateQueries({ queryKey: ["char-recipes"] }), qc.invalidateQueries({ queryKey: ["raids"] }), qc.invalidateQueries({ queryKey: ["week"] })]);
     setResults(out); setBusy(false);
   };
 

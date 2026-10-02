@@ -18,6 +18,7 @@ import { templateRoutes } from "./routes/templates";
 import { eventRoutes } from "./routes/events";
 import { raidRoutes } from "./routes/raids";
 import { addonRoutes } from "./routes/addon";
+import { weekRoutes } from "./routes/week";
 import { imageRoutes } from "./routes/images";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
 
@@ -82,6 +83,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(groupRoutes, { prefix: "/api/groups" });
   await app.register(raidRoutes, { prefix: "/api/groups" });
   await app.register(addonRoutes, { prefix: "/api" });
+  await app.register(weekRoutes, { prefix: "/api/week" });
   await app.register(templateRoutes, { prefix: "/api/groups" });
   await app.register(imageRoutes, { prefix: "/api/images" });
   await app.register(eventRoutes, { prefix: "/api/events" });
