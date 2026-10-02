@@ -1,5 +1,6 @@
 import { addonExport, inviteMacros, roleOf, type ExportMember } from "@forever/game-data";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { Character, RaidSignup, RaidSlot } from "../api";
 
 /**
@@ -55,7 +56,7 @@ export function RaidExport({ raid, slots, chars, signups }: {
           <div className="row between"><label htmlFor="ex-addon">Texte pour l'addon Forever Roster (format FRR v1)</label>
             <button className="btn sm" type="button" onClick={() => copy("addon", text)}>{copied === "addon" ? "Copié" : "Copier"}</button></div>
           <textarea id="ex-addon" readOnly className="num" rows={Math.min(12, text.split("\n").length)} value={text} onFocus={e => e.currentTarget.select()} />
-          <p className="hint" style={{ margin: 0 }}>Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). En jeu : <code>/fr compo</code>, colle ce texte, « Charger », puis « Inviter » et « Placer les groupes ». Seul le prénom est envoyé (le jeu ignore le nom de famille).</p>
+          <p className="hint" style={{ margin: 0 }}>Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). En jeu : <code>/fr</code>, onglet <strong>Compo</strong>, colle ce texte, « Charger », puis « Inviter » et « Placer les groupes ». Seul le prénom est envoyé (le jeu ignore le nom de famille). Inscriptions et patrons suivis : page <Link to="/addon">Addon</Link>.</p>
         </div>
         <div className="stack" style={{ gap: 8 }}>
           <span className="lbl">Macros d'invitation ({macros.length})</span>

@@ -13,6 +13,8 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages packages
 COPY apps apps
+# Le site sert le zip de l'addon (construit avec le front)
+COPY addon/ForeverRoster addon/ForeverRoster
 RUN npm run build
 
 # Dépendances de production de l'API uniquement

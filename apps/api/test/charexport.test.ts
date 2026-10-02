@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseCharacterExport, professionFromGame, professionsFromExport } from "@forever/game-data";
+import { parseCharacterExport, parseCharacterExports, professionFromGame, professionsFromExport } from "@forever/game-data";
 
 // Écrit par le test Lua de l'addon (lua5.1 addon/tests/format_test.lua) : le site lit exactement ce que l'addon produit
 const SAMPLE = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../addon/tests/sample.frc"), "utf8");
@@ -42,7 +42,21 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     if (!res.ok) throw new Error(res.error);
     expect(res.data.signups).toEqual([{ groupId: g, raidId: r, status: "present" }]);
   });
-  it("reconnaît les Skyborne selon la faction", () => {
+  it("lit les patrons marqués recherchés en jeu", () => {
+    const res = parseCharacterExport("FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.3.0\nW;15090;1\nW;9999;0\nW;15090;0\nW;abc;1\nEND;4");
+    if (!res.ok) throw new Error(res.error);
+    expect(res.data.wanted).toEqual([{ itemId: 9999, on: false }, { itemId: 15090, on: false }]);
+  });
+  it("lit l'export de plusieurs persos et signale un bloc abîmé", () => {
+    const two = `${SAMPLE.trim()}\nFRC;1;Greta;Beta;DRUID;Skyborne;20;Alliance;1;0.3.0\nG;1;16866\nEND;1\nFRC;1;Cassé;Beta;MAGE;Human;20;Alliance;1;0.3.0\nG;1;1\nEND;9`;
+    const r = parseCharacterExports(two);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.data.map(d => d.name)).toEqual(["Tournicoti", "Greta"]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^Cassé : Export incomplet/);
+    expect(parseCharacterExports("rien du tout")).toMatchObject({ ok: false });
+  });
+    it("reconnaît les Skyborne selon la faction", () => {
     const head = (faction: string) => `FRC;1;Greta;Beta;DRUID;Skyborne;20;${faction};1790960521;0.1.2\nEND;0`;
     const race = (faction: string) => { const r = parseCharacterExport(head(faction)); return r.ok ? r.data.race : "erreur"; };
     expect(race("Alliance")).toBe("Skyborne (High Order)");

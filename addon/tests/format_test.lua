@@ -7,12 +7,16 @@ local function check(cond, msg) if not cond then failures = failures + 1 print("
 local raid, members = F.ParseFRR("FRR;1;4a1e;1794513600;Molten Core\r\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Bob;PRIEST;Heal;Holy Heal;0;0;tentative;discord\nEND;2\n")
 check(raid and raid.name == "Molten Core" and raid.time == 1794513600, "en-tête FRR")
 check(members and #members == 2 and members[1].group == 1 and members[2].source == "discord", "membres FRR")
--- Données d'un groupe (FRG v1)
-local g = F.ParseFRG("FRG;1;6f1c2a10-0000-4000-8000-000000000001;1791000000;Les Veilleurs\nR;7a1c2a10-0000-4000-8000-000000000002;1791100000;Molten Core;present;Greta\nR;8a1c2a10-0000-4000-8000-000000000003;0;Onyxia;;\nP;15090;Warbear Woolies;Greta,Sley;Tournicoti\nEND;3")
+-- Données des groupes (FRG v1) : un ou plusieurs groupes à la suite
+local gs = F.ParseFRG("FRG;1;6f1c2a10-0000-4000-8000-000000000001;1791000000;Les Veilleurs\nR;7a1c2a10-0000-4000-8000-000000000002;1791100000;Molten Core;present;Greta\nR;8a1c2a10-0000-4000-8000-000000000003;0;Onyxia;;\nP;15090;Warbear Woolies;Greta,Sley;Tournicoti\nB;16866;Greta\nEND;4\nFRG;1;g2;1791000000;Autre\nP;15090;Warbear Woolies;Bob;\nEND;1")
+local g = gs and gs[1]
+check(gs and #gs == 2 and gs[2].name == "Autre", "deux groupes")
 check(g and g.name == "Les Veilleurs" and #g.raids == 2, "groupe et raids")
 check(g and g.raids[1].status == "present" and g.raids[1].char == "Greta" and g.raids[2].status == nil, "inscription du site")
 check(g and g.patterns[15090] and #g.patterns[15090].wanted == 2 and g.patterns[15090].known[1] == "Tournicoti", "patrons suivis")
+check(g and g.bis[16866] and g.bis[16866][1] == "Greta", "BiS recherchés")
 check(not F.ParseFRG("FRG;1;x;0;G\nR;a;0;b;;\nEND;2"), "FRG tronqué refusé")
+check(not F.ParseFRG("FRG;1;x;0;G\nEND;0\nFRG;1;y;0;H\nP;1;r;;\nEND;3"), "second groupe tronqué refusé")
 check(not F.ParseFRG("FRR;1;x;0;Raid\nEND;0"), "une compo n'est pas un groupe")
 local r3, m3 = F.ParseFRR("FRR;1;x;0;Raid\nM;Greta Coulé;DRUID;DPS;Feral Cat;1;1;present;site\nEND;1")
 check(r3 and m3[1].name == "Greta", "nom de famille retiré pour le jeu")

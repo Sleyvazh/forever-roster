@@ -81,7 +81,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(gameDataRoutes, { prefix: "/api/gamedata" });
   await app.register(groupRoutes, { prefix: "/api/groups" });
   await app.register(raidRoutes, { prefix: "/api/groups" });
-  await app.register(addonRoutes, { prefix: "/api/groups" });
+  await app.register(addonRoutes, { prefix: "/api" });
   await app.register(templateRoutes, { prefix: "/api/groups" });
   await app.register(imageRoutes, { prefix: "/api/images" });
   await app.register(eventRoutes, { prefix: "/api/events" });

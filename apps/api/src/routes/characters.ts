@@ -1,5 +1,5 @@
 import { charsChanged } from "../lib/events";
-import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, max, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PROFESSION_SKILL_LINES } from "@forever/game-data";
@@ -149,6 +149,39 @@ export async function characterRoutes(app: FastifyInstance) {
     const foundItems = new Set(byItem.filter(r => lines.has(r.skillLine)).map(r => r.itemId));
     const unknown = body.spellIds.length - bySpell.length + body.itemIds.filter(i => !foundItems.has(i)).length;
     return { known: spells.length, unknown };
+  });
+
+  /**
+   * Patrons marqués « recherché » (ou retirés) en jeu : l'addon donne l'objet patron, on retrouve la recette qu'il enseigne.
+   * Un patron déjà connu reste connu ; seul un « recherché » est retiré.
+   */
+  app.post("/:id/recipes/wanted", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(idParam, req.params);
+    const body = parse(z.object({
+      add: z.array(z.int().positive()).max(200).default([]),
+      remove: z.array(z.int().positive()).max(200).default([]),
+    }), req.body);
+    const [ch] = await db.select({ id: characters.id }).from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
+    if (!ch) throw notFound("Personnage introuvable.");
+    const items = [...new Set([...body.add, ...body.remove])];
+    const taught = items.length
+      ? await db.select({ spellId: gameRecipes.spellId, taughtBy: gameRecipes.taughtBy }).from(gameRecipes)
+        .where(or(...items.map(i => sql`${gameRecipes.taughtBy} @> ${JSON.stringify([i])}::jsonb`)))
+      : [];
+    const spellsFor = (itemIds: number[]) => [...new Set(taught.filter(r => r.taughtBy.some(t => itemIds.includes(t))).map(r => r.spellId))];
+    const add = spellsFor(body.add), remove = spellsFor(body.remove);
+    const current = add.length || remove.length
+      ? await db.select({ spellId: characterRecipes.spellId, status: characterRecipes.status }).from(characterRecipes)
+        .where(and(eq(characterRecipes.characterId, id), inArray(characterRecipes.spellId, [...add, ...remove])))
+      : [];
+    const status = new Map(current.map(r => [r.spellId, r.status]));
+    const toAdd = add.filter(s => !status.has(s));
+    const toRemove = remove.filter(s => status.get(s) === "wanted");
+    if (toAdd.length) await db.insert(characterRecipes).values(toAdd.map(spellId => ({ characterId: id, spellId, status: "wanted" as const }))).onConflictDoNothing();
+    if (toRemove.length) await db.delete(characterRecipes).where(and(eq(characterRecipes.characterId, id), inArray(characterRecipes.spellId, toRemove)));
+    const found = new Set(taught.flatMap(r => r.taughtBy));
+    return { added: toAdd.length, removed: toRemove.length, unknown: items.filter(i => !found.has(i)).length };
   });
 
   /* ----- Portrait ----- */

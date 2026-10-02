@@ -1,89 +1,43 @@
-import { isValidCombo, parseCharacterExport, sameCharacter, SIGNUP_LABEL, PROFESSION_SKILL_LINES, professionsFromExport, type CharacterExport } from "@forever/game-data";
+import { parseCharacterExports, sameCharacter, type CharacterExport } from "@forever/game-data";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ApiError, get, post, put, type Character, type GameItem } from "../api";
+import { Link } from "react-router-dom";
+import { ApiError, type Character } from "../api";
+import { ALL_PARTS, applyExtras, buildPatch, PARTS, partSummary, type Part } from "../addonImport";
 import { linkFromRanks, useTalentData } from "./TalentTrees";
 
-type Part = "identity" | "gear" | "professions" | "recipes" | "talents" | "signups";
-const PARTS: [Part, string][] = [["identity", "Niveau, race et classe"], ["gear", "Équipement porté"], ["professions", "Métiers"], ["recipes", "Patrons connus"], ["talents", "Talents"], ["signups", "Inscriptions aux raids"]];
-
 /**
- * Mise à jour d'une fiche depuis l'addon : on colle le texte de « /fr export », on voit ce qui sera repris,
- * puis on choisit les parties à mettre à jour. L'objectif BiS et les notes ne sont jamais touchés.
+ * Mise à jour d'une fiche depuis l'addon : on colle le texte de l'onglet Export (un ou plusieurs persos), le bloc de ce perso
+ * est retrouvé par son prénom, on voit ce qui sera repris, puis on choisit les parties à mettre à jour.
+ * Pour tous ses persos d'un coup : page Addon.
  */
 export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Partial<Character>) => void }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
-  const [parts, setParts] = useState<Set<Part>>(new Set(PARTS.map(p => p[0])));
+  const [parts, setParts] = useState<Set<Part>>(new Set(ALL_PARTS));
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const r = text.trim() ? parseCharacterExport(text) : null;
-  const d: CharacterExport | null = r?.ok ? r.data : null;
+  const r = text.trim() ? parseCharacterExports(text) : null;
+  // Le bloc de ce perso (par son prénom), sinon le seul bloc collé
+  const blocks = r?.ok ? r.data : [];
+  const d: CharacterExport | null = blocks.find(b => sameCharacter(b.name, c.name)) ?? (blocks.length === 1 ? blocks[0]! : null);
 
   const classClash = !!(d?.cls && c.cls && d.cls !== c.cls);
   const raceClash = !!(d?.race && c.race && d.race !== c.race);
-  const gearCount = d ? Object.keys(d.gear).length : 0;
-  const spent = d ? d.talents.reduce((a, t) => a + t.rank, 0) : 0;
-  // Talents en jeu → lien du calculateur et répartition, via les arbres de Forever de la classe
   const tcls = d?.cls ?? c.cls;
   const tdata = useTalentData(tcls, !!d?.talents.length);
   const build = d && tdata.data ? linkFromRanks(tcls, tdata.data.talents, new Map(d.talents.map(t => [t.id, t.rank]))) : null;
-  const count: Record<Part, string> = {
-    identity: d ? `niveau ${d.level}${d.cls ? ` · ${d.cls}` : ""}${d.race ? ` · ${d.race}` : ""}` : "",
-    gear: `${gearCount} pièce${gearCount > 1 ? "s" : ""}`,
-    professions: d ? d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun lu (addon 0.1.3 requis)" : "",
-    recipes: d ? `${d.recipes.length} patron${d.recipes.length > 1 ? "s" : ""}${d.recipes.length ? "" : " (ouvre tes fenêtres de métier en jeu avant d'exporter)"}${d.ignored.length ? ` · ignorés : ${d.ignored.join(", ")}` : ""}` : "",
-    signups: d ? (d.signups.length ? d.signups.map(s => SIGNUP_LABEL[s.status]).join(", ") : "aucune (fenêtre /fr groupe en jeu)") : "",
-    talents: d ? (build ? `répartition ${build.split} (spé principale)` : `${spent} point${spent > 1 ? "s" : ""} dans ${d.talents.filter(t => t.rank > 0).length} talents`) : "",
-  };
   const toggle = (p: Part) => setParts(s => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; });
 
   const apply = async () => {
     if (!d || classClash) return;
     setBusy(true); setError(null);
     try {
-      const patch: Partial<Character> = {};
-      if (parts.has("identity")) {
-        patch.level = d.level;
-        if (d.cls && !c.cls) patch.cls = d.cls;
-        if (d.race && !c.race && isValidCombo(d.race, d.cls ?? c.cls)) patch.race = d.race;
-      }
-      if (parts.has("gear") && gearCount) {
-        const ids = [...new Set(Object.values(d.gear))];
-        const { items } = await get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${ids.join(",")}`);
-        const gear = { ...c.gear };
-        for (const [slot, id] of Object.entries(d.gear)) {
-          const it = items[id!];
-          gear[slot] = { ...gear[slot], cur: it?.name ?? `Objet ${id}`, curId: it ? id : null, q: it?.quality ?? null };
-        }
-        patch.gear = gear;
-      }
-      if (parts.has("professions") && d.professions.length) patch.professions = professionsFromExport(d.professions);
-      if (parts.has("talents") && d.talents.length) {
-        patch.talentNodes = d.talents;
-        if (build) { patch.talents = build.split; patch.talentLink = build.link; }
-      }
-      onChange(patch);
-      let recipesMsg = "";
-      if (parts.has("recipes") && d.recipes.length) {
-        const res = await post<{ known: number; unknown: number }>(`/characters/${c.id}/recipes/import`, {
-          spellIds: d.recipes.flatMap(x => (x.spellId ? [x.spellId] : [])), itemIds: d.recipes.flatMap(x => (x.itemId ? [x.itemId] : [])),
-          professions: d.professions.map(p => p.name).filter(n => n in PROFESSION_SKILL_LINES),
-        });
-        await qc.invalidateQueries({ queryKey: ["char-recipes", c.id] });
-        recipesMsg = ` ${res.known} patron${res.known > 1 ? "s" : ""} coché${res.known > 1 ? "s" : ""}${res.unknown ? `, ${res.unknown} inconnu${res.unknown > 1 ? "s" : ""} de la base` : ""}.`;
-      }
-      let signupsMsg = "";
-      if (parts.has("signups") && d.signups.length) {
-        let ok = 0;
-        for (const s of d.signups) {
-          try { await put(`/groups/${s.groupId}/raids/${s.raidId}/signup`, { status: s.status, characterId: c.id }); ok++; } catch { /* raid supprimé ou groupe quitté */ }
-        }
-        await qc.invalidateQueries({ queryKey: ["raids"] });
-        signupsMsg = ` ${ok} inscription${ok > 1 ? "s" : ""} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}.`;
-      }
-      setDone(`Fiche mise à jour depuis le jeu.${recipesMsg}${signupsMsg}`); setText("");
+      onChange(await buildPatch(c, d, parts, tdata.data?.talents));
+      const extras = await applyExtras(c.id, d, parts);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["char-recipes", c.id] }), qc.invalidateQueries({ queryKey: ["raids"] })]);
+      setDone(`Fiche mise à jour depuis le jeu.${extras ? ` ${extras}.` : ""}`); setText("");
     } catch (e) { setError(e instanceof ApiError ? e.message : "Mise à jour impossible."); }
     finally { setBusy(false); }
   };
@@ -93,16 +47,18 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
       <summary>Importer depuis l'addon <span className="muted small">· équipement, métiers, patrons et talents lus en jeu</span></summary>
       <div className="stack" style={{ gap: 10, paddingTop: 10 }}>
         <p className="hint" style={{ margin: 0 }}>
-          En jeu, avec l'addon Forever Roster : ouvre tes fenêtres de métier (pour les patrons), tape <code>/fr export</code>, copie le texte (Ctrl+C) et colle-le ici.
+          En jeu : <code>/fr</code> (ou le bouton de la minicarte), onglet <strong>Export</strong>, Ctrl+C, puis colle ici.
+          Pour mettre à jour tous tes persos d'un coup : page <Link to="/addon">Addon</Link>.
         </p>
         <textarea id="f-addon" aria-label="Texte exporté par l'addon" rows={4} spellCheck={false} placeholder="FRC;1;…" value={text}
           onChange={e => { setText(e.target.value); setDone(null); }} />
         {done && !text && <div className="okmsg" role="status">{done}</div>}
         {error && <div className="warnmsg" role="alert">{error}</div>}
         {r && !r.ok && <div className="warnmsg">{r.error}</div>}
+        {r?.ok && !d && <div className="warnmsg">Aucun bloc de cet export n'est celui de {c.name} ({blocks.map(b => b.name).join(", ")}). Utilise la page <Link to="/addon">Addon</Link> pour plusieurs persos.</div>}
         {d && (
           <div className="bi-result ok">
-            <div><strong>{d.name}</strong> <span className="muted">({d.realm}) · exporté le {new Date(d.time * 1000).toLocaleString("fr-FR")}</span></div>
+            <div><strong>{d.name}</strong> <span className="muted">({d.realm}) · relevé le {new Date(d.time * 1000).toLocaleString("fr-FR")}</span></div>
             {!sameCharacter(d.name, c.name) && <span className="bi-msg bad">Cet export est celui de {d.name}, pas de {c.name} : vérifie que c'est la bonne fiche.</span>}
             {classClash && <span className="bi-msg bad">Classe différente : {d.cls} en jeu, {c.cls} sur la fiche. Rien ne sera repris.</span>}
             {raceClash && <span className="bi-msg bad">Race différente : {d.race} en jeu, {c.race} sur la fiche (la race de la fiche est gardée).</span>}
@@ -110,7 +66,7 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
               {PARTS.map(([k, label]) => (
                 <label key={k} className="ai-part">
                   <input type="checkbox" checked={parts.has(k)} onChange={() => toggle(k)} />
-                  <span>{label}</span><span className="muted small">{count[k]}</span>
+                  <span>{label}</span><span className="muted small">{partSummary(d, build)[k]}</span>
                 </label>
               ))}
             </div>
@@ -126,4 +82,3 @@ export function AddonImport({ c, onChange }: { c: Character; onChange: (p: Parti
     </details>
   );
 }
-

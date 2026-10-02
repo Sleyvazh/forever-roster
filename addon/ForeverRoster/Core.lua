@@ -49,16 +49,18 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.version = ns.version
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", UI = "ShowGroup" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", UI = "Show", Minimap = "Create" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060modules non chargés : " .. table.concat(missing, ", ") .. "|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)") end
 end)
 
 local HELP = {
-  "/fr compo : coller la compo exportée par le site (invitations, placement des groupes)",
-  "/fr export : texte à coller sur le site pour mettre à jour ce perso",
-  "/fr groupe : raids à venir (inscription en jeu) et patrons recherchés de tes sacs",
+  "/fr : ouvrir la fenêtre (onglets Raids, Compo, Patrons, Export) ; aussi par le bouton de la minicarte",
+  "/fr raids | compo | patrons | export : ouvrir directement un onglet",
+  "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
+  "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
+  "/fr minicarte : afficher ou masquer le bouton de la minicarte",
   "/fr talents : diagnostic du système de talents (enregistré au prochain /reload)",
 }
 
@@ -71,14 +73,31 @@ function ns.safe(label, fn, ...)
   return ok
 end
 
+local TABS = { raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons", export = "export" }
+
 local function run(msg)
-  local cmd = strtrim((msg or ""):lower())
-  if cmd == "" or cmd == "compo" then
-    ns.UI.ShowCompo()
-  elseif cmd == "export" then
-    ns.UI.ShowExport()
-  elseif cmd == "groupe" or cmd == "patrons" or cmd == "raids" then
-    ns.UI.ShowGroup()
+  local raw = strtrim(msg or "")
+  local cmd, rest = raw:match("^(%S*)%s*(.-)$")
+  cmd = (cmd or ""):lower()
+  if cmd == "" then
+    ns.UI.Toggle()
+  elseif TABS[cmd] then
+    ns.UI.Show(TABS[cmd])
+  elseif cmd == "cherche" then
+    local id = ns.Group.itemIdFrom(rest) or tonumber(rest)
+    if not id then ns.print("tape /fr cherche puis Maj+clic sur le patron (sac, hôtel des ventes, chat) pour mettre son lien, et Entrée.") return end
+    ns.Group.ToggleWanted(id, ns.Group.linkFor(id))
+    ns.UI.Refresh()
+  elseif cmd == "oublier" then
+    local key = rest ~= "" and rest or nil
+    if not (key and ForeverRosterDB.chars and ForeverRosterDB.chars[key] and ForeverRosterDB.chars[key].snapshot) then
+      ns.print("perso inconnu : écris son nom et son royaume comme dans l'onglet Export, par ex. /fr oublier Greta-Classic Beta PvP")
+      return
+    end
+    ns.Export.Forget(key)
+    ns.print(key .. " retiré de l'export.")
+  elseif cmd == "minicarte" or cmd == "minimap" then
+    ns.Minimap.Toggle()
   elseif cmd == "talents" then
     ns.Talents.Dump()
   else

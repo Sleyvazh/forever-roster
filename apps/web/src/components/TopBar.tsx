@@ -69,6 +69,7 @@ function AccountMenu() {
 const TAB_ICONS = {
   persos: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4.5 4-6.5 8-6.5s7 2 8 6.5" /></svg>,
   groupes: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3" /><circle cx="16.5" cy="9" r="3" /><path d="M2.5 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5M11 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5" /></svg>,
+  addon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z" /><path d="M9 4v5h6V4M8 14h8M8 17h5" /></svg>,
 };
 
 /** Bandeau du haut : logo, onglets, compte à rebours, menu du compte. Sur téléphone, onglets en bas de l'écran. */
@@ -85,6 +86,7 @@ export function TopBar() {
             <nav className="nav" aria-label="Navigation principale">
               <NavLink to="/" end>Mes persos</NavLink>
               <NavLink to="/groups">Groupes</NavLink>
+              <NavLink to="/addon">Addon</NavLink>
             </nav>
           ) : <span />}
           <div className="bar-right">
@@ -97,6 +99,7 @@ export function TopBar() {
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/" end>{TAB_ICONS.persos}Mes persos</NavLink>
           <NavLink to="/groups">{TAB_ICONS.groupes}Groupes</NavLink>
+          <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
         </nav>
       )}
     </>

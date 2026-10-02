@@ -159,6 +159,33 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("#ga-text")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
   });
 
+  await test.step("page Addon : téléchargement, données des groupes, mise à jour de plusieurs persos", async () => {
+    await page.getByRole("link", { name: "Addon" }).first().click();
+    await expect(page.getByRole("heading", { name: "Le jeu et le site" })).toBeVisible();
+    const zip = await page.request.get("/downloads/ForeverRoster.zip");
+    expect(zip.status()).toBe(200);
+    expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
+    await page.getByRole("button", { name: "Voir le texte" }).click();
+    await expect(page.locator("#ga-all")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
+    await expect(page.getByText("Les Testeurs · 0 raid à venir · 1 patron · 0 BiS", { exact: false })).toBeVisible();
+    // Export de deux persos : Tournicoti (fiche existante) et Greta (nouvelle fiche), avec un patron marqué recherché en jeu
+    const sample = readFileSync(path.resolve("addon/tests/sample.frc"), "utf8").trim();
+    await page.fill("#addon-import-all", `${sample}\nFRC;1;Greta;Forever EU;DRUID;Tauren;20;Horde;1790000500;0.3.0\nG;1;16866\nW;15090;1\nEND;2`);
+    await expect(page.getByRole("combobox", { name: "Fiche pour Tournicoti" })).toHaveValue(/[0-9a-f-]{36}/);
+    await expect(page.getByRole("combobox", { name: "Fiche pour Greta" })).toHaveValue("new");
+    // Téléphone : pas de défilement horizontal
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.getByRole("button", { name: "Mettre à jour 2 persos" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Greta" })).toContainText("Greta : fiche créée · 1 recherché ajouté");
+    await expect(page.getByRole("status")).toContainText("Tournicoti : fiche mise à jour");
+    await page.getByRole("link", { name: "Mes persos" }).first().click();
+    await expect(page.getByRole("button", { name: /Greta/ }).first()).toBeVisible();
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: /Les Testeurs/ }).click();
+  });
+
   await test.step("raid : création, inscription et composition", async () => {
     await page.getByRole("tab", { name: "Raids" }).click();
     await page.fill("#r-name", "Molten Core");

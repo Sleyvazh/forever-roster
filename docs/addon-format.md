@@ -80,7 +80,9 @@ Tout ajout se fait **en fin de ligne** ou avec un **nouveau type de ligne**, ign
 
 Une macro WoW est limitée à 255 caractères. Le site découpe donc les `/inv Nom` en plusieurs macros, persos placés uniquement.
 
-# FRC, version 1 : un perso, du jeu vers le site
+# FRC, version 1 : les persos, du jeu vers le site
+
+L'addon relève chaque perso tout seul (connexion, changement d'équipement, de niveau, de talents ou de métier, fenêtre de métier ouverte, déconnexion) et garde ces relevés dans sa sauvegarde, commune au compte. L'onglet **Export** donne un bloc par perso, à la suite ; la page **Addon** du site les applique tous (fiche retrouvée par le prénom et la classe, ou créée), la fiche d'un perso n'applique que le sien. Un bloc abîmé est signalé sans bloquer les autres.
 
 ```
 FRC;1;<nom>;<royaume>;<CLASSE>;<race>;<niveau>;<faction>;<date unix>;<version de l'addon>
@@ -88,6 +90,8 @@ G;<emplacement>;<objet>
 P;<métier ou compétence>;<rang>;<rang max>
 R;<métier>;s<sort> | i<objet>
 T;<nœud>;<rang>;<rang max>;<x>;<y>;<sort>;<sous-arbre>;<arbre>
+S;<groupe>;<raid>;<statut>
+W;<objet patron>;<1 | 0>
 END;<nombre de lignes entre l'en-tête et END>
 ```
 
@@ -98,24 +102,27 @@ END;<nombre de lignes entre l'en-tête et END>
 | `P` | Compétences du perso, nom tel qu'affiché par le jeu. Le client Forever n'a pas la liste des compétences de Classic : l'addon lit `GetProfessions` s'il existe, et sinon la compétence vue à l'ouverture de chaque fenêtre de métier. Le site reconnaît les métiers en anglais et en français et ignore le reste (armes, langues…). |
 | `R` | Patron connu, relevé à l'ouverture des fenêtres de métier : `s` + sort de fabrication, ou `i` + objet fabriqué quand le jeu ne donne que lui. Les fenêtres que le site ne gère pas (ex. Poisons du voleur) sont ignorées et signalées à l'import. |
 | `T` | Talent (système de talents de Forever, `C_Traits`) : identifiant du nœud, rang, rang max, position dans l'arbre, sort, sous-arbre et arbre. |
+| `W` | Patron marqué « recherché » en jeu (`1`) ou retiré (`0`) : onglet Patrons ou `/fr cherche <lien>`. Le site retrouve la recette enseignée par l'objet ; un patron déjà connu n'est jamais rétrogradé. |
 | `S` | Inscription faite en jeu (`/fr groupe`) : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. |
 
 Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts`. Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.
 
-# FRG, version 1 : données d'un groupe, du site vers le jeu
+# FRG, version 1 : données des groupes, du site vers le jeu
 
-Sur le site : groupe, onglet **Raids**, « Données pour l'addon ». En jeu : `/fr groupe`, coller, **Charger**. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
+Sur le site : page **Addon**, « Copier les données de mes groupes » (un bloc FRG par groupe, à la suite), ou un seul groupe depuis son onglet **Raids**. En jeu : `/fr`, onglet **Raids**, coller, **Charger**. Plusieurs groupes remplacent ceux déjà chargés ; un seul groupe est ajouté ou mis à jour. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
 
 ```
 FRG;1;<groupe>;<généré le>;<nom du groupe>
 R;<raid>;<date>;<nom>;<mon statut>;<mon perso>
 P;<objet patron>;<recette>;<recherché par>;<connu par>
-END;<nombre de lignes R et P>
+B;<objet>;<persos qui l'ont en BiS>
+END;<nombre de lignes R, P et B>
 ```
 
 | Ligne | Contenu |
 |---|---|
 | `R` | Raid à venir (ou commencé depuis moins de 3 h ; ceux sans date à la fin), 15 au plus. Date en secondes Unix (0 : à définir). Mon inscription sur le site et le prénom du perso choisi, vides si je ne suis pas inscrit. |
+| `B` | Objet BiS choisi dans la base pour un perso du groupe, pas encore obtenu ni porté : prénoms séparés par des virgules. Infobulle « BiS de », liste des sacs et alerte au butin. |
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
 
 L'addon s'en sert pour :
@@ -123,5 +130,5 @@ L'addon s'en sert pour :
 - **s'inscrire en jeu** : statut choisi par perso, envoyé au site par la ligne `S` du prochain `/fr export` ;
 - **les infobulles** : « Recherché par / Connu par » sur l'objet patron, partout (sacs, butin, hôtel des ventes, lien dans le chat) ;
 - **les sacs** : liste des patrons suivis présents, avec un bouton **Annoncer** ;
-- **le butin** : quand on ramasse un patron suivi, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet).
+- **le butin** : quand on ramasse un patron suivi ou un BiS recherché, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet).
 

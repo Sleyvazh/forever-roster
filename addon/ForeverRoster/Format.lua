@@ -49,29 +49,41 @@ local function names(field)
   for n in tostring(field or ""):gmatch("[^,]+") do out[#out + 1] = n end
   return out
 end
+-- Un ou plusieurs groupes à la suite (la page Addon du site donne tous les groupes du joueur d'un coup).
+-- Lignes : R raid à venir, P patron suivi (recherché par, connu par), B objet BiS recherché (par qui).
 function F.ParseFRG(text)
-  local group, raids, patterns, count, n = nil, {}, {}, nil, 0
+  local groups, cur, count, n = {}, nil, nil, 0
+  local function close()
+    if not cur then return true end
+    if count ~= n then return false end
+    groups[#groups + 1] = cur
+    return true
+  end
   for line in tostring(text or ""):gmatch("[^\r\n]+") do
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
     if f[1] == "FRG" then
+      if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
       if tonumber(f[2]) ~= 1 then return nil, "Version non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
-      group = { id = f[3], at = tonumber(f[4]) or 0, name = f[5] or "" }
-    elseif f[1] == "R" then
+      cur, count, n = { id = f[3], at = tonumber(f[4]) or 0, name = f[5] or "", raids = {}, patterns = {}, bis = {} }, nil, 0
+    elseif cur and f[1] == "R" then
       n = n + 1
-      raids[#raids + 1] = { id = f[2], time = tonumber(f[3]) or 0, name = f[4] or "", status = f[5] ~= "" and f[5] or nil, char = f[6] ~= "" and f[6] or nil }
-    elseif f[1] == "P" then
+      cur.raids[#cur.raids + 1] = { id = f[2], time = tonumber(f[3]) or 0, name = f[4] or "", status = f[5] ~= "" and f[5] or nil, char = f[6] ~= "" and f[6] or nil }
+    elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])
-      if id then patterns[id] = { recipe = f[3] or "", wanted = names(f[4]), known = names(f[5]) } end
-    elseif f[1] == "END" then
+      if id then cur.patterns[id] = { recipe = f[3] or "", wanted = names(f[4]), known = names(f[5]) } end
+    elseif cur and f[1] == "B" then
+      n = n + 1
+      local id = tonumber(f[2])
+      if id then cur.bis[id] = names(f[3]) end
+    elseif cur and f[1] == "END" then
       count = tonumber(f[2])
     end
   end
-  if not group then return nil, "Ce ne sont pas les données d'un groupe : sur le site, onglet Raids du groupe, « Données pour l'addon »." end
-  if count ~= n then return nil, "Texte incomplet : recopie tout, jusqu'à la ligne END." end
-  group.raids, group.patterns = raids, patterns
-  return group
+  if not cur then return nil, "Ce ne sont pas les données du site : page Addon du site (ou onglet Raids du groupe), « Copier », puis colle ici." end
+  if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
+  return groups
 end
 
 -- lines : liste de tables de champs ; la ligne END donne le nombre de lignes utiles (détecte un copier-coller tronqué).

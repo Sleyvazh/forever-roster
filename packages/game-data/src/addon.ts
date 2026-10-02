@@ -76,15 +76,19 @@ export interface GroupExportPattern {
 
 const list = (names: string[]) => [...new Set(names.map(gameName).filter(Boolean))].sort((a, b) => a.localeCompare(b)).join(",");
 
+/** Objet BiS d'un ou plusieurs persos du groupe, qu'ils n'ont pas encore. */
+export interface GroupExportBis { itemId: number; characters: string[] }
+
 /**
- * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu) et patrons recherchés ou connus
- * (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
+ * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
+ * et objets BiS recherchés (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[]): string {
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = []): string {
   const lines = [
     ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
       .map(p => ["P", p.itemId, clean(p.recipe), list(p.wanted), list(p.known)].join(";")),
+    ...bis.filter(b => b.characters.length).map(b => ["B", b.itemId, list(b.characters)].join(";")),
   ];
   return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, `END;${lines.length}`].join("\n");
 }

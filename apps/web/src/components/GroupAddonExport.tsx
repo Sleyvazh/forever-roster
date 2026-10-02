@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { get } from "../api";
 
 /**
@@ -12,7 +13,7 @@ export function GroupAddonExport({ groupId }: { groupId: string }) {
   const [copied, setCopied] = useState(false);
   const q = useQuery({
     queryKey: ["addon-export", groupId], enabled: open, staleTime: 0,
-    queryFn: () => get<{ text: string; raids: number; patterns: number }>(`/groups/${groupId}/addon-export`),
+    queryFn: () => get<{ text: string; raids: number; patterns: number; bis: number }>(`/groups/${groupId}/addon-export`),
   });
   const copy = () => {
     if (!q.data) return;
@@ -27,7 +28,7 @@ export function GroupAddonExport({ groupId }: { groupId: string }) {
         {q.data && (
           <div className="fld">
             <div className="row between">
-              <label htmlFor="ga-text">Texte pour <code>/fr groupe</code> · {q.data.raids} raid{q.data.raids > 1 ? "s" : ""}, {q.data.patterns} patron{q.data.patterns > 1 ? "s" : ""}</label>
+              <label htmlFor="ga-text">Texte pour l'addon · {q.data.raids} raid{q.data.raids > 1 ? "s" : ""}, {q.data.patterns} patron{q.data.patterns > 1 ? "s" : ""}, {q.data.bis} BiS</label>
               <span className="row" style={{ gap: 6 }}>
                 <button className="btn sm ghost" type="button" onClick={() => void q.refetch()}>Actualiser</button>
                 <button className="btn sm" type="button" onClick={copy}>{copied ? "Copié" : "Copier"}</button>
@@ -35,9 +36,8 @@ export function GroupAddonExport({ groupId }: { groupId: string }) {
             </div>
             <textarea id="ga-text" readOnly className="num" rows={Math.min(10, q.data.text.split("\n").length)} value={q.data.text} onFocus={e => e.currentTarget.select()} />
             <p className="hint" style={{ margin: 0 }}>
-              En jeu : <code>/fr groupe</code>, colle ce texte puis « Charger ». Tu peux alors t'inscrire aux raids (reporté sur le site au prochain
-              « Importer depuis l'addon » de ta fiche), voir qui recherche les patrons de tes sacs dans leur infobulle, et être prévenu quand tu en ramasses un.
-              À refaire quand de nouveaux raids ou patrons recherchés apparaissent.
+              En jeu : <code>/fr</code>, onglet <strong>Raids</strong>, colle ce texte puis « Charger ». Ce groupe seul ; pour tous tes groupes d'un coup,
+              et pour renvoyer tes persos au site : page <Link to="/addon">Addon</Link>.
             </p>
           </div>
         )}

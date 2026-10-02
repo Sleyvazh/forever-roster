@@ -195,6 +195,8 @@ describe("patrons des persos et « qui crafte quoi »", () => {
       professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 },
     })).json().character;
     await lw.c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "wanted" });
+    // BiS choisi dans la base, pas encore obtenu ; un autre déjà porté (ignoré)
+    await lw.c.patch(`/api/characters/${ch.id}`, { gear: { Head: { bis: "Helm of Might", bisId: 16866 }, Legs: { cur: "Warbear Woolies", curId: 15065, bis: "Warbear Woolies", bisId: 15065 } } });
     const g = (await lw.c.post("/api/groups", { name: "Veilleurs" })).json().group;
     const inv = (await lw.c.post(`/api/groups/${g.id}/invites`, { maxUses: 1, expiresInHours: 24 })).json().invite;
     await other.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
@@ -210,10 +212,35 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     expect(mine.text).not.toContain("Ancien raid");
     // Warbear Woolies : appris par le patron 15090, recherché par Greta (prénom seul)
     expect(lines).toContain("P;15090;Warbear Woolies;Greta;");
+    expect(lines).toContain("B;16866;Greta");
+    expect(mine.text).not.toContain("B;15065");
     expect(lines.at(-1)).toBe(`END;${lines.length - 2}`);
     // Un autre membre : même patrons, sans inscription
     expect((await other.c.get(`/api/groups/${g.id}/addon-export`)).json().text).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;;`);
     expect((await outsider.c.get(`/api/groups/${g.id}/addon-export`)).statusCode).toBe(404);
+    // Page Addon : tous mes groupes d'un coup
+    const all = (await lw.c.get("/api/addon/export")).json();
+    expect(all.groups).toEqual([{ name: "Veilleurs", raids: 1, patterns: 1, bis: 1 }]);
+    expect(all.text.split("\n").slice(1)).toEqual(lines.slice(1));
+    expect(all.text.startsWith(`FRG;1;${g.id};`)).toBe(true);
+    expect((await outsider.c.get("/api/addon/export")).json()).toEqual({ text: "", groups: [] });
+  });
+
+  it("enregistre les patrons marqués « recherché » en jeu (par l'objet patron)", async () => {
+    const { c } = await signedIn(env);
+    const ch = (await c.post("/api/characters", {
+      name: "Chercheuse", professions: { prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 },
+    })).json().character;
+    // 15090 enseigne Warbear Woolies (19080) ; 1 n'enseigne rien
+    expect((await c.post(`/api/characters/${ch.id}/recipes/wanted`, { add: [15090, 1] })).json()).toEqual({ added: 1, removed: 0, unknown: 1 });
+    expect((await c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual([{ spellId: 19080, status: "wanted", skillLine: 165 }]);
+    expect((await c.post(`/api/characters/${ch.id}/recipes/wanted`, { remove: [15090] })).json()).toMatchObject({ removed: 1 });
+    expect((await c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual([]);
+    // Un patron connu n'est ni rétrogradé en « recherché » ni retiré
+    await c.put(`/api/characters/${ch.id}/recipes/19080`, { status: "known" });
+    await c.post(`/api/characters/${ch.id}/recipes/wanted`, { add: [15090] });
+    await c.post(`/api/characters/${ch.id}/recipes/wanted`, { remove: [15090] });
+    expect((await c.get(`/api/characters/${ch.id}/recipes`)).json().recipes).toEqual([{ spellId: 19080, status: "known", skillLine: 165 }]);
   });
 
   it("importe les patrons et les talents envoyés par l'addon", async () => {

@@ -1,4 +1,5 @@
--- Export du perso vers le site (format FRC v1, voir docs/addon-format.md).
+-- Export des persos vers le site (format FRC v1, un bloc par perso, voir docs/addon-format.md).
+-- Chaque perso est relevé automatiquement quand il change ; l'export les contient tous.
 local _, ns = ...
 local E = {}
 ns.Export = E
@@ -68,6 +69,7 @@ local function onTradeSkill()
   C_Timer.After(0.3, function()
     ns.safe("patrons", function()
       if GetNumTradeSkills then scanTradeSkill() else scanModern() end
+      if E.autoSnapshot then E.autoSnapshot() end
     end)
   end)
 end
@@ -80,7 +82,9 @@ if GetNumCrafts then
   ns.on("CRAFT_UPDATE", onCraft)
 end
 
-function E.Build()
+-- Lignes du perso connecté : équipement (G), métiers (P), patrons (R), talents (T).
+-- quiet : relevé automatique, sans message dans le chat.
+local function captureLines(quiet)
   local lines = {}
   ns.safe("équipement", function()
     for _, slot in ipairs(SLOTS) do
@@ -117,26 +121,84 @@ function E.Build()
   end)
   local db = ns.charDB()
   for prof, v in pairs(db.skills or {}) do add(prof, v[1], v[2]) end
-  if profs == 0 then ns.print("aucun métier lu : ouvre une fois chaque fenêtre de métier, puis refais /fr export.") end
+  if profs == 0 and not quiet then ns.print("aucun métier lu : ouvre une fois chaque fenêtre de métier, puis actualise l'export.") end
   for prof, list in pairs(db.recipes or {}) do
     for key in pairs(list) do lines[#lines + 1] = { "R", prof, key } end
   end
-  -- Inscriptions faites en jeu (fenêtre /fr groupe)
-  ns.safe("inscriptions", function()
-    for _, l in ipairs(ns.Group.SignupLines()) do lines[#lines + 1] = l end
-  end)
   -- Chaque partie est protégée : une erreur (API du jeu différente) n'empêche pas d'exporter le reste
   local okT, talents, why = pcall(ns.Talents.Capture)
-  if not okT then ns.print("talents non exportés : " .. tostring(talents)) talents = nil
-  elseif not talents then ns.print("talents non exportés : " .. tostring(why)) end
-  if talents then
+  if not quiet then
+    if not okT then ns.print("talents non exportés : " .. tostring(talents))
+    elseif not talents then ns.print("talents non exportés : " .. tostring(why)) end
+  end
+  if okT and talents then
     for _, n in ipairs(talents.nodes) do
       if n.visible then lines[#lines + 1] = { "T", n.id, n.rank, n.max, n.x, n.y, n.spell, n.sub, n.tree } end
     end
   end
+  return lines
+end
+
+-- Relevé du perso connecté, gardé dans la sauvegarde (commune au compte) : l'export contient ainsi tous les persos.
+function E.Snapshot(quiet)
   local _, raceFile = UnitRace("player")
-  return ns.Format.BuildFRC({
-    name = UnitName("player"), realm = GetRealmName(), class = select(2, UnitClass("player")), race = raceFile,
-    level = UnitLevel("player"), faction = (UnitFactionGroup("player")), time = time(), addon = ns.version,
-  }, lines)
+  local c = ns.charDB()
+  c.snapshot = {
+    header = { name = UnitName("player"), realm = GetRealmName(), class = select(2, UnitClass("player")), race = raceFile,
+      level = UnitLevel("player"), faction = (UnitFactionGroup("player")) },
+    lines = captureLines(quiet), at = time(),
+  }
+  return c.snapshot
+end
+
+-- Relevé automatique quand quelque chose change (au plus un par seconde)
+local pending = false
+local function autoSnapshot()
+  if pending or not ForeverRosterDB then return end
+  pending = true
+  C_Timer.After(1, function() pending = false ns.safe("relevé du perso", E.Snapshot, true) end)
+end
+E.autoSnapshot = autoSnapshot
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "TRAIT_CONFIG_UPDATED",
+  "SKILL_LINES_CHANGED", "PLAYER_LOGOUT" }) do
+  ns.on(event, event == "PLAYER_LOGOUT" and function() ns.safe("relevé du perso", E.Snapshot, true) end or autoSnapshot)
+end
+
+-- Persos relevés sur ce compte (le perso connecté en premier)
+function E.Characters()
+  local current, out = ns.charKey(), {}
+  for key, c in pairs(ForeverRosterDB.chars or {}) do
+    if c.snapshot then out[#out + 1] = { key = key, current = key == current, snap = c.snapshot, char = c } end
+  end
+  table.sort(out, function(a, b)
+    if a.current ~= b.current then return a.current end
+    return a.key < b.key
+  end)
+  return out
+end
+
+function E.Forget(key)
+  local c = ForeverRosterDB.chars and ForeverRosterDB.chars[key]
+  if c then c.snapshot = nil end
+end
+
+local function block(c, snap)
+  local lines = {}
+  for _, l in ipairs(snap.lines or {}) do lines[#lines + 1] = l end
+  ns.safe("inscriptions", function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
+  ns.safe("recherchés", function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
+  local h = {}
+  for k, v in pairs(snap.header or {}) do h[k] = v end
+  h.time, h.addon = snap.at or 0, ns.version
+  return ns.Format.BuildFRC(h, lines)
+end
+
+-- Export : un bloc FRC par perso relevé (le perso connecté est relevé à l'instant). onlyCurrent : ce perso seul.
+function E.Build(onlyCurrent)
+  E.Snapshot(false)
+  local blocks = {}
+  for _, e in ipairs(E.Characters()) do
+    if e.current or not onlyCurrent then blocks[#blocks + 1] = block(e.char, e.snap) end
+  end
+  return table.concat(blocks, "\n")
 end

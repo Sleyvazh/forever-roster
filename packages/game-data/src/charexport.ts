@@ -40,6 +40,8 @@ export interface CharacterExport {
   talents: ExportedTalentNode[];
   /** Inscriptions faites en jeu (fenêtre « Groupe » de l'addon), à reporter sur le site. */
   signups: { groupId: string; raidId: string; status: SignupStatus }[];
+  /** Patrons marqués « recherché » (on) ou retirés en jeu, par l'objet patron. */
+  wanted: { itemId: number; on: boolean }[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,7 +61,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const data: CharacterExport = {
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
-    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [],
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], wanted: [],
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -85,11 +87,36 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
       if (UUID.test(groupId) && UUID.test(raidId) && (SIGNUP_STATUSES as readonly string[]).includes(status)) {
         data.signups = data.signups.filter(s => s.raidId !== raidId).concat({ groupId, raidId, status: status as SignupStatus });
       }
+    } else if (f[0] === "W") {
+      const itemId = int(f[1]);
+      if (itemId > 0) data.wanted = data.wanted.filter(w => w.itemId !== itemId).concat({ itemId, on: f[2] === "1" });
     } else if (f[0] === "T") {
       data.talents.push({ id: int(f[1]), rank: int(f[2]), max: int(f[3]), x: int(f[4]), y: int(f[5]), spell: int(f[6]), sub: int(f[7]), tree: int(f[8]) });
     }
   }
   return { ok: true, data };
+}
+
+/**
+ * Export de l'addon pour plusieurs persos (un bloc FRC par perso, à la suite). Un bloc abîmé est signalé sans bloquer les autres.
+ */
+export function parseCharacterExports(text: string): { ok: true; data: CharacterExport[]; errors: string[] } | { ok: false; error: string } {
+  const lines = text.split(/\r?\n/);
+  const blocks: string[][] = [];
+  for (const line of lines) {
+    if (line.trim().startsWith("FRC;")) blocks.push([line]);
+    else if (blocks.length) blocks.at(-1)!.push(line);
+  }
+  if (!blocks.length) return parseCharacterExport(text) as { ok: false; error: string };
+  if (blocks.length > 50) return { ok: false, error: "Export trop long." };
+  const data: CharacterExport[] = [], errors: string[] = [];
+  for (const b of blocks) {
+    const r = parseCharacterExport(b.join("\n"));
+    if (r.ok) data.push(r.data);
+    else errors.push(`${b[0]?.split(";")[2] || "?"} : ${r.error}`);
+  }
+  if (!data.length) return { ok: false, error: errors[0] ?? "Export illisible." };
+  return { ok: true, data, errors };
 }
 
 /**
