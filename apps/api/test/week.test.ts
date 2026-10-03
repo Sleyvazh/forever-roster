@@ -11,7 +11,7 @@ describe("cette semaine", () => {
   it("nouveau compte : rien, et les étapes de démarrage à faire", async () => {
     const { c } = await signedIn(env);
     const w = (await c.get("/api/week")).json();
-    expect(w).toEqual({ raids: [], todo: [], groups: [], steps: { character: false, group: false, addon: false } });
+    expect(w).toEqual({ raids: [], todo: [], steps: { character: false, group: false, addon: false } });
   });
 
   it("raids de la semaine avec mon inscription, choses à faire", async () => {
@@ -35,7 +35,6 @@ describe("cette semaine", () => {
       expect.objectContaining({ kind: "signup", raidId: ony.id, name: "Onyxia" }),
       { kind: "incomplete", characterId: noSpec.id, name: "Korrin", missing: "spé" },
     ]);
-    expect(w.groups).toEqual([{ id: g.id, name: "Les Veilleurs", role: "member", raids: 2 }]);
     expect(w.steps).toEqual({ character: true, group: true, addon: false });
 
     // Fiche synchronisée par l'addon : étape cochée

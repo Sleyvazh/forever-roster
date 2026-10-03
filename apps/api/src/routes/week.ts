@@ -14,7 +14,7 @@ const MAX_RAIDS = 20;
 const COMING: SignupStatus[] = ["present", "late"];
 
 /**
- * « Cette semaine » (bandeau de Mes persos et onglet du même nom) : raids à venir de mes groupes avec mon inscription,
+ * « Cette semaine » (bandeau en haut de Mes persos) : raids à venir de mes groupes avec mon inscription,
  * choses à faire (raid sans réponse, fiche à resynchroniser, perso sans classe ou spé) et étapes de démarrage.
  */
 export async function weekRoutes(app: FastifyInstance) {
@@ -25,7 +25,7 @@ export async function weekRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const now = Date.now();
 
-    const myGroups = await db.select({ id: groups.id, name: groups.name, role: groupMembers.role })
+    const myGroups = await db.select({ id: groups.id, name: groups.name })
       .from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
       .where(eq(groupMembers.userId, u.id)).orderBy(asc(groups.name));
     const groupName = new Map(myGroups.map(g => [g.id, g.name]));
@@ -78,7 +78,6 @@ export async function weekRoutes(app: FastifyInstance) {
     return {
       raids: weekRaids,
       todo,
-      groups: myGroups.map(g => ({ id: g.id, name: g.name, role: g.role, raids: weekRaids.filter(r => r.groupId === g.id).length })),
       steps: { character: chars.length > 0, group: myGroups.length > 0, addon: chars.some(c => !!c.addonSyncedAt) },
     };
   });

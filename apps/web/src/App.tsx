@@ -10,7 +10,6 @@ import { GroupPage } from "./pages/GroupPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { JoinPage } from "./pages/JoinPage";
 import { RaidPage } from "./pages/RaidPage";
-import { WeekPage } from "./components/Week";
 
 export function App() {
   return (
@@ -28,7 +27,6 @@ export function App() {
             <Route path="/join" element={<JoinPage />} />
             <Route path="/" element={<RequireAuth><Navigate to="/persos" replace /></RequireAuth>} />
             <Route path="/persos/:charId?/:tab?" element={<RequireAuth><CharactersPage /></RequireAuth>} />
-            <Route path="/semaine" element={<RequireAuth><WeekPage /></RequireAuth>} />
             <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
             <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupPage /></RequireAuth>} />
             <Route path="/groups/:groupId/raids/:raidId" element={<RequireAuth><RaidPage /></RequireAuth>} />

@@ -2,7 +2,7 @@ import { SIGNUP_LABEL, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, useEffect, useState, type ReactElement } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, get, put, type Character, type GroupRole } from "../api";
+import { ApiError, get, put, type Character } from "../api";
 import { useMe } from "../auth";
 import { useViewPref } from "../prefs";
 
@@ -19,7 +19,6 @@ export type WeekTodo =
   | { kind: "incomplete"; characterId: string; name: string; missing: "classe" | "spé" };
 export interface WeekData {
   raids: WeekRaid[]; todo: WeekTodo[];
-  groups: { id: string; name: string; role: GroupRole; raids: number }[];
   steps: { character: boolean; group: boolean; addon: boolean };
 }
 
@@ -103,65 +102,15 @@ function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
 }
 
 const Counts = ({ r }: { r: WeekRaid }) => (
-  <span className="wk-counts num">
-    <b>{r.counts.coming}</b> viennent · {r.counts.tank} tank{r.counts.tank > 1 ? "s" : ""} · {r.counts.heal} heal{r.counts.heal > 1 ? "s" : ""} · {r.counts.dps} DPS
-    {r.counts.tentative > 0 && ` · ${r.counts.tentative} peut-être`}
+  <span className="wk-counts">
+    <b>{r.counts.coming}</b> {r.counts.coming > 1 ? "viennent" : "vient"} · <b>{r.counts.tank}</b> tank{r.counts.tank > 1 ? "s" : ""} · <b>{r.counts.heal}</b> heal{r.counts.heal > 1 ? "s" : ""} · <b>{r.counts.dps}</b> DPS
+    {r.counts.tentative > 0 && <> · <b>{r.counts.tentative}</b> peut-être</>}
   </span>
 );
 
 /* ---------- Bandeau de Mes persos ---------- */
 
-/** En haut de Mes persos : prochain raid et inscription en un clic, et le nombre de choses à faire (détail : onglet Cette semaine). */
-export function WeekBand() {
-  const week = useWeek();
-  const chars = useMyChars();
-  const [mode, setMode] = useViewPref<"open" | "folded">("week-band", "open", ["open", "folded"]);
-  const w = week.data;
-  const r = nextRaid(w);
-  const todo = w?.todo.length ?? 0;
-  if (!w || (!r && !todo)) return null;
-
-  const todoLink = todo > 0 && (
-    <Link to="/semaine" className="wk-todo"><span className="n num">{todo}</span> à faire</Link>
-  );
-
-  if (mode === "folded" || !r) {
-    return (
-      <section className="wk-band folded" aria-label="Cette semaine">
-        <span className="eyebrow">Cette semaine</span>
-        {r ? <span className="wk-mini"><b>{r.name}</b> <span className="muted small">{whenText(r.scheduledAt)}{r.mine ? ` · ${SIGNUP_LABEL[r.mine.status]}` : " · pas inscrit"}</span></span>
-          : <span className="muted small">Aucun raid dans les 7 jours.</span>}
-        <span className="wk-tools">
-          {todoLink}
-          {r && <button type="button" className="wk-fold" aria-label="Déplier le bandeau" title="Déplier" onClick={() => setMode("open")}>▾</button>}
-        </span>
-      </section>
-    );
-  }
-
-  return (
-    <section className="wk-band" aria-label="Cette semaine">
-      <div className="wk-raid">
-        <span className="eyebrow">Prochain raid · {r.groupName}</span>
-        <Link to={`/groups/${r.groupId}/raids/${r.id}`} className="wk-name">{r.name}<span className="wk-when num">{whenText(r.scheduledAt)} · {untilText(r.scheduledAt)}</span></Link>
-        <Counts r={r} />
-      </div>
-      <QuickSignup raid={r} chars={chars.data?.characters ?? []} />
-      <span className="wk-tools">
-        {todoLink || <Link to="/semaine" className="wk-more small">Cette semaine →</Link>}
-        <button type="button" className="wk-fold" aria-label="Réduire le bandeau" title="Réduire" onClick={() => setMode("folded")}>▴</button>
-      </span>
-    </section>
-  );
-}
-
-/* ---------- Onglet Cette semaine ---------- */
-
-function TodoItem({ t }: { t: WeekTodo }) {
-  if (t.kind === "signup") return (
-    <li className="wk-item signup"><span><b>{t.name}</b> {whenText(t.scheduledAt)} : pas encore de réponse<span className="sub">{t.groupName}</span></span>
-      <Link className="btn sm" to={`/groups/${t.groupId}/raids/${t.raidId}`}>Répondre</Link></li>
-  );
+function TodoItem({ t }: { t: Exclude<WeekTodo, { kind: "signup" }> }) {
   if (t.kind === "sync") return (
     <li className="wk-item sync"><span><b>{t.name}</b> n'est pas synchronisé depuis {t.days} jours<span className="sub">En jeu : ta touche de synchro, Ctrl+C, puis Ctrl+V sur n'importe quelle page du site.</span></span>
       <Link className="btn sm" to="/addon">Comment ?</Link></li>
@@ -172,66 +121,84 @@ function TodoItem({ t }: { t: WeekTodo }) {
   );
 }
 
-export function WeekPage() {
-  const me = useMe();
+/**
+ * En haut de Mes persos : prochain raid et inscription en un clic. « N à faire » déplie les autres raids
+ * de la semaine (inscription en un clic aussi) et le reste à faire. ▴ réduit le bandeau à une ligne.
+ */
+export function WeekBand() {
   const week = useWeek();
   const chars = useMyChars();
+  const [mode, setMode] = useViewPref<"open" | "folded">("week-band", "open", ["open", "folded"]);
+  const [details, setDetails] = useState(false);
   const w = week.data;
-  if (week.isLoading || !w) return <p className="muted">Chargement…</p>;
-  const [first, ...later] = w.raids;
+  const r = nextRaid(w);
+  const later = w?.raids.slice(1) ?? [];
+  const others = (w?.todo ?? []).filter((t): t is Exclude<WeekTodo, { kind: "signup" }> => t.kind !== "signup");
+  const todo = w?.todo.length ?? 0;
+  if (!w || (!r && !todo)) return null;
   const myChars = chars.data?.characters ?? [];
+  const folded = mode === "folded" && !!r;
+  const hasDetails = later.length > 0 || others.length > 0;
+
+  const toggle = hasDetails && (
+    <button type="button" className={todo ? "wk-todo" : "wk-more"} aria-expanded={details && !folded} aria-controls="wk-details"
+      onClick={() => { if (folded) { setMode("open"); setDetails(true); } else setDetails(d => !d); }}>
+      {todo ? <><span className="n num">{todo}</span> à faire</> : `${later.length} autre${later.length > 1 ? "s" : ""} raid${later.length > 1 ? "s" : ""}`}
+      <span aria-hidden="true">{details && !folded ? " ▴" : " ▾"}</span>
+    </button>
+  );
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="page-head"><div><div className="eyebrow">{me.data?.user ? `Bonjour ${me.data.user.displayName}` : "Planning"}</div><h1>Cette semaine</h1></div></div>
-      <div className="wk-grid">
-        <div className="stack">
-          {first ? (
-            <section className="panel lift pad stack wk-hero" aria-label="Prochain raid">
-              <div className="row between" style={{ alignItems: "flex-start" }}>
-                <div>
-                  <div className="eyebrow">Prochain raid · {first.groupName}</div>
-                  <h2 className="wk-hero-name"><Link to={`/groups/${first.groupId}/raids/${first.id}`}>{first.name}</Link></h2>
-                </div>
-                <div className="wk-hero-when"><span className="small muted">{whenText(first.scheduledAt)}</span><b className="num">{untilText(first.scheduledAt)}</b></div>
-              </div>
-              <Counts r={first} />
-              <QuickSignup raid={first} chars={myChars} />
-              {later.length > 0 && (
-                <ul className="wk-later">
-                  {later.map(r => (
-                    <li key={r.id}>
-                      <span><Link to={`/groups/${r.groupId}/raids/${r.id}`}><b>{r.name}</b></Link> <span className="muted small">· {whenText(r.scheduledAt)} · {r.groupName}</span><br /><Counts r={r} /></span>
-                      <QuickSignup raid={r} chars={myChars} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ) : (
-            <section className="panel pad"><h2 className="wk-h">Raids</h2><p className="muted" style={{ margin: 0 }}>Aucun raid prévu dans les 7 jours dans tes groupes.</p></section>
-          )}
-        </div>
-        <div className="stack">
-          <section className="panel pad stack" aria-label="À faire">
-            <div className="row between"><h2 className="wk-h">À faire</h2><span className="muted small">{w.todo.length ? `${w.todo.length} chose${w.todo.length > 1 ? "s" : ""}` : "rien"}</span></div>
-            {w.todo.length ? <ul className="wk-list">{w.todo.map((t, i) => <TodoItem key={i} t={t} />)}</ul>
-              : <p className="muted" style={{ margin: 0 }}>Tout est à jour.</p>}
-          </section>
-          <section className="panel pad stack" aria-label="Mes groupes">
-            <div className="row between"><h2 className="wk-h">Mes groupes</h2><Link to="/groups" className="small">Tous →</Link></div>
-            {w.groups.length ? (
-              <ul className="wk-groups">
-                {w.groups.map(g => (
-                  <li key={g.id}><Link to={`/groups/${g.id}`}>{g.name}</Link>{g.role !== "member" && <span className="tag gold">{g.role === "owner" ? "Chef" : "Officier"}</span>}
-                    <span className="muted small">{g.raids ? `${g.raids} raid${g.raids > 1 ? "s" : ""} cette semaine` : "aucun raid cette semaine"}</span></li>
+    <section className={`wk-band${folded ? " folded" : ""}`} aria-label="Cette semaine">
+      <div className="wk-main">
+        {folded ? (
+          <>
+            <span className="eyebrow">Cette semaine</span>
+            <span className="wk-mini"><b>{r!.name}</b> <span className="muted small">{whenText(r!.scheduledAt)}{r!.mine ? ` · ${SIGNUP_LABEL[r!.mine.status]}` : " · pas de réponse"}</span></span>
+          </>
+        ) : r ? (
+          <>
+            <div className="wk-raid">
+              <span className="eyebrow">Prochain raid · {r.groupName}</span>
+              <Link to={`/groups/${r.groupId}/raids/${r.id}`} className="wk-name">{r.name}<span className="wk-when">{whenText(r.scheduledAt)} · {untilText(r.scheduledAt)}</span></Link>
+              <Counts r={r} />
+            </div>
+            <QuickSignup raid={r} chars={myChars} />
+          </>
+        ) : (
+          <><span className="eyebrow">Cette semaine</span><span className="muted small">Aucun raid dans les 7 jours.</span></>
+        )}
+        <span className="wk-tools">
+          {toggle}
+          {r && <button type="button" className="wk-fold" aria-label={folded ? "Déplier le bandeau" : "Réduire le bandeau"} title={folded ? "Déplier" : "Réduire"}
+            onClick={() => { setMode(folded ? "open" : "folded"); setDetails(false); }}>{folded ? "▾" : "▴"}</button>}
+        </span>
+      </div>
+      {details && !folded && (
+        <div className="wk-details" id="wk-details">
+          {later.length > 0 && (
+            <>
+              <div className="wk-sub">Ensuite cette semaine</div>
+              <ul className="wk-later">
+                {later.map(x => (
+                  <li key={x.id}>
+                    <span><Link to={`/groups/${x.groupId}/raids/${x.id}`}><b>{x.name}</b></Link> <span className="muted small">· {whenText(x.scheduledAt)} · {x.groupName}</span>
+                      {!x.mine && <span className="tag warn" style={{ marginLeft: 8 }}>Pas de réponse</span>}<br /><Counts r={x} /></span>
+                    <QuickSignup raid={x} chars={myChars} />
+                  </li>
                 ))}
               </ul>
-            ) : <p className="muted" style={{ margin: 0 }}>Aucun groupe : ouvre le lien d'invitation de ton officier, ou crée ton groupe dans <Link to="/groups">Groupes</Link>.</p>}
-          </section>
+            </>
+          )}
+          {others.length > 0 && (
+            <>
+              <div className="wk-sub">À faire</div>
+              <ul className="wk-list">{others.map(t => <TodoItem key={`${t.kind}-${t.characterId}`} t={t} />)}</ul>
+            </>
+          )}
         </div>
-      </div>
-    </div>
+      )}
+    </section>
   );
 }
 
