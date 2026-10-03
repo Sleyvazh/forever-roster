@@ -71,6 +71,16 @@ function UnitIsGroupAssistant() return false end
 function InCombatLockdown() return false end
 function Ambiguate(n) return n end
 function time() return 1790000000 end
+-- Raccourcis clavier
+local BINDS = {}
+function GetBindingKey(action) local out = {} for k, a in pairs(BINDS) do if a == action then out[#out + 1] = k end end table.sort(out) return unpack(out) end
+function GetBindingAction(key) return BINDS[key] or "" end
+function SetBinding(key, action) BINDS[key] = action return true end
+function SaveBindings() end
+function GetCurrentBindingSet() return 2 end
+function GetBindingText(key) return key end
+function IsAltKeyDown() return false end
+function IsShiftKeyDown() return false end
 
 local ns = {}
 for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
@@ -217,6 +227,38 @@ run("rappels")
 assert(ForeverRosterDB.noReminder, "/fr rappels coupe")
 run("rappels")
 assert(not ForeverRosterDB.noReminder, "/fr rappels remet")
+-- Onglet Options : touches, minicarte, rappels, persos de l'export
+local function errors() local n = 0 for _, l in ipairs(printed) do if l:find("erreur") then n = n + 1 end end return n end
+local before = errors()
+run("options")
+assert(ns.UI.pages.options and ForeverRosterDB.tab == "options", "onglet Options")
+ns.UI.StartCapture("FOREVERROSTER_SYNC")
+local cap = ns.UI.captureFrame
+assert(cap:IsShown() and ns.UI.capturing() == "FOREVERROSTER_SYNC", "attente d'une touche")
+rawget(cap, "scripts").OnKeyDown(cap, "LCTRL") -- une touche de modification seule ne compte pas
+assert(cap:IsShown(), "modificateur seul ignoré")
+IsControlKeyDown = function() return false end
+BINDS.F8 = "TOGGLEBAG1"
+rawget(cap, "scripts").OnKeyDown(cap, "F8")
+assert(BINDS.F8 == "FOREVERROSTER_SYNC" and not cap:IsShown(), "touche F8 enregistrée (et reprise à une autre action)")
+ns.UI.StartCapture("FOREVERROSTER_SYNC")
+IsShiftKeyDown = function() return true end
+rawget(cap, "scripts").OnKeyDown(cap, "G")
+IsShiftKeyDown = function() return false end
+assert(BINDS["SHIFT-G"] == "FOREVERROSTER_SYNC" and BINDS.F8 == nil, "nouvelle touche : l'ancienne est libérée")
+ns.UI.StartCapture("FOREVERROSTER_TOGGLE")
+rawget(cap, "scripts").OnKeyDown(cap, "ESCAPE")
+assert(select("#", GetBindingKey("FOREVERROSTER_TOGGLE")) == 0 and not cap:IsShown(), "Échap annule")
+ns.UI.SetBinding("FOREVERROSTER_SYNC", nil)
+assert(BINDS["SHIFT-G"] == nil, "touche retirée")
+ns.Minimap.SetShown(false)
+assert(ForeverRosterDB.minimap.hidden, "minicarte masquée")
+ns.Minimap.SetShown(true)
+assert(not ForeverRosterDB.minimap.hidden, "minicarte affichée")
+ForeverRosterDB.chars["Greta-Forever EU"] = { recipes = {}, snapshot = { header = { name = "Greta", realm = "Forever EU", class = "DRUID", level = 20 }, lines = {}, at = 1789000000 } }
+ns.UI.pages.options.confirm = "Greta-Forever EU"
+ns.UI.Refresh()
+assert(errors() == before, "onglet Options affiché sans erreur")
 -- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))

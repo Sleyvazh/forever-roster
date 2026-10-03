@@ -182,9 +182,9 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
     await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
-    await page.locator(".addon-step").getByRole("button", { name: "Copier pour le jeu" }).click();
-    await expect(page.locator("#ga-all")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
-    await expect(page.getByText("Les Testeurs · 0 raid à venir · 1 patron · 0 BiS", { exact: false })).toBeVisible();
+    // La page explique la synchro sans la refaire : copier et coller se font depuis n'importe quelle page
+    await expect(page.getByRole("heading", { name: "Synchroniser" })).toBeVisible();
+    await expect(page.locator(".addon-step").getByRole("button", { name: "Copier pour le jeu" })).toHaveCount(0);
     // Téléphone : pas de défilement horizontal
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

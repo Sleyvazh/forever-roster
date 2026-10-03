@@ -76,6 +76,14 @@ function M.Update()
   if M.count > 0 then button.badge.text:SetText(M.count) button.badge:Show() else button.badge:Hide() end
 end
 
+-- Afficher ou masquer le bouton (onglet Options, /fr minicarte)
+function M.SetShown(show)
+  if not button then M.Create() end
+  ForeverRosterDB.minimap = ForeverRosterDB.minimap or { angle = 210 }
+  ForeverRosterDB.minimap.hidden = not show or nil
+  if button then if show then button:Show() else button:Hide() end end
+end
+
 function M.Toggle()
   if not button then M.Create() end
   if not button then return end

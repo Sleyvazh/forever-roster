@@ -637,10 +637,6 @@ button.hportrait { cursor: pointer; }
 .addon-safety > summary { cursor: pointer; color: var(--ink-2); font-weight: 600; }
 .addon-safety > ul { margin-top: 8px; }
 .addon-step code.sha { font-size: 12px; }
-.addon-groups { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-.addon-match select { width: 100%; min-width: 150px; }
-@media (max-width: 600px) { .addon-match .col-when { display: none; } .addon-match select { min-width: 0; } }
-.addon-match td.with-icon { display: flex; align-items: center; gap: 8px; }
 .addon-results { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .addon-results li.ok::before { content: "✓ "; color: var(--ok); }
 .addon-results li.bad::before { content: "✗ "; color: var(--warn); }
@@ -663,6 +659,7 @@ button.hportrait { cursor: pointer; }
 @media (max-width: 760px) { .paste-import { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
 
 /* Dernière synchro de chaque perso (page Addon) */
+.addon-sub { font-size: 15px; color: var(--gold); margin: 4px 0 0; }
 .addon-sync { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .addon-sync li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
 .addon-sync .with-icon { display: flex; align-items: center; gap: 8px; }

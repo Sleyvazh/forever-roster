@@ -58,8 +58,8 @@ ns.on("ADDON_LOADED", function(name)
 end)
 
 local HELP = {
-  "/fr : ouvrir la fenêtre (onglets Synchro, Raids, Compo, Patrons) ; aussi par le bouton de la minicarte",
-  "/fr synchro | raids | compo | patrons : ouvrir directement un onglet",
+  "/fr : ouvrir la fenêtre (onglets Synchro, Raids, Compo, Patrons, Options) ; aussi par le bouton de la minicarte",
+  "/fr synchro | raids | compo | patrons | options : ouvrir directement un onglet",
   "Synchro rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou clic droit sur le bouton de la minicarte",
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
@@ -76,7 +76,7 @@ function ns.safe(label, fn, ...)
   return ok
 end
 
-local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons" }
+local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons", options = "options" }
 
 -- Raccourcis clavier (Bindings.xml) : Échap > Options > Raccourcis > AddOns > Forever Roster
 BINDING_HEADER_FOREVERROSTER = "Forever Roster"

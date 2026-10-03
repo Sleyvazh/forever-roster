@@ -188,6 +188,7 @@ local TABS = {
   { key = "raids", label = "Raids", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
   { key = "compo", label = "Compo", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
   { key = "patrons", label = "Patrons", icon = "Interface\\Icons\\INV_Scroll_03" },
+  { key = "options", label = "Options", icon = "Interface\\Icons\\INV_Misc_Gear_01" },
 }
 local pages, refreshers = {}, {}
 U.pages = pages
@@ -395,7 +396,117 @@ refreshers.synchro = function(p)
   if #included > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
 end
 
-local builders = { synchro = buildSynchro, raids = buildRaids, compo = buildCompo, patrons = buildPatrons }
+-- Options : touches, bouton de la minicarte, rappels de raid, persos de l'export
+local BINDINGS = {
+  { action = "FOREVERROSTER_SYNC", label = "Synchro rapide avec le site" },
+  { action = "FOREVERROSTER_TOGGLE", label = "Ouvrir ou fermer la fenêtre" },
+}
+local function keyText(key)
+  return (GetBindingText and GetBindingText(key)) or key
+end
+local function keysOf(action)
+  local keys = { GetBindingKey(action) }
+  local out = {}
+  for _, k in ipairs(keys) do out[#out + 1] = keyText(k) end
+  return out, keys
+end
+local function saveBindings()
+  if SaveBindings then SaveBindings((GetCurrentBindingSet and GetCurrentBindingSet()) or 1) end
+end
+
+-- Choix d'une touche : la prochaine touche appuyée (avec Alt, Ctrl, Maj) remplace celle de l'action ; Échap annule
+local capture
+function U.SetBinding(action, key)
+  if InCombatLockdown and InCombatLockdown() then ns.print("|cffff6b5epas de changement de touche en combat.|r") return false end
+  local _, old = keysOf(action)
+  for _, k in ipairs(old) do SetBinding(k, nil) end
+  if key then
+    local taken = GetBindingAction and GetBindingAction(key)
+    if taken and taken ~= "" and taken ~= action then
+      ns.print(GOLD .. keyText(key) .. "|r servait à « " .. ((_G["BINDING_NAME_" .. taken]) or taken) .. " » : remplacée.")
+    end
+    SetBinding(key, action)
+  end
+  saveBindings()
+  return true
+end
+local MODIFIERS = { LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true, LMETA = true, RMETA = true, UNKNOWN = true }
+function U.StartCapture(action)
+  if not capture then
+    capture = CreateFrame("Frame", nil, UIParent)
+    capture:SetAllPoints(UIParent)
+    capture:SetFrameStrata("FULLSCREEN_DIALOG")
+    capture:EnableKeyboard(true)
+    if capture.SetPropagateKeyboardInput then capture:SetPropagateKeyboardInput(false) end
+    capture:SetScript("OnKeyDown", function(self, key)
+      if MODIFIERS[key] then return end
+      local action = self.action
+      self.action = nil
+      self:Hide()
+      if key ~= "ESCAPE" then
+        local combo = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "") .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
+        if U.SetBinding(action, combo) then ns.print("touche " .. GOLD .. keyText(combo) .. "|r enregistrée.") end
+      end
+      U.Refresh()
+    end)
+    capture:Hide()
+    U.captureFrame = capture
+  end
+  capture.action = action
+  capture:Show()
+  U.Refresh()
+end
+U.capturing = function() return capture and capture:IsShown() and capture.action or nil end
+
+local function buildOptions(p)
+  hint(p, "Réglages de l'addon, gardés pour tous tes persos. Les touches se changent aussi dans Échap > Options > Raccourcis > AddOns.")
+  p.list = list(p, -40)
+end
+refreshers.options = function(p)
+  local L = p.list
+  L.Reset()
+  L.Header("Touches")
+  local waiting = U.capturing()
+  for _, b in ipairs(BINDINGS) do
+    local shown = keysOf(b.action)
+    local current = #shown > 0 and (GOLD .. table.concat(shown, ", ") .. "|r") or (GREY .. "aucune touche|r")
+    if waiting == b.action then
+      L.Add(b.label .. " : " .. GREEN .. "appuie sur la touche voulue (avec Alt, Ctrl ou Maj si tu veux)… Échap : annuler.|r")
+    else
+      local buttons = { { "Choisir une touche", 160, function() U.StartCapture(b.action) end } }
+      if #shown > 0 then buttons[2] = { "Retirer", 100, function() U.SetBinding(b.action, nil) U.Refresh() end } end
+      L.Add(b.label .. " : " .. current, buttons)
+    end
+  end
+  L.Header("Affichage et rappels")
+  local mapOn = not (ForeverRosterDB.minimap and ForeverRosterDB.minimap.hidden)
+  L.Add("Bouton de la minicarte : " .. (mapOn and (GREEN .. "affiché|r") or (GREY .. "masqué|r")) .. GREY .. "  (clic : fenêtre, clic droit : synchro rapide, pastille : persos à envoyer)|r",
+    { { mapOn and "Masquer" or "Afficher", 100, function() ns.Minimap.SetShown(not mapOn) U.Refresh() end } })
+  local remind = not ForeverRosterDB.noReminder
+  L.Add("Rappel de raid à la connexion : " .. (remind and (GREEN .. "activé|r") or (GREY .. "coupé|r")) .. GREY .. "  (raid des prochaines 24 h sans réponse : « Tu viens ? »)|r",
+    { { remind and "Couper" or "Activer", 100, function() ForeverRosterDB.noReminder = remind or nil U.Refresh() end } })
+  L.Header("Persos de l'export")
+  local chars = ns.Export.Characters()
+  if #chars == 0 then L.Add(GREY .. "Aucun perso relevé pour l'instant.|r") end
+  for _, e in ipairs(chars) do
+    local h = e.snap.header or {}
+    local sent = e.char.sentAt and ("envoyé au site le " .. date("%d/%m %H:%M", e.char.sentAt)) or "jamais envoyé"
+    local text = colored(h.class, h.name or e.key) .. GREY .. "  " .. (h.realm or "") .. " · niveau " .. (h.level or "?") .. " · relevé le " .. date("%d/%m %H:%M", e.snap.at or 0) .. " · " .. sent .. "|r"
+    if e.current then
+      L.Add(text .. "\n" .. GREY .. "Perso connecté : il est relevé tout seul, il ne peut pas être retiré.|r")
+    elseif p.confirm == e.key then
+      L.Add(text .. "\n" .. GOLD .. "Le retirer de l'export ? Il reviendra si tu te connectes avec lui.|r", {
+        { "Oui, retirer", 120, function() ns.Export.Forget(e.key) p.confirm = nil if ns.Minimap.Update then ns.Minimap.Update() end U.Refresh() end },
+        { "Annuler", 100, function() p.confirm = nil U.Refresh() end },
+      })
+    else
+      L.Add(text, { { "Retirer de l'export", 160, function() p.confirm = e.key U.Refresh() end } })
+    end
+  end
+  L.Done()
+end
+
+local builders = { synchro = buildSynchro, raids = buildRaids, compo = buildCompo, patrons = buildPatrons, options = buildOptions }
 
 -- Onglet à icône sur le côté, comme ceux de la fiche de perso de Forever
 local function sideTab(parent, index, t)
