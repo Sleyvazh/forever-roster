@@ -304,7 +304,20 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/band-mobile.png" });
     await page.setViewportSize({ width: 1360, height: 900 });
+    // Page Groupes : carte avec prochain raid, ma réponse, roster et raccourcis vers les onglets
     await page.getByRole("link", { name: "Groupes" }).first().click();
+    const card = page.getByRole("article", { name: "Les Testeurs" });
+    await expect(card).toContainText("Molten Core");
+    await expect(card).toContainText("Peut-être");
+    await expect(card.getByRole("link", { name: "Artisans" })).toHaveAttribute("href", /\/groups\/[0-9a-f-]{36}\/artisans$/);
+    // Nouveautés : point doré tant que pas lues, panneau à l'ouverture
+    const news = page.getByRole("button", { name: "Nouveautés (non lues)" });
+    await news.click();
+    await expect(page.getByRole("region", { name: "Nouveautés" })).toContainText("Un onglet Options en jeu");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/groupes-news.png" });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Nouveautés", exact: true })).toBeVisible();
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/groupes.png" });
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 

@@ -1,3 +1,4 @@
+import type { SignupStatus } from "@forever/game-data";
 /** Client HTTP : cookies de session automatiques (même origine) + jeton CSRF sur les requêtes qui modifient. */
 
 let csrfToken: string | null = null;
@@ -91,7 +92,11 @@ export interface CraftersRecipe {
 }
 
 export type GroupRole = "owner" | "officer" | "member";
-export interface GroupSummary { id: string; name: string; role: GroupRole; members: number }
+export interface GroupSummary {
+  id: string; name: string; role: GroupRole; members: number; discordLinked: boolean; upcoming: number;
+  nextRaid: { id: string; name: string; scheduledAt: string; coming: number; mine: SignupStatus | null } | null;
+  roles: { tank: number; heal: number; dps: number };
+}
 export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
 
 export interface RaidSignup {

@@ -11,6 +11,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { useLiveEvents } from "../live";
 import { CopyForGame } from "./CopyForGame";
 import { PasteImport } from "./PasteImport";
+import { News } from "./News";
 
 const Brand = () => (
   <Link to="/" className="brand" aria-label="Forever Roster, accueil">
@@ -94,6 +95,7 @@ export function TopBar() {
           <div className="bar-right">
             {user && <CopyForGame />}
             <LaunchPill />
+            {user && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>

@@ -44,6 +44,26 @@ describe("cette semaine", () => {
     expect((await (await signedIn(env)).c.get("/api/week")).json().raids).toEqual([]);
   });
 
+  it("liste des groupes : prochain raid avec ma réponse, raids à venir, roster par rôle", async () => {
+    const gm = await signedIn(env, "Cheffe"), p1 = await signedIn(env, "Druidesse");
+    const g = (await gm.c.post("/api/groups", { name: "Les Veilleurs" })).json().group;
+    const inv = (await gm.c.post(`/api/groups/${g.id}/invites`, { maxUses: 5, expiresInHours: 24 })).json().invite;
+    await p1.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
+    const druid = (await p1.c.post("/api/characters", { name: "Thalwen", race: "Tauren", cls: "Druid", spec1: "Feral Bear" })).json().character;
+    await gm.c.post("/api/characters", { name: "Prêtresse", race: "Undead", cls: "Priest", spec1: "Holy" });
+    await gm.c.post("/api/characters", { name: "Sans spé", race: "Orc", cls: "Warrior" });
+    const mc = (await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Molten Core", scheduledAt: inHours(3) })).json().raid;
+    await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Onyxia", scheduledAt: inHours(48) });
+    await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Passé", scheduledAt: inHours(-48) });
+    await p1.c.put(`/api/groups/${g.id}/raids/${mc.id}/signup`, { status: "present", characterId: druid.id });
+
+    const [mine] = (await p1.c.get("/api/groups")).json().groups;
+    expect(mine).toMatchObject({ id: g.id, name: "Les Veilleurs", role: "member", members: 2, discordLinked: false, upcoming: 2,
+      nextRaid: { id: mc.id, name: "Molten Core", coming: 1, mine: "present" }, roles: { tank: 1, heal: 1, dps: 0 } });
+    expect((await gm.c.get("/api/groups")).json().groups[0].nextRaid.mine).toBeNull();
+    expect((await (await signedIn(env)).c.get("/api/groups")).json().groups).toEqual([]);
+  });
+
   it("réservé aux comptes connectés", async () => {
     const res = await env.app.inject({ method: "GET", url: "/api/week" });
     expect(res.statusCode).toBe(401);

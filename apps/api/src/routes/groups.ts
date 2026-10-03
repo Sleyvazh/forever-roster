@@ -1,9 +1,9 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES } from "@forever/game-data";
+import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
-import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, users } from "../db/schema";
+import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
 import { randomBytes } from "node:crypto";
@@ -22,14 +22,46 @@ export async function groupRoutes(app: FastifyInstance) {
   const { db, cfg } = app.ctx;
   app.addHook("preHandler", requireAuth);
 
+  /**
+   * Mes groupes, pour leurs cartes : membres, raids à venir et le prochain (avec ma réponse),
+   * roster par rôle (spé principale des persos des membres), salon Discord lié ou non.
+   */
   app.get("/", async (req) => {
     const u = currentUser(req);
     const rows = await db.select({
-      id: groups.id, name: groups.name, role: groupMembers.role,
+      id: groups.id, name: groups.name, role: groupMembers.role, discordLinked: sql<boolean>`${groups.discordChannelId} is not null`,
       members: sql<number>`(select count(*)::int from group_members gm where gm.group_id = ${groups.id})`,
     }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
       .where(eq(groupMembers.userId, u.id)).orderBy(asc(groups.name));
-    return { groups: rows };
+    const ids = rows.map(r => r.id);
+    if (!ids.length) return { groups: [] };
+
+    const upcoming = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
+      .where(and(inArray(raids.groupId, ids), gt(raids.scheduledAt, new Date(Date.now() - 3 * 3600_000))))
+      .orderBy(asc(raids.scheduledAt));
+    const next = new Map<string, (typeof upcoming)[number]>();
+    for (const r of upcoming) if (!next.has(r.groupId)) next.set(r.groupId, r);
+    const nextIds = [...next.values()].map(r => r.id);
+    const signups = nextIds.length ? await db.select({ raidId: raidSignups.raidId, userId: raidSignups.userId, status: raidSignups.status })
+      .from(raidSignups).where(inArray(raidSignups.raidId, nextIds)) : [];
+    const COMING: SignupStatus[] = ["present", "late"];
+
+    const specs = await db.select({ groupId: groupMembers.groupId, spec: characters.spec1 }).from(characters)
+      .innerJoin(groupMembers, eq(groupMembers.userId, characters.userId))
+      .where(and(inArray(groupMembers.groupId, ids), sql`${characters.spec1} <> ''`));
+
+    return { groups: rows.map(g => {
+      const n = next.get(g.id);
+      const rs = n ? signups.filter(s => s.raidId === n.id) : [];
+      const roles = { tank: 0, heal: 0, dps: 0 };
+      for (const s of specs) if (s.groupId === g.id) { const r = roleOf(s.spec); if (r === "Tank") roles.tank++; else if (r === "Heal") roles.heal++; else roles.dps++; }
+      return {
+        ...g,
+        upcoming: upcoming.filter(r => r.groupId === g.id).length,
+        nextRaid: n ? { id: n.id, name: n.name, scheduledAt: n.scheduledAt, coming: rs.filter(s => COMING.includes(s.status)).length, mine: rs.find(s => s.userId === u.id)?.status ?? null } : null,
+        roles,
+      };
+    }) };
   });
 
   app.post("/", async (req, reply) => {
