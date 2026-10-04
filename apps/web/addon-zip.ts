@@ -46,8 +46,16 @@ export function zip(files: { name: string; data: Buffer }[], date = new Date(202
 }
 
 function addonFiles() {
-  return readdirSync(ADDON_DIR).filter(f => /\.(lua|toc|xml)$/.test(f)).sort()
+  const top = readdirSync(ADDON_DIR).filter(f => /\.(lua|toc|xml)$/.test(f)).sort()
     .map(f => ({ name: `ForeverRoster/${f}`, data: readFileSync(path.join(ADDON_DIR, f)) }));
+  // Police des titres (habillage « site ») et sa licence (SIL OFL, à distribuer avec la police)
+  const fontsDir = path.join(ADDON_DIR, "Fonts");
+  let fonts: { name: string; data: Buffer }[] = [];
+  try {
+    fonts = readdirSync(fontsDir).filter(f => /\.(ttf|txt)$/.test(f)).sort()
+      .map(f => ({ name: `ForeverRoster/Fonts/${f}`, data: readFileSync(path.join(fontsDir, f)) }));
+  } catch { /* pas de polices */ }
+  return [...top, ...fonts];
 }
 
 /** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */

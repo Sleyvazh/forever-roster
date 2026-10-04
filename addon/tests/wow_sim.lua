@@ -301,6 +301,23 @@ run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
 assert(ns.Compo.Status()[1].state == "ok", "le joueur est dans son propre groupe")
 run("aide")
+-- Habillage du site : fenêtres reconstruites (UI rechargée), chaque onglet, la synchro rapide, le rappel et l'alerte
+ForeverRosterDB.skin = "site"
+assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
+assert(ns.UI.site(), "habillage du site choisi")
+local beforeSkin = errors()
+for _, tab in ipairs({ "synchro", "raids", "compo", "patrons", "options" }) do ns.UI.Show(tab) end
+ns.UI.Quick()
+ns.UI.LootAlert(16833, "|cffa335ee|Hitem:16833::::::::60:::::|h[Cenarion Vestments]|h|r")
+ForeverRosterDB.skin = nil -- changement d'habillage : proposé au rechargement
+ns.UI.Show("options")
+assert(not ns.UI.site() and errors() == beforeSkin and failures == 0, "habillage du site sans erreur")
+local reloaded = false
+ReloadUI = function() reloaded = true end
+run("habillage")
+assert(ForeverRosterDB.skin == "site" and reloaded, "/fr habillage : site, interface rechargée")
+run("habillage")
+assert(ForeverRosterDB.skin == nil, "/fr habillage : retour à Forever")
 
 if failures > 0 then os.exit(1) end
 local export = ns.Export.Build()

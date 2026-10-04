@@ -50,7 +50,7 @@ function Install() {
       <details className="addon-safety">
         <summary>Sécurité : ce que fait (et ne fait pas) l'addon</summary>
         <ul className="addon-list">
-          <li>Le zip ne contient que des fichiers texte <code>.lua</code> et <code>.toc</code> : aucun programme à installer ni à lancer sur ton PC.</li>
+          <li>Le zip ne contient que des fichiers texte (<code>.lua</code>, <code>.toc</code>, <code>.xml</code>), plus la police des titres du site (<code>Fonts/MarcellusSC.ttf</code>, licence libre OFL, lue par le jeu) : aucun programme à installer ni à lancer sur ton PC.</li>
           <li>Un addon tourne dans le jeu, sans accès à internet, à tes fichiers ou à ton compte : il ne connaît ni ton mot de passe, ni ta session sur le site. Les échanges passent uniquement par ton copier-coller.</li>
           <li>Il n'envoie rien dans le chat sans un clic de ta part (« Annoncer ») et n'agit pas à ta place en combat.</li>
           <li>Le code est public : <a href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/ForeverRoster" target="_blank" rel="noopener noreferrer">addon/ForeverRoster sur GitHub</a>.</li>
@@ -89,6 +89,7 @@ const COMMANDS: [string, string][] = [
   ["Ta touche de synchro", "« Synchro rapide avec le site » : une seule case, ton export déjà sélectionné (Ctrl+C) ou tu y colles les données du site (Ctrl+V). À choisir dans l'onglet Options de l'addon."],
   ["/fr", "Ouvrir ou fermer la fenêtre (comme le bouton de la minicarte ; clic droit : synchro rapide)"],
   ["/fr synchro · raids · compo · patrons · options", "Ouvrir directement un onglet"],
+  ["/fr habillage", "Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options)"],
   ["/fr cherche + Maj+clic sur un objet", "Marquer un patron vu ailleurs (hôtel des ventes, chat) comme recherché, ou l'en retirer"],
 ];
 
@@ -101,7 +102,7 @@ function Commands() {
         <li><strong>Compo</strong> : la compo collée depuis la page d'un raid, avec <em>Inviter</em> et <em>Placer les groupes</em>.</li>
         <li><strong>Patrons</strong> : patrons et BiS suivis présents dans tes sacs (<em>Annoncer</em>), autres patrons à marquer recherchés.</li>
         <li><strong>Présence et butin</strong> : pendant un raid prévu sur le site, l'addon note chaque minute qui est dans le raid, et le butin épique (« REC » sur le bouton de la minicarte). Le bilan part avec la synchro ; le site retient celui d'un officier du groupe.</li>
-        <li><strong>Options</strong> : tes touches, le bouton de la minicarte, le rappel de raid, et les persos à retirer de l'export.</li>
+        <li><strong>Options</strong> : tes touches, l'habillage (celui de Forever ou celui du site), le bouton de la minicarte, le rappel de raid, et les persos à retirer de l'export.</li>
         <li><strong>Infobulles et butin</strong> : « Recherché par », « Connu par », « BiS de » sur les objets suivis ; alerte avec <em>Annoncer au groupe</em> quand tu en ramasses un.</li>
       </ul>
       <table className="data">

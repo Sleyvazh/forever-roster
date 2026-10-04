@@ -1,5 +1,6 @@
--- Fenêtre unique à onglets (Synchro, Raids, Compo, Patrons), synchro rapide, rappel de raid et alerte au butin, à l'habillage de l'interface de Forever.
-local _, ns = ...
+-- Fenêtre unique à onglets (Synchro, Raids, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
+-- Deux habillages au choix (Options) : celui de l'interface de Forever, ou celui du site (sombre, liserés dorés).
+local ADDON, ns = ...
 local U = {}
 ns.UI = U
 
@@ -23,7 +24,87 @@ local function atlas(tex, name)
   return false
 end
 
+-- Habillage « site » : couleurs du thème sombre du site, titres en Marcellus SC (police livrée avec l'addon, licence OFL)
+local function site() return ForeverRosterDB and ForeverRosterDB.skin == "site" end
+U.site = site
+local C = {
+  bg = { 0.027, 0.039, 0.071 }, panel = { 0.055, 0.078, 0.153 }, panel2 = { 0.078, 0.106, 0.2 },
+  line = { 0.137, 0.173, 0.278 }, line2 = { 0.204, 0.251, 0.373 }, frame = { 0.427, 0.353, 0.173 },
+  gold = { 0.902, 0.749, 0.341 }, ink = { 0.925, 0.906, 0.847 }, ink2 = { 0.663, 0.69, 0.761 },
+}
+local TITLE_FONT = "Interface\\AddOns\\" .. (ADDON or "ForeverRoster") .. "\\Fonts\\MarcellusSC.ttf"
+local function solid(tex, c, a) tex:SetColorTexture(c[1], c[2], c[3], a or 1) end
+-- Contour de 1 px (4 textures) ; renvoie la liste pour le recolorer
+local function edges(f, c, layer)
+  local list = {}
+  for i, e in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+    local t = f:CreateTexture(nil, layer or "BORDER")
+    t:SetPoint(e[1]) t:SetPoint(e[2])
+    if e[3] > 0 then t:SetWidth(e[3]) else t:SetHeight(e[4]) end
+    solid(t, c)
+    list[i] = t
+  end
+  return list
+end
+local function recolor(list, c) for _, t in ipairs(list) do solid(t, c) end end
+-- Police des titres du site ; si elle manque (addon incomplet), police du jeu
+local function titleFont(fs, size)
+  if fs.SetFont then pcall(fs.SetFont, fs, TITLE_FONT, size, "") end
+  if not (fs.GetFont and fs:GetFont()) then fs:SetFontObject(GameFontNormalLarge) end
+  fs:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+end
+-- Losange doré (ornement des cadres du site)
+local function diamond(parent, size, c)
+  local t = parent:CreateTexture(nil, "OVERLAY")
+  t:SetSize(size, size)
+  solid(t, c or C.frame)
+  if t.SetRotation then t:SetRotation(math.rad(45)) end
+  return t
+end
+-- Décalage du contenu des petites fenêtres : place du portrait (habillage Forever) ou non
+local function gapX() return site() and 18 or 66 end
+
+local function siteWindow(name, title, w, h, icon)
+  local f = CreateFrame("Frame", name, UIParent)
+  f:SetSize(w, h)
+  f:SetPoint("CENTER")
+  f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag("LeftButton")
+  f:SetScript("OnDragStart", f.StartMoving) f:SetScript("OnDragStop", f.StopMovingOrSizing)
+  f:SetFrameStrata("DIALOG")
+  f:SetClampedToScreen(true)
+  local bg = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+  bg:SetAllPoints() solid(bg, C.panel, 0.97)
+  edges(f, C.frame)
+  -- Bandeau du titre : fond plus sombre, filet doré dessous, losanges aux coins comme les cadres du site
+  local bar = f:CreateTexture(nil, "BACKGROUND", nil, -6)
+  bar:SetPoint("TOPLEFT", 1, -1) bar:SetPoint("TOPRIGHT", -1, -1) bar:SetHeight(26) solid(bar, C.bg, 0.95)
+  local rule = f:CreateTexture(nil, "BORDER")
+  rule:SetPoint("TOPLEFT", 1, -27) rule:SetPoint("TOPRIGHT", -1, -27) rule:SetHeight(1) solid(rule, C.frame)
+  diamond(f, 8):SetPoint("CENTER", f, "TOPLEFT", 14, 0)
+  diamond(f, 8):SetPoint("CENTER", f, "TOPRIGHT", -14, 0)
+  f.icon = f:CreateTexture(nil, "ARTWORK")
+  f.icon:SetSize(18, 18) f.icon:SetPoint("TOPLEFT", 8, -5) f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  f.titleText = f:CreateFontString(nil, "OVERLAY")
+  titleFont(f.titleText, 15)
+  f.titleText:SetPoint("LEFT", f.icon, "RIGHT", 8, 0)
+  local close = CreateFrame("Button", nil, f)
+  close:SetSize(22, 22) close:SetPoint("TOPRIGHT", -4, -3)
+  local x = close:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+  x:SetPoint("CENTER") x:SetText("×") x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3])
+  close:SetScript("OnEnter", function() x:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
+  close:SetScript("OnLeave", function() x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) end)
+  close:SetScript("OnClick", function() f:Hide() end)
+  function f:SetWindowTitle(text) self.titleText:SetText(text) end
+  function f:SetIcon(tex) self.icon:SetTexture(tex) end
+  f:SetWindowTitle(title)
+  f:SetIcon(icon or "Interface\\Icons\\INV_Misc_Book_09")
+  tinsert(UISpecialFrames, name) -- Échap ferme la fenêtre
+  f:Hide()
+  return f
+end
+
 local function window(name, title, w, h, icon)
+  if site() then return siteWindow(name, title, w, h, icon) end
   local ok, f = pcall(CreateFrame, "Frame", name, UIParent, "PortraitFrameTemplate")
   if not ok or not f then f = CreateFrame("Frame", name, UIParent, "BasicFrameTemplateWithInset") end
   f:SetSize(w, h)
@@ -57,6 +138,14 @@ end
 
 -- Cadre intérieur de Forever autour d'une zone (champ à coller, texte d'export)
 local function inset(parent, region)
+  if site() then
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOPLEFT", region, "TOPLEFT", -5, 5) holder:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", 5, -5)
+    local back = holder:CreateTexture(nil, "BACKGROUND")
+    back:SetAllPoints() solid(back, C.bg, 0.9)
+    edges(holder, C.line2)
+    return
+  end
   local t = parent:CreateTexture(nil, "BORDER")
   t:SetPoint("TOPLEFT", region, "TOPLEFT", -6, 6) t:SetPoint("BOTTOMRIGHT", region, "BOTTOMRIGHT", 6, -6)
   if not atlas(t, ART.inset) then t:SetColorTexture(0, 0, 0, 0.45) end
@@ -92,8 +181,23 @@ local function textArea(parent, x, y, w, h)
   return eb, sf
 end
 
+-- Bouton plat du site : fond sombre, contour, texte clair ; contour doré au survol
+local function flatButton(parent)
+  local b = CreateFrame("Button", nil, parent)
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints() solid(b.bg, C.panel2)
+  b.edges = edges(b, C.line2)
+  local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  fs:SetPoint("CENTER", 0, 0)
+  fs:SetTextColor(C.ink[1], C.ink[2], C.ink[3])
+  if b.SetFontString then b:SetFontString(fs) end
+  b:SetScript("OnEnter", function(self) recolor(self.edges, C.frame) end)
+  b:SetScript("OnLeave", function(self) recolor(self.edges, C.line2) end)
+  return b
+end
+
 local function button(parent, label, w, onClick)
-  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  local b = site() and flatButton(parent) or CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
   b:SetSize(w, 24)
   b:SetText(label)
   b:SetScript("OnClick", onClick)
@@ -136,7 +240,7 @@ U.styleStatus = styleStatus
 -- Consigne de l'onglet, en haut à droite du portrait
 local function hint(parent, text)
   local h = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  h:SetPoint("TOPLEFT", 52, -2) h:SetWidth(480) h:SetJustifyH("LEFT")
+  h:SetPoint("TOPLEFT", site() and 6 or 52, -2) h:SetWidth(site() and 526 or 480) h:SetJustifyH("LEFT")
   h:SetText(text)
   return h
 end
@@ -169,11 +273,19 @@ local function list(parent, top)
     local r = row(i)
     for _, b in pairs(r.buttons) do b:Hide() end
     for _, b in pairs(r.sbuttons) do b:Hide() end
+    if site() then
+      -- Titre de section du site : texte doré à gauche, filet dessous
+      r.bg:ClearAllPoints() r.bg:SetPoint("BOTTOMLEFT", 10, 6) r.bg:SetPoint("BOTTOMRIGHT", -10, 6) r.bg:SetHeight(1)
+      solid(r.bg, C.line) r.bg:Show()
+      titleFont(r.text, 15)
+      r.text:ClearAllPoints() r.text:SetPoint("BOTTOMLEFT", 10, 10) r.text:SetWidth(width - 20) r.text:SetJustifyH("LEFT")
+    else
     r.bg:ClearAllPoints() r.bg:SetPoint("CENTER", 0, 0) r.bg:SetSize(math.min(width, 320), 36)
     if not atlas(r.bg, ART.header) then r.bg:SetColorTexture(0.25, 0.18, 0.08, 0.8) end
     r.bg:Show()
     r.text:SetFontObject(GameFontHighlight)
     r.text:ClearAllPoints() r.text:SetPoint("CENTER", 0, 1) r.text:SetWidth(width - 20) r.text:SetJustifyH("CENTER")
+    end
     r.text:SetText(text)
     r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetHeight(40) r:Show()
     y, odd = y + 42, false
@@ -184,6 +296,9 @@ local function list(parent, top)
     local r = row(i)
     for _, b in pairs(r.buttons) do b:Hide() end
     r.text:SetFontObject(GameFontHighlight)
+    -- La ligne a pu servir de titre (police du site posée par SetFont) : police du jeu remise explicitement
+    if site() and GameFontHighlight and GameFontHighlight.GetFont then pcall(r.text.SetFont, r.text, GameFontHighlight:GetFont()) end
+    r.text:SetTextColor(1, 1, 1)
     r.text:ClearAllPoints() r.text:SetPoint("TOPLEFT", 10, -5) r.text:SetWidth(width - 20) r.text:SetJustifyH("LEFT")
     r.text:SetText(text)
     local h = math.max(14, (r.text.GetStringHeight and r.text:GetStringHeight() or 14))
@@ -209,7 +324,9 @@ local function list(parent, top)
     -- Une ligne sur deux sur fond clair, comme les statistiques de la fiche
     odd = not odd
     r.bg:ClearAllPoints() r.bg:SetAllPoints()
-    if odd and atlas(r.bg, ART.line) then r.bg:Show() else r.bg:Hide() end
+    if site() then
+      if odd then solid(r.bg, C.panel2, 0.7) r.bg:Show() else r.bg:Hide() end
+    elseif odd and atlas(r.bg, ART.line) then r.bg:Show() else r.bg:Hide() end
     r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetHeight(height) r:Show()
     y = y + height
   end
@@ -342,6 +459,15 @@ end
 
 -- Barre de titre de section fixe (comme « General » sur la fiche de perso)
 local function headerBar(parent, y, text)
+  if site() then
+    local fs = parent:CreateFontString(nil, "ARTWORK")
+    titleFont(fs, 15)
+    fs:SetPoint("TOPLEFT", 8, y - 6)
+    fs:SetText(text)
+    local rule = parent:CreateTexture(nil, "BORDER")
+    rule:SetPoint("TOPLEFT", 8, y - 26) rule:SetPoint("TOPRIGHT", -8, y - 26) rule:SetHeight(1) solid(rule, C.line)
+    return fs
+  end
   local bg = parent:CreateTexture(nil, "BACKGROUND")
   bg:SetPoint("TOP", 0, y) bg:SetSize(340, 34)
   if not atlas(bg, ART.header) then bg:SetColorTexture(0.25, 0.18, 0.08, 0.8) end
@@ -524,6 +650,19 @@ refreshers.options = function(p)
     end
   end
   L.Header("Affichage et rappels")
+  -- Habillage : appliqué au rechargement de l'interface (les fenêtres sont construites une fois)
+  local skin = site() and "site" or "jeu"
+  local function setSkin(v) return function() ForeverRosterDB.skin = v ~= "jeu" and v or nil U.Refresh() end end
+  local shown = main and main.skin or skin
+  local GOLDC = { C.gold[1], C.gold[2], C.gold[3] }
+  local skinButtons = {
+    { "Forever (jeu)", 120, setSkin("jeu"), { color = GOLDC, selected = skin == "jeu" } },
+    { "Site", 80, setSkin("site"), { color = GOLDC, selected = skin == "site" } },
+  }
+  if skin ~= shown then skinButtons[3] = { "Recharger", 100, function() ReloadUI() end } end
+  L.Add("Habillage : " .. GOLD .. (skin == "site" and "celui du site" or "celui de Forever") .. "|r" ..
+    (skin ~= shown and (GREEN .. "  · appliqué après rechargement de l'interface|r") or "") ..
+    "\n" .. GREY .. "Forever : cadres et onglets du jeu. Site : thème sombre, liserés dorés et onglets en haut, comme sur le site.|r", skinButtons)
   local mapOn = not (ForeverRosterDB.minimap and ForeverRosterDB.minimap.hidden)
   L.Add("Bouton de la minicarte : " .. (mapOn and (GREEN .. "affiché|r") or (GREY .. "masqué|r")) .. GREY .. "  (clic : fenêtre, clic droit : synchro rapide, pastille : persos à envoyer)|r",
     { { mapOn and "Masquer" or "Afficher", 100, function() ns.Minimap.SetShown(not mapOn) U.Refresh() end } })
@@ -600,13 +739,49 @@ local function sideTab(parent, index, t)
   return b
 end
 
+-- Onglet du site : texte sur la bande sous le titre, souligné d'or avec un losange quand il est choisi
+local TOP_W = 114
+local function topTab(parent, index, t)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(TOP_W, 28)
+  b:SetPoint("TOPLEFT", parent, "TOPLEFT", 1 + (index - 1) * TOP_W, -28)
+  local icon = b:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(16, 16) icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) icon:SetTexture(t.icon)
+  local label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  label:SetText(t.label)
+  local w = 20 + (label.GetStringWidth and label:GetStringWidth() or 50)
+  icon:SetPoint("LEFT", b, "CENTER", -w / 2, 0)
+  label:SetPoint("LEFT", icon, "RIGHT", 4, 0)
+  b.label, b.icon = label, icon
+  b.selected = b:CreateTexture(nil, "OVERLAY")
+  b.selected:SetPoint("BOTTOMLEFT", 10, 0) b.selected:SetPoint("BOTTOMRIGHT", -10, 0) b.selected:SetHeight(2) solid(b.selected, C.gold)
+  b.mark = diamond(b, 6, C.gold)
+  b.mark:SetPoint("CENTER", b, "BOTTOM", 0, 1)
+  local hl = b:CreateTexture(nil, "HIGHLIGHT")
+  hl:SetAllPoints() solid(hl, C.panel2, 0.8)
+  -- Choisi : texte doré, filet et losange ; sinon texte gris clair
+  function b:SetOn(on)
+    if on then self.selected:Show() self.mark:Show() label:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) icon:SetDesaturated(false)
+    else self.selected:Hide() self.mark:Hide() label:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) icon:SetDesaturated(true) end
+  end
+  b:SetOn(false)
+  b:SetScript("OnClick", function() U.Show(t.key) end)
+  return b
+end
+
 local function buildMain()
-  main = window("ForeverRosterMain", "Forever Roster", 600, 620)
-  main.tabs = {}
+  main = window("ForeverRosterMain", "Forever Roster", 600, site() and 650 or 620) -- site : 36 px de plus pour la bande des onglets
+  main.tabs, main.skin = {}, site() and "site" or "jeu"
+  if site() then -- bande des onglets : même fond que le titre, filet en dessous
+    local band = main:CreateTexture(nil, "BACKGROUND", nil, -6)
+    band:SetPoint("TOPLEFT", 1, -28) band:SetPoint("TOPRIGHT", -1, -28) band:SetHeight(28) solid(band, C.bg, 0.6)
+    local rule = main:CreateTexture(nil, "BORDER")
+    rule:SetPoint("TOPLEFT", 1, -56) rule:SetPoint("TOPRIGHT", -1, -56) rule:SetHeight(1) solid(rule, C.line)
+  end
   for k, t in ipairs(TABS) do
-    main.tabs[t.key] = sideTab(main, k, t)
+    main.tabs[t.key] = site() and topTab(main, k, t) or sideTab(main, k, t)
     local p = CreateFrame("Frame", nil, main)
-    p:SetPoint("TOPLEFT", 14, -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
+    p:SetPoint("TOPLEFT", 14, site() and -64 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
     p:Hide()
     builders[t.key](p)
     pages[t.key] = p
@@ -629,8 +804,9 @@ function U.Show(tab)
   if tab == "synchro" then pages.synchro.sent = false end
   for _, t in ipairs(TABS) do
     local on = t.key == tab
-    if on then pages[t.key]:Show() main:SetWindowTitle("Forever Roster  ·  " .. t.label) else pages[t.key]:Hide() end
-    if on then main.tabs[t.key].selected:Show() else main.tabs[t.key].selected:Hide() end
+    if on then pages[t.key]:Show() main:SetWindowTitle(site() and "Forever Roster" or ("Forever Roster  ·  " .. t.label)) else pages[t.key]:Hide() end
+    local b = main.tabs[t.key]
+    if b.SetOn then b:SetOn(on) elseif on then b.selected:Show() else b.selected:Hide() end
   end
   if main:IsShown() then U.Refresh() else main:Show() end
 end
@@ -655,6 +831,10 @@ function U.LootAlert(itemId, link)
     alert:ClearAllPoints() alert:SetPoint("TOP", 0, -160)
     alert.text = alert:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     alert.text:SetPoint("TOPLEFT", 66, -34) alert.text:SetWidth(360) alert.text:SetJustifyH("LEFT")
+    if site() then -- pas de portrait : l'icône de l'objet en grand à gauche
+      alert.big = alert:CreateTexture(nil, "ARTWORK")
+      alert.big:SetSize(40, 40) alert.big:SetPoint("TOPLEFT", 16, -38) alert.big:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
     alert.announce = button(alert, "Annoncer au groupe", 170, nil)
     alert.announce:SetPoint("BOTTOMLEFT", 16, 14)
     local close = button(alert, "Fermer", 110, function() alert:Hide() end)
@@ -663,7 +843,7 @@ function U.LootAlert(itemId, link)
   local G = ns.Group
   local who, bis = G.Who(itemId), G.Bis(itemId)
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemId)) or (GetItemIcon and GetItemIcon(itemId))
-  if icon then alert:SetIcon(icon) end
+  if icon then alert:SetIcon(icon) if alert.big then alert.big:SetTexture(icon) end end
   local lines = { link or G.linkFor(itemId, who and who.recipe) }
   if who then lines[#lines + 1] = G.joinNames(who.wanted) and (GREEN .. "Patron recherché par " .. G.joinNames(who.wanted) .. "|r") or (GREY .. "Patron que personne ne recherche.|r") end
   if who and G.joinNames(who.known, 5) then lines[#lines + 1] = GREY .. "Déjà connu par " .. G.joinNames(who.known, 5) .. "|r" end
@@ -684,7 +864,7 @@ local function buildQuick()
   quick = window("ForeverRosterQuick", "Forever Roster  ·  Synchro rapide", 460, 196)
   quick:ClearAllPoints() quick:SetPoint("TOP", 0, -140)
   quick.status = quick:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  quick.status:SetPoint("TOPLEFT", 66, -32) quick.status:SetWidth(378) quick.status:SetJustifyH("LEFT")
+  quick.status:SetPoint("TOPLEFT", gapX(), -32) quick.status:SetWidth(444 - gapX()) quick.status:SetJustifyH("LEFT")
   quick.box = textArea(quick, 18, -86, 424, 56)
   quick.box:SetScript("OnEscapePressed", function() quick:Hide() end)
   quick.box:SetScript("OnTextChanged", function(self, user)
@@ -778,7 +958,7 @@ local function buildReminder()
   reminder = window("ForeverRosterReminder", "Forever Roster  ·  Raid", 420, 168, "Interface\\Icons\\INV_Misc_Head_Dragon_01")
   reminder:ClearAllPoints() reminder:SetPoint("TOP", 0, -140)
   reminder.text = reminder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  reminder.text:SetPoint("TOPLEFT", 66, -32) reminder.text:SetWidth(336) reminder.text:SetJustifyH("LEFT")
+  reminder.text:SetPoint("TOPLEFT", gapX(), -32) reminder.text:SetWidth(402 - gapX()) reminder.text:SetJustifyH("LEFT")
   reminder.buttons = {}
   for i, st in ipairs(ns.Group.STATUSES) do
     local b = statusButton(reminder)

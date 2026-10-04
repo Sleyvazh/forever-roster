@@ -65,6 +65,7 @@ local HELP = {
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
   "/fr rappels : couper ou remettre le rappel de raid à la connexion",
+  "/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)",
 }
 
 SLASH_FOREVERROSTER1 = "/fr"
@@ -109,6 +110,9 @@ local function run(msg)
   elseif cmd == "rappels" then
     ForeverRosterDB.noReminder = not ForeverRosterDB.noReminder or nil
     ns.print(ForeverRosterDB.noReminder and "rappels de raid coupés." or "rappels de raid remis : à la connexion, raids des prochaines 24 h.")
+  elseif cmd == "habillage" or cmd == "skin" then
+    ForeverRosterDB.skin = ForeverRosterDB.skin ~= "site" and "site" or nil
+    ReloadUI()
   elseif cmd == "minicarte" or cmd == "minimap" then
     ns.Minimap.Toggle()
   else
