@@ -7,9 +7,10 @@ ns.Group = G
 local GOLD, GREY, GREEN, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cff6fb7ff"
 
 -- Statuts proposés en jeu (le banc reste une décision des officiers, sur le site)
+-- Couleurs : celles du site (thème sombre), pour reconnaître un statut d'un coup d'œil
 G.STATUSES = {
-  { key = "present", label = "Présent" }, { key = "late", label = "En retard" },
-  { key = "tentative", label = "Peut-être" }, { key = "absent", label = "Absent" },
+  { key = "present", label = "Présent", color = { 0.31, 0.83, 0.37 } }, { key = "late", label = "En retard", color = { 0.94, 0.71, 0.24 } },
+  { key = "tentative", label = "Peut-être", color = { 0.66, 0.69, 0.76 } }, { key = "absent", label = "Absent", color = { 1, 0.42, 0.37 } },
 }
 G.LABEL = { present = "Présent", late = "En retard", tentative = "Peut-être", alt = "Reroll", bench = "Banc", absent = "Absent" }
 

@@ -100,6 +100,39 @@ local function button(parent, label, w, onClick)
   return b
 end
 
+-- Bouton plat à la couleur d'un statut, comme sur le site : contour et texte colorés, fond plein quand il est choisi
+local function statusButton(parent)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(100, 22)
+  b.bg = b:CreateTexture(nil, "BACKGROUND")
+  b.bg:SetAllPoints()
+  b.edges = {}
+  for i, e in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+    local t = b:CreateTexture(nil, "BORDER")
+    t:SetPoint(e[1]) t:SetPoint(e[2])
+    if e[3] > 0 then t:SetWidth(e[3]) else t:SetHeight(e[4]) end
+    b.edges[i] = t
+  end
+  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  b.label:SetPoint("CENTER", 0, 0)
+  b:SetScript("OnEnter", function(self) if not self.selected then self.bg:SetColorTexture(self.r, self.g, self.b, 0.18) end end)
+  b:SetScript("OnLeave", function(self) if not self.selected then self.bg:SetColorTexture(0.04, 0.05, 0.09, 0.85) end end)
+  return b
+end
+local function styleStatus(b, label, color, selected)
+  b.r, b.g, b.b, b.selected = color[1], color[2], color[3], selected
+  b.label:SetText(label)
+  for _, t in ipairs(b.edges) do t:SetColorTexture(b.r, b.g, b.b, 1) end
+  if selected then
+    b.bg:SetColorTexture(b.r, b.g, b.b, 1)
+    b.label:SetTextColor(0.05, 0.08, 0.15)
+  else
+    b.bg:SetColorTexture(0.04, 0.05, 0.09, 0.85)
+    b.label:SetTextColor(b.r, b.g, b.b)
+  end
+end
+U.styleStatus = styleStatus
+
 -- Consigne de l'onglet, en haut à droite du portrait
 local function hint(parent, text)
   local h = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -125,7 +158,7 @@ local function list(parent, top)
     r.bg:SetAllPoints()
     r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     r.text:SetJustifyH("LEFT")
-    r.buttons = {}
+    r.buttons, r.sbuttons = {}, {}
     rows[k] = r
     return r
   end
@@ -135,6 +168,7 @@ local function list(parent, top)
     i = i + 1
     local r = row(i)
     for _, b in pairs(r.buttons) do b:Hide() end
+    for _, b in pairs(r.sbuttons) do b:Hide() end
     r.bg:ClearAllPoints() r.bg:SetPoint("CENTER", 0, 0) r.bg:SetSize(math.min(width, 320), 36)
     if not atlas(r.bg, ART.header) then r.bg:SetColorTexture(0.25, 0.18, 0.08, 0.8) end
     r.bg:Show()
@@ -154,10 +188,20 @@ local function list(parent, top)
     r.text:SetText(text)
     local h = math.max(14, (r.text.GetStringHeight and r.text:GetStringHeight() or 14))
     local x = 10
+    for _, b in pairs(r.sbuttons) do b:Hide() end
     for k, spec in ipairs(buttons or {}) do
-      local b = r.buttons[k] or button(r, spec[1], spec[2], nil)
-      r.buttons[k] = b
-      b:SetSize(spec[2], 22) b:SetText(spec[1]) b:SetScript("OnClick", spec[3])
+      local b
+      -- spec[4] = { color = { r, g, b }, selected = bool } : bouton plat à la couleur du site (statuts, qualité)
+      if spec[4] then
+        b = r.sbuttons[k] or statusButton(r)
+        r.sbuttons[k] = b
+        styleStatus(b, spec[1], spec[4].color, spec[4].selected)
+      else
+        b = r.buttons[k] or button(r, spec[1], spec[2], nil)
+        r.buttons[k] = b
+        b:SetText(spec[1])
+      end
+      b:SetSize(spec[2], 22) b:SetScript("OnClick", spec[3])
       b:ClearAllPoints() b:SetPoint("TOPLEFT", x, -(h + 9)) b:Show()
       x = x + spec[2] + 6
     end
@@ -216,10 +260,12 @@ refreshers.raids = function(p)
       local site = e.onSite and (GREY .. "  site : " .. (G.LABEL[e.onSite] or e.onSite) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
       local game = e.status and (GREEN .. "  en jeu : " .. G.LABEL[e.status] .. "|r") or ""
       local buttons = {}
+      -- Choisi : l'inscription faite en jeu, sinon celle du site
+      local current = e.status or e.onSite
       for _, st in ipairs(G.STATUSES) do
-        buttons[#buttons + 1] = { (e.status == st.key and "> " or "") .. st.label, 100, function()
+        buttons[#buttons + 1] = { st.label, 100, function()
           G.SignUp(e.group.id, e.raid.id, st.key, e.raid.time) U.Refresh()
-        end }
+        end, { color = st.color, selected = current == st.key } }
       end
       L.Add(GOLD .. e.raid.name .. "|r  " .. when .. site .. game, buttons)
     end
@@ -491,7 +537,10 @@ refreshers.options = function(p)
     { { rec and "Couper" or "Activer", 100, function() ForeverRosterDB.noRecord = rec or nil if rec then ns.Recorder.Sample() end U.Refresh() end } })
   local q = ns.Recorder.MinQuality()
   local function setQ(v) return function() ForeverRosterDB.lootQuality = v U.Refresh() end end
-  L.Add("Butin noté à partir de : " .. GOLD .. ns.Recorder.QUALITY_LABEL[q] .. "|r", { { "Rare", 90, setQ(3) }, { "Épique", 90, setQ(4) }, { "Légendaire", 110, setQ(5) } })
+  local QC = { [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 }, [5] = { 1, 0.5, 0 } }
+  L.Add("Butin noté à partir de : " .. GOLD .. ns.Recorder.QUALITY_LABEL[q] .. "|r", {
+    { "Rare", 90, setQ(3), { color = QC[3], selected = q == 3 } }, { "Épique", 90, setQ(4), { color = QC[4], selected = q == 4 } },
+    { "Légendaire", 110, setQ(5), { color = QC[5], selected = q == 5 } } })
   L.Header("Persos de l'export")
   local chars = ns.Export.Characters()
   if #chars == 0 then L.Add(GREY .. "Aucun perso relevé pour l'instant.|r") end
@@ -732,7 +781,10 @@ local function buildReminder()
   reminder.text:SetPoint("TOPLEFT", 66, -32) reminder.text:SetWidth(336) reminder.text:SetJustifyH("LEFT")
   reminder.buttons = {}
   for i, st in ipairs(ns.Group.STATUSES) do
-    local b = button(reminder, st.label, 92, function()
+    local b = statusButton(reminder)
+    b:SetSize(92, 22)
+    styleStatus(b, st.label, st.color, false)
+    b:SetScript("OnClick", function()
       local e = reminder.entry
       if not e then return end
       ns.Group.SignUp(e.group.id, e.raid.id, st.key, e.raid.time)

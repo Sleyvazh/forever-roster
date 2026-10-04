@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 12, date: "2026-10-04", kind: "addon", version: "0.8.1", title: "Inscriptions en jeu aux couleurs du site",
+    text: "Présent en vert, En retard en orange, Peut-être en gris, Absent en rouge : ta réponse actuelle est surlignée, dans l'onglet Raids comme dans « Tu viens ? »." },
   { n: 11, date: "2026-10-04", kind: "addon", version: "0.8", title: "Présence et butin relevés pendant les raids",
     text: "Pendant un raid prévu sur le site, l'addon note qui est là et le butin épique. Après le raid, un officier fait sa synchro : le bilan s'affiche sur la page du raid, le BiS reçu est coché sur la fiche, et l'onglet « Présence & butin » du groupe fait les comptes." },
   { n: 10, date: "2026-10-04", kind: "site", title: "Liste des persos du groupe remise d'aplomb",
