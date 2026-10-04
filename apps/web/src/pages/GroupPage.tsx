@@ -290,7 +290,8 @@ function GroupCharacters({ groupId, members }: { groupId: string; members: Membe
   const shown = data.characters
     .filter(c => (!needle || `${c.name} ${c.owner} ${c.cls} ${c.race} ${c.spec1} ${c.spec2}`.toLowerCase().includes(needle))
       && (!role || roleOf(c.spec1) === role || roleOf(c.spec2) === role))
-    .sort((x, y) => (order.get(x.userId) ?? 99) - (order.get(y.userId) ?? 99));
+    // Par joueur (ordre des membres), les persos à configurer (sans classe) à la fin
+    .sort((x, y) => (order.get(x.userId) ?? 99) - (order.get(y.userId) ?? 99) || Number(!x.cls) - Number(!y.cls));
   const avatarOf = new Map(members.map(m => [m.userId, m.avatarId]));
   const opened = data.characters.find(c => c.id === open);
   const toggle = (id: string) => setOpen(o => (o === id ? null : id));
@@ -336,7 +337,7 @@ function GroupCharacters({ groupId, members }: { groupId: string; members: Membe
             <button key={c.id} type="button" role="listitem" className="grow" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
               {face(c, 30)}
               <span className="gname"><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
-              <span className="gcls">{[c.cls, c.race].filter(Boolean).join(" · ")}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
+              <span className="gcls">{c.cls ? [c.cls, c.race].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
               <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
               {owner(c)}
             </button>

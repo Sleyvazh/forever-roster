@@ -43,25 +43,25 @@ function GroupCard({ g }: { g: GroupSummary }) {
   const links: [string, string][] = [["Raids", base], ["Membres", `${base}/membres`], ["Personnages", `${base}/persos`], ["Artisans", `${base}/artisans`],
     ...(officer ? [["Administration", `${base}/admin`] as [string, string]] : [])];
   return (
-    <article className="gcard" aria-labelledby={`g-${g.id}`}>
-      <div className="gcard-head">
-        <span className="emblem" aria-hidden="true"><span>{g.name.trim().charAt(0).toUpperCase()}</span></span>
+    <article className="gc-card" aria-labelledby={`g-${g.id}`}>
+      <div className="gc-head">
+        <span className="gc-emblem" aria-hidden="true"><span>{g.name.trim().charAt(0).toUpperCase()}</span></span>
         <div style={{ minWidth: 0 }}>
-          <Link id={`g-${g.id}`} to={base} className="gname">{g.name}</Link>
-          <div className="gmeta"><b>{g.members}</b> membre{g.members > 1 ? "s" : ""} · {g.upcoming ? <><b>{g.upcoming}</b> raid{g.upcoming > 1 ? "s" : ""} à venir</> : "aucun raid à venir"}{g.discordLinked && " · Discord lié"}</div>
+          <Link id={`g-${g.id}`} to={base} className="gc-name">{g.name}</Link>
+          <div className="gc-meta"><b>{g.members}</b> membre{g.members > 1 ? "s" : ""} · {g.upcoming ? <><b>{g.upcoming}</b> raid{g.upcoming > 1 ? "s" : ""} à venir</> : "aucun raid à venir"}{g.discordLinked && " · Discord lié"}</div>
         </div>
         <span className={`tag ${officer ? "gold" : ""}`}>{ROLE_LABEL[g.role]}</span>
       </div>
       {n ? (
-        <Link to={`${base}/raids/${n.id}`} className="gnext">
+        <Link to={`${base}/raids/${n.id}`} className="gc-next">
           <span><span className="lbl">Prochain raid</span><br /><b>{n.name}</b> · {whenText(n.scheduledAt)} · {plural(n.coming, "inscrit")}</span>
           {n.mine ? <span className={`tag su-tag ${n.mine}`}>{SIGNUP_LABEL[n.mine]}</span> : <span className="tag warn">Pas de réponse</span>}
         </Link>
       ) : (
-        <div className="gnext none">Aucun raid prévu.{officer && <> <Link to={base}>Créer un raid</Link></>}</div>
+        <div className="gc-next none">Aucun raid prévu.{officer && <> <Link to={base}>Créer un raid</Link></>}</div>
       )}
-      <div className="groles">Roster : <span className="role Tank">{plural(g.roles.tank, "tank")}</span><span className="role Heal">{plural(g.roles.heal, "heal")}</span><span className="role DPS">{g.roles.dps} DPS</span></div>
-      <nav className="glinks" aria-label={`Onglets de ${g.name}`}>{links.map(([l, to]) => <Link key={l} to={to}>{l}</Link>)}</nav>
+      <div className="gc-roles">Roster : <span className="role Tank">{plural(g.roles.tank, "tank")}</span><span className="role Heal">{plural(g.roles.heal, "heal")}</span><span className="role DPS">{g.roles.dps} DPS</span></div>
+      <nav className="gc-links" aria-label={`Onglets de ${g.name}`}>{links.map(([l, to]) => <Link key={l} to={to}>{l}</Link>)}</nav>
     </article>
   );
 }

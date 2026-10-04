@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 10, date: "2026-10-04", kind: "site", title: "Liste des persos du groupe remise d'aplomb",
+    text: "Colonnes alignées, noms longs sur une ligne, persos à configurer en fin de liste, et un affichage propre sur téléphone." },
   { n: 9, date: "2026-10-04", kind: "site", title: "Page Groupes plus parlante",
     text: "Chaque groupe montre son prochain raid et ta réponse, le nombre de raids à venir, le roster par rôle et des raccourcis vers ses onglets." },
   { n: 8, date: "2026-10-03", kind: "addon", version: "0.7", title: "Un onglet Options en jeu",

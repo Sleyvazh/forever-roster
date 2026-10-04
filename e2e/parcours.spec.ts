@@ -319,6 +319,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByRole("button", { name: "Nouveautés", exact: true })).toBeVisible();
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/groupes.png" });
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
+    // Onglet Personnages sur téléphone : pas de défilement horizontal (les onglets défilent seuls)
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("tab", { name: "Personnages" }).click();
+    await expect(page.getByRole("listitem").filter({ hasText: "Tournicoti" }).first()).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.getByRole("tab", { name: "Raids" }).click();
   });
 
   await test.step("groupe : code de liaison d'un salon Discord", async () => {
