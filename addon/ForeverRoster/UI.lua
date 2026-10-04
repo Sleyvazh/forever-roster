@@ -351,7 +351,7 @@ local function buildSynchro(p)
   p.text:SetScript("OnEscapePressed", function(self) self:ClearFocus() if main then main:Hide() end end)
   -- Ctrl+C dans l'export : copié, donc envoyé (à coller sur le site)
   p.text:SetScript("OnKeyDown", function(_, key)
-    if key == "C" and IsControlKeyDown() and p.included and #p.included > 0 then
+    if key == "C" and IsControlKeyDown() and ns.Export.Size(p.included) > 0 then
       ns.Export.MarkSent(p.included)
       p.sent = true
       C_Timer.After(0, function() U.Refresh() end)
@@ -375,16 +375,15 @@ refreshers.synchro = function(p)
   if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
   p.value, p.included = value, included
   p.toggleAll:SetText(p.all and "Seulement les changements" or "Tout renvoyer")
-  local names = {}
-  for _, e in ipairs(included) do names[#names + 1] = colored(e.snap.header and e.snap.header.class, (e.snap.header and e.snap.header.name) or e.key) end
+  local names = ns.Export.Names(included, colored)
   if p.sent then
     p.status:SetText(GREEN .. "Copié. Sur le site, appuie sur Ctrl+V sur n'importe quelle page.|r")
-  elseif #included == 0 then
+  elseif #names == 0 then
     local lastSent = 0
     for _, e in ipairs(ns.Export.Characters()) do lastSent = math.max(lastSent, e.char.sentAt or 0) end
     p.status:SetText(GREY .. "Rien de nouveau depuis ton dernier envoi" .. (lastSent > 0 and (" (" .. date("%d/%m %H:%M", lastSent) .. ")") or "") .. ". « Tout renvoyer » pour tout recopier.|r")
   else
-    p.status:SetText(GOLD .. #included .. " perso(s) à envoyer|r : " .. table.concat(names, ", ") .. GREY .. "   Ctrl+C puis Échap.|r")
+    p.status:SetText(GOLD .. "À envoyer|r : " .. table.concat(names, ", ") .. GREY .. "   Ctrl+C puis Échap.|r")
   end
   p.text:SetText(value)
   local all = {}
@@ -393,7 +392,7 @@ refreshers.synchro = function(p)
     all[#all + 1] = colored(h.class, h.name or e.key) .. GREY .. " (" .. (e.char.sentAt and ("envoyé le " .. date("%d/%m", e.char.sentAt)) or "jamais envoyé") .. ")|r"
   end
   p.chars:SetText(GREY .. "Persos relevés : |r" .. table.concat(all, ", ") .. GREY .. ". Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r")
-  if #included > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
+  if #names > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
 end
 
 -- Options : touches, bouton de la minicarte, rappels de raid, persos de l'export
@@ -485,6 +484,14 @@ refreshers.options = function(p)
   local remind = not ForeverRosterDB.noReminder
   L.Add("Rappel de raid à la connexion : " .. (remind and (GREEN .. "activé|r") or (GREY .. "coupé|r")) .. GREY .. "  (raid des prochaines 24 h sans réponse : « Tu viens ? »)|r",
     { { remind and "Couper" or "Activer", 100, function() ForeverRosterDB.noReminder = remind or nil U.Refresh() end } })
+  L.Header("Présence et butin")
+  local rec, cur = ns.Recorder.Enabled(), ns.Recorder.Current()
+  L.Add("Relevé pendant les raids du site : " .. (rec and (GREEN .. "activé|r") or (GREY .. "coupé|r")) .. (cur and (GOLD .. "  · en cours : " .. (cur.name or "raid") .. "|r") or "") ..
+    "\n" .. GREY .. "Qui est dans le raid (chaque minute) et le butin. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier.|r",
+    { { rec and "Couper" or "Activer", 100, function() ForeverRosterDB.noRecord = rec or nil if rec then ns.Recorder.Sample() end U.Refresh() end } })
+  local q = ns.Recorder.MinQuality()
+  local function setQ(v) return function() ForeverRosterDB.lootQuality = v U.Refresh() end end
+  L.Add("Butin noté à partir de : " .. GOLD .. ns.Recorder.QUALITY_LABEL[q] .. "|r", { { "Rare", 90, setQ(3) }, { "Épique", 90, setQ(4) }, { "Légendaire", 110, setQ(5) } })
   L.Header("Persos de l'export")
   local chars = ns.Export.Characters()
   if #chars == 0 then L.Add(GREY .. "Aucun perso relevé pour l'instant.|r") end
@@ -655,7 +662,7 @@ local function buildQuick()
     self:HighlightText()
   end)
   quick.box:SetScript("OnKeyDown", function(_, key)
-    if key == "C" and IsControlKeyDown() and quick.included and #quick.included > 0 then
+    if key == "C" and IsControlKeyDown() and ns.Export.Size(quick.included) > 0 then
       ns.Export.MarkSent(quick.included)
       quick.status:SetText(GREEN .. "Copié. Sur le site, Ctrl+V sur n'importe quelle page.|r")
       U.Refresh()
@@ -678,10 +685,9 @@ function U.Quick(all)
   local ok, value, included = pcall(ns.Export.Build, { all = all == true })
   if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
   quick.value, quick.included = value, included
-  local names = {}
-  for _, e in ipairs(included) do names[#names + 1] = colored(e.snap.header and e.snap.header.class, (e.snap.header and e.snap.header.name) or e.key) end
-  if #included > 0 then
-    quick.status:SetText(GOLD .. "Vers le site|r : " .. table.concat(names, ", ") .. " (" .. #included .. " perso" .. (#included > 1 and "s" or "") .. ")\n" ..
+  local names = ns.Export.Names(included, colored)
+  if #names > 0 then
+    quick.status:SetText(GOLD .. "Vers le site|r : " .. table.concat(names, ", ") .. "\n" ..
       "Ctrl+C pour copier, puis Ctrl+V sur le site.\n" .. GREY .. "Ou Ctrl+V ici pour coller ce que tu as copié sur le site.|r")
   else
     quick.status:SetText(GREY .. "Rien de nouveau à envoyer au site.|r\n" ..

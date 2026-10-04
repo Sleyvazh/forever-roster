@@ -1,7 +1,7 @@
-import { parseCharacterExports, type CharacterExport } from "@forever/game-data";
+import { parseCharacterExports, parseRaidLogs, type CharacterExport, type RaidLogExport } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { get, type Character } from "../api";
+import { ApiError, get, post, type Character } from "../api";
 import { ALL_PARTS, applyBlocks, blockKey, blockSummary, guessTarget, type ApplyResult, type Target } from "../addonImport";
 import { ClassIcon } from "./Icons";
 
@@ -16,6 +16,8 @@ export function PasteImport() {
   const qc = useQueryClient();
   const chars = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
   const [blocks, setBlocks] = useState<CharacterExport[] | null>(null);
+  const [logs, setLogs] = useState<RaidLogExport[]>([]);
+  const [skipLogs, setSkipLogs] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
   const [targets, setTargets] = useState<Record<string, Target>>({});
   const [busy, setBusy] = useState(false);
@@ -26,11 +28,18 @@ export function PasteImport() {
     const onPaste = (e: ClipboardEvent) => {
       if (typing(document.activeElement)) return;
       const text = e.clipboardData?.getData("text/plain") ?? "";
-      if (!/^\s*FRC;/.test(text)) return;
+      if (!/^\s*FR[CB];/.test(text)) return;
       e.preventDefault();
-      const r = parseCharacterExports(text);
-      setResults(null); setTargets({});
-      if (r.ok) { setBlocks(r.data); setErrors(r.errors); } else { setBlocks([]); setErrors([r.error]); }
+      setResults(null); setTargets({}); setSkipLogs(new Set());
+      // Persos (blocs FRC) et bilans de raid relevés par l'addon (blocs FRB), dans le même collage
+      const raid = parseRaidLogs(text);
+      setLogs(raid.data);
+      const errs = [...raid.errors.map(x => `Bilan ignoré : ${x}`)];
+      if (/(^|\n)\s*FRC;/.test(text)) {
+        const r = parseCharacterExports(text);
+        if (r.ok) { setBlocks(r.data); errs.push(...r.errors.map(x => `Bloc ignoré : ${x}`)); } else { setBlocks([]); errs.push(r.error); }
+      } else setBlocks([]);
+      setErrors(errs);
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
@@ -45,29 +54,54 @@ export function PasteImport() {
   if (!blocks) return null;
   const targetOf = (d: CharacterExport) => targets[blockKey(d)] ?? guessTarget(d, mine);
   const count = blocks.filter(d => targetOf(d) !== "skip").length;
-  const close = () => { setBlocks(null); setResults(null); };
+  const logsToSave = logs.filter(l => !skipLogs.has(l.raidId));
+  const close = () => { setBlocks(null); setLogs([]); setResults(null); };
   const apply = async () => {
     setBusy(true);
-    const out = await applyBlocks(blocks, targetOf, ALL_PARTS, mine);
+    const out: ApplyResult[] = [];
+    out.push(...await applyBlocks(blocks, targetOf, ALL_PARTS, mine));
+    // Bilans après les persos : le BiS reçu est coché sur la fiche à jour (sinon l'équipement des persos l'écraserait)
+    for (const l of logsToSave) {
+      const label = `Bilan de ${l.raidName || "raid"}`;
+      try {
+        const r = await post<{ attendees: number; loot: number; bis: number; unknown: string[] }>("/raid-logs",
+          { raidId: l.raidId, start: l.start, end: l.end, recorder: l.recorder, attendees: l.attendees, loot: l.loot });
+        out.push({ name: label, ok: true, msg: `enregistré · ${r.attendees} présent${r.attendees > 1 ? "s" : ""}, ${r.loot} objet${r.loot > 1 ? "s" : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
+      } catch (e) { out.push({ name: label, ok: false, msg: e instanceof ApiError ? e.message : "enregistrement impossible" }); }
+    }
     await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["character"] }),
-      qc.invalidateQueries({ queryKey: ["char-recipes"] }), qc.invalidateQueries({ queryKey: ["raids"] }), qc.invalidateQueries({ queryKey: ["week"] })]);
+      qc.invalidateQueries({ queryKey: ["char-recipes"] }), qc.invalidateQueries({ queryKey: ["raids"] }), qc.invalidateQueries({ queryKey: ["week"] }),
+      qc.invalidateQueries({ queryKey: ["raid"] }), qc.invalidateQueries({ queryKey: ["attendance"] })]);
     setResults(out); setBusy(false);
   };
+  const total = count + logsToSave.length;
 
   return (
     <aside className="paste-import" role="dialog" aria-label="Export de l'addon">
       <div className="pi-head">
-        <strong>{results ? "Persos mis à jour" : "Export de l'addon reconnu"}</strong>
+        <strong>{results ? "Mise à jour faite" : "Export de l'addon reconnu"}</strong>
         <button type="button" className="pi-close" aria-label="Fermer" onClick={close}>✕</button>
       </div>
-      {errors.map(e => <div key={e} className="warnmsg small">{blocks.length ? `Bloc ignoré : ${e}` : e}</div>)}
+      {errors.map(e => <div key={e} className="warnmsg small">{e}</div>)}
       {results ? (
         <ul className="addon-results">
           {results.map(x => <li key={x.name} className={x.ok ? "ok" : "bad"}><strong>{x.name}</strong> : {x.msg}</li>)}
-          {results.length === 0 && <li>Aucun perso mis à jour.</li>}
+          {results.length === 0 && <li>Rien de mis à jour.</li>}
         </ul>
-      ) : blocks.length > 0 && (
+      ) : (blocks.length > 0 || logs.length > 0) && (
         <>
+          {logs.length > 0 && (
+            <ul className="pi-list">
+              {logs.map(l => (
+                <li key={l.raidId}>
+                  <label className="with-icon pi-log">
+                    <input type="checkbox" checked={!skipLogs.has(l.raidId)} onChange={() => setSkipLogs(s => { const n = new Set(s); if (n.has(l.raidId)) n.delete(l.raidId); else n.add(l.raidId); return n; })} />
+                    <span><strong>Bilan de {l.raidName || "raid"}</strong><br /><span className="muted small">{l.attendees.length} présent{l.attendees.length > 1 ? "s" : ""} · {l.loot.length} objet{l.loot.length > 1 ? "s" : ""} · relevé par {l.recorder || "?"}</span></span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
           <ul className="pi-list">
             {blocks.map(d => (
               <li key={blockKey(d)}>
@@ -81,8 +115,8 @@ export function PasteImport() {
             ))}
           </ul>
           <div className="row">
-            <button type="button" className="btn primary sm" disabled={busy || !count} onClick={() => void apply()}>
-              {busy ? "Mise à jour…" : `Mettre à jour ${count} perso${count > 1 ? "s" : ""}`}
+            <button type="button" className="btn primary sm" disabled={busy || !total} onClick={() => void apply()}>
+              {busy ? "Mise à jour…" : [count ? `Mettre à jour ${count} perso${count > 1 ? "s" : ""}` : "", logsToSave.length ? `${count ? "et le" : "Enregistrer le"} bilan${logsToSave.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" ") || "Rien à faire"}
             </button>
             <button type="button" className="btn ghost sm" onClick={close}>Ignorer</button>
           </div>

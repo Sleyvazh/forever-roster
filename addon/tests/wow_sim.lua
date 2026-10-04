@@ -29,7 +29,8 @@ function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 function wipe(t) for k in pairs(t) do t[k] = nil end return t end
 function tinsert(t, v) table.insert(t, v) end
 function date(f, t) return os.date(f, t) end
-C_Timer = { After = function(_, fn) fn() end }
+local tickers = {}
+C_Timer = { After = function(_, fn) fn() end, NewTicker = function(_, fn) tickers[#tickers + 1] = fn return {} end }
 GetAddOnMetadata = function() return "0.1.1" end
 function UnitName() return "Tournicoti" end
 function GetRealmName() return "Forever EU" end
@@ -65,6 +66,8 @@ GameTooltip = frame()
 function IsInRaid() return false end
 function IsInGroup() return false end
 function GetNumGroupMembers() return 0 end
+local ROSTER = {}
+function GetRaidRosterInfo(i) return ROSTER[i] end
 function GetNumSubgroupMembers() return 0 end
 function UnitIsGroupLeader() return true end
 function UnitIsGroupAssistant() return false end
@@ -259,6 +262,40 @@ ForeverRosterDB.chars["Greta-Forever EU"] = { recipes = {}, snapshot = { header 
 ns.UI.pages.options.confirm = "Greta-Forever EU"
 ns.UI.Refresh()
 assert(errors() == before, "onglet Options affiché sans erreur")
+-- Relevé du raid : présence chaque minute, butin épique, bilan FRB dans l'export puis marqué envoyé
+assert(#tickers >= 1, "relevé programmé chaque minute")
+ns.UI.LoadFromSite("FRG;1;g5;1789990000;Relevé\nR;4a1e43ea-54e8-4b49-888f-5e19b5754f61;" .. (time() + 600) .. ";Molten Core;;\nEND;1")
+IsInRaid = function() return true end
+GetNumGroupMembers = function() return #ROSTER end
+ROSTER = { "Tournicoti", "Greta-Forever EU", "Bob" }
+tickers[1]()
+local R = ns.Recorder
+assert(R.Current() and R.Current().name == "Molten Core" and R.Current().people.Greta, "relevé démarré sur le raid du site")
+fire("ENCOUNTER_END", 663, "Lucifron", 9, 40, 1)
+fire("CHAT_MSG_LOOT", "Bob reçoit le butin : |cffa335ee|Hitem:16833::::::::60:::::|h[Cenarion Vestments]|h|r.", "Bob", "", "", "Bob")
+fire("CHAT_MSG_LOOT", "Bob reçoit le butin : |cff0070dd|Hitem:9999::::::::60:::::|h[Bleu]|h|r.", "Bob", "", "", "Bob")
+assert(#R.Current().loot == 1 and R.Current().loot[1].boss == "Lucifron" and R.Current().loot[1].who == "Bob", "butin épique noté avec le boss, le rare ignoré")
+local text, inc = ns.Export.Build({})
+assert(text:find("\nFRB;1;4a1e43ea%-54e8%-4b49%-888f%-5e19b5754f61;") or text:find("^FRB;1;4a1e43ea"), "bilan dans l'export")
+assert(text:find("\nA;Greta;") and text:find("\nL;16833;Bob;%d+;Lucifron\nEND;4"), "présence et butin dans le bilan")
+assert(ns.Export.Size(inc) >= 1 and ns.Export.Names(inc)[#ns.Export.Names(inc)] == "bilan de Molten Core", "bilan nommé dans la synchro")
+ns.Minimap.Update()
+assert(ns.Minimap.recording, "minicarte : REC")
+ns.Export.MarkSent(inc)
+assert(#R.Pending() == 0, "bilan envoyé")
+local realTime = time
+time = function() return realTime() + 60 end
+tickers[1]()
+assert(#R.Pending() == 1, "nouveau relevé : à renvoyer")
+ForeverRosterDB.lootQuality = 3
+fire("CHAT_MSG_LOOT", "Bob reçoit le butin : |cff0070dd|Hitem:9999::::::::60:::::|h[Bleu]|h|r.", "Bob", "", "", "Bob")
+assert(#R.Current().loot == 2, "seuil réglable (rare)")
+ForeverRosterDB.lootQuality = nil
+run("options")
+IsInRaid = function() return false end
+tickers[1]()
+assert(not R.Current() and printed[#printed]:find("relevé du raid terminé"), "fin du raid : relevé arrêté")
+time = realTime
 -- 5. Compo
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))

@@ -47,6 +47,11 @@ function M.Create()
   button.badge.text = button.badge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   button.badge.text:SetPoint("CENTER", 0, 0)
   button.badge:Hide()
+  -- « REC » : relevé du raid en cours (présence et butin)
+  button.rec = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  button.rec:SetPoint("BOTTOM", 0, -6)
+  button.rec:SetText("|cffff3b30REC|r")
+  button.rec:Hide()
   button:SetScript("OnClick", function(_, which)
     if which == "RightButton" then ns.UI.Quick() else ns.UI.Toggle() end
   end)
@@ -56,7 +61,8 @@ function M.Create()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:AddLine("Forever Roster")
     local n = M.count or 0
-    if n > 0 then GameTooltip:AddLine(n .. " perso(s) à envoyer au site", 1, 0.82, 0) end
+    if n > 0 then GameTooltip:AddLine(n .. " envoi(s) en attente pour le site (persos, bilan de raid)", 1, 0.82, 0) end
+    if M.recording then GameTooltip:AddLine("Relevé du raid en cours : " .. (M.recording.name or "raid"), 1, 0.23, 0.19) end
     GameTooltip:AddLine("Clic : ouvrir la fenêtre", 1, 1, 1)
     GameTooltip:AddLine("Clic droit : synchro rapide avec le site", 1, 1, 1)
     GameTooltip:AddLine("Glisser : déplacer le bouton", 0.6, 0.64, 0.71)
@@ -71,9 +77,12 @@ end
 -- Met à jour la pastille (persos changés depuis leur dernier envoi)
 function M.Update()
   local ok, pending = pcall(ns.Export.Pending)
-  M.count = ok and #pending or 0
+  local okLogs, logs = pcall(function() return ns.Recorder and ns.Recorder.Pending() or {} end)
+  M.count = (ok and #pending or 0) + (okLogs and #logs or 0)
+  M.recording = ns.Recorder and ns.Recorder.Current() or nil
   if not button then return end
   if M.count > 0 then button.badge.text:SetText(M.count) button.badge:Show() else button.badge:Hide() end
+  if M.recording then button.rec:Show() else button.rec:Hide() end
 end
 
 -- Afficher ou masquer le bouton (onglet Options, /fr minicarte)

@@ -134,3 +134,17 @@ L'addon s'en sert pour :
 - **les sacs** : liste des patrons suivis présents, avec un bouton **Annoncer** ;
 - **le butin** : quand on ramasse un patron suivi ou un BiS recherché, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet).
 
+
+
+# FRB, version 1 : bilan d'un raid (jeu → site)
+
+Pendant un raid prévu sur le site (raid chargé en jeu avec « Copier pour le jeu », heure prévue passée depuis moins de 3 h ou dans moins de 2 h), l'addon relève chaque minute les membres du groupe de raid, et note le butin vu dans le chat (`CHAT_MSG_LOOT`) à partir d'une qualité réglable (épique par défaut), avec le dernier boss vaincu (`ENCOUNTER_END`, 15 min). Le bilan suit les blocs FRC dans l'export de la synchro.
+
+```
+FRB;1;<id du raid du site>;<début unix>;<fin unix>;<relevé par>;<nom du raid>
+A;<prénom en jeu>;<vu la 1re fois unix>;<vu la dernière fois unix>;<nombre de relevés>
+L;<id de l'objet>;<reçu par>;<heure unix>;<boss ou vide>
+END;<nombre de lignes A et L>
+```
+
+Sur le site (Ctrl+V n'importe où), le bilan est enregistré sur le raid (un nouveau collage le remplace), seulement par un officier du groupe ou le créateur du raid. Les prénoms sont rapprochés des fiches des membres. Statuts : présent ; en retard (arrivé plus de 10 min après l'heure prévue) ; parti tôt (absent du dernier quart de la soirée, au moins 15 min) ; banc (inscription « banc ») ; inscrit, absent (inscrit présent ou en retard, jamais vu). Un objet reçu qui est l'objectif BiS d'une fiche y est coché « obtenu ».

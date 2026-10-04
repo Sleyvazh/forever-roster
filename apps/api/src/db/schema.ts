@@ -345,6 +345,24 @@ export const raidSignups = pgTable("raid_signups", {
   check("raid_signups_status", sql`${t.status} IN ('present', 'late', 'tentative', 'alt', 'bench', 'absent')`),
 ]);
 
+/**
+ * Bilan d'un raid relevé par l'addon (bloc FRB collé sur le site) : présence (qui était dans le groupe de raid,
+ * de quand à quand) et butin noté pendant la soirée. Un bilan par raid ; un nouveau collage le remplace.
+ */
+export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
+export interface RaidLogLoot { itemId: number; name: string; at: number; boss: string }
+export const raidLogs = pgTable("raid_logs", {
+  raidId: uuid("raid_id").primaryKey().references(() => raids.id, { onDelete: "cascade" }),
+  recordedBy: uuid("recorded_by").references(() => users.id, { onDelete: "set null" }),
+  /** Perso en jeu qui a fait le relevé. */
+  recorder: text("recorder").notNull().default(""),
+  startedAt: ts("started_at").notNull(),
+  endedAt: ts("ended_at").notNull(),
+  attendees: jsonb("attendees").$type<RaidLogAttendee[]>().notNull().default([]),
+  loot: jsonb("loot").$type<RaidLogLoot[]>().notNull().default([]),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
 /** Annonces Discord à supprimer (raid supprimé sur le site) : le bot les traite puis les efface. */
 export const discordDeletions = pgTable("discord_deletions", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

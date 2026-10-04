@@ -328,6 +328,40 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: "Raids" }).click();
   });
 
+  await test.step("bilan du raid relevé par l'addon : collé, puis page du raid et onglet Présence & butin", async () => {
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e" });
+    await db.connect();
+    const { id: raidId, at } = (await db.query(`SELECT id, extract(epoch from scheduled_at)::int AS at FROM raids WHERE name = 'Molten Core'`)).rows[0];
+    await db.end();
+    const frb = `FRB;1;${raidId};${at - 600};${at + 3 * 3600};Tournicoti;Molten Core\nA;Tournicoti;${at - 600};${at + 3 * 3600};190\nA;Chamy;${at + 1800};${at + 3 * 3600};150\nL;16866;Tournicoti;${at + 1200};Lucifron\nEND;3`;
+    await page.getByRole("link", { name: "Mes persos" }).first().click();
+    await page.evaluate(text => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      (document.activeElement as HTMLElement | null)?.blur();
+      document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+    }, frb);
+    const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
+    await expect(dialog).toContainText("Bilan de Molten Core");
+    await expect(dialog).toContainText("2 présents · 1 objet");
+    await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
+    await expect(dialog).toContainText("Bilan de Molten Core : enregistré · 2 présents, 1 objet · sans fiche : Chamy");
+    await dialog.getByRole("button", { name: "Fermer" }).click();
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("article", { name: "Les Testeurs" }).getByRole("link", { name: /Molten Core/ }).click();
+    const bilan = page.getByRole("region", { name: "Bilan du raid" });
+    await expect(bilan).toContainText("Helm of Might");
+    await expect(bilan).toContainText("Lucifron");
+    await expect(bilan.getByRole("row", { name: /Tournicoti.*Présent/ })).toBeVisible();
+    if (process.env.SHOTS) await bilan.screenshot({ path: "test-results/shots/bilan.png" });
+    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await page.getByRole("tab", { name: "Présence & butin" }).click();
+    await expect(page).toHaveURL(/\/presence$/);
+    await expect(page.getByRole("row", { name: /Tournicoti.*1\/1.*Helm of Might/ })).toBeVisible();
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/presence.png" });
+    await page.getByRole("tab", { name: "Raids" }).click();
+  });
+
   await test.step("groupe : code de liaison d'un salon Discord", async () => {
     await page.getByRole("tab", { name: "Administration" }).click();
     await expect(page.getByRole("heading", { name: "Invitations" })).toBeVisible();

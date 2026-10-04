@@ -13,6 +13,7 @@ import { currentUser, requireAuth } from "../lib/session";
 import { MAX_RAIDS_PER_GROUP } from "../lib/recurring";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
+import { raidLogView } from "./raidlogs";
 
 const raidParams = z.object({ id: z.uuid(), raidId: z.uuid() });
 const raidFields = z.object({
@@ -113,6 +114,7 @@ export async function raidRoutes(app: FastifyInstance) {
       version: r.updatedAt.toISOString(),
       canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
+      log: await raidLogView(db, r),
     };
   });
 

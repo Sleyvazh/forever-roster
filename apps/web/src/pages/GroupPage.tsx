@@ -1,3 +1,4 @@
+import { AttendanceTab } from "../components/RaidLog";
 import { CLASSES, RACES, roleOf, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type ClassName, type Role, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
@@ -30,8 +31,8 @@ const EVENT_LABEL: Record<string, string> = {
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
 };
 
-type GroupTab = "raids" | "members" | "characters" | "crafters" | "admin";
-const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", crafters: "artisans", admin: "admin" };
+type GroupTab = "raids" | "members" | "characters" | "crafters" | "presence" | "admin";
+const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", crafters: "artisans", presence: "presence", admin: "admin" };
 
 export function GroupPage() {
   const { groupId = "", tab: tabSlug } = useParams();
@@ -54,7 +55,7 @@ export function GroupPage() {
   if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
   const { group, role, members } = detail.data;
 
-  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
+  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ["presence", "Présence & butin"], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
   // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
   const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
   const tab: GroupTab = tabs.some(([k]) => k === wanted) ? wanted : "raids";
@@ -86,6 +87,7 @@ export function GroupPage() {
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} members={members} />}
           {tab === "crafters" && <Crafters groupId={groupId} />}
+          {tab === "presence" && <AttendanceTab groupId={groupId} />}
           {tab === "admin" && isOfficer && (
             <div className="admin">
               <Invites groupId={groupId} guard={guard} />

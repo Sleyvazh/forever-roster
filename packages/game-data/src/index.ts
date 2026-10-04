@@ -5,3 +5,4 @@ export * from "./addon";
 export * from "./items";
 export * from "./talents";
 export * from "./charexport";
+export * from "./raidlog";

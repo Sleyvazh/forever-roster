@@ -117,9 +117,11 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
 export function parseCharacterExports(text: string): { ok: true; data: CharacterExport[]; errors: string[] } | { ok: false; error: string } {
   const lines = text.split(/\r?\n/);
   const blocks: string[][] = [];
+  let inChar = false; // un bilan de raid (FRB) peut suivre les persos : ses lignes ne leur appartiennent pas
   for (const line of lines) {
-    if (line.trim().startsWith("FRC;")) blocks.push([line]);
-    else if (blocks.length) blocks.at(-1)!.push(line);
+    if (line.trim().startsWith("FRC;")) { blocks.push([line]); inChar = true; }
+    else if (/^\s*FR[A-Z];/.test(line)) inChar = false;
+    else if (inChar) blocks.at(-1)!.push(line);
   }
   if (!blocks.length) return parseCharacterExport(text) as { ok: false; error: string };
   if (blocks.length > 50) return { ok: false, error: "Export trop long." };

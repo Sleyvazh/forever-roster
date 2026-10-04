@@ -100,6 +100,7 @@ function Commands() {
         <li><strong>Raids</strong> : raids à venir de tes groupes, inscription du perso connecté (envoyée avec la synchro). À la connexion, un raid des prochaines 24 h sans réponse te demande « Tu viens ? ».</li>
         <li><strong>Compo</strong> : la compo collée depuis la page d'un raid, avec <em>Inviter</em> et <em>Placer les groupes</em>.</li>
         <li><strong>Patrons</strong> : patrons et BiS suivis présents dans tes sacs (<em>Annoncer</em>), autres patrons à marquer recherchés.</li>
+        <li><strong>Présence et butin</strong> : pendant un raid prévu sur le site, l'addon note chaque minute qui est dans le raid, et le butin épique (« REC » sur le bouton de la minicarte). Le bilan part avec la synchro ; le site retient celui d'un officier du groupe.</li>
         <li><strong>Options</strong> : tes touches, le bouton de la minicarte, le rappel de raid, et les persos à retirer de l'export.</li>
         <li><strong>Infobulles et butin</strong> : « Recherché par », « Connu par », « BiS de » sur les objets suivis ; alerte avec <em>Annoncer au groupe</em> quand tu en ramasses un.</li>
       </ul>

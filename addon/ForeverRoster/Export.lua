@@ -240,7 +240,28 @@ function E.Build(opts)
       included[#included + 1] = e
     end
   end
+  -- Bilans de raid relevés (présence et butin) : ceux pas encore envoyés, ou ceux des 3 derniers jours avec opts.all
+  local logs = {}
+  if not opts.onlyCurrent and ns.Recorder then
+    for _, log in ipairs(opts.all and ns.Recorder.Recent(3) or ns.Recorder.Pending()) do
+      blocks[#blocks + 1] = ns.Recorder.Block(log)
+      logs[#logs + 1] = log
+    end
+  end
+  included.logs = logs
   return table.concat(blocks, "\n"), included
+end
+
+-- Contenu d'un export : nombre d'éléments, et leurs noms (persos, puis « bilan de … »)
+function E.Size(included) return #(included or {}) + #((included or {}).logs or {}) end
+function E.Names(included, color)
+  local names = {}
+  for _, e in ipairs(included or {}) do
+    local h = e.snap.header or {}
+    names[#names + 1] = color and color(h.class, h.name or e.key) or (h.name or e.key)
+  end
+  for _, log in ipairs((included or {}).logs or {}) do names[#names + 1] = "bilan de " .. (log.name or "raid") end
+  return names
 end
 
 -- L'export a été copié (Ctrl+C) : ces persos sont à jour sur le site jusqu'au prochain changement
@@ -249,5 +270,6 @@ function E.MarkSent(included)
     e.char.sentSig = signature(e.char, e.snap)
     e.char.sentAt = time()
   end
+  if ns.Recorder then ns.Recorder.MarkSent((included or {}).logs) end
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
 end

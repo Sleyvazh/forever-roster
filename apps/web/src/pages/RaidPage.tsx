@@ -1,3 +1,4 @@
+import { RaidLogPanel, type RaidLogView } from "../components/RaidLog";
 import {
   CLASSES, computeCoverage, exclusiveBudget, GROUP_SIZE, RAID_EFFECTS, RAID_GROUPS, roleCounts, roleOf, type ClassName, type EffectKind,
 } from "@forever/game-data";
@@ -38,7 +39,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
   );
 }
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[] }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
 interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
 /** Dernier état connu du serveur : base de la fusion quand deux officiers modifient la compo en même temps. */
 interface ServerState { version: string; slots: RaidSlot[]; name: string; scheduledAt: string | null; description: string }
@@ -233,6 +234,7 @@ export function RaidPage() {
       )}
       {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
       <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
+      <RaidLogPanel log={raidQ.data.log} />
       {error && <div className="alert error" role="alert">{error}</div>}
       {notice && <div className="alert info" role="status">{notice}</div>}
       {canEdit && (

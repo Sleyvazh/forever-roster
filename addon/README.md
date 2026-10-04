@@ -12,7 +12,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a cin
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
 | **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes** |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
-| **Options** | Touches (choisir, retirer), bouton de la minicarte, rappel de raid, persos à retirer de l'export |
+| **Options** | Touches (choisir, retirer), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), persos à retirer de l'export |
 
 | Commande | Rôle |
 |---|---|
@@ -23,6 +23,8 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a cin
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
 | `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer ; pastille : persos à envoyer ; aussi dans Options) |
+
+Relevé du raid : pendant un raid prévu sur le site (données du site chargées en jeu), l'addon note chaque minute qui est dans le groupe de raid, et le butin de qualité épique ou plus (réglable dans Options). « REC » s'affiche sur le bouton de la minicarte. Le bilan (bloc FRB) part avec la synchro rapide ; le site ne retient que celui d'un officier du groupe.
 
 Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans réponse ouvre une petite fenêtre « Tu viens ? » (Présent, En retard, Peut-être, Absent) ; un raid déjà répondu s'affiche dans le chat. Il se base sur les dernières données du site collées en jeu.
 

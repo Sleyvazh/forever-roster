@@ -793,3 +793,20 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
   .copy-game { padding: 5px 8px; }
   .pill { padding: 4px 8px; }
 }
+
+/* ---------- Bilan de raid, présence et butin ---------- */
+.rl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 18px; align-items: start; }
+.rl-h { margin: 0; font: 400 16px var(--f-disp); color: var(--gold); display: flex; gap: 8px; align-items: baseline; }
+.rl-table td, .rl-table th { white-space: nowrap; }
+.rl-table td.r, .rl-att td.r, .rl-att th.r { text-align: right; }
+.rl-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.rl-chip.ok { color: var(--ok); border-color: var(--ok); } .rl-chip.warn { color: var(--warn); border-color: var(--warn); } .rl-chip.bad { color: var(--bad); border-color: var(--bad); }
+.rl-att th.c, .rl-att td.c { text-align: center; width: 44px; }
+.rl-att th.c a { color: var(--ink-2); text-decoration: none; font-weight: 500; }
+.rl-cell { font-weight: 700; }
+.rl-cell.present { color: var(--ok); } .rl-cell.late, .rl-cell.left { color: var(--warn); } .rl-cell.absent { color: var(--bad); } .rl-cell.bench { color: var(--ink-3); }
+.rl-bar { display: inline-block; width: 70px; height: 6px; margin-right: 8px; border-radius: 3px; background: var(--line); overflow: hidden; vertical-align: middle; }
+.rl-bar i { display: block; height: 100%; background: var(--ok); }
+.rl-bar i.low { background: var(--warn); }
+.nowrap { white-space: nowrap; }
+.pi-log { display: flex; gap: 10px; align-items: center; cursor: pointer; }

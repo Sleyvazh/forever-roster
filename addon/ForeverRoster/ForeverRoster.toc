@@ -2,7 +2,7 @@
 ## Title: Forever Roster
 ## Notes: Compo de raid, inscriptions et patrons recherchés du site Forever Roster ; export du perso vers le site.
 ## Author: Sleyvazh
-## Version: 0.7.0
+## Version: 0.8.0
 ## SavedVariables: ForeverRosterDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 
@@ -12,5 +12,6 @@ Compo.lua
 Talents.lua
 Export.lua
 Group.lua
+Recorder.lua
 UI.lua
 Minimap.lua

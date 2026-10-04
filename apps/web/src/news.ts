@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 11, date: "2026-10-04", kind: "addon", version: "0.8", title: "Présence et butin relevés pendant les raids",
+    text: "Pendant un raid prévu sur le site, l'addon note qui est là et le butin épique. Après le raid, un officier fait sa synchro : le bilan s'affiche sur la page du raid, le BiS reçu est coché sur la fiche, et l'onglet « Présence & butin » du groupe fait les comptes." },
   { n: 10, date: "2026-10-04", kind: "site", title: "Liste des persos du groupe remise d'aplomb",
     text: "Colonnes alignées, noms longs sur une ligne, persos à configurer en fin de liste, et un affichage propre sur téléphone." },
   { n: 9, date: "2026-10-04", kind: "site", title: "Page Groupes plus parlante",
