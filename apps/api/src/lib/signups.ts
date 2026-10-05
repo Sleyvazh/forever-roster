@@ -2,7 +2,8 @@ import { CLASS_NAMES, isValidSpec, roleOf, SIGNUP_STATUSES, type SignupStatus } 
 import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, discordDeletions, raids, raidSignups } from "../db/schema";
+import { characters, discordDeletions, groupCharacters, raids, raidSignups } from "../db/schema";
+import { assignCharacter } from "./group-characters";
 import { badRequest } from "./http";
 import { bus } from "./events";
 
@@ -44,6 +45,15 @@ export async function signUpSiteUser(db: Db, raidId: string, user: { id: string;
   const [row] = await db.insert(raidSignups).values(values)
     .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.userId], set: values })
     .returning();
+  // S'inscrire avec un perso le fait entrer dans le groupe (main si le joueur n'en a pas encore)
+  if (characterId) {
+    const [r] = await db.select({ groupId: raids.groupId }).from(raids).where(eq(raids.id, raidId));
+    if (r) {
+      const before = await db.$count(groupCharacters, and(eq(groupCharacters.groupId, r.groupId), eq(groupCharacters.characterId, characterId)));
+      await assignCharacter(db, r.groupId, characterId, user.id);
+      if (!before) bus.group({ t: "chars", g: r.groupId });
+    }
+  }
   await touchRaid(db, raidId);
   return row!;
 }

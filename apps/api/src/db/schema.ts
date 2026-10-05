@@ -154,6 +154,23 @@ export const groupMembers = pgTable("group_members", {
   index("group_members_user_idx").on(t.userId),
 ]);
 
+/**
+ * Persos qu'un joueur fait jouer dans un groupe, et son perso principal (main) dans ce groupe : exactement un main
+ * par joueur qui a au moins un perso dans le groupe. Un perso hors du groupe n'apparaît que dans les Artisans.
+ */
+export const groupCharacters = pgTable("group_characters", {
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  /** Propriétaire du perso (copie, pour l'unicité du main par joueur). */
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  isMain: boolean("is_main").notNull().default(false),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.groupId, t.characterId] }),
+  uniqueIndex("group_characters_main_uq").on(t.groupId, t.userId).where(sql`${t.isMain}`),
+  index("group_characters_user_idx").on(t.userId),
+]);
+
 export const groupInvites = pgTable("group_invites", {
   id: uuid("id").primaryKey().defaultRandom(),
   groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),

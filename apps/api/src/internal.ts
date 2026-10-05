@@ -3,7 +3,7 @@ import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, s
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
-import { characters, discordDeletions, groupMembers, groups, raidSignups, raids, users } from "./db/schema";
+import { characters, discordDeletions, groupCharacters, groupMembers, groups, raidSignups, raids, users } from "./db/schema";
 import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
@@ -67,7 +67,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const ids = raid.slots.flatMap(s => (s.characterId ? [s.characterId] : []));
     if (!ids.length) return new Map<string, { id: string; name: string; cls: string; spec1: string }>();
     const rows = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1 }).from(characters)
-      .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, raid.groupId)))
+      .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, raid.groupId)))
       .where(inArray(characters.id, ids));
     return new Map(rows.map(r => [r.id, r]));
   }
@@ -244,8 +244,13 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const [current] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, cls: raidSignups.cls, spec: raidSignups.spec }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raidId), user && role ? eq(raidSignups.userId, user.id) : eq(raidSignups.discordUserId, discordUserId)));
     if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null };
-    const chars = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2 })
-      .from(characters).where(eq(characters.userId, user.id)).orderBy(asc(characters.sortOrder));
+    // Persos joués dans ce groupe, main en tête ; s'il n'y en a aucun, tous ses persos (s'inscrire l'ajoute au groupe)
+    const all = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2, isMain: groupCharacters.isMain })
+      .from(characters)
+      .leftJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, group.id)))
+      .where(eq(characters.userId, user.id)).orderBy(asc(characters.sortOrder));
+    const here = all.filter(c => c.isMain !== null).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
+    const chars = (here.length ? here : all).map(({ isMain: _, ...c }) => c);
     return {
       mode: "member" as const, linked: true, current: current ?? null,
       characters: chars.filter(c => c.cls).map(c => ({

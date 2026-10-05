@@ -1,9 +1,10 @@
-import { charsChanged } from "../lib/events";
+import { bus, charsChanged } from "../lib/events";
+import { promoteMain } from "../lib/group-characters";
 import { and, asc, eq, inArray, max, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PROFESSION_SKILL_LINES } from "@forever/game-data";
-import { characterRecipes, characters, gameRecipes, users } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, groupCharacters, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -214,9 +215,16 @@ export async function characterRoutes(app: FastifyInstance) {
   app.delete("/:id", async (req) => {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
+    const inGroups = await db.select({ groupId: groupCharacters.groupId, isMain: groupCharacters.isMain }).from(groupCharacters)
+      .where(and(eq(groupCharacters.characterId, id), eq(groupCharacters.userId, u.id)));
     const [row] = await db.delete(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id))).returning({ id: characters.id, portraitId: characters.portraitId });
     if (!row) throw notFound("Personnage introuvable.");
     await deleteImage(db, row.portraitId);
+    // Main supprimé : le perso suivant du joueur devient main dans ces groupes
+    for (const g of inGroups) {
+      if (g.isMain) await promoteMain(db, g.groupId, u.id);
+      bus.group({ t: "chars", g: g.groupId });
+    }
     return { ok: true };
   });
 }

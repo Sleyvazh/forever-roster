@@ -273,6 +273,7 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     expect(r.json().character.gear.Head.curId).toBe(16866);
     // Progression affichée au survol dans la compo
     const g = (await c.post("/api/groups", { name: "Stuffés" })).json().group;
+    await c.put(`/api/groups/${g.id}/characters/${ch.id}`, { assigned: true });
     const list = (await c.get(`/api/groups/${g.id}/characters`)).json().characters;
     expect(list[0].gearStats).toEqual({ ilvl: 66, filled: 1, got: 0, bis: 1, total: 17 });
   });

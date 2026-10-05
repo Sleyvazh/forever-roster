@@ -1,7 +1,7 @@
 import { roleOf, type SignupStatus } from "@forever/game-data";
 import { and, asc, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { characters, groupMembers, groups, raids, raidSignups } from "../db/schema";
+import { characters, groupCharacters, groupMembers, groups, raids, raidSignups } from "../db/schema";
 import { currentUser, requireAuth } from "../lib/session";
 
 /** Fenêtre de « Cette semaine » : raids commencés depuis moins de 3 h, jusqu'à 7 jours. */
@@ -43,6 +43,11 @@ export async function weekRoutes(app: FastifyInstance) {
     }).from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
       .where(inArray(raidSignups.raidId, ids)) : [];
 
+    // Mes persos dans chaque groupe : le main sert de choix par défaut pour s'inscrire
+    const mineHere = myGroups.length ? await db.select({ groupId: groupCharacters.groupId, characterId: groupCharacters.characterId, isMain: groupCharacters.isMain })
+      .from(groupCharacters).where(eq(groupCharacters.userId, u.id)) : [];
+    const mainOf = new Map(mineHere.filter(x => x.isMain).map(x => [x.groupId, x.characterId]));
+
     const weekRaids = raidRows.map(r => {
       const rows = signupRows.filter(s => s.raidId === r.id);
       const coming = rows.filter(s => COMING.includes(s.status));
@@ -53,6 +58,7 @@ export async function weekRoutes(app: FastifyInstance) {
         counts: { coming: coming.length, tank: role("Tank"), heal: role("Heal"), dps: coming.filter(s => !s.spec || roleOf(s.spec) === "DPS").length,
           tentative: rows.filter(s => s.status === "tentative").length },
         mine: mine ? { status: mine.status, characterId: mine.characterId, characterName: mine.characterName } : null,
+        mainId: mainOf.get(r.groupId) ?? null,
       };
     });
 
@@ -62,10 +68,15 @@ export async function weekRoutes(app: FastifyInstance) {
     type Todo =
       | { kind: "signup"; raidId: string; groupId: string; name: string; groupName: string; scheduledAt: Date | null }
       | { kind: "sync"; characterId: string; name: string; days: number }
-      | { kind: "incomplete"; characterId: string; name: string; missing: "classe" | "spé" };
+      | { kind: "incomplete"; characterId: string; name: string; missing: "classe" | "spé" }
+      | { kind: "assign"; groupId: string; groupName: string };
     const todo: Todo[] = [];
     for (const r of weekRaids) {
       if (!r.mine && r.scheduledAt && r.scheduledAt.getTime() > now) todo.push({ kind: "signup", raidId: r.id, groupId: r.groupId, name: r.name, groupName: r.groupName, scheduledAt: r.scheduledAt });
+    }
+    // Groupe où je ne joue encore aucun perso (seulement si j'en ai un)
+    if (chars.length) {
+      for (const g of myGroups) if (!mineHere.some(x => x.groupId === g.id)) todo.push({ kind: "assign", groupId: g.id, groupName: g.name });
     }
     for (const c of chars) {
       if (!c.cls || !c.spec1) todo.push({ kind: "incomplete", characterId: c.id, name: c.name, missing: c.cls ? "spé" : "classe" });

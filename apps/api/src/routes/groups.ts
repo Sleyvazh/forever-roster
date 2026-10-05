@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
-import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
+import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
+import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
 import { randomToken, sha256 } from "../lib/crypto";
 import { randomBytes } from "node:crypto";
@@ -24,7 +25,7 @@ export async function groupRoutes(app: FastifyInstance) {
 
   /**
    * Mes groupes, pour leurs cartes : membres, raids à venir et le prochain (avec ma réponse),
-   * roster par rôle (spé principale des persos des membres), salon Discord lié ou non.
+   * roster par rôle (spé principale du main de chaque joueur), salon Discord lié ou non.
    */
   app.get("/", async (req) => {
     const u = currentUser(req);
@@ -46,9 +47,9 @@ export async function groupRoutes(app: FastifyInstance) {
       .from(raidSignups).where(inArray(raidSignups.raidId, nextIds)) : [];
     const COMING: SignupStatus[] = ["present", "late"];
 
-    const specs = await db.select({ groupId: groupMembers.groupId, spec: characters.spec1 }).from(characters)
-      .innerJoin(groupMembers, eq(groupMembers.userId, characters.userId))
-      .where(and(inArray(groupMembers.groupId, ids), sql`${characters.spec1} <> ''`));
+    const specs = await db.select({ groupId: groupCharacters.groupId, spec: characters.spec1 }).from(characters)
+      .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.isMain, true)))
+      .where(and(inArray(groupCharacters.groupId, ids), sql`${characters.spec1} <> ''`));
 
     return { groups: rows.map(g => {
       const n = next.get(g.id);
@@ -116,12 +117,13 @@ export async function groupRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Tous les persos des membres, en lecture, pour composer les raids. */
+  /** Persos que les membres font jouer dans le groupe (main de chacun marqué), en lecture, pour composer les raids. */
   app.get("/:id/characters", async (req) => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await membership(db, id, u.id);
-    const rows = await db.select({ c: characters, owner: users.displayName }).from(characters)
+    const rows = await db.select({ c: characters, owner: users.displayName, isMain: groupCharacters.isMain }).from(characters)
+      .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, id)))
       .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, id)))
       .innerJoin(users, eq(users.id, characters.userId))
       .orderBy(asc(users.displayName), asc(characters.sortOrder));
@@ -130,7 +132,44 @@ export async function groupRoutes(app: FastifyInstance) {
     const levels = ids.length
       ? new Map((await db.select({ id: gameItems.id, lvl: gameItems.itemLevel }).from(gameItems).where(inArray(gameItems.id, ids))).map(x => [x.id, x.lvl]))
       : new Map<number, number>();
-    return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner, gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })) };
+    return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner, isMain: r.isMain, gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })) };
+  });
+
+  /**
+   * Ajoute ou retire un perso du groupe, ou en fait le main de son joueur. Le joueur gère ses persos ;
+   * un officier peut corriger le main ou retirer un perso d'un autre membre (noté au journal du groupe).
+   */
+  app.put("/:id/characters/:characterId", async (req) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), characterId: z.uuid() }), req.params);
+    const body = parse(z.object({ assigned: z.boolean(), main: z.boolean().optional() }), req.body);
+    const myRole = await membership(db, p.id, u.id);
+    const [c] = await db.select({ id: characters.id, name: characters.name, userId: characters.userId }).from(characters).where(eq(characters.id, p.characterId));
+    if (!c) throw notFound("Personnage introuvable.");
+    const mine = c.userId === u.id;
+    if (!mine) {
+      // Le perso d'un autre : seulement un officier, sur un membre du groupe, et jamais pour l'ajouter
+      const theirs = await membership(db, p.id, c.userId).catch(() => null);
+      if (!theirs) throw notFound("Personnage introuvable.");
+      if (myRole === "member") throw forbidden("Seuls les officiers modifient les persos des autres membres.");
+      if (theirs === "owner" && myRole !== "owner") throw forbidden("Tu ne peux pas modifier les persos du propriétaire du groupe.");
+    }
+    const [current] = await db.select().from(groupCharacters)
+      .where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.characterId, c.id)));
+    if (body.assigned) {
+      if (!current && !mine) throw forbidden("Seul le joueur ajoute ses persos au groupe.");
+      await db.transaction(async tx => {
+        if (!current) await assignCharacter(tx, p.id, c.id, c.userId, body.main === true);
+        else if (body.main === true && !current.isMain) await setMain(tx, p.id, c.id, c.userId);
+      });
+    } else if (current) {
+      await db.transaction(tx => unassignCharacter(tx, p.id, c.id, c.userId));
+    }
+    if (!mine && (current || body.assigned)) {
+      await audit(db, req, "group_character_changed", { userId: u.id, groupId: p.id, meta: { target: c.userId, character: c.name, change: body.assigned ? "main" : "removed" } });
+    }
+    bus.group({ t: "chars", g: p.id });
+    return { ok: true };
   });
 
   /** « Qui crafte quoi ? » : patrons connus et recherchés par les persos du groupe. */
@@ -240,6 +279,7 @@ export async function groupRoutes(app: FastifyInstance) {
       if (!outranks(myRole, target)) throw forbidden("Tu ne peux retirer que des membres de rang inférieur.");
     }
     await db.delete(groupMembers).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
+    await db.delete(groupCharacters).where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.userId, p.userId)));
     await dropSignupsInGroup(db, p.id, p.userId);
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
     bus.group({ t: "group", g: p.id });

@@ -81,6 +81,8 @@ describe("temps réel", () => {
     const tank = (await off1.c.post("/api/characters", { name: "Tanky", race: "Tauren", cls: "Warrior", spec1: "Protection" })).json().character;
     const heal = (await off2.c.post("/api/characters", { name: "Soigne", race: "Tauren", cls: "Druid", spec1: "Restoration" })).json().character;
     expect(await l2.waitFor(e => e.t === "chars" && e.g === g.id)).toBe(true);
+    await off1.c.put(`/api/groups/${g.id}/characters/${tank.id}`, { assigned: true });
+    await off2.c.put(`/api/groups/${g.id}/characters/${heal.id}`, { assigned: true });
 
     const raidId = (await off1.c.post(`/api/groups/${g.id}/raids`, { name: "MC" })).json().raid.id;
     expect(await l2.waitFor(e => e.t === "raids" && e.g === g.id)).toBe(true);

@@ -12,11 +12,14 @@ export interface WeekRaid {
   id: string; groupId: string; groupName: string; name: string; scheduledAt: string;
   counts: { coming: number; tank: number; heal: number; dps: number; tentative: number };
   mine: { status: SignupStatus; characterId: string | null; characterName: string | null } | null;
+  /** Mon main dans le groupe du raid (choix par défaut pour s'inscrire). */
+  mainId: string | null;
 }
 export type WeekTodo =
   | { kind: "signup"; raidId: string; groupId: string; name: string; groupName: string; scheduledAt: string }
   | { kind: "sync"; characterId: string; name: string; days: number }
-  | { kind: "incomplete"; characterId: string; name: string; missing: "classe" | "spé" };
+  | { kind: "incomplete"; characterId: string; name: string; missing: "classe" | "spé" }
+  | { kind: "assign"; groupId: string; groupName: string };
 export interface WeekData {
   raids: WeekRaid[]; todo: WeekTodo[];
   steps: { character: boolean; group: boolean; addon: boolean };
@@ -67,6 +70,8 @@ const QUICK: SignupStatus[] = ["present", "tentative", "absent"];
 function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
   const qc = useQueryClient();
   const usable = chars.filter(c => c.cls);
+  // Main du groupe en tête de liste et choisi par défaut
+  usable.sort((a, b) => Number(b.id === raid.mainId) - Number(a.id === raid.mainId));
   const [charId, setCharId] = useState(raid.mine?.characterId ?? usable[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +91,7 @@ function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
     <div className="wk-signup">
       {usable.length > 1 && (
         <select aria-label={`Perso pour ${raid.name}`} value={charId} onChange={e => setCharId(e.target.value)}>
-          {usable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {usable.map(c => <option key={c.id} value={c.id}>{c.id === raid.mainId ? `★ ${c.name}` : c.name}</option>)}
         </select>
       )}
       <div className="wk-seg" role="group" aria-label={`Mon statut pour ${raid.name}`}>
@@ -111,6 +116,10 @@ const Counts = ({ r }: { r: WeekRaid }) => (
 /* ---------- Bandeau de Mes persos ---------- */
 
 function TodoItem({ t }: { t: Exclude<WeekTodo, { kind: "signup" }> }) {
+  if (t.kind === "assign") return (
+    <li className="wk-item assign"><span>Choisis tes persos dans <b>{t.groupName}</b><span className="sub">Tu n'y joues encore aucun perso : coche-les, le premier devient ton main.</span></span>
+      <Link className="btn sm" to={`/groups/${t.groupId}/persos`}>Choisir</Link></li>
+  );
   if (t.kind === "sync") return (
     <li className="wk-item sync"><span><b>{t.name}</b> n'est pas synchronisé depuis {t.days} jours<span className="sub">En jeu : ta touche de synchro, Ctrl+C, puis Ctrl+V sur n'importe quelle page du site.</span></span>
       <Link className="btn sm" to="/addon">Comment ?</Link></li>
@@ -193,7 +202,7 @@ export function WeekBand() {
           {others.length > 0 && (
             <>
               <div className="wk-sub">À faire</div>
-              <ul className="wk-list">{others.map(t => <TodoItem key={`${t.kind}-${t.characterId}`} t={t} />)}</ul>
+              <ul className="wk-list">{others.map(t => <TodoItem key={t.kind === "assign" ? `assign-${t.groupId}` : `${t.kind}-${t.characterId}`} t={t} />)}</ul>
             </>
           )}
         </div>

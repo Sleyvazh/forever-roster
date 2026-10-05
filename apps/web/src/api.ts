@@ -60,6 +60,8 @@ export interface Character {
   talentNodes?: import("@forever/game-data").ExportedTalentNode[] | null;
   /** Dernière mise à jour depuis l'addon. */
   addonSyncedAt?: string | null;
+  /** Dans la liste des persos d'un groupe : perso principal (main) de son joueur dans ce groupe. */
+  isMain?: boolean;
   /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
   gearStats?: import("@forever/game-data").GearStats;
 }

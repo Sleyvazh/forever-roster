@@ -1,7 +1,7 @@
 import { CLASS_SPECS, SIGNUP_HINT, SIGNUP_LABEL, SIGNUP_STATUSES, type SignupStatus, type SpecDef } from "@forever/game-data";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ApiError, del, patch, put, type Character, type RaidSignup } from "../api";
+import { ApiError, del, get, patch, put, type Character, type RaidSignup } from "../api";
 import { useMe } from "../auth";
 import { ClassIcon, SpecIcon } from "./Icons";
 
@@ -16,7 +16,10 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   const me = useMe();
   const myId = me.data?.user?.id;
   const mine = signups.find(s => s.mine);
-  const myChars = groupChars.filter(c => c.userId === myId && c.cls);
+  // Mes persos joués dans le groupe (main en tête) ; s'il n'y en a aucun, tous mes persos (s'inscrire l'ajoute au groupe)
+  const allMine = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
+  const here = groupChars.filter(c => c.userId === myId && c.cls).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
+  const myChars = here.length ? here : (allMine.data?.characters ?? []).filter(c => c.cls);
 
   const [charId, setCharId] = useState<string>("");
   const [spec, setSpec] = useState<string>("");
@@ -67,7 +70,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="fld" style={{ flex: "1 1 180px" }}><label htmlFor="su-char">Perso</label>
               <select id="su-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
-                {myChars.map(c => <option key={c.id} value={c.id}>{c.name} ({c.cls})</option>)}
+                {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({c.cls})</option>)}
               </select>
             </div>
             <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="su-spec">Spé pour ce raid</label>

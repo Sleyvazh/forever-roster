@@ -50,8 +50,11 @@ describe("cette semaine", () => {
     const inv = (await gm.c.post(`/api/groups/${g.id}/invites`, { maxUses: 5, expiresInHours: 24 })).json().invite;
     await p1.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
     const druid = (await p1.c.post("/api/characters", { name: "Thalwen", race: "Tauren", cls: "Druid", spec1: "Feral Bear" })).json().character;
-    await gm.c.post("/api/characters", { name: "Prêtresse", race: "Undead", cls: "Priest", spec1: "Holy" });
-    await gm.c.post("/api/characters", { name: "Sans spé", race: "Orc", cls: "Warrior" });
+    const priest = (await gm.c.post("/api/characters", { name: "Prêtresse", race: "Undead", cls: "Priest", spec1: "Holy" })).json().character;
+    const alt = (await gm.c.post("/api/characters", { name: "Sans spé", race: "Orc", cls: "Warrior" })).json().character;
+    const tankAlt = (await gm.c.post("/api/characters", { name: "Rempart", race: "Orc", cls: "Warrior", spec1: "Protection" })).json().character;
+    // Roster par rôle : le main de chaque joueur seulement (les alts et les persos hors du groupe ne comptent pas)
+    for (const c of [priest, alt, tankAlt]) await gm.c.put(`/api/groups/${g.id}/characters/${c.id}`, { assigned: true });
     const mc = (await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Molten Core", scheduledAt: inHours(3) })).json().raid;
     await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Onyxia", scheduledAt: inHours(48) });
     await gm.c.post(`/api/groups/${g.id}/raids`, { name: "Passé", scheduledAt: inHours(-48) });

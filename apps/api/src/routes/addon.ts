@@ -3,7 +3,7 @@ import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characterRecipes, characters, gameRecipes, groupMembers, groups, raids, raidSignups } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups } from "../db/schema";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
@@ -52,8 +52,9 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
   }
 
   // BiS : objet choisi dans la base, pas encore obtenu ni porté
+  // Persos joués dans le groupe (les patrons, eux, comptent tous les persos des membres, comme les Artisans)
   const gearRows = await db.select({ name: characters.name, gear: characters.gear }).from(characters)
-    .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, groupId)));
+    .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, groupId)));
   const bis = new Map<number, GroupExportBis>();
   for (const c of gearRows) {
     for (const e of Object.values(c.gear ?? {})) {

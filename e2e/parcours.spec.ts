@@ -215,6 +215,30 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
+  await test.step("persos du groupe : main et alts", async () => {
+    await page.getByRole("tab", { name: "Personnages" }).click();
+    // Rien par défaut : on choisit ses persos, le premier devient main
+    const mine = page.getByRole("region", { name: "Mes persos dans ce groupe" });
+    await expect(mine).toContainText("Tu ne joues encore aucun perso dans Les Testeurs");
+    await mine.getByRole("button", { name: /Tournicoti/ }).click();
+    await expect(page.locator(".gm-fold")).toContainText("★ Tournicoti");
+    await page.locator(".gm-fold").getByRole("button", { name: "Modifier" }).click();
+    const panel = page.getByRole("region", { name: "Mes persos dans ce groupe" });
+    await panel.locator(".gm-mine").filter({ hasText: "Greta" }).getByRole("button", { name: "+ Ajouter" }).click();
+    await expect(panel.locator(".gm-mine").filter({ hasText: "Greta" }).getByRole("button", { name: "✓ Joué ici" })).toBeVisible();
+    await expect(page.locator(".grow").filter({ hasText: "Greta" })).toContainText("alt");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/mains-alts.png", fullPage: true });
+    // Mains seulement : l'alt disparaît ; vue par joueur
+    await page.getByRole("group", { name: "Persos" }).getByRole("button", { name: "Mains", exact: true }).click();
+    await expect(page.locator(".grow").filter({ hasText: "Greta" })).toHaveCount(0);
+    await page.getByRole("group", { name: "Persos" }).getByRole("button", { name: "Mains + alts" }).click();
+    await page.getByRole("group", { name: "Affichage" }).getByRole("button", { name: "Par joueur" }).click();
+    await expect(page.locator(".gm-player")).toHaveCount(1);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/par-joueur.png", fullPage: true });
+    await page.getByRole("group", { name: "Affichage" }).getByRole("button", { name: "Liste" }).click();
+    await panel.getByRole("button", { name: "Replier" }).click();
+  });
+
   await test.step("raid : création, inscription et composition", async () => {
     await page.getByRole("tab", { name: "Raids" }).click();
     await page.fill("#r-name", "Molten Core");

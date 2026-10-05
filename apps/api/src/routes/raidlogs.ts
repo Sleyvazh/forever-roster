@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, gameItems, groupMembers, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
+import { characters, gameItems, groupCharacters as gc, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
 import { bus } from "../lib/events";
 import { membership } from "../lib/groups";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
@@ -23,10 +23,10 @@ const logInput = z.object({
 type GroupChar = { id: string; name: string; cls: string; userId: string; owner: string; gear: Gear };
 const key = (name: string) => gameName(name).toLowerCase();
 
-/** Persos des membres du groupe, par prénom en jeu (le relevé de l'addon ne connaît que lui). */
+/** Persos joués dans le groupe, par prénom en jeu (le relevé de l'addon ne connaît que lui). */
 async function groupCharacters(db: Db, groupId: string) {
   const rows: GroupChar[] = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, userId: characters.userId, owner: users.displayName, gear: characters.gear })
-    .from(characters).innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, groupId)))
+    .from(characters).innerJoin(gc, and(eq(gc.characterId, characters.id), eq(gc.groupId, groupId)))
     .innerJoin(users, eq(users.id, characters.userId));
   const byName = new Map<string, GroupChar[]>();
   for (const c of rows) byName.set(key(c.name), [...(byName.get(key(c.name)) ?? []), c]);

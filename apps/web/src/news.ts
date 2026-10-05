@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 15, date: "2026-10-05", kind: "site", title: "Ton main et tes alts dans chaque groupe",
+    text: "Dans l'onglet Personnages d'un groupe, choisis les persos que tu y joues et ton main (★). Affiche les mains seuls, avec les alts, séparés, ou par joueur. Ton main est proposé en premier pour t'inscrire aux raids." },
   { n: 14, date: "2026-10-05", kind: "bot", title: "Donne ton avis à ton équipe, signé ou anonyme",
     text: "Sur Discord, /feedback (ou le bouton « Donner mon avis » du salon prévu) : le bot t'écrit en privé, tu écris ton avis, puis tu choisis de l'envoyer signé ou anonyme. L'équipe peut te répondre, même anonyme. Marche aussi sur un serveur qui n'utilise pas le site." },
   { n: 13, date: "2026-10-04", kind: "addon", version: "0.9", title: "L'addon habillé comme le site",

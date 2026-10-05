@@ -89,6 +89,10 @@ describe("groupes, invitations et raids", () => {
     const tank = (await p1.c.post("/api/characters", { name: "Tank", race: "Orc", cls: "Warrior", spec1: "Protection" })).json().character;
     const cat = (await gm.c.post("/api/characters", druid)).json().character;
     const out = (await outsider.c.post("/api/characters", { name: "Intrus", race: "Human", cls: "Mage", spec1: "Frost" })).json().character;
+    // Chacun choisit les persos qu'il joue dans le groupe (rien par défaut)
+    expect((await gm.c.get(`/api/groups/${g.id}/characters`)).json().characters).toEqual([]);
+    await p1.c.put(`/api/groups/${g.id}/characters/${tank.id}`, { assigned: true });
+    await gm.c.put(`/api/groups/${g.id}/characters/${cat.id}`, { assigned: true });
     const shared = (await gm.c.get(`/api/groups/${g.id}/characters`)).json().characters;
     expect(shared.map((x: { name: string }) => x.name).sort()).toEqual(["Tank", "Tournicoti Tournicoton"]);
     expect((await gm.c.get(`/api/characters/${tank.id}`)).json().editable).toBe(false);

@@ -2,7 +2,7 @@ import { computeCoverage, GROUP_SIZE, RAID_GROUPS } from "@forever/game-data";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
+import { characters, groupCharacters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
 import { listSignups, signupInput, signupSummary, signUpSiteUser, touchRaid } from "../lib/signups";
 import { discordDeletions } from "../db/schema";
 import { SIGNUP_STATUSES } from "@forever/game-data";
@@ -42,7 +42,7 @@ export async function raidRoutes(app: FastifyInstance) {
     if (!ids.length) return [];
     return db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, level: characters.level, race: characters.race, owner: users.displayName })
       .from(characters)
-      .innerJoin(groupMembers, and(eq(groupMembers.userId, characters.userId), eq(groupMembers.groupId, groupId)))
+      .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, groupId)))
       .innerJoin(users, eq(users.id, characters.userId))
       .where(inArray(characters.id, ids));
   }
