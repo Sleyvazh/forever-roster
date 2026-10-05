@@ -3,13 +3,14 @@ import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, s
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
-import { characters, discordDeletions, groupCharacters, groupMembers, groups, raidSignups, raids, users } from "./db/schema";
+import { characters, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, users } from "./db/schema";
 import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
 import { bus } from "./lib/events";
+import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 
 /**
@@ -103,7 +104,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const view = {
       raid: {
         id: raid.id, name: raid.name, description: raid.description, scheduledAt: raid.scheduledAt,
-        url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt,
+        url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt, size: raid.size,
       },
       group: { id: group.id, name: group.name },
       channelId: group.discordChannelId!,
@@ -229,6 +230,115 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       reminders.push({ view: v, recipients });
     }
     return { reminders };
+  });
+
+  /* ----- Relance des sans-réponse (lot D2) ----- */
+
+  /**
+   * Réserve les relances dues : automatiques (dans le délai du groupe, une fois par raid, pas pour un raid tout juste
+   * créé) et demandées par un officier (« Relancer maintenant »). Renvoie qui relancer, qui n'est pas joignable, et
+   * les officiers à prévenir (relance automatique seulement).
+   */
+  app.post("/internal/discord/nudges/claim", async () => {
+    const now = Date.now();
+    const linked = and(isNotNull(groups.discordChannelId), gt(raids.scheduledAt, new Date(now + 3600e3)));
+    const autoDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+      .where(and(linked, isNotNull(groups.nudgeHours), isNull(raids.nudgeAutoAt), lt(raids.createdAt, new Date(now - NUDGE_GRACE_MS)),
+        sql`${raids.scheduledAt} <= now() + make_interval(hours => ${groups.nudgeHours}::int)`)).limit(10);
+    const manualDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+      .where(and(linked, isNotNull(raids.nudgeRequestedAt))).limit(10);
+    const auto = autoDue.length ? await db.update(raids).set({ nudgeAutoAt: new Date() })
+      .where(and(inArray(raids.id, autoDue.map(d => d.id)), isNull(raids.nudgeAutoAt))).returning({ id: raids.id }) : [];
+    const manual = manualDue.length ? await db.update(raids).set({ nudgeRequestedAt: null })
+      .where(and(inArray(raids.id, manualDue.map(d => d.id)), isNotNull(raids.nudgeRequestedAt))).returning({ id: raids.id }) : [];
+    const autoIds = new Set(auto.map(a => a.id));
+    const nudges = [];
+    for (const id of new Set([...autoIds, ...manual.map(m => m.id)])) {
+      const v = await view(id);
+      const [g] = await db.select({ officers: groups.nudgeOfficers }).from(groups).where(eq(groups.id, v.group.id));
+      const pending = await pendingMembers(db, v.group.id, id);
+      if (!pending.length) continue;
+      const label = (m: (typeof pending)[number]) => (m.main && m.main.name !== m.displayName ? `${m.displayName} (${m.main.name})` : m.displayName);
+      const officers = autoIds.has(id) && g?.officers
+        ? (await db.select({ discordId: users.discordId, reminders: users.discordReminders }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
+          .where(and(eq(groupMembers.groupId, v.group.id), ne(groupMembers.role, "member")))).filter(canDm).map(o => o.discordId!)
+        : [];
+      nudges.push({
+        view: v, auto: autoIds.has(id),
+        recipients: pending.filter(canDm).map(m => ({ discordUserId: m.discordId!, name: label(m) })),
+        unreachable: pending.filter(m => !canDm(m)).map(m => ({ name: label(m), why: m.discordId ? "dm-off" : "no-discord" })),
+        officers,
+      });
+    }
+    return { nudges };
+  });
+
+  /* ----- « Demander à X » (lot D2) ----- */
+
+  /** Réserve les demandes à envoyer (raid à venir, salon lié) : chacune n'est envoyée qu'une fois. */
+  app.post("/internal/discord/asks/claim", async () => {
+    const due = await db.select({ id: raidAsks.id }).from(raidAsks)
+      .innerJoin(raids, eq(raids.id, raidAsks.raidId)).innerJoin(groups, eq(groups.id, raids.groupId))
+      .where(and(isNull(raidAsks.sentAt), isNotNull(groups.discordChannelId), gt(raids.scheduledAt, new Date()))).limit(20);
+    if (!due.length) return { asks: [] };
+    const claimed = await db.update(raidAsks).set({ sentAt: new Date() })
+      .where(and(inArray(raidAsks.id, due.map(d => d.id)), isNull(raidAsks.sentAt))).returning({ id: raidAsks.id });
+    const asks = [];
+    for (const { id } of claimed) {
+      const [a] = await db.select({
+        id: raidAsks.id, raidId: raidAsks.raidId, userId: raidAsks.userId, spec: raidAsks.spec, askedByName: raidAsks.askedByName,
+        discordUserId: users.discordId, reminders: users.discordReminders, name: characters.name, cls: characters.cls,
+      }).from(raidAsks).innerJoin(users, eq(users.id, raidAsks.userId)).innerJoin(characters, eq(characters.id, raidAsks.characterId))
+        .where(eq(raidAsks.id, id));
+      if (!a) continue;
+      if (!canDm({ discordId: a.discordUserId, reminders: a.reminders })) { await askFailed(id); continue; }
+      const v = await view(a.raidId);
+      const [cur] = await db.select({ status: raidSignups.status, characterName: characters.name }).from(raidSignups)
+        .leftJoin(characters, eq(characters.id, raidSignups.characterId))
+        .where(and(eq(raidSignups.raidId, a.raidId), eq(raidSignups.userId, a.userId)));
+      asks.push({
+        id: a.id, discordUserId: a.discordUserId!, character: { name: a.name, cls: a.cls }, spec: a.spec, role: roleOf(a.spec), askedBy: a.askedByName,
+        current: cur ?? null, raid: { id: v.raid.id, name: v.raid.name, scheduledAt: v.raid.scheduledAt, url: v.raid.url }, group: v.group,
+      });
+    }
+    return { asks };
+  });
+
+  async function askFailed(id: string) {
+    const [a] = await db.update(raidAsks).set({ failed: true }).where(eq(raidAsks.id, id)).returning({ raidId: raidAsks.raidId });
+    if (a) await notifyRaid(a.raidId);
+  }
+  /** Prévient les pages ouvertes du site (sans republier l'annonce Discord). */
+  async function notifyRaid(raidId: string) {
+    const [r] = await db.select({ g: raids.groupId }).from(raids).where(eq(raids.id, raidId));
+    if (r) bus.group({ t: "raid", g: r.g, r: raidId });
+  }
+
+  /** Le MP n'a pas pu être envoyé (MP fermés, plus de serveur en commun) : l'officier le verra sur le site. */
+  app.post("/internal/discord/asks/:id/failed", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    await askFailed(id);
+    return { ok: true };
+  });
+
+  /** Réponse du joueur (bouton du MP). « Oui » l'inscrit présent avec ce perso, dans cette spé. */
+  app.post("/internal/discord/asks/:id/answer", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ discordUserId: snowflake, yes: z.boolean() }), req.body);
+    const [a] = await db.select({ ask: raidAsks, discordId: users.discordId, displayName: users.displayName, name: characters.name })
+      .from(raidAsks).innerJoin(users, eq(users.id, raidAsks.userId)).innerJoin(characters, eq(characters.id, raidAsks.characterId))
+      .where(eq(raidAsks.id, id));
+    // Demande annulée, ou bouton cliqué par quelqu'un d'autre (custom_id forgé) : même réponse, rien n'est révélé
+    if (!a || a.discordId !== body.discordUserId) throw notFound("Cette demande n'existe plus : l'officier l'a peut-être annulée.");
+    const { raid, group } = await loadRaid(a.ask.raidId);
+    if (a.ask.answer) return { answer: a.ask.answer, character: a.name, spec: a.ask.spec, url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, view: null, already: true };
+    if (!raid.scheduledAt || raid.scheduledAt.getTime() < Date.now()) throw badRequest("Ce raid est déjà passé.");
+    const [m] = await db.select({ role: groupMembers.role }).from(groupMembers).where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, a.ask.userId)));
+    if (!m) throw forbidden("Tu ne fais plus partie de ce groupe.");
+    if (body.yes) await signUpSiteUser(db, raid.id, { id: a.ask.userId, displayName: a.displayName }, { status: "present", characterId: a.ask.characterId, spec: a.ask.spec });
+    await db.update(raidAsks).set({ answer: body.yes ? "yes" : "no", answeredAt: new Date() }).where(eq(raidAsks.id, id));
+    await notifyRaid(raid.id);
+    return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: a.ask.spec, url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
   });
 
   /* ----- Inscription depuis un bouton ----- */

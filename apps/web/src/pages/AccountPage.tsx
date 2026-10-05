@@ -145,7 +145,7 @@ function DiscordLink({ username, reminders, enabled, onDone }: { username: strin
         <label className="row" style={{ gap: 8, flexWrap: "nowrap", alignItems: "flex-start" }}>
           <input type="checkbox" checked={reminders} style={{ width: "auto", marginTop: 3 }}
             onChange={e => { const on = e.target.checked; void a.run(async () => { await patch("/account/discord", { reminders: on }); onDone(); return on ? "Rappels activés." : "Rappels désactivés."; }); }} />
-          <span>Rappel en message privé la veille des raids auxquels je suis inscrit<br /><span className="hint">Avec des boutons pour changer de statut sans ouvrir le site.</span></span>
+          <span>Messages privés du bot : rappel la veille des raids, relance si je n'ai pas répondu, demandes des officiers<br /><span className="hint">Avec des boutons pour répondre sans ouvrir le site.</span></span>
         </label>
       )}
       {a.view}

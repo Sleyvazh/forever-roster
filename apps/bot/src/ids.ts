@@ -12,12 +12,14 @@ export type Action =
   | { a: "char"; raidId: string; status: SignupStatus } // menu : choix du perso
   | { a: "pick"; raidId: string; status: SignupStatus } // menu : perso + spé (valeur « persoId:spé »)
   | { a: "cls"; raidId: string; status: SignupStatus }  // menu (sans compte) : classe
-  | { a: "gspec"; raidId: string; status: SignupStatus }; // menu (sans compte) : spé (valeur « classe:spé »)
+  | { a: "gspec"; raidId: string; status: SignupStatus } // menu (sans compte) : spé (valeur « classe:spé »)
+  | { a: "ask"; askId: string; yes: boolean };           // réponse à « Demander à X » (MP) : fr|ay|<id> ou fr|an|<id>
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WITH_STATUS = new Set(["st", "chg", "char", "pick", "cls", "gspec"]);
 
 export function encodeId(x: Action): string {
+  if (x.a === "ask") return `fr|${x.yes ? "ay" : "an"}|${x.askId}`;
   return x.a === "off" ? `fr|off|${x.raidId}` : `fr|${x.a}|${x.raidId}|${x.status}`;
 }
 
@@ -25,6 +27,7 @@ export function decodeId(id: string): Action | null {
   const [p, a, raidId, status, ...rest] = id.split("|");
   if (p !== "fr" || !a || !raidId || !UUID.test(raidId) || rest.length) return null;
   if (a === "off") return status === undefined ? { a, raidId } : null;
+  if (a === "ay" || a === "an") return status === undefined ? { a: "ask", askId: raidId, yes: a === "ay" } : null;
   if (!WITH_STATUS.has(a) || !(SIGNUP_STATUSES as readonly string[]).includes(status ?? "")) return null;
   return { a, raidId, status: status as SignupStatus } as Action;
 }

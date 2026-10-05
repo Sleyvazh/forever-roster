@@ -4,7 +4,7 @@ import path from "node:path";
 import pg from "pg";
 
 /**
- * Aperçus des nouveautés (lot D1) avec des données fictives, pour les montrer avant déploiement.
+ * Aperçus des nouveautés (lots D1 et D2) avec des données fictives, pour les montrer avant déploiement.
  * Lancement : APERCUS=1 npx playwright test e2e/apercus.spec.ts (base e2e vide, site construit). Sortie : test-results/shots/.
  */
 test.skip(!process.env.APERCUS, "aperçus seulement sur demande (APERCUS=1)");
@@ -27,14 +27,19 @@ const ROSTER: [string, string, string, string, string, string, [string, string, 
   ["Hadrien", "Hadrien", "Undead", "Priest", "Shadow", "Holy"],
   ["Lysandre", "Lysandre", "Troll", "Mage", "Fire", "Frost"],
   ["Elwin", "Elwin", "Tauren", "Druid", "Balance", "Restoration"],
+  // Lot D2 : pas encore répondu au raid à 10
+  ["Maëlle", "Maëlle", "Troll", "Priest", "Holy", "Discipline"],
+  ["Rissa", "Rissa", "Undead", "Warlock", "Demonology", "Affliction"],
 ];
+/** Joueurs sans réponse (lot D2) : Elwin n'a pas lié Discord, Rissa a coupé les messages du bot. */
+const SILENT = ["Elwin", "Maëlle", "Rissa"];
 
 function lastVerifyToken() {
   const lines = readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(EMAIL) && l.includes("verify-email"));
   return lines.at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
 }
 
-test("aperçus du lot D1", async ({ page }) => {
+test("aperçus des lots D1 et D2", async ({ page }) => {
   test.setTimeout(120_000);
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
   await page.emulateMedia({ colorScheme: "dark" });
@@ -75,6 +80,7 @@ test("aperçus du lot D1", async ({ page }) => {
     const u = (await db.query("INSERT INTO users (email, email_verified_at, password_hash, display_name) VALUES ($1, now(), 'demo', $2) RETURNING id",
       [`${player.toLowerCase()}@example.test`, player])).rows[0].id as string;
     users.set(player, u);
+    if (player !== "Elwin") await db.query("UPDATE users SET discord_id = $2, discord_reminders = $3 WHERE id = $1", [u, String(800000000000000000n + BigInt(users.size)), player !== "Rissa"]);
     await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)", [group, u, player === "Brunehilde" ? "officer" : "member"]);
     await addChar(u, name, race, cls, spec, off, true);
     if (alt) await addChar(u, alt[0], "Troll", alt[1], alt[2], alt[3], false);
@@ -98,7 +104,11 @@ test("aperçus du lot D1", async ({ page }) => {
   }
   // Raid à 10 de mercredi : 11 inscrits pour 10 places, peu de heals
   const raid = (await db.query("INSERT INTO raids (group_id, name, scheduled_at, size, created_by) VALUES ($1, 'Raid à 10 · nouveau', $2, 10, $3) RETURNING id", [group, at(2), me])).rows[0].id as string;
-  await signAll(raid, c => (c.name === "Elwin" ? "" : c.name === "Vesper" ? "late" : "present"));
+  await signAll(raid, c => (SILENT.includes(c.name) ? "" : c.name === "Vesper" ? "late" : "present"));
+  // Lot D2 : salon Discord lié, une demande déjà envoyée (Brindille, l'alt heal de Brunehilde)
+  await db.query("UPDATE groups SET discord_guild_id = '100000000000000001', discord_channel_id = '100000000000000002' WHERE id = $1", [group]);
+  await db.query("INSERT INTO raid_asks (raid_id, character_id, user_id, spec, asked_by, asked_by_name, sent_at) VALUES ($1, $2, $3, 'Restoration', $4, 'Thalion', now())",
+    [raid, chars.find(c => c.name === "Brindille")!.id, users.get("Brunehilde"), me]);
   const slot = (g: number, p: number, name: string) => ({ group: g, pos: p, characterId: chars.find(c => c.name === name)!.id });
   await db.query("UPDATE raids SET slots = $2 WHERE id = $1", [raid, JSON.stringify([slot(1, 1, "Thalwen"), slot(1, 2, "Sylvaë"), slot(1, 3, "Morvh"), slot(2, 1, "Grumdal"), slot(2, 2, "Vesper")])]);
   await db.end();
@@ -112,6 +122,15 @@ test("aperçus du lot D1", async ({ page }) => {
   await page.setViewportSize({ width: 1360, height: 900 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${OUT}/apercu-format.png` });
+
+  // 1 bis. Lot D2 : pas encore répondu, relance, demandes ; réglage dans l'Administration
+  await expect(page.locator(".rr")).toContainText("Pas encore répondu");
+  await page.locator(".rr").screenshot({ path: `${OUT}/apercu-sans-reponse.png` });
+  await page.locator(".ra").screenshot({ path: `${OUT}/apercu-demander.png` });
+  await page.goto(`/groups/${group}/admin`);
+  const dc = page.locator("section[aria-labelledby=dc-title]");
+  await expect(dc).toContainText("Relances");
+  await dc.screenshot({ path: `${OUT}/apercu-reglage-relances.png` });
 
   // 2. Fiche joueur
   await page.goto(`/groups/${group}/membres`);

@@ -1,6 +1,7 @@
 import { benchSuggestion, CLASSES, roleGaps, roleOf, SIGNUP_LABEL, targetOf, type ClassName, type Role, type RoleTargets, type SignupStatus } from "@forever/game-data";
 import { useState } from "react";
 import type { Character, RaidSignup } from "../api";
+import { AskChip, type Reach } from "./RaidReach";
 
 /**
  * Compo assistée (lot D1) : rôles visés selon le format du raid, ce qui manque, qui peut combler (inscrits non placés,
@@ -15,9 +16,12 @@ const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 const COMING: SignupStatus[] = ["present", "late"];
 const color = (cls: string) => CLASSES[cls as ClassName]?.color;
 
-export function RaidAssist({ size, targets, entries, groupChars, signups, history, onPlace, onSpec, onBench }: {
+export function RaidAssist({ size, targets, entries, groupChars, signups, history, reach, onPlace, onSpec, onBench, onAsk }: {
   size: number; targets: RoleTargets; entries: AssistEntry[]; groupChars: Character[]; signups: RaidSignup[]; history: BenchHistory | undefined;
+  /** Relances et demandes (lot D2) : sans elles, pas de bouton « Demander ». */
+  reach?: Reach;
   onPlace: (key: string) => void; onSpec: (signupId: string, spec: string) => void; onBench: (signupIds: string[]) => void;
+  onAsk?: (characterId: string, spec: string) => void;
 }) {
   const placed = entries.filter(e => e.placed);
   const counts: Partial<Record<Role, number>> = {};
@@ -28,7 +32,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
   const answered = new Set(signups.filter(s => s.userId).map(s => s.userId!));
   const signedChars = new Set(signups.map(s => s.characterId).filter(Boolean) as string[]);
 
-  type Sugg = { key: string; role: Role; name: string; cls: string; what: string; why: string; action?: { label: string; run: () => void } };
+  type Sugg = { key: string; role: Role; name: string; cls: string; what: string; why: string; action?: { label: string; run: () => void }; ask?: { characterId: string; spec: string; userId: string } };
   const sugg: Sugg[] = [];
   for (const r of ROLES) {
     if (gaps[r] <= 0) continue;
@@ -44,15 +48,15 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
       if (!off || (e.placed && cur && gaps[cur] >= 0)) continue;
       sugg.push({ key: `o-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${off} (off-spec) · ${e.owner}`, why: `inscrit en ${e.spec}${e.placed ? ", déjà placé" : ""}`, action: { label: `Passer en ${off}`, run: () => onSpec(e.signup!.id, off) } });
     }
-    // 3. Alts des joueurs inscrits (le bot pourra leur demander, lot D2)
+    // 3. Alts des joueurs inscrits : le bot peut leur demander (lot D2)
     for (const c of groupChars.filter(x => !signedChars.has(x.id) && signedUsers.has(x.userId) && (roleOf(x.spec1) === r || roleOf(x.spec2) === r))) {
       const sp = roleOf(c.spec1) === r ? c.spec1 : c.spec2;
       const s = signedUsers.get(c.userId)!;
-      sugg.push({ key: `a-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${sp} · ${c.isMain ? "main" : "alt"} de ${c.owner}`, why: `${c.owner} vient avec ${s.characterName ?? "un autre perso"} : à lui demander` });
+      sugg.push({ key: `a-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${sp} · ${c.isMain ? "main" : "alt"} de ${c.owner}`, why: `${c.owner} vient avec ${s.characterName ?? "un autre perso"} : à lui demander`, ask: { characterId: c.id, spec: sp, userId: c.userId } });
     }
     // 4. Mains des membres qui n'ont pas répondu
     for (const c of groupChars.filter(x => x.isMain && !answered.has(x.userId) && roleOf(x.spec1) === r)) {
-      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${c.spec1} · main de ${c.owner}`, why: "pas encore répondu" });
+      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${c.spec1} · main de ${c.owner}`, why: "pas encore répondu", ask: { characterId: c.id, spec: c.spec1, userId: c.userId } });
     }
   }
 
@@ -70,10 +74,24 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
   const byKey = new Map(entries.map(e => [e.key, e]));
 
   const [more, setMore] = useState<Role | null>(null);
+  // « Demander à X » : le bot écrit au joueur (Discord lié, MP du bot gardés, salon lié, raid à venir)
+  const askOf = new Map((reach?.asks ?? []).map(a => [a.characterId, a]));
+  const dmOk = new Set(reach?.dmUsers ?? []);
+  const askable = !!reach && reach.discordLinked && reach.upcoming && !!onAsk;
+  const askCell = (s: Sugg) => {
+    if (!s.ask || !reach) return null;
+    const done = askOf.get(s.ask.characterId);
+    if (done) return <span className="ra-ask"><AskChip state={done.state} /></span>;
+    if (!askable) return null;
+    if (!dmOk.has(s.ask.userId)) return <span className="ra-ask small muted" title="Discord non lié ou messages du bot désactivés">pas de MP</span>;
+    const a = s.ask;
+    return <button type="button" className="btn sm ghost" title="Le bot lui écrit en MP ; « Oui » l'inscrit avec ce perso" onClick={() => onAsk!(a.characterId, a.spec)}>Demander</button>;
+  };
   const item = (s: Sugg) => (
     <li key={s.key}>
       <span className="ra-txt"><b style={{ color: color(s.cls) }}>{s.name}</b><small>{s.what}</small><small><i>{s.why}</i></small></span>
       {s.action && <button type="button" className="btn sm" onClick={s.action.run}>{s.action.label}</button>}
+      {askCell(s)}
     </li>
   );
   return (

@@ -10,7 +10,7 @@ export interface ViewSignup {
 }
 export interface RosterMember { name: string; cls: string; spec: string; role: Role | null }
 export interface RaidView {
-  raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string };
+  raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string; size?: number };
   group: { id: string; name: string };
   channelId: string;
   messageId: string | null;
@@ -20,6 +20,20 @@ export interface RaidView {
 }
 export interface Recipient { discordUserId: string; status: SignupStatus; name: string; cls: string; spec: string; guest: boolean; group: number | null }
 export interface Reminder { view: RaidView; recipients: Recipient[] }
+/** Relance des sans-réponse : à qui écrire, qui n'est pas joignable, officiers à prévenir (relance automatique). */
+export interface Nudge {
+  view: RaidView; auto: boolean;
+  recipients: { discordUserId: string; name: string }[];
+  unreachable: { name: string; why: "no-discord" | "dm-off" }[];
+  officers: string[];
+}
+/** « Demander à X » : un officier demande à un joueur de venir avec un perso précis. */
+export interface Ask {
+  id: string; discordUserId: string; character: { name: string; cls: string }; spec: string; role: Role | null; askedBy: string;
+  current: { status: SignupStatus; characterName: string | null } | null;
+  raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string };
+}
+export interface AskAnswer { answer: "yes" | "no"; character: string; spec: string; url: string; view: RaidView | null; already: boolean }
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
@@ -66,6 +80,12 @@ export class InternalApi {
     return this.req<{ ok: true }>("POST", `/internal/discord/raids/${raidId}/published`, b);
   }
   claimReminders() { return this.req<{ reminders: Reminder[] }>("POST", "/internal/discord/reminders/claim", {}); }
+  claimNudges() { return this.req<{ nudges: Nudge[] }>("POST", "/internal/discord/nudges/claim", {}); }
+  claimAsks() { return this.req<{ asks: Ask[] }>("POST", "/internal/discord/asks/claim", {}); }
+  askFailed(id: string) { return this.req<{ ok: true }>("POST", `/internal/discord/asks/${id}/failed`, {}); }
+  answerAsk(id: string, discordUserId: string, yes: boolean) {
+    return this.req<AskAnswer>("POST", `/internal/discord/asks/${id}/answer`, { discordUserId, yes });
+  }
   deletionDone(id: number) { return this.req<{ ok: true }>("DELETE", `/internal/discord/deletions/${id}`); }
   view(raidId: string) { return this.req<RaidView>("GET", `/internal/discord/raids/${raidId}/view`); }
   choices(raidId: string, discordUserId: string) {

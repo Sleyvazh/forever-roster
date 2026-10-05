@@ -3,7 +3,7 @@ import { LOOT_MODE_LABEL, LOOT_MODES, RAID_SIZES, SIGNUP_LABEL, SKILL_LINE_NAMES
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, type CraftersRecipe, type GroupRole, type Member } from "../api";
+import { ApiError, del, get, patch, post, put, type CraftersRecipe, type GroupRole, type Member } from "../api";
 import { useMe } from "../auth";
 import { CRAFTING } from "../components/GameData";
 import { Portrait } from "../components/ImageUpload";
@@ -30,6 +30,7 @@ const EVENT_LABEL: Record<string, string> = {
   raid_roster_published: "a publié une compo sur Discord", raid_roster_unpublished: "a retiré une compo de Discord",
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
   group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin",
+  group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
 };
 
 type GroupTab = "raids" | "members" | "characters" | "crafters" | "presence" | "admin";
@@ -425,6 +426,43 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
           <span className="small muted">Une fois le salon lié, recharge cette page.</span>
         </div>
       )}
+      <NudgeSettings groupId={groupId} linked={linked} guard={guard} />
     </section>
+  );
+}
+
+/** Relance en MP des membres qui n'ont pas répondu (lot D2), et liste envoyée aux officiers. */
+function NudgeSettings({ groupId, linked, guard }: { groupId: string; linked: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  type S = { hours: 24 | 48 | 72 | null; officers: boolean };
+  const q = useQuery({ queryKey: ["nudge-settings", groupId], queryFn: () => get<{ settings: S }>(`/groups/${groupId}/nudge-settings`) });
+  const s = q.data?.settings;
+  if (!s) return null;
+  const save = (b: Partial<S>) => void guard(async () => {
+    await put(`/groups/${groupId}/nudge-settings`, b);
+    await qc.invalidateQueries({ queryKey: ["nudge-settings", groupId] });
+  });
+  return (
+    <div className="stack" style={{ gap: 8, borderTop: "1px dashed var(--line-2)", paddingTop: 12 }}>
+      <h4 style={{ margin: 0 }}>Relances</h4>
+      <div className="rr-set">
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={s.hours !== null} disabled={!linked} onChange={e => save({ hours: e.target.checked ? 48 : null })} />
+          Relancer en MP ceux qui n'ont pas répondu
+        </label>
+        <select aria-label="Délai de la relance" value={s.hours ?? ""} disabled={!linked || s.hours === null} onChange={e => save({ hours: Number(e.target.value) as 24 | 48 | 72 })}>
+          {s.hours === null && <option value="">—</option>}
+          <option value={24}>24 h avant</option><option value={48}>48 h avant</option><option value={72}>72 h avant</option>
+        </select>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={s.officers} disabled={!linked || s.hours === null} onChange={e => save({ officers: e.target.checked })} />
+          Prévenir les officiers (liste des sans-réponse en MP)
+        </label>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>
+        Une relance automatique par raid, aux membres sans aucune réponse qui ont lié leur Discord. Sur la page d'un raid, « Relancer maintenant » est possible une fois par heure,
+        et la compo assistée propose « Demander » pour inviter un joueur précis.{!linked && " Il faut d'abord lier un salon."}
+      </p>
+    </div>
   );
 }

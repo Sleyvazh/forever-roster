@@ -141,6 +141,13 @@
       "when": 1791214761272,
       "tag": "0019_raid_size",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791217008893,
+      "tag": "0020_nudges_and_asks",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 18, date: "2026-10-05", kind: "bot", title: "Le bot relance ceux qui n'ont pas répondu",
+    text: "48 h avant le raid (24 ou 72 h au choix), le bot écrit en privé aux membres qui n'ont pas répondu : un clic sur Présent, Peut-être ou Absent suffit. Les officiers reçoivent la liste, peuvent relancer à la main depuis la page du raid, et « Demander » dans l'encart Besoins invite un joueur précis à venir avec tel perso." },
   { n: 17, date: "2026-10-05", kind: "site", title: "Raids à 10, 20 ou 40, compo assistée, banc équitable, fiche joueur",
     text: "Choisis le format du raid : la compo vise les bons rôles. L'encart Besoins dit ce qui manque et propose qui peut combler (inscrits, off-spec, alts). Trop d'inscrits ? Le site propose de mettre sur le banc ceux qui y sont allés le moins. Et un clic sur un membre ouvre sa fiche : persos, présence, butin." },
   { n: 16, date: "2026-10-05", kind: "site", title: "Butin : mode choisi à la création du raid, soft reserve",

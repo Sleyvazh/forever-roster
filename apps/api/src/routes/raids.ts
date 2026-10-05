@@ -179,7 +179,7 @@ export async function raidRoutes(app: FastifyInstance) {
     await db.update(raids).set({
       name, scheduledAt, slots, updatedAt,
       // Nouvelle date : le rappel de la veille sera renvoyé
-      ...(moved && { reminderSentAt: null }),
+      ...(moved && { reminderSentAt: null, nudgeAutoAt: null }),
       ...(description !== undefined && { description }),
       ...(body.lootMode && { lootMode: body.lootMode }),
       ...(body.srHidden !== undefined && { srHidden: body.srHidden }),

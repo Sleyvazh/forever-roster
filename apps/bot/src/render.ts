@@ -69,7 +69,7 @@ function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): AP
   const all = groups.flatMap(g => g.members);
   const count = (r: string) => all.filter(m => m.role === r).length;
   const fields: APIEmbedField[] = [{
-    name: `✅ Compo validée — ${all.length}/40`,
+    name: `✅ Compo validée — ${all.length}/${v.raid.size ?? 40}`,
     value: ROLES.map(({ role, icon }) => `${icon} ${count(role)} ${role}`).join(" · "),
     inline: false,
   }];

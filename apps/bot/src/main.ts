@@ -10,6 +10,7 @@ import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
 import { createFeedback, isFeedbackId } from "./feedback";
 import { confirmation, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, splitValue } from "./ids";
+import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { createSync, type Publisher } from "./sync";
 
@@ -94,6 +95,38 @@ async function start() {
     }
   };
 
+  /** MP à un joueur ; false si ses MP sont fermés (ou plus de serveur en commun), sans bruit dans les journaux. */
+  const dm = async (userId: string, payload: Parameters<typeof client.users.send>[1], what: string) => {
+    try {
+      await client.users.send(userId, payload);
+      return true;
+    } catch (e) {
+      if (!(e instanceof DiscordAPIError && e.code === CANNOT_DM)) log.warn(`${what} non envoyé`, (e as Error).message);
+      return false;
+    } finally {
+      await new Promise(res => setTimeout(res, 300));
+    }
+  };
+
+  /** Relance des sans-réponse (lot D2), puis la liste aux officiers pour la relance automatique. */
+  const sendNudges = async () => {
+    const { nudges } = await api.claimNudges();
+    for (const n of nudges) {
+      const sent: string[] = [], closed: string[] = [];
+      for (const r of n.recipients) (await dm(r.discordUserId, renderNudge(n.view), "Relance") ? sent : closed).push(r.name);
+      for (const o of n.officers) await dm(o, renderNudgeReport(n, sent, closed), "Liste des sans-réponse");
+      log.info(`Relance « ${n.view.raid.name} »${n.auto ? "" : " (à la main)"} : ${sent.length}/${n.recipients.length} MP, ${n.officers.length} officier(s) prévenu(s).`);
+    }
+  };
+
+  /** « Demander à X » (lot D2) : un MP par demande ; si le MP est impossible, l'officier le voit sur le site. */
+  const sendAsks = async () => {
+    const { asks } = await api.claimAsks();
+    for (const a of asks) {
+      if (!(await dm(a.discordUserId, renderAsk(a, emoji), "Demande"))) await api.askFailed(a.id).catch(() => {});
+    }
+  };
+
   client.once(Events.ClientReady, async c => {
     log.info(`Connecté en tant que ${c.user.tag}`);
     await c.application.commands.set(COMMANDS);
@@ -101,6 +134,8 @@ async function start() {
     setInterval(() => { refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message)); }, 6 * 3600e3);
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
+    setInterval(() => { sendNudges().catch(e => log.warn("Relances impossibles", e?.message)); }, 60e3);
+    setInterval(() => { sendAsks().catch(e => log.warn("Demandes impossibles", e?.message)); }, 15e3);
   });
 
   client.on(Events.InteractionCreate, (i: Interaction) => {
@@ -170,6 +205,13 @@ async function start() {
   async function button(i: ButtonInteraction) {
     const id = decodeId(i.customId);
     if (!id) return;
+    if (id.a === "ask") {
+      await i.deferUpdate();
+      const r = await api.answerAsk(id.askId, i.user.id, id.yes);
+      if (r.view) publishSoon(r.view);
+      const prev = i.message.embeds[0]?.toJSON();
+      return i.editReply(renderAskAnswered(prev && { title: prev.title, url: prev.url, description: prev.description, footer: prev.footer }, r));
+    }
     if (id.a === "st") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
       return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id)));

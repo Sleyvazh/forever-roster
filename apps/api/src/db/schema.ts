@@ -144,8 +144,14 @@ export const groups = pgTable("groups", {
   discordLinkCodeExpiresAt: ts("discord_link_code_expires_at"),
   /** Réglages du butin (soft reserve, conseil) ; le mode se choisit raid par raid. */
   lootSettings: jsonb("loot_settings").$type<Partial<LootSettings>>().notNull().default({}),
+  /** Relance en MP des membres sans réponse : 24, 48 ou 72 h avant le raid (null : pas de relance automatique). */
+  nudgeHours: smallint("nudge_hours").default(48),
+  /** La liste des sans-réponse est aussi envoyée en MP aux officiers, au moment de la relance automatique. */
+  nudgeOfficers: boolean("nudge_officers").notNull().default(true),
   createdAt: ts("created_at").notNull().defaultNow(),
-});
+}, t => [
+  check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
+]);
 
 export const groupMembers = pgTable("group_members", {
   groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
@@ -209,6 +215,13 @@ export const raids = pgTable("raids", {
   discordSyncedAt: ts("discord_synced_at"),
   /** Rappel de la veille déjà envoyé (remis à zéro si la date change). */
   reminderSentAt: ts("reminder_sent_at"),
+  /**
+   * Relance des sans-réponse : automatique (une fois, remise à zéro si la date change), demandée par un officier
+   * (« Relancer maintenant », en attente du bot) et dernière relance à la main (une par heure au plus).
+   */
+  nudgeAutoAt: ts("nudge_auto_at"),
+  nudgeRequestedAt: ts("nudge_requested_at"),
+  nudgeManualAt: ts("nudge_manual_at"),
   /** Composition validée par un officier : affichée dans l'annonce Discord. */
   rosterPublishedAt: ts("roster_published_at"),
   /** Mode de butin choisi à la création (journal, loot council, soft reserve) et visibilité des réservations. */
@@ -349,6 +362,31 @@ export const images = pgTable("images", {
 }, t => [index("images_owner_idx").on(t.ownerId)]);
 
 /* ---------- Inscriptions aux raids ---------- */
+
+/**
+ * « Demander à X » (compo assistée) : un officier demande à un joueur de venir avec un perso précis, dans une spé.
+ * Le bot l'envoie en MP avec deux boutons ; « Oui » inscrit le joueur avec ce perso. Une demande par perso et par raid.
+ */
+export const raidAsks = pgTable("raid_asks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  raidId: uuid("raid_id").notNull().references(() => raids.id, { onDelete: "cascade" }),
+  characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  /** Joueur à qui on demande (propriétaire du perso). */
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  spec: text("spec").notNull(),
+  askedBy: uuid("asked_by").references(() => users.id, { onDelete: "set null" }),
+  askedByName: text("asked_by_name").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  /** Pris en charge par le bot (MP envoyé), ou MP impossible (MP fermés, plus de serveur en commun). */
+  sentAt: ts("sent_at"),
+  failed: boolean("failed").notNull().default(false),
+  answer: text("answer").$type<"yes" | "no">(),
+  answeredAt: ts("answered_at"),
+}, t => [
+  uniqueIndex("raid_asks_char_uq").on(t.raidId, t.characterId),
+  index("raid_asks_pending_idx").on(t.sentAt),
+  check("raid_asks_answer_chk", sql`${t.answer} is null or ${t.answer} in ('yes', 'no')`),
+]);
 
 /**
  * Une inscription par joueur et par raid : un compte du site (user_id) ou, pour l'inscription libre

@@ -13,6 +13,7 @@ import { RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
 import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
 import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
+import { RaidReach, type Reach } from "../components/RaidReach";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 import { FloatingTip } from "../components/ItemTooltip";
@@ -114,6 +115,8 @@ export function RaidPage() {
   }, [raidId, myId]));
 
   const canEdit = !!raidQ.data?.canEdit;
+  // Sans-réponse, relances et demandes (officiers)
+  const reachQ = useQuery({ queryKey: ["reach", raidId], queryFn: () => get<Reach>(`/groups/${groupId}/raids/${raidId}/reach`), enabled: canEdit });
   const chars = useMemo(() => new Map((charsQ.data?.characters ?? []).map(c => [c.id, c])), [charsQ.data]);
   // Spé et statut choisis à l'inscription, par perso
   const signupByChar = useMemo(() => new Map((raidQ.data?.signups ?? []).filter(s => s.characterId).map(s => [s.characterId!, s])), [raidQ.data]);
@@ -258,6 +261,7 @@ export function RaidPage() {
         </details>
       ) : raidQ.data.raid.lootMode !== "journal" && <div className="row"><span className="muted small">Butin :</span><LootModeTag mode={raidQ.data.raid.lootMode} /></div>}
       <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
+      {canEdit && reachQ.data && <RaidReach groupId={groupId} raidId={raidId} reach={reachQ.data} onChanged={() => void qc.invalidateQueries({ queryKey: ["reach", raidId] })} />}
       {raidQ.data.raid.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
       <RaidLogPanel log={raidQ.data.log} />
       {error && <div className="alert error" role="alert">{error}</div>}
@@ -282,7 +286,9 @@ export function RaidPage() {
       {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
       {canEdit && (
-      <RaidAssist size={size} targets={raidQ.data.raid.targets} groupChars={allChars} signups={raidQ.data.signups} history={historyQ.data}
+      <RaidAssist size={size} targets={raidQ.data.raid.targets} groupChars={allChars} signups={raidQ.data.signups} history={historyQ.data} reach={reachQ.data}
+        onAsk={(characterId, spec) => void post(`/groups/${groupId}/raids/${raidId}/asks`, { characterId, spec })
+          .then(() => qc.invalidateQueries({ queryKey: ["reach", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Demande impossible."))}
         entries={[...entries.values()].map(e => ({ key: e.key, name: e.name, cls: e.cls, spec: e.spec, owner: e.owner, signup: e.signup,
           characterId: "characterId" in e.ref ? e.ref.characterId : null, placed: placed.has(e.key) }))}
         onPlace={key => { const e = entries.get(key); if (e) addToRaid(e); }}
