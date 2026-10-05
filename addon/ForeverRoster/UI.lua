@@ -64,6 +64,24 @@ end
 -- Décalage du contenu des petites fenêtres : place du portrait (habillage Forever) ou non
 local function gapX() return site() and 18 or 66 end
 
+-- Premier plan : plusieurs fenêtres de l'addon peuvent se chevaucher (fenêtre principale, butin, conseil, fiche du boss).
+-- Même strate pour toutes : sans niveau propre, les lignes de l'une passeraient au-dessus du fond de l'autre.
+-- La fenêtre ouverte ou cliquée en dernier prend un niveau au-dessus des autres (ses cadres enfants suivent).
+local frontLevel = 10
+local function front(f)
+  if not f or not f.SetFrameLevel then return end
+  frontLevel = frontLevel + 40
+  if frontLevel > 8000 then frontLevel = 50 end
+  f:SetFrameLevel(frontLevel)
+  if f.Raise then f:Raise() end
+end
+U.front = front
+local function stackable(f)
+  if f.SetToplevel then f:SetToplevel(true) end
+  if f.HookScript then f:HookScript("OnMouseDown", function(self) front(self) end) end
+  front(f)
+end
+
 local function siteWindow(name, title, w, h, icon)
   local f = CreateFrame("Frame", name, UIParent)
   f:SetSize(w, h)
@@ -71,6 +89,7 @@ local function siteWindow(name, title, w, h, icon)
   f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving) f:SetScript("OnDragStop", f.StopMovingOrSizing)
   f:SetFrameStrata("DIALOG")
+  stackable(f)
   f:SetClampedToScreen(true)
   local bg = f:CreateTexture(nil, "BACKGROUND", nil, -7)
   bg:SetAllPoints() solid(bg, C.panel, 0.97)
@@ -112,6 +131,7 @@ local function window(name, title, w, h, icon)
   f:SetMovable(true) f:EnableMouse(true) f:RegisterForDrag("LeftButton")
   f:SetScript("OnDragStart", f.StartMoving) f:SetScript("OnDragStop", f.StopMovingOrSizing)
   f:SetFrameStrata("DIALOG")
+  stackable(f)
   f:SetClampedToScreen(true)
   -- Fond de la fiche de perso de Forever, sous le cadre (le cadre est dessiné par-dessus)
   local bg = f:CreateTexture(nil, "BACKGROUND", nil, -6)
@@ -343,7 +363,7 @@ local function colored(cls, name)
 end
 
 -- Outils partagés avec les fenêtres du raid (Raid.lua : butin, conseil, fiche du boss)
-U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea }
+U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea, front = front }
 
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
@@ -823,6 +843,7 @@ function U.Show(tab)
     local b = main.tabs[t.key]
     if b.SetOn then b:SetOn(on) elseif on then b.selected:Show() else b.selected:Hide() end
   end
+  front(main)
   if main:IsShown() then U.Refresh() else main:Show() end
 end
 function U.Toggle()
@@ -865,6 +886,7 @@ function U.LootAlert(itemId, link)
   if bis then lines[#lines + 1] = BLUE .. "BiS de " .. G.joinNames(bis) .. "|r" end
   alert.text:SetText(table.concat(lines, "\n"))
   alert.announce:SetScript("OnClick", function() G.Announce(itemId, link) alert:Hide() end)
+  front(alert)
   alert:Show()
 end
 
@@ -940,6 +962,7 @@ function U.Quick(all)
   local last = ForeverRosterDB.lastLoad
   quick.foot:SetText(last and (GREY .. "Données du site : " .. date("%d/%m %H:%M", last.at) .. "|r") or (GREY .. "Données du site : jamais chargées|r"))
   quick.box:SetText(value)
+  front(quick)
   quick:Show()
   quick.box:SetFocus()
   quick.box:HighlightText()
@@ -1018,6 +1041,7 @@ function U.Reminder(after)
     "Tu viens avec " .. who .. " ?" .. (#ask > 1 and (GREY .. "  (" .. (#ask - 1) .. " autre" .. (#ask > 2 and "s" or "") .. " raid" .. (#ask > 2 and "s" or "") .. " ensuite)|r") or ""))
   for _, b in ipairs(reminder.buttons) do b:Show() end
   reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
+  front(reminder)
   reminder:Show()
   return true
 end

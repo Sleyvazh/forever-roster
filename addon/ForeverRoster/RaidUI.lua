@@ -35,6 +35,7 @@ local lootWin
 local KIND = { sr = "soft reserve", ms = "spé principale (MS)", os = "spé secondaire (OS)", free = "jet libre" }
 function RA.ShowLoot()
   if not lootWin then lootWin = listWindow("ForeverRosterMasterLoot", "Butin · maître du butin", 470) end
+  K.front(lootWin)
   lootWin:Show()
   RA.RefreshLoot()
 end
@@ -123,6 +124,7 @@ function RA.ShowAsk()
   ask.text:SetText(linkFor(a.itemId) .. GREY .. "  proposé par " .. a.ml .. "|r\n" .. (#gear > 0 and ("Tu portes : " .. table.concat(gear, ", ")) or GREY .. "Rien de porté à cet emplacement.|r")
     .. (#RA.asks > 1 and (GREY .. "\n" .. (#RA.asks - 1) .. " autre(s) objet(s) ensuite.|r") or ""))
   ask.timer:SetText(GREY .. "Une précision au besoin, puis ta réponse. Sans addon, on peut chuchoter bis, up, os au maître du butin.|r")
+  K.front(ask)
   ask:Show()
 end
 
@@ -130,6 +132,7 @@ local councilWin
 function RA.ShowCouncil(sid)
   if not councilWin then councilWin = listWindow("ForeverRosterCouncil", "Conseil du butin", 470) end
   councilWin.sid = sid
+  K.front(councilWin)
   councilWin:Show()
   RA.RefreshCouncil()
 end
@@ -201,6 +204,7 @@ function RA.ShowSheet(sheet)
   sheetWin:SetHeight(math.max(170, math.min(420, h)))
   sheetWin.announce:SetScript("OnClick", function() RA.AnnounceSheet(sheet) end)
   if RA.isLeader() then sheetWin.announce:Show() else sheetWin.announce:Hide() end
+  K.front(sheetWin)
   sheetWin:Show()
 end
 function RA.HideSheet() if sheetWin then sheetWin:Hide() end end
