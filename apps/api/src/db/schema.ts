@@ -1,3 +1,4 @@
+import type { LootMethod, LootMode, LootResponse, LootSettings } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigserial, boolean, customType, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -141,6 +142,8 @@ export const groups = pgTable("groups", {
   /** Code de liaison (haché) et son expiration. */
   discordLinkCodeHash: text("discord_link_code_hash"),
   discordLinkCodeExpiresAt: ts("discord_link_code_expires_at"),
+  /** Réglages du butin (soft reserve, conseil) ; le mode se choisit raid par raid. */
+  lootSettings: jsonb("loot_settings").$type<Partial<LootSettings>>().notNull().default({}),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
@@ -208,6 +211,9 @@ export const raids = pgTable("raids", {
   reminderSentAt: ts("reminder_sent_at"),
   /** Composition validée par un officier : affichée dans l'annonce Discord. */
   rosterPublishedAt: ts("roster_published_at"),
+  /** Mode de butin choisi à la création (journal, loot council, soft reserve) et visibilité des réservations. */
+  lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
+  srHidden: boolean("sr_hidden").notNull().default(false),
   /** Raid créé automatiquement à partir d'un modèle récurrent. */
   templateId: uuid("template_id").references((): AnyPgColumn => raidTemplates.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -233,6 +239,8 @@ export const raidTemplates = pgTable("raid_templates", {
   /** Heure locale (fuseau du serveur de jeu), « HH:MM ». */
   time: text("time").notNull(),
   leadDays: smallint("lead_days").notNull().default(7),
+  lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
+  srHidden: boolean("sr_hidden").notNull().default(false),
   active: boolean("active").notNull().default(true),
   generatedUntil: ts("generated_until"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -367,7 +375,11 @@ export const raidSignups = pgTable("raid_signups", {
  * de quand à quand) et butin noté pendant la soirée. Un bilan par raid ; un nouveau collage le remplace.
  */
 export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
-export interface RaidLogLoot { itemId: number; name: string; at: number; boss: string }
+export interface RaidLogLoot {
+  itemId: number; name: string; at: number; boss: string;
+  /** Bilan v2 : comment l'objet a été attribué, réponse du joueur au conseil, détail (votes, jet). */
+  method?: LootMethod; response?: LootResponse; detail?: string;
+}
 export const raidLogs = pgTable("raid_logs", {
   raidId: uuid("raid_id").primaryKey().references(() => raids.id, { onDelete: "cascade" }),
   recordedBy: uuid("recorded_by").references(() => users.id, { onDelete: "set null" }),
@@ -414,3 +426,27 @@ export const feedbacks = pgTable("feedbacks", {
   authorId: text("author_id"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [index("feedbacks_created_idx").on(t.createdAt)]);
+
+/** Soft reserve : objets réservés par un perso pour un raid. */
+export const softReserves = pgTable("soft_reserves", {
+  raidId: uuid("raid_id").notNull().references(() => raids.id, { onDelete: "cascade" }),
+  characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.raidId, t.characterId, t.itemId] }),
+  index("soft_reserves_char_idx").on(t.characterId, t.itemId),
+]);
+
+/**
+ * Catalogue de butin appris par les bilans des raids (les tables de butin ne sont pas dans les fichiers du jeu) :
+ * objet vu tomber, par instance et par boss, tous groupes confondus. Aucune donnée de joueur.
+ */
+export const lootCatalog = pgTable("loot_catalog", {
+  instance: text("instance").notNull(),
+  boss: text("boss").notNull().default(""),
+  itemId: integer("item_id").notNull(),
+  seen: integer("seen").notNull().default(1),
+  lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.instance, t.boss, t.itemId] })]);

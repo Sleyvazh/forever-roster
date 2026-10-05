@@ -19,6 +19,23 @@ describe("bilan de raid (FRB)", () => {
     expect(r.data[0]!.loot).toEqual([{ itemId: 16828, name: "Thalwen", at: 3000, boss: "Lucifron" }, { itemId: 17063, name: "Grumdal", at: 5000, boss: "" }]);
   });
 
+  it("version 2 : instance et façon dont l'objet a été attribué", () => {
+    const v2 = `FRB;2;${ID};1000;8200;Thalion;Molten Core;Molten Core
+A;Thalwen;1000;8200;121
+L;16828;Thalwen;3000;Lucifron;council;bis;3 votes
+L;17063;Grumdal;5000;Garr;sr;;jet 87 + 10
+L;18000;Bob;6000;Garr;inconnu;rien;
+END;4`;
+    const r = parseRaidLogs(v2);
+    expect(r.errors).toEqual([]);
+    expect(r.data[0]!.instance).toBe("Molten Core");
+    expect(r.data[0]!.loot).toEqual([
+      { itemId: 16828, name: "Thalwen", at: 3000, boss: "Lucifron", method: "council", response: "bis", detail: "3 votes" },
+      { itemId: 17063, name: "Grumdal", at: 5000, boss: "Garr", method: "sr", detail: "jet 87 + 10" },
+      { itemId: 18000, name: "Bob", at: 6000, boss: "Garr" },
+    ]);
+  });
+
   it("refuse un bilan tronqué ou sans raid du site", () => {
     expect(parseRaidLogs(LOG.split("\n").slice(0, 3).join("\n")).errors[0]).toMatch(/incomplet/);
     expect(parseRaidLogs("FRB;1;pas-un-id;1;2;X;Y\nEND;0").errors[0]).toMatch(/sans raid du site/);

@@ -1,4 +1,4 @@
-import { ATTENDED, attendanceStatus, gameName, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
+import { ATTENDED, attendanceStatus, gameName, LOOT_METHODS, LOOT_RESPONSES, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -6,6 +6,7 @@ import type { Db } from "../db/client";
 import { characters, gameItems, groupCharacters as gc, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
 import { bus } from "../lib/events";
 import { membership } from "../lib/groups";
+import { learnLoot } from "../lib/loot";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 
@@ -17,7 +18,12 @@ const logInput = z.object({
   start: z.int().min(0), end: z.int().min(0),
   recorder: z.string().trim().max(40),
   attendees: z.array(z.object({ name: z.string().trim().min(1).max(40), first: z.int().min(0), last: z.int().min(0), samples: z.int().min(0).max(100000) })).max(80),
-  loot: z.array(z.object({ itemId: z.int().min(1), name: z.string().trim().min(1).max(40), at: z.int().min(0), boss: z.string().trim().max(60) })).max(200),
+  loot: z.array(z.object({
+    itemId: z.int().min(1), name: z.string().trim().min(1).max(40), at: z.int().min(0), boss: z.string().trim().max(60),
+    method: z.enum(LOOT_METHODS).optional(), response: z.enum(LOOT_RESPONSES).optional(), detail: z.string().trim().max(60).optional(),
+  })).max(200),
+  /** Bilan v2 : instance réelle (sinon, le nom du raid sert pour le catalogue de butin). */
+  instance: z.string().trim().max(60).optional(),
 });
 
 type GroupChar = { id: string; name: string; cls: string; userId: string; owner: string; gear: Gear };
@@ -74,6 +80,7 @@ export async function raidLogView(db: Db, raid: { id: string; groupId: string; s
     const it = itemOf.get(l.itemId);
     return {
       itemId: l.itemId, itemName: it?.name ?? `Objet ${l.itemId}`, quality: it?.quality ?? 4, boss: l.boss, at: l.at,
+      method: l.method ?? null, response: l.response ?? null, detail: l.detail ?? "",
       name: c?.name ?? l.name, characterId: c?.id ?? null, cls: c?.cls ?? "",
       bis: !!c && Object.values(c.gear ?? {}).some(g => g?.bisId === l.itemId),
     };
@@ -102,6 +109,9 @@ export async function raidLogRoutes(app: FastifyInstance) {
       recordedBy: u.id, recorder: body.recorder, startedAt: new Date(body.start * 1000), endedAt: new Date(body.end * 1000),
       attendees: body.attendees, loot: body.loot, updatedAt: new Date(),
     };
+    // Catalogue de butin appris (instance réelle, sinon le nom du raid) ; un nouveau collage ne recompte pas
+    const [before] = await db.select({ loot: raidLogs.loot }).from(raidLogs).where(eq(raidLogs.raidId, raid.id));
+    await learnLoot(db, body.instance || raid.name, body.loot, before?.loot ?? []);
     await db.insert(raidLogs).values({ raidId: raid.id, ...values }).onConflictDoUpdate({ target: raidLogs.raidId, set: values });
 
     // Objectifs BiS reçus pendant le raid : cochés « obtenu » sur la fiche du perso

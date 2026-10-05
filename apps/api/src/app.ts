@@ -15,6 +15,7 @@ import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
 import { groupRoutes } from "./routes/groups";
 import { templateRoutes } from "./routes/templates";
+import { lootRoutes } from "./routes/loot";
 import { eventRoutes } from "./routes/events";
 import { raidRoutes } from "./routes/raids";
 import { addonRoutes } from "./routes/addon";
@@ -87,6 +88,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(weekRoutes, { prefix: "/api/week" });
   await app.register(raidLogRoutes, { prefix: "/api" });
   await app.register(templateRoutes, { prefix: "/api/groups" });
+  await app.register(lootRoutes, { prefix: "/api/groups" });
   await app.register(imageRoutes, { prefix: "/api/images" });
   await app.register(eventRoutes, { prefix: "/api/events" });
 

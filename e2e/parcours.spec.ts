@@ -244,6 +244,12 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#r-name", "Molten Core");
     await page.locator("form").filter({ has: page.locator("#r-name") }).getByRole("button", { name: "Créer" }).click();
     await expect(page.getByRole("heading", { name: "Molten Core" })).toBeVisible();
+    // Butin : passage en soft reserve depuis la page du raid (officier)
+    await page.locator("details.lt-raid summary").click();
+    await page.locator(".lt-raid").getByText("Soft reserve", { exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Soft reserve" })).toBeVisible();
+    await expect(page.getByText("Aucune réservation pour l'instant.")).toBeVisible();
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/softres.png", fullPage: true });
     await page.selectOption("#su-spec", "Feral Bear");
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
     await expect(page.getByText("Tu es inscrit : Présent avec Tournicoti (Feral Bear)")).toBeVisible();

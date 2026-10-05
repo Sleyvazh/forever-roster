@@ -208,15 +208,17 @@ describe("patrons des persos et « qui crafte quoi »", () => {
     const mine = (await lw.c.get(`/api/groups/${g.id}/addon-export`)).json();
     const lines = mine.text.split("\n");
     expect(lines[0]).toMatch(new RegExp(`^FRG;1;${g.id};\\d+;Veilleurs$`));
-    expect(lines).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;present;Greta`);
+    expect(lines).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;present;Greta;journal`);
     expect(mine.text).not.toContain("Ancien raid");
     // Warbear Woolies : appris par le patron 15090, recherché par Greta (prénom seul)
     expect(lines).toContain("P;15090;Warbear Woolies;Greta;");
     expect(lines).toContain("B;16866;Greta");
     expect(mine.text).not.toContain("B;15065");
-    expect(lines.at(-1)).toBe(`END;${lines.length - 2}`);
+    // END compte les lignes R, P et B (les lignes S et O du lot C2 sont en plus, pour les anciens addons)
+    expect(lines.at(-1)).toBe(`END;${lines.filter((l: string) => /^[RPB];/.test(l)).length}`);
+    expect(lines).toContain("O;Greta");
     // Un autre membre : même patrons, sans inscription
-    expect((await other.c.get(`/api/groups/${g.id}/addon-export`)).json().text).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;;`);
+    expect((await other.c.get(`/api/groups/${g.id}/addon-export`)).json().text).toContain(`R;${raid.id};${Math.floor(Date.parse(soon) / 1000)};Molten Core;;;journal`);
     expect((await outsider.c.get(`/api/groups/${g.id}/addon-export`)).statusCode).toBe(404);
     // Page Addon : tous mes groupes d'un coup
     const all = (await lw.c.get("/api/addon/export")).json();

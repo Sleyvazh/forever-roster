@@ -1,4 +1,4 @@
-import { ATTENDANCE_LABEL, CLASSES, itemLinks, type AttendanceStatus, type ClassName } from "@forever/game-data";
+import { ATTENDANCE_LABEL, CLASSES, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, type AttendanceStatus, type ClassName, type LootMethod, type LootResponse } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { get } from "../api";
@@ -8,7 +8,8 @@ import { get } from "../api";
 export interface RaidLogView {
   recorder: string; startedAt: string; endedAt: string; updatedAt: string;
   attendance: { name: string; characterId: string | null; cls: string; owner: string | null; status: AttendanceStatus; first: number | null; last: number | null }[];
-  loot: { itemId: number; itemName: string; quality: number; boss: string; at: number; name: string; characterId: string | null; cls: string; bis: boolean }[];
+  loot: { itemId: number; itemName: string; quality: number; boss: string; at: number; name: string; characterId: string | null; cls: string; bis: boolean;
+    method: LootMethod | null; response: LootResponse | null; detail: string }[];
 }
 
 const clsColor = (cls: string) => CLASSES[cls as ClassName]?.color;
@@ -49,7 +50,10 @@ export function RaidLogPanel({ log }: { log: RaidLogView | null | undefined }) {
                     <td><a className={`q${l.quality}`} href={itemLinks(l.itemId).wowhead} target="_blank" rel="noopener noreferrer">{l.itemName}</a></td>
                     <td className="muted">{l.boss || "—"}</td>
                     <td style={{ color: clsColor(l.cls) }}>{l.name}</td>
-                    <td className="r">{l.bis && <span className="rl-chip ok" title="Objectif BiS de la fiche, coché « obtenu »">BiS ✓</span>}</td>
+                    <td className="r nowrap">
+                      {l.method && <span className="rl-chip" title={l.detail || undefined}>{LOOT_METHOD_LABEL[l.method]}{l.response ? ` · ${LOOT_RESPONSE_LABEL[l.response]}` : ""}{l.detail ? ` · ${l.detail}` : ""}</span>}
+                      {l.bis && <span className="rl-chip ok" title="Objectif BiS de la fiche, coché « obtenu »">BiS ✓</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

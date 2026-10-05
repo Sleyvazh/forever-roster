@@ -5,11 +5,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, post, put, slotKey, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
+import { ApiError, del, get, patch, post, put, slotKey, type Character, type RaidChar, type RaidSignup, type RaidSlot } from "../api";
 import { RaidExport } from "../components/RaidExport";
 import { useLiveListener, type LiveEvent } from "../live";
 import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
+import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
+import { LOOT_MODE_LABEL, type LootMode } from "@forever/game-data";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 import { FloatingTip } from "../components/ItemTooltip";
@@ -39,7 +41,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
   );
 }
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean; lootMode: LootMode; srHidden: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
 interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
 /** Dernier état connu du serveur : base de la fusion quand deux officiers modifient la compo en même temps. */
 interface ServerState { version: string; slots: RaidSlot[]; name: string; scheduledAt: string | null; description: string }
@@ -81,6 +83,12 @@ export function RaidPage() {
   const edit = useRef(0);
   const pending = useRef(false);
   const myId = useMe().data?.user?.id;
+  // Mes persos pour réserver : ceux joués dans le groupe (main en tête), sinon tous les miens
+  const myAllQ = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
+  const myLootChars = useMemo(() => {
+    const here = (charsQ.data?.characters ?? []).filter(c => c.userId === myId && c.cls).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
+    return here.length ? here : (myAllQ.data?.characters ?? []).filter(c => c.cls);
+  }, [charsQ.data, myAllQ.data, myId]);
 
   const applyServer = (st: ServerState) => {
     server.current = st;
@@ -233,7 +241,16 @@ export function RaidPage() {
         </div>
       )}
       {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
+      {canEdit ? (
+        <details className="panel pad lt-raid" open={raidQ.data.raid.lootMode !== "journal"}>
+          <summary>Butin : <b>{LOOT_MODE_LABEL[raidQ.data.raid.lootMode]}</b></summary>
+          <LootModePicker mode={raidQ.data.raid.lootMode} hidden={raidQ.data.raid.srHidden} idPrefix="rp"
+            onChange={(lootMode, srHidden) => void patch(`/groups/${groupId}/raids/${raidId}/loot`, { lootMode, srHidden })
+              .then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
+        </details>
+      ) : raidQ.data.raid.lootMode !== "journal" && <div className="row"><span className="muted small">Butin :</span><LootModeTag mode={raidQ.data.raid.lootMode} /></div>}
       <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
+      {raidQ.data.raid.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
       <RaidLogPanel log={raidQ.data.log} />
       {error && <div className="alert error" role="alert">{error}</div>}
       {notice && <div className="alert info" role="status">{notice}</div>}

@@ -1,6 +1,7 @@
 import { and, asc, count, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { LOOT_MODES } from "@forever/game-data";
 import { raidTemplates } from "../db/schema";
 import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
@@ -16,12 +17,15 @@ const fields = z.object({
   weekday: z.int().min(1).max(7),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure au format HH:MM"),
   leadDays: z.int().min(1).max(28).default(7),
+  lootMode: z.enum(LOOT_MODES).default("journal"),
+  srHidden: z.boolean().default(false),
   active: z.boolean().default(true),
 });
 const gid = z.object({ id: z.uuid() });
 const tid = gid.extend({ templateId: z.uuid() });
 const view = (t: typeof raidTemplates.$inferSelect) => ({
   id: t.id, name: t.name, description: t.description, weekday: t.weekday, time: t.time, leadDays: t.leadDays, active: t.active, generatedUntil: t.generatedUntil,
+  lootMode: t.lootMode, srHidden: t.srHidden,
 });
 
 export async function templateRoutes(app: FastifyInstance) {

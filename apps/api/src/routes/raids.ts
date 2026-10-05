@@ -1,4 +1,4 @@
-import { computeCoverage, GROUP_SIZE, RAID_GROUPS } from "@forever/game-data";
+import { computeCoverage, GROUP_SIZE, LOOT_MODES, RAID_GROUPS } from "@forever/game-data";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -20,6 +20,9 @@ const raidFields = z.object({
   name: z.string().trim().min(2).max(60),
   scheduledAt: z.iso.datetime({ offset: true }).nullable().optional(),
   description: z.string().trim().max(1000).optional(),
+  /** Mode de butin (choisi à la création, modifiable ensuite) et réservations cachées jusqu'à la fermeture. */
+  lootMode: z.enum(LOOT_MODES).optional(),
+  srHidden: z.boolean().optional(),
 });
 const slot = z.object({
   group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
@@ -96,6 +99,7 @@ export async function raidRoutes(app: FastifyInstance) {
     if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     const [r] = await db.insert(raids).values({
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
+      lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
     bus.group({ t: "raids", g: id });
@@ -110,7 +114,7 @@ export async function raidRoutes(app: FastifyInstance) {
     const chars = await slotCharacters(p.id, r.slots);
     const signups = await listSignups(db, r.id);
     return {
-      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt },
+      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt, lootMode: r.lootMode, srHidden: r.srHidden },
       version: r.updatedAt.toISOString(),
       canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
@@ -169,13 +173,15 @@ export async function raidRoutes(app: FastifyInstance) {
       // Nouvelle date : le rappel de la veille sera renvoyé
       ...(moved && { reminderSentAt: null }),
       ...(description !== undefined && { description }),
+      ...(body.lootMode && { lootMode: body.lootMode }),
+      ...(body.srHidden !== undefined && { srHidden: body.srHidden }),
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
     bus.group({ t: "raid", g: p.id, r: p.raidId, by: u.id, byName: u.displayName });
     return {
       ...withCoverage(slots, chars, guests, await signupSpecs(p.raidId)),
       version: updatedAt.toISOString(), merged,
-      raid: { name, scheduledAt: scheduledAt?.toISOString() ?? null, description: description ?? current.description },
+      raid: { name, scheduledAt: scheduledAt?.toISOString() ?? null, description: description ?? current.description, lootMode: body.lootMode ?? current.lootMode, srHidden: body.srHidden ?? current.srHidden },
     };
   });
 

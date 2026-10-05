@@ -115,9 +115,11 @@ Sur le site : « Copier pour le jeu », en haut de chaque page (un bloc FRG par 
 
 ```
 FRG;1;<groupe>;<généré le>;<nom du groupe>
-R;<raid>;<date>;<nom>;<mon statut>;<mon perso>
+R;<raid>;<date>;<nom>;<mon statut>;<mon perso>;<mode de butin>
 P;<objet patron>;<recette>;<recherché par>;<connu par>
 B;<objet>;<persos qui l'ont en BiS>
+S;<raid>;<objet>;<perso>:<bonus SR+>,…
+O;<persos des officiers>
 END;<nombre de lignes R, P et B>
 ```
 
@@ -125,7 +127,12 @@ END;<nombre de lignes R, P et B>
 |---|---|
 | `R` | Raid à venir (ou commencé depuis moins de 3 h ; ceux sans date à la fin), 15 au plus. Date en secondes Unix (0 : à définir). Mon inscription sur le site et le prénom du perso choisi, vides si je ne suis pas inscrit. |
 | `B` | Objet BiS choisi dans la base pour un perso du groupe, pas encore obtenu ni porté : prénoms séparés par des virgules. Infobulle « BiS de », liste des sacs et alerte au butin. |
+| `R` (7e champ) | Mode de butin du raid (lot C2) : `journal`, `council` ou `softres`. Ignoré par les addons avant 1.0. |
+| `S` | Soft reserve d'un raid : objet réservé et persos qui l'ont réservé, chacun avec son bonus SR+ (0 sans bonus). |
+| `O` | Membres du conseil (loot council) : persos joués dans le groupe par le propriétaire et les officiers. |
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
+
+Les lignes `S` et `O` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet.
 
 L'addon s'en sert pour :
 
@@ -146,5 +153,14 @@ A;<prénom en jeu>;<vu la 1re fois unix>;<vu la dernière fois unix>;<nombre de 
 L;<id de l'objet>;<reçu par>;<heure unix>;<boss ou vide>
 END;<nombre de lignes A et L>
 ```
+
+**Version 2 (lot C2)** : l'en-tête ajoute l'instance (nom renvoyé par le jeu), et `L` la façon dont l'objet a été attribué.
+
+```
+FRB;2;<id du raid du site>;<début unix>;<fin unix>;<relevé par>;<nom du raid>;<instance>
+L;<id de l'objet>;<reçu par>;<heure unix>;<boss>;<méthode>;<réponse>;<détail>
+```
+
+Méthode : `council`, `sr`, `roll`, `ml` (maître du butin) ou vide ; réponse au conseil : `bis`, `upgrade`, `off`, `transmo` ou vide ; détail libre (« 3 votes », « jet 87 + 10 »). Le site lit les versions 1 et 2. Chaque bilan alimente aussi le **catalogue de butin** (objet, boss, instance ; aucune donnée de joueur), qui sert à proposer les objets d'un raid en soft reserve : les tables de butin ne sont pas dans les fichiers du jeu.
 
 Sur le site (Ctrl+V n'importe où), le bilan est enregistré sur le raid (un nouveau collage le remplace), seulement par un officier du groupe ou le créateur du raid. Les prénoms sont rapprochés des fiches des membres. Statuts : présent ; en retard (arrivé plus de 10 min après l'heure prévue) ; parti tôt (absent du dernier quart de la soirée, au moins 15 min) ; banc (inscription « banc ») ; inscrit, absent (inscrit présent ou en retard, jamais vu). Un objet reçu qui est l'objectif BiS d'une fiche y est coché « obtenu ».

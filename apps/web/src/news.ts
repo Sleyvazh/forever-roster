@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 16, date: "2026-10-05", kind: "site", title: "Butin : mode choisi à la création du raid, soft reserve",
+    text: "En créant un raid, choisis le butin : Journal, Loot council ou Soft reserve. En soft reserve, chacun réserve ses objets sur la page du raid (bonus SR+ si on réserve le même objet raid après raid). Le site apprend le butin de chaque raid grâce aux bilans de l'addon." },
   { n: 15, date: "2026-10-05", kind: "site", title: "Ton main et tes alts dans chaque groupe",
     text: "Dans l'onglet Personnages d'un groupe, choisis les persos que tu y joues et ton main (★). Affiche les mains seuls, avec les alts, séparés, ou par joueur. Ton main est proposé en premier pour t'inscrire aux raids." },
   { n: 14, date: "2026-10-05", kind: "bot", title: "Donne ton avis à ton équipe, signé ou anonyme",

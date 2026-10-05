@@ -57,10 +57,23 @@ describe("export addon", () => {
       [{ itemId: 15090, recipe: "Warbear Woolies", wanted: ["Sley", "Greta Coulé", "Sley"], known: ["Tournicoti"] }, { itemId: 1, recipe: "Vide", wanted: [], known: [] }]);
     expect(text.split("\n")).toEqual([
       "FRG;1;g1;1791000000;Les  Veilleurs",
-      "R;r1;1791100000;Molten Core;present;Greta",
-      "R;r2;0;Onyxia;;",
+      "R;r1;1791100000;Molten Core;present;Greta;",
+      "R;r2;0;Onyxia;;;",
       "P;15090;Warbear Woolies;Greta,Sley;Tournicoti",
       "END;3",
+    ]);
+  });
+  it("FRG, lot C2 : mode de butin, réservations et conseil, hors du compte de END", () => {
+    const text = groupAddonExport({ id: "g1", name: "G" }, 1,
+      [{ id: "r1", name: "MC", at: 2, status: null, character: null, lootMode: "softres",
+        reserves: [{ itemId: 18814, by: [{ name: "Greta Coulé", bonus: 10 }, { name: "Kaelys", bonus: 0 }] }, { itemId: 1, by: [] }] }],
+      [], [], ["Sley", "Bérénice"]);
+    expect(text.split("\n")).toEqual([
+      "FRG;1;g1;1;G",
+      "R;r1;2;MC;;;softres",
+      "S;r1;18814;Greta:10,Kaelys:0",
+      "O;Bérénice,Sley",
+      "END;1",
     ]);
   });
 });

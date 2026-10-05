@@ -27,6 +27,7 @@ export async function ensureRecurringRaids(db: Db, now = new Date(), onlyTemplat
     if (!todo.length) continue;
     const rows = await db.insert(raids).values(todo.map(scheduledAt => ({
       groupId: t.groupId, name: t.name, description: t.description, scheduledAt, templateId: t.id, createdBy: t.createdBy,
+      lootMode: t.lootMode, srHidden: t.srHidden,
     }))).onConflictDoNothing().returning({ id: raids.id });
     created += rows.length;
     if (rows.length) bus.group({ t: "raids", g: t.groupId });

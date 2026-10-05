@@ -3,7 +3,8 @@ import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups, softReserves } from "../db/schema";
+import { groupLootSettings, srBonuses } from "../lib/loot";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
@@ -24,7 +25,7 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
   if (!g) throw notFound("Groupe introuvable.");
 
   const now = Date.now();
-  const raidRows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
+  const raidRows = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt, lootMode: raids.lootMode }).from(raids)
     .where(and(eq(raids.groupId, groupId), or(gte(raids.scheduledAt, new Date(now - RECENT_MS)), isNull(raids.scheduledAt))))
     .orderBy(asc(raids.scheduledAt), asc(raids.name)).limit(MAX_RAIDS);
   const mine = raidRows.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, character: characters.name })
@@ -65,13 +66,31 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
     }
   }
 
+  // Lot C2 : réservations des raids en soft reserve (avec SR+) et persos des officiers (membres du conseil en jeu)
+  const settings = await groupLootSettings(db, groupId);
+  const reservesOf = new Map<string, { itemId: number; by: { name: string; bonus: number }[] }[]>();
+  for (const r of raidRows.filter(x => x.lootMode === "softres")) {
+    const rows = await db.select({ characterId: softReserves.characterId, itemId: softReserves.itemId, name: characters.name })
+      .from(softReserves).innerJoin(characters, eq(characters.id, softReserves.characterId)).where(eq(softReserves.raidId, r.id));
+    const bonus = await srBonuses(db, r, rows, settings);
+    const byItem2 = new Map<number, { name: string; bonus: number }[]>();
+    for (const x of rows) byItem2.set(x.itemId, [...(byItem2.get(x.itemId) ?? []), { name: x.name, bonus: bonus.get(`${x.characterId}:${x.itemId}`) ?? 0 }]);
+    reservesOf.set(r.id, [...byItem2.entries()].map(([itemId, by]) => ({ itemId, by })));
+  }
+  const council = (await db.select({ name: characters.name }).from(groupCharacters)
+    .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+    .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
+    .where(and(eq(groupCharacters.groupId, groupId), inArray(groupMembers.role, ["owner", "officer"])))).map(c => c.name);
+
   const text = groupAddonExport(g, Math.floor(now / 1000),
     raidRows.map(r => {
       const m = myByRaid.get(r.id);
-      return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, status: m?.status ?? null, character: m?.character ?? null };
+      return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, status: m?.status ?? null, character: m?.character ?? null,
+        lootMode: r.lootMode, reserves: reservesOf.get(r.id) };
     }),
     [...byItem.values()].sort((a, b) => a.recipe.localeCompare(b.recipe)),
-    [...bis.values()].sort((a, b) => a.itemId - b.itemId));
+    [...bis.values()].sort((a, b) => a.itemId - b.itemId),
+    council);
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
 }
 

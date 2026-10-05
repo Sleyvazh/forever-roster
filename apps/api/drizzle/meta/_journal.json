@@ -127,6 +127,13 @@
       "when": 1791203244659,
       "tag": "0017_group_characters",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791209269699,
+      "tag": "0018_loot_modes",
+      "breakpoints": true
     }
   ]
 }

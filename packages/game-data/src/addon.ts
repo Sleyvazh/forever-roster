@@ -66,6 +66,9 @@ export interface GroupExportRaid {
   at: number;
   /** Mon inscription actuelle, et le perso choisi (prénom en jeu). */
   status: SignupStatus | null; character: string | null;
+  /** Lot C2 : mode de butin du raid, et réservations (soft reserve) avec leur bonus SR+. */
+  lootMode?: string;
+  reserves?: { itemId: number; by: { name: string; bonus: number }[] }[];
 }
 export interface GroupExportPattern {
   /** Objet « Patron / Plans / Recette » tel qu'il apparaît dans les sacs. */
@@ -83,12 +86,18 @@ export interface GroupExportBis { itemId: number; characters: string[] }
  * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
  * et objets BiS recherchés (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = []): string {
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = []): string {
   const lines = [
-    ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : ""].join(";")),
+    ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : "", r.lootMode ?? ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
       .map(p => ["P", p.itemId, clean(p.recipe), list(p.wanted), list(p.known)].join(";")),
     ...bis.filter(b => b.characters.length).map(b => ["B", b.itemId, list(b.characters)].join(";")),
   ];
-  return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, `END;${lines.length}`].join("\n");
+  // Lignes du lot C2, après les autres et hors du compte de END : un addon plus ancien les ignore sans erreur
+  const extra = [
+    ...raids.flatMap(r => (r.reserves ?? []).filter(x => x.by.length)
+      .map(x => ["S", r.id, x.itemId, x.by.map(b => `${gameName(b.name)}:${Math.max(0, Math.round(b.bonus))}`).join(",")].join(";"))),
+    ...(council.length ? [["O", list(council)].join(";")] : []),
+  ];
+  return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, ...extra, `END;${lines.length}`].join("\n");
 }

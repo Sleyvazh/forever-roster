@@ -1,4 +1,5 @@
 import type { SignupStatus } from "./core";
+import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from "./loot";
 
 /**
  * Bilan d'un raid relevé par l'addon (format « FRB », version 1, docs/addon-format.md) :
@@ -8,12 +9,17 @@ import type { SignupStatus } from "./core";
  *   A;<nom en jeu>;<vu la 1re fois>;<vu la dernière fois>;<nombre de relevés>
  *   L;<id de l'objet>;<reçu par>;<heure unix>;<boss>
  *   END;<nombre de lignes A et L>
+ *
+ * Version 2 (lot C2) : l'en-tête ajoute l'instance réelle (nom renvoyé par le jeu), et L la façon dont l'objet
+ * a été attribué : `L;<objet>;<reçu par>;<heure>;<boss>;<méthode>;<réponse>;<détail>` (champs vides permis).
  */
 
 export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
-export interface RaidLogLoot { itemId: number; name: string; at: number; boss: string }
+export interface RaidLogLoot { itemId: number; name: string; at: number; boss: string; method?: LootMethod; response?: LootResponse; detail?: string }
 export interface RaidLogExport {
   raidId: string; start: number; end: number; recorder: string; raidName: string;
+  /** Version 2 : instance où le relevé a été fait (nom du jeu). */
+  instance?: string;
   attendees: RaidLogAttendee[]; loot: RaidLogLoot[];
 }
 
@@ -26,11 +32,12 @@ const gameNameOf = (s: string) => txt(s, 40).split("-")[0]!.split(/\s+/)[0] ?? "
 
 function parseBlock(lines: string[]): { ok: true; data: RaidLogExport } | { ok: false; error: string } {
   const head = lines[0]!.split(";");
-  if (head[1] !== "1") return { ok: false, error: `version de bilan non gérée (${head[1] ?? "?"}) : mets le site à jour` };
+  if (head[1] !== "1" && head[1] !== "2") return { ok: false, error: `version de bilan non gérée (${head[1] ?? "?"}) : mets le site à jour` };
   const raidId = (head[2] ?? "").trim(), start = int(head[3]), end = int(head[4]);
   if (!UUID.test(raidId)) return { ok: false, error: "bilan sans raid du site (charge les données du site en jeu avant le raid)" };
   if (start === null || end === null || end < start) return { ok: false, error: "heures du bilan illisibles" };
   const data: RaidLogExport = { raidId: raidId.toLowerCase(), start, end, recorder: gameNameOf(head[5] ?? ""), raidName: txt(head[6], 60), attendees: [], loot: [] };
+  if (head[1] === "2" && txt(head[7], 60)) data.instance = txt(head[7], 60);
   let count: number | null = null;
   for (const line of lines.slice(1)) {
     const f = line.trim().split(";");
@@ -41,7 +48,11 @@ function parseBlock(lines: string[]): { ok: true; data: RaidLogExport } | { ok: 
     } else if (f[0] === "L") {
       const itemId = int(f[1]), at = int(f[3]), name = gameNameOf(f[2] ?? "");
       if (!itemId || at === null || !name) return { ok: false, error: `ligne de butin illisible : ${line.slice(0, 40)}` };
-      if (data.loot.length < MAX_LOOT) data.loot.push({ itemId, name, at, boss: txt(f[4], 60) });
+      const entry: RaidLogLoot = { itemId, name, at, boss: txt(f[4], 60) };
+      if ((LOOT_METHODS as readonly string[]).includes(f[5] ?? "")) entry.method = f[5] as LootMethod;
+      if ((LOOT_RESPONSES as readonly string[]).includes(f[6] ?? "")) entry.response = f[6] as LootResponse;
+      if (txt(f[7], 60)) entry.detail = txt(f[7], 60);
+      if (data.loot.length < MAX_LOOT) data.loot.push(entry);
     } else if (f[0] === "END") {
       count = int(f[1]);
     }
