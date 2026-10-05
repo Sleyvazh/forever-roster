@@ -262,7 +262,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
           {canManage(opened) && (
             <div className="gm-act">
               <span className="gm-who"><Face c={opened} size={22} /><b style={{ color: color(opened) }}>{opened.name}</b>
-                <span className="muted">· {opened.isMain ? "main" : "alt"} de {opened.userId === myId ? "toi" : opened.owner} dans ce groupe</span></span>
+                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans ce groupe</span></span>
               <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
                 {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>★ En faire le main</button>}
                 <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer du groupe</button>
