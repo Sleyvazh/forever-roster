@@ -148,6 +148,13 @@
       "when": 1791217008893,
       "tag": "0020_nudges_and_asks",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791218217411,
+      "tag": "0021_drop_fury_tank",
+      "breakpoints": true
     }
   ]
 }

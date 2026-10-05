@@ -243,7 +243,7 @@ python3 scripts/normalize-icons.py ~/wowicons      # range et renomme dans icons
 rm -r ~/wowicons
 ```
 
-Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `Profession_<Métier>.png`. Le nom après le tiret désigne une spé (`Druid3-FeralCat`, `Druid2-FeralGuardian` pour Feral Bear) ou un arbre (`Paladin1-Holy` vaut pour Holy Heal et Holy DPS) ; le numéro sert seulement à trier. Les icônes sont rangées dans `icons/spec/<classe>-<spé>.png` (ex. `druid-feral-bear.png`). Le script liste les fichiers ignorés. Rien à redémarrer pour le site : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine). Pour les émojis Discord, `sudo docker compose restart bot`.
+Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `Profession_<Métier>.png`. Le nom après le tiret désigne une spé (`Druid3-FeralCat`, `Druid2-FeralGuardian` pour Feral Bear, `Shaman3-EnhancementTankRockbiter` pour Enhancement Tank) ou un arbre (`Paladin1-Holy` vaut pour Holy Heal et Holy DPS ; une icône de spé précise l'emporte sur celle de l'arbre) ; le numéro sert seulement à trier. Les icônes sont rangées dans `icons/spec/<classe>-<spé>.png` (ex. `druid-feral-bear.png`). Le script liste les fichiers ignorés. Rien à redémarrer pour le site : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine). Pour les émojis Discord, `sudo docker compose restart bot`.
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 

@@ -16,7 +16,7 @@ export interface SpecDef { name: string; role: Role; tree: 0 | 1 | 2 }
 const s = (name: string, role: Role, tree: 0 | 1 | 2): SpecDef => ({ name, role, tree });
 
 export const CLASS_SPECS = {
-  Warrior: [s("Arms", "DPS", 0), s("Fury", "DPS", 1), s("Protection", "Tank", 2), s("Fury Tank", "Tank", 1)],
+  Warrior: [s("Arms", "DPS", 0), s("Fury", "DPS", 1), s("Protection", "Tank", 2)],
   Paladin: [s("Holy Heal", "Heal", 0), s("Holy DPS", "DPS", 0), s("Protection", "Tank", 1), s("Retribution", "DPS", 2)],
   Hunter: [s("Beast Mastery", "DPS", 0), s("Marksmanship", "DPS", 1), s("Survival", "DPS", 2)],
   Rogue: [s("Assassination", "DPS", 0), s("Combat", "DPS", 1), s("Subtlety", "DPS", 2)],

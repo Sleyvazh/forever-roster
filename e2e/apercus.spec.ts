@@ -139,3 +139,55 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await page.locator(".ps").scrollIntoViewIfNeeded();
   await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-joueur.png` });
 });
+
+/**
+ * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
+ * Sortie : test-results/tour/.
+ */
+test("tour des pages", async ({ page }) => {
+  test.skip(!process.env.TOUR, "tour seulement sur demande (TOUR=1)");
+  test.setTimeout(180_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/login");
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
+  const group = (await db.query("SELECT group_id FROM group_members WHERE user_id = $1", [me])).rows[0].group_id as string;
+  const raid = (await db.query("SELECT id FROM raids WHERE group_id = $1 ORDER BY scheduled_at DESC LIMIT 1", [group])).rows[0].id as string;
+  // Un alt dans le groupe, un perso sans groupe, et un second groupe
+  const g2 = (await db.query("INSERT INTO groups (name) VALUES ('Pick-up du dimanche') RETURNING id")).rows[0].id as string;
+  await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'member')", [g2, me]);
+  const add = async (name: string, race: string, cls: string, s1: string, s2: string, g: string | null, main: boolean) => {
+    const id = (await db.query("INSERT INTO characters (user_id, name, race, cls, spec1, spec2, level, professions) VALUES ($1, $2, $3, $4, $5, $6, 60, $7) RETURNING id",
+      [me, name, race, cls, s1, s2, PROFS])).rows[0].id as string;
+    if (g) await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, $4)", [g, id, me, main]);
+    return id;
+  };
+  await add("Brumelame", "Undead", "Rogue", "Combat", "", group, false);
+  await add("Ombrefeu", "Undead", "Warlock", "Destruction", "Affliction", g2, true);
+  const thalwen = (await db.query("SELECT id FROM characters WHERE user_id = $1 AND name = 'Thalwen'", [me])).rows[0].id as string;
+  await add("Pansoufle", "Tauren", "Druid", "", "", null, false);
+  await db.end();
+
+  const OUT_T = path.resolve("test-results/tour");
+  const pages: [string, string][] = [
+    ["persos", "/persos"], ["perso-profil", `/persos/${thalwen}`], ["perso-metiers", `/persos/${thalwen}/metiers`], ["perso-equipement", `/persos/${thalwen}/equipement`],
+    ["perso-notes", `/persos/${thalwen}/notes`], ["groupes", "/groups"], ["groupe-raids", `/groups/${group}`], ["groupe-membres", `/groups/${group}/membres`],
+    ["groupe-persos", `/groups/${group}/persos`], ["groupe-artisans", `/groups/${group}/artisans`], ["groupe-presence", `/groups/${group}/presence`],
+    ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["compte", "/account"], ["addon", "/addon"],
+  ];
+  for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
+    await page.setViewportSize({ width: w, height: 900 });
+    for (const [name, url] of pages) {
+      if (suffix && !["persos", "groupe-raids", "raid", "groupes"].includes(name)) continue;
+      await page.goto(url);
+      await page.waitForLoadState("networkidle");
+      await page.screenshot({ path: `${OUT_T}/${name}${suffix}.png`, fullPage: true });
+    }
+  }
+});

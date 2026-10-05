@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 19, date: "2026-10-05", kind: "site", title: "Spé « Fury Tank » retirée",
+    text: "Elle n'existera pas sur Forever : les guerriers qui l'avaient passent en Protection (ils restent tanks dans les compos). Les chamans ont aussi leurs icônes de spé, dont Enhancement Tank." },
   { n: 18, date: "2026-10-05", kind: "bot", title: "Le bot relance ceux qui n'ont pas répondu",
     text: "48 h avant le raid (24 ou 72 h au choix), le bot écrit en privé aux membres qui n'ont pas répondu : un clic sur Présent, Peut-être ou Absent suffit. Les officiers reçoivent la liste, peuvent relancer à la main depuis la page du raid, et « Demander » dans l'encart Besoins invite un joueur précis à venir avec tel perso." },
   { n: 17, date: "2026-10-05", kind: "site", title: "Raids à 10, 20 ou 40, compo assistée, banc équitable, fiche joueur",

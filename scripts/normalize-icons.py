@@ -16,7 +16,7 @@ from pathlib import Path
 
 # Spés du site (packages/game-data/src/core.ts, CLASS_SPECS) et arbres de talents du jeu, dans l'ordre
 SPECS = {
-    "warrior": (["Arms", "Fury", "Protection"], ["Arms", "Fury", "Protection", "Fury Tank"]),
+    "warrior": (["Arms", "Fury", "Protection"], ["Arms", "Fury", "Protection"]),
     "paladin": (["Holy", "Protection", "Retribution"], ["Holy Heal", "Holy DPS", "Protection", "Retribution"]),
     "hunter": (["Beast Mastery", "Marksmanship", "Survival"], ["Beast Mastery", "Marksmanship", "Survival"]),
     "rogue": (["Assassination", "Combat", "Subtlety"], ["Assassination", "Combat", "Subtlety"]),
@@ -28,14 +28,15 @@ SPECS = {
 }
 # Arbre de chaque spé (même ordre que SPECS) : sert quand le fichier porte le nom d'un arbre
 TREE_OF = {
-    "warrior": [0, 1, 2, 1], "paladin": [0, 0, 1, 2], "hunter": [0, 1, 2], "rogue": [0, 1, 2], "priest": [0, 0, 1, 2],
+    "warrior": [0, 1, 2], "paladin": [0, 0, 1, 2], "hunter": [0, 1, 2], "rogue": [0, 1, 2], "priest": [0, 0, 1, 2],
     "shaman": [0, 1, 1, 2], "mage": [0, 1, 2], "warlock": [0, 1, 2], "druid": [0, 1, 1, 2],
 }
 # Autres noms courants (ceux du jeu moderne notamment)
 ALIASES = {
     ("druid", "guardian"): ["Feral Bear"], ("druid", "feralguardian"): ["Feral Bear"], ("druid", "bear"): ["Feral Bear"], ("druid", "feralbear"): ["Feral Bear"],
     ("druid", "cat"): ["Feral Cat"], ("druid", "feral"): ["Feral Cat"], ("druid", "feralcat"): ["Feral Cat"],
-    ("warrior", "furytank"): ["Fury Tank"], ("shaman", "enhancementtank"): ["Enhancement Tank"],
+    ("shaman", "enhancementtank"): ["Enhancement Tank"], ("shaman", "enhancementtankrockbiter"): ["Enhancement Tank"],
+    ("shaman", "rockbiter"): ["Enhancement Tank"], ("shaman", "enhancementdps"): ["Enhancement DPS"],
 }
 
 key = lambda s: re.sub(r"[^a-z0-9]", "", s.lower())
@@ -62,7 +63,10 @@ def main():
     if not src or not src.is_dir():
         sys.exit(__doc__)
     done, skipped = 0, []
-    for f in sorted(src.iterdir()):
+    # Fichiers d'une spé précise après ceux d'un arbre entier : Shaman3-EnhancementTank l'emporte sur Shaman2-Enhancement
+    tree_named = lambda f: (m := re.fullmatch(r"([a-z]+)\d*[_-](.+)", f.stem, re.I)) is not None and m[1].lower() in SPECS \
+        and len(specs_for(m[1].lower(), m[2])) > 1
+    for f in sorted(src.iterdir(), key=lambda f: (not tree_named(f), f.name)):
         if f.suffix.lower() not in (".png", ".webp", ".jpg", ".jpeg") or not f.is_file():
             continue
         stem, ext = f.stem, f.suffix.lower()
