@@ -12,6 +12,7 @@ import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
 import { bus } from "./lib/events";
 import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { applyAbsencesToRaid } from "./lib/absences";
+import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 
@@ -176,6 +177,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
     }).returning({ id: raids.id });
     await audit(db, req, "raid_created", { userId: user.id, groupId: g.id, meta: { raidId: r!.id, name: body.name, via: "discord" } });
+    await inheritPrep(db, [r!.id]);
     await applyAbsencesToRaid(db, r!.id);
     bus.group({ t: "raids", g: g.id });
     return view(r!.id);

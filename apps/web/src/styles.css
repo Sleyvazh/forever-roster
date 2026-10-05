@@ -1091,3 +1091,49 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .co-reagpick { border: 1px dashed var(--line-2); border-radius: 6px; padding: 8px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; }
 .co-reagpick legend { padding: 0 4px; }
 .ab-days { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ---------- Préparation du raid (lot G) : consommables, qui est prêt, fiches de boss, conseil ---------- */
+.pr { gap: 22px; }
+.pr-cons { display: grid; gap: 6px; }
+.pr-crow { display: grid; grid-template-columns: minmax(0, 1fr) 76px minmax(150px, 190px) 28px; gap: 8px; align-items: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.pr-crow input { text-align: center; }
+.pr-item { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-x { border: 0; background: none; color: var(--ink-3); cursor: pointer; padding: 4px; }
+.pr-x:hover { color: var(--bad); }
+.pr-clist { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.pr-search { display: grid; gap: 6px; }
+.pr-hits { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pr-hits button { border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel-2); padding: 5px 9px; cursor: pointer; font-weight: 600; }
+.pr-ready { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 12px 14px; }
+.pr-table th.c, .pr-table td.c { text-align: center; }
+.pr-ok { color: var(--ok); font-weight: 700; } .pr-low { color: var(--warn); font-weight: 700; } .pr-no { color: var(--bad); font-weight: 700; } .pr-na { color: var(--ink-3); }
+.pr-bosses { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; align-items: start; }
+.pr-blist { display: grid; gap: 4px; }
+.pr-b { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.pr-b small { font: 600 11px var(--f-mono); color: var(--ink-3); white-space: nowrap; }
+.pr-b.empty small { color: var(--warn); }
+.pr-b[aria-selected="true"] { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; }
+.pr-sheet { border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); padding: 12px 14px; display: grid; gap: 8px; }
+.pr-sh { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pr-sh h4 { margin: 0; font: 400 19px var(--f-disp); color: var(--ink); }
+.pr-arow { display: grid; grid-template-columns: 180px minmax(0, 1fr) 28px; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px dashed var(--line); }
+.pr-lab { font-size: 14px; }
+.pr-who { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pr-who select { width: auto; padding: 4px 8px; font-size: 13px; }
+.pr-pc { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border: 1px solid var(--line-2); border-left: 3px solid var(--line-2); border-radius: 5px; background: var(--bg); font-size: 13px; font-weight: 600; }
+.pr-pc button { border: 0; background: none; color: var(--ink-3); cursor: pointer; padding: 0 4px; }
+.pr-pc.txt { font-weight: 500; font-style: italic; padding-right: 9px; }
+.pr-text { flex: 1 1 180px; min-width: 140px; padding: 4px 8px; font-size: 13px; }
+.pr-prev { margin: 4px 0 0; padding: 8px 10px; border: 1px dashed var(--frame); border-radius: 6px; font-size: 13px; color: var(--ink-2); }
+.pr-prev b { color: var(--gold); }
+.pr-newboss input { max-width: 320px; }
+.pr-council { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.pr-cm { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; }
+@media (max-width: 760px) {
+  .pr-bosses { grid-template-columns: 1fr; }
+  .pr-blist { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .pr-arow { grid-template-columns: 1fr 28px; }
+  .pr-arow > .pr-who { grid-column: 1 / -1; grid-row: 2; }
+  .pr-crow { grid-template-columns: minmax(0, 1fr) 64px 28px; }
+  .pr-crow select { grid-column: 1 / -1; grid-row: 2; }
+}

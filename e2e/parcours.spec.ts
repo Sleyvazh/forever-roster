@@ -314,6 +314,8 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     const db = new pg.Client({ connectionString: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e" });
     await db.connect();
     await db.query(`INSERT INTO raid_signups (raid_id, discord_user_id, display_name, cls, spec, status) VALUES ($1, '720000000000000001', 'Chamy', 'Shaman', 'Enhancement DPS', 'present')`, [raidId]);
+    // Consommable pour l'onglet Préparation (lot G)
+    await db.query(`INSERT INTO game_items (id, name, quality, item_level, req_level, class_id, subclass_id, inventory_type) VALUES (13457, 'Greater Fire Protection Potion', 1, 48, 38, 0, 0, 0) ON CONFLICT DO NOTHING`);
     await db.end();
     await page.reload();
     await page.getByRole("button", { name: "Ajouter Chamy au raid" }).click();
@@ -328,6 +330,20 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Chamy;SHAMAN;DPS;Enhancement DPS;1;2;present;discord\nEND;2$/);
     await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Tournicoti");
     await expect(page.getByText("À inviter à la main (inscrits sans compte, pseudo Discord) : Chamy.")).toBeVisible();
+    // Préparation (lot G) : consommable demandé, qui est prêt, fiche de Ragnaros (Molten Core reconnu d'après le nom)
+    await page.getByRole("tab", { name: "Préparation" }).click();
+    await page.getByRole("button", { name: "+ Consommable" }).click();
+    await page.getByRole("searchbox", { name: "Chercher un consommable" }).fill("fire protection");
+    await page.getByRole("button", { name: "[Greater Fire Protection Potion]" }).click();
+    await expect(page.locator(".pr-ready")).toContainText("Tournicoti");
+    await expect(page.locator(".pr-ready")).toContainText("Pas comptés 2");
+    await page.getByRole("tab", { name: /^Ragnaros/ }).click();
+    await page.getByRole("button", { name: "+ Ligne" }).click();
+    await page.getByRole("textbox", { name: "Intitulé" }).fill("Tank principal");
+    await page.getByRole("textbox", { name: "Intitulé" }).blur();
+    await expect(page.getByRole("tab", { name: /^Ragnaros/ })).toContainText("1 ligne");
+    await page.getByRole("combobox", { name: "Ajouter un perso : Tank principal" }).selectOption({ label: "Tournicoti" });
+    await expect(page.locator(".pr-prev")).toContainText("Tournicoti verra en ciblant Ragnaros : « Tank principal »");
     // Temps réel : un second onglet ouvert sur le raid se met à jour sans recharger
     const other = await page.context().newPage();
     await other.goto(`/groups/${page.url().split("/groups/")[1]!.split("/")[0]}/raids/${raidId}/inscriptions`);

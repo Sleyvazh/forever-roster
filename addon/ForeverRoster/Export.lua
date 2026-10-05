@@ -192,6 +192,7 @@ local function linesOf(c, snap)
   for _, l in ipairs(snap.lines or {}) do lines[#lines + 1] = l end
   ns.safe("inscriptions", function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
   ns.safe("recherchés", function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
+  ns.safe("consommables", function() for _, l in ipairs(ns.Group.ConsumableLines(c)) do lines[#lines + 1] = l end end)
   return ns.Format.Compact(lines)
 end
 

@@ -5,6 +5,12 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 26, date: "2026-10-05", kind: "addon", version: "1.0", title: "Fiches de boss et consommables en jeu",
+    text: "En ciblant un boss avant le pull, l'addon affiche ta tâche et le reste de la fiche ; le chef peut l'annoncer en /raid. Onglet « En raid » : « Appel aux consommables » demande à l'addon de chacun ce qu'il a dans ses sacs, puis « Annoncer les manques ». Tu y vois aussi qui a l'addon dans le raid." },
+  { n: 25, date: "2026-10-05", kind: "addon", version: "1.0", title: "Le butin se distribue en jeu",
+    text: "Maître du butin : en ouvrant un corps, l'addon propose « Jets SR » (seuls ceux qui ont réservé lancent, bonus SR+ ajouté), « Jets MS / OS », « Jet libre » ou « Conseil » (chacun répond BiS, Upgrade, Off-Spec, Transmo, le conseil vote). Égalité : seuls les ex æquo relancent. Un objet gardé passe dans « Objets à remettre », avec un bouton pour l'échanger. Les réservations s'affichent aussi au survol des objets." },
+  { n: 24, date: "2026-10-05", kind: "site", title: "Onglet Préparation : consommables et fiches de boss",
+    text: "Sur la page du raid, les officiers demandent des consommables (pour tout le monde, les tanks, les heals ou un type de DPS) et voient qui est prêt. Ils remplissent aussi une fiche par boss : qui tanke, qui soigne, qui décurse, avec des consignes. Tout est repris au raid suivant du même nom. En loot council, le conseil se choisit raid par raid (onglet Butin)." },
   { n: 23, date: "2026-10-05", kind: "site", title: "Déclare tes absences à l'avance",
     text: "Sur Mes persos, « + Déclarer une absence » : une période (du … au …) ou chaque semaine (« jamais le vendredi »). Les raids de ces jours où tu n'as pas répondu passent en « Absent » dans tous tes groupes, même ceux créés plus tard ; une réponse déjà donnée ne change pas. Le motif est facultatif et tu choisis qui le voit. Les membres du groupe ont aussi leur taux de présence dans l'onglet Membres." },
   { n: 22, date: "2026-10-05", kind: "bot", title: "Les commandes d'artisanat dans un salon Discord",

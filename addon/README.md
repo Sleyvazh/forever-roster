@@ -4,12 +4,13 @@ Addon WoW pour le client de WoW Forever (interface 16001). Il fait le lien avec 
 
 **Synchro rapide** : ta touche (onglet **Options** de l'addon, ou Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent une petite fenêtre avec une seule case. Ton export y est déjà sélectionné : Ctrl+C, la fenêtre se ferme, puis Ctrl+V sur n'importe quelle page du site. Ou Ctrl+V dans la case pour coller ce que tu as copié sur le site (« Copier pour le jeu ») : chargé, puis fermeture.
 
-La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a cinq onglets :
+La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six onglets :
 
 | Onglet | Rôle |
 |---|---|
 | **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul. En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
+| **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
 | **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes** |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
 | **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), persos à retirer de l'export |
@@ -18,7 +19,10 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a cin
 |---|---|
 | Raccourcis (AddOns > Forever Roster) | « Synchro rapide avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/fr` | Ouvrir ou fermer la fenêtre |
-| `/fr synchro`, `raids`, `compo`, `patrons`, `options` | Ouvrir un onglet |
+| `/fr synchro`, `raids`, `enraid`, `compo`, `patrons`, `options` | Ouvrir un onglet |
+| `/fr butin` | Fenêtre du maître du butin (s'ouvre seule en ouvrant un corps en butin de maître) ; `/fr butin <lien>` pour un objet déjà dans tes sacs |
+| `/fr boss` | Fiche du boss ciblé, sinon la première du raid |
+| `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
@@ -31,7 +35,13 @@ Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans rép
 
 Habillage : celui de Forever par défaut (cadres, onglets à icône sur le côté, textures du jeu), ou celui du site (fond sombre, liserés dorés, titres en Marcellus SC, onglets en haut, boutons plats). La police est dans `Fonts/` (licence SIL OFL, `Fonts/OFL.txt`). Le changement s'applique au rechargement de l'interface.
 
-Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
+Butin en raid (1.0) : quand tu es maître du butin, ouvrir un corps affiche les objets (épiques par défaut) avec, selon le mode du raid sur le site, **Jets SR** (seuls ceux qui ont réservé lancent `/roll 100`, l'addon ajoute le bonus SR+), **Jets MS / OS** (`/roll 100` puis `/roll 99`), **Jet libre** ou **Conseil** (chacun répond BiS, Upgrade, Off-Spec, Transmo ou Passer ; le conseil vote). Égalité : seuls les ex æquo relancent. **Donner** passe par le butin de maître ; corps fermé, ou **Garder, à remettre** : l'objet va dans les objets à remettre, et **Échanger** ouvre l'échange avec le gagnant et y pose l'objet. Chaque attribution est notée dans le bilan (méthode, réponse, jet).
+
+Fiches de boss (1.0) : remplies sur le site (onglet Préparation du raid). En ciblant le boss avant le pull, chacun voit sa tâche et le reste de la fiche ; le chef de raid peut l'annoncer en /raid. La fiche se ferme au début du combat. Le boss est reconnu par son PNJ ; pour un nouveau raid de Forever, l'addon l'apprend au premier combat.
+
+Consommables (1.0) : les consommables demandés par les raids sont comptés dans tes sacs (et ta banque) et partent avec la synchro. En raid, **Appel aux consommables** : l'addon de chacun répond tout de suite ; **Annoncer les manques** l'écrit dans le raid.
+
+Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis, et « SR (raid) : … » sur les objets réservés. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 
 ## Installation
 
@@ -45,6 +55,7 @@ Télécharger le zip sur la page **Addon** du site, puis copier le dossier `Fore
 - **Inscriptions et patrons recherchés en jeu :** gardés par perso, ils partent au site avec l'export.
 - **Butin :** seule ta propre ramasse déclenche l'alerte ; « Annoncer » écrit dans le raid (ou le groupe), sinon dans ton chat.
 - **Placement :** chef du raid ou assistant, hors combat. Un déplacement à la fois, au rythme des mises à jour du raid.
+- **À vérifier sur le client de Forever (1.0) :** butin de maître (`GiveMasterLoot`), messages entre addons, délai d'échange de 2 h, début de combat (`ENCOUNTER_START`) et PNJ des boss. Sans ces API, la fonction concernée ne fait rien ; les jets, eux, passent toujours par le chat.
 
 ## Tests hors jeu
 

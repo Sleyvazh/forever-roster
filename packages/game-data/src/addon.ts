@@ -1,4 +1,5 @@
 import type { Role, SignupStatus } from "./core";
+import type { BossSheet, ConsumableLine } from "./prep";
 
 /**
  * Export d'un raid pour un addon WoW (format « FRR », version 1) et macros d'invitation.
@@ -69,6 +70,12 @@ export interface GroupExportRaid {
   /** Lot C2 : mode de butin du raid, et réservations (soft reserve) avec leur bonus SR+. */
   lootMode?: string;
   reserves?: { itemId: number; by: { name: string; bonus: number }[] }[];
+  /** Lot G : consommables demandés, fiches de boss (noms des persos en jeu) et conseil du butin choisi pour ce raid. */
+  consumables?: ConsumableLine[];
+  bosses?: (Omit<BossSheet, "rows"> & { rows: { label: string; names: string[]; text: string }[] })[];
+  council?: string[] | null;
+  /** Inscrits qui viennent, avec leur rôle (et type de DPS) : pour savoir quels consommables chacun doit avoir. */
+  roster?: { name: string; role: Role | null; dps: string | null }[];
 }
 export interface GroupExportPattern {
   /** Objet « Patron / Plans / Recette » tel qu'il apparaît dans les sacs. */
@@ -98,6 +105,17 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
     ...raids.flatMap(r => (r.reserves ?? []).filter(x => x.by.length)
       .map(x => ["S", r.id, x.itemId, x.by.map(b => `${gameName(b.name)}:${Math.max(0, Math.round(b.bonus))}`).join(",")].join(";"))),
     ...(council.length ? [["O", list(council)].join(";")] : []),
+    // Lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du butin de ce raid, I inscrit (rôle)
+    ...raids.flatMap(r => [
+      ...(r.consumables ?? []).map(c => ["C", r.id, c.itemId, c.n, c.for, clean(c.name)].join(";")),
+      ...(r.bosses ?? []).map(boss => ({ ...boss, rows: boss.rows.filter(row => row.label.trim() || row.text.trim() || row.names.length) }))
+        .filter(boss => boss.rows.length).flatMap((boss, i) => [
+          ["F", r.id, i + 1, boss.encounterId ?? "", boss.npcIds.join(","), clean(boss.name)].join(";"),
+          ...boss.rows.map(row => ["T", r.id, i + 1, clean(row.label), list(row.names), clean(row.text)].join(";")),
+        ]),
+      ...(r.council?.length ? [["L", r.id, list(r.council)].join(";")] : []),
+      ...((r.consumables ?? []).length ? (r.roster ?? []).map(m => ["I", r.id, gameName(m.name), m.role ?? "", m.dps ?? ""].join(";")) : []),
+    ]),
   ];
   return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, ...extra, `END;${lines.length}`].join("\n");
 }

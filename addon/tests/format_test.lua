@@ -53,5 +53,24 @@ check(text:match("\nEND;7$"), "ligne END")
 check(text:find("piège  cff", 1, true), "« ; » et « | » retirés des valeurs")
 local out = io.open("addon/tests/sample.frc", "w") out:write(text) out:close()
 
+-- Lot G : lignes hors du compte de END (réservations, officiers, consommables, fiches de boss, conseil, inscrits)
+local lg = F.ParseFRG("FRG;1;g;1;G\nR;r1;2;Molten Core;;;council\nS;r1;19865;Gorrak:20,Vesper:0\nO;Thalwen,Brunehilde\nC;r1;13457;5;all;Fire Prot\nF;r1;1;672;11502,11503;Ragnaros\nT;r1;1;Tank principal;Grumdal;\nT;r1;1;Fils;;Groupes 3 et 4\nT;r9;1;Orpheline;;\nL;r1;Thalwen\nI;r1;Gorrak;DPS;melee\nEND;1")
+local x = lg and lg[1]
+check(x and x.raids[1].loot == "council", "mode de butin du raid")
+check(x and x.reserves.r1[19865][1].name == "Gorrak" and x.reserves.r1[19865][1].bonus == 20 and x.reserves.r1[19865][2].bonus == 0, "réservations avec bonus")
+check(x and x.officers[2] == "Brunehilde" and x.council.r1[1] == "Thalwen", "officiers et conseil du raid")
+check(x and x.consumables.r1[1].itemId == 13457 and x.consumables.r1[1].n == 5 and x.consumables.r1[1].target == "all", "consommables")
+check(x and x.bosses.r1[1].encounterId == 672 and x.bosses.r1[1].npcIds[2] == 11503 and #x.bosses.r1[1].rows == 2 and x.bosses.r1[1].rows[1].names[1] == "Grumdal", "fiche de boss")
+check(x and x.roster.r1.Gorrak.role == "DPS" and F.Concerns("melee", x.roster.r1.Gorrak) and not F.Concerns("tank", x.roster.r1.Gorrak) and F.Concerns("all", nil), "inscrits et consommables concernés")
+-- Jets de dés lus d'après le texte du jeu, en français, en anglais ou positionnel
+local fr = F.RollParser("%s obtient un %d (%d-%d).")
+local n1, r1, lo1, hi1 = fr("Gorrak obtient un 61 (1-100).")
+check(n1 == "Gorrak" and r1 == 61 and lo1 == 1 and hi1 == 100, "jet en français")
+check(fr("Gorrak dit : obtient un 61 (1-100)") == nil, "un message de chat n'est pas un jet")
+local n2, r2, _, hi2 = F.RollParser("%s rolls %d (%d-%d)")("Vesper-Forever EU rolls 78 (1-99)")
+check(n2 == "Vesper" and r2 == 78 and hi2 == 99, "jet en anglais, royaume retiré")
+local n3, r3b = F.RollParser("%1$s würfelt. Ergebnis: %2$d (%3$d-%4$d)")("Nyx würfelt. Ergebnis: 5 (1-100)")
+check(n3 == "Nyx" and r3b == 5, "jet positionnel")
+
 if failures > 0 then os.exit(1) end
 print("format_test : tout est bon")

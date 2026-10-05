@@ -94,6 +94,7 @@ R;<métier>;s<sort>,i<objet>,…
 T;<arbre>;<nœud>:<rang>,<nœud>:<rang>,…
 S;<groupe>;<raid>;<statut>
 W;<objet patron>;<1 | 0>
+K;<objet>:<quantité>,<objet>:<quantité>,…
 END;<nombre de lignes entre l'en-tête et END>
 ```
 
@@ -106,6 +107,7 @@ END;<nombre de lignes entre l'en-tête et END>
 | `T` | Talents pris (système de talents de Forever, `C_Traits`), par arbre : identifiant du nœud et rang. En version 1 : une ligne par nœud, avec rang max, position, sort, sous-arbre et arbre. |
 | `W` | Patron marqué « recherché » en jeu (`1`) ou retiré (`0`) : onglet Patrons ou `/fr cherche <lien>`. Le site retrouve la recette enseignée par l'objet ; un patron déjà connu n'est jamais rétrogradé. |
 | `S` | Inscription faite en jeu (onglet Raids) : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. |
+| `K` | Lot G : consommables demandés par les raids chargés (lignes `C` du FRG), comptés dans les sacs et la banque (`GetItemCount`, banque incluse si elle a été ouverte) à la connexion, quand les sacs changent et à l'ouverture de la banque. Le site les garde sur la fiche (onglet Préparation des raids). |
 
 Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts`. Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.
 
@@ -120,6 +122,11 @@ P;<objet patron>;<recette>;<recherché par>;<connu par>
 B;<objet>;<persos qui l'ont en BiS>
 S;<raid>;<objet>;<perso>:<bonus SR+>,…
 O;<persos des officiers>
+C;<raid>;<objet>;<quantité>;<pour>;<nom de l'objet>
+F;<raid>;<n° de fiche>;<rencontre>;<PNJ>,<PNJ>;<nom du boss>
+T;<raid>;<n° de fiche>;<intitulé>;<persos>;<consigne>
+L;<raid>;<persos du conseil>
+I;<raid>;<perso>;<Tank | Heal | DPS>;<melee | ranged | caster>
 END;<nombre de lignes R, P et B>
 ```
 
@@ -130,9 +137,13 @@ END;<nombre de lignes R, P et B>
 | `R` (7e champ) | Mode de butin du raid (lot C2) : `journal`, `council` ou `softres`. Ignoré par les addons avant 1.0. |
 | `S` | Soft reserve d'un raid : objet réservé et persos qui l'ont réservé, chacun avec son bonus SR+ (0 sans bonus). |
 | `O` | Membres du conseil (loot council) : persos joués dans le groupe par le propriétaire et les officiers. |
+| `C` | Lot G : consommable demandé pour le raid (onglet Préparation), quantité, et à qui : `all`, `tank`, `heal`, `melee`, `ranged` ou `caster` (DPS lanceurs de sorts). |
+| `F`, `T` | Lot G : fiche de boss (attributions) : rencontre du jeu (`ENCOUNTER_START`) et PNJ du boss pour le reconnaître en ciblant, puis une ligne `T` par tâche (intitulé, prénoms, consigne). Les fiches vides ne sont pas envoyées. |
+| `L` | Lot G : conseil du butin choisi pour ce raid (persos de ses membres) ; sans `L`, le conseil est celui de la ligne `O`. |
+| `I` | Lot G : inscrits qui viennent (ou hésitent), avec le rôle et le type de DPS de leur spé, pour savoir quels consommables chacun doit avoir. Seulement pour les raids qui demandent des consommables. |
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
 
-Les lignes `S` et `O` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet.
+Les lignes `S`, `O`, `C`, `F`, `T`, `L` et `I` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes).
 
 L'addon s'en sert pour :
 
@@ -143,7 +154,7 @@ L'addon s'en sert pour :
 
 
 
-# FRB, version 1 : bilan d'un raid (jeu → site)
+# FRB, versions 1 et 2 : bilan d'un raid (jeu → site)
 
 Pendant un raid prévu sur le site (raid chargé en jeu avec « Copier pour le jeu », heure prévue passée depuis moins de 3 h ou dans moins de 2 h), l'addon relève chaque minute les membres du groupe de raid, et note le butin vu dans le chat (`CHAT_MSG_LOOT`) à partir d'une qualité réglable (épique par défaut), avec le dernier boss vaincu (`ENCOUNTER_END`, 15 min). Le bilan suit les blocs FRC dans l'export de la synchro.
 
@@ -161,6 +172,29 @@ FRB;2;<id du raid du site>;<début unix>;<fin unix>;<relevé par>;<nom du raid>;
 L;<id de l'objet>;<reçu par>;<heure unix>;<boss>;<méthode>;<réponse>;<détail>
 ```
 
+**Lot G (addon 1.0)** : l'addon écrit la version 2. Hors du compte de `END`, l'appel aux consommables lancé en raid :
+
+```
+Q;<heure unix>;<lancé par>
+K;<prénom>;<objet>:<quantité>,…   (ou « - » : pas de réponse, pas d'addon)
+```
+
 Méthode : `council`, `sr`, `roll`, `ml` (maître du butin) ou vide ; réponse au conseil : `bis`, `upgrade`, `off`, `transmo` ou vide ; détail libre (« 3 votes », « jet 87 + 10 »). Le site lit les versions 1 et 2. Chaque bilan alimente aussi le **catalogue de butin** (objet, boss, instance ; aucune donnée de joueur), qui sert à proposer les objets d'un raid en soft reserve : les tables de butin ne sont pas dans les fichiers du jeu.
 
 Sur le site (Ctrl+V n'importe où), le bilan est enregistré sur le raid (un nouveau collage le remplace), seulement par un officier du groupe ou le créateur du raid. Les prénoms sont rapprochés des fiches des membres. Statuts : présent ; en retard (arrivé plus de 10 min après l'heure prévue) ; parti tôt (absent du dernier quart de la soirée, au moins 15 min) ; banc (inscription « banc ») ; inscrit, absent (inscrit présent ou en retard, jamais vu). Un objet reçu qui est l'objectif BiS d'une fiche y est coché « obtenu ».
+
+
+# Messages entre addons (lot G, addon 1.0)
+
+Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) sauf mention. Rien ne passe par le site.
+
+| Message | Sens | Contenu |
+|---|---|---|
+| `VQ` / `VR;<version>` | tous | Qui a l'addon : question à l'arrivée dans un raid (ou « Redemander »), chacun répond avec sa version. |
+| `CQ;<objets>` | chef → raid | Appel aux consommables ; chacun répond en privé `CR;<objet>:<quantité>,…` (sacs et banque). Clos après 8 s ; résultat gardé avec le bilan (`Q`, `K`). |
+| `LO;<session>;<objet>` | maître du butin → raid | Objet proposé au conseil : fenêtre de réponse chez chacun. |
+| `LA;<session>;<réponse>;<objets portés>;<note>` | joueur → conseil (privé) | Réponse : `bis`, `upgrade`, `off`, `transmo` ou `pass`. Sans addon : chuchoter « bis », « up », « os » ou « transmo » au maître du butin. |
+| `LV;<session>;<candidat>` | conseil → conseil (privé) | Vote (vide : vote retiré). |
+| `LC;<session>;<gagnant>` | maître du butin → raid | Conseil terminé : les fenêtres de réponse se ferment. |
+
+Les jets (soft reserve, MS / OS, jet libre) passent par `/roll` : l'addon du maître du butin lit le message du jeu (`RANDOM_ROLL_RESULT`, dans la langue du client), ne compte que le premier jet de chacun et le bon dé (100, ou 99 en OS), ajoute le bonus SR+ ; en cas d'égalité, seuls les ex æquo relancent.

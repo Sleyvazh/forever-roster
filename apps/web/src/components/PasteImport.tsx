@@ -68,7 +68,7 @@ export function PasteImport() {
       const label = `Bilan de ${l.raidName || "raid"}`;
       try {
         const r = await post<{ attendees: number; loot: number; bis: number; unknown: string[] }>("/raid-logs",
-          { raidId: l.raidId, start: l.start, end: l.end, recorder: l.recorder, instance: l.instance, attendees: l.attendees, loot: l.loot });
+          { raidId: l.raidId, start: l.start, end: l.end, recorder: l.recorder, instance: l.instance, attendees: l.attendees, loot: l.loot, consumableCall: l.consumableCall });
         out.push({ name: label, ok: true, msg: `enregistré · ${r.attendees} présent${r.attendees > 1 ? "s" : ""}, ${r.loot} objet${r.loot > 1 ? "s" : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
       } catch (e) { out.push({ name: label, ok: false, msg: e instanceof ApiError ? e.message : "enregistrement impossible" }); }
     }

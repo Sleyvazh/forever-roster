@@ -273,6 +273,79 @@ test("aperçus du lot F", async ({ page }) => {
   await pasted.screenshot({ path: `${OUT}/apercu-import-choix.png` });
 });
 
+/** Aperçus du lot G (mêmes données) : onglet Préparation (consommables, qui est prêt, fiches de boss), conseil du butin. */
+test("aperçus du lot G", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
+  const group = (await db.query("SELECT group_id FROM group_members WHERE user_id = $1 ORDER BY joined_at LIMIT 1", [me])).rows[0].group_id as string;
+  const char = async (name: string) => (await db.query("SELECT id, user_id, cls, spec1 FROM characters WHERE name = $1", [name])).rows[0] as { id: string; user_id: string; cls: string; spec1: string };
+  await db.query(`INSERT INTO game_items (id, name, quality, item_level, req_level, class_id, subclass_id, inventory_type) VALUES
+    (13457, 'Greater Fire Protection Potion', 1, 48, 38, 0, 0, 0), (13446, 'Major Healing Potion', 1, 55, 45, 0, 0, 0), (13510, 'Flask of the Titans', 1, 60, 50, 0, 0, 0),
+    (13444, 'Major Mana Potion', 1, 59, 49, 0, 0, 0), (13452, 'Elixir of the Mongoose', 1, 56, 46, 0, 0, 0) ON CONFLICT DO NOTHING`);
+  const names = ["Thalwen", "Grumdal", "Sylvaë", "Hadrien", "Gorrak", "Vesper", "Nyssaël", "Tavish", "Morvh"];
+  const chars = Object.fromEntries(await Promise.all(names.map(async n => [n, await char(n)] as const)));
+  const prep = {
+    instance: "mc",
+    consumables: [
+      { itemId: 13457, name: "Greater Fire Protection Potion", n: 5, for: "all" }, { itemId: 13446, name: "Major Healing Potion", n: 5, for: "all" },
+      { itemId: 13510, name: "Flask of the Titans", n: 1, for: "tank" }, { itemId: 13444, name: "Major Mana Potion", n: 10, for: "heal" },
+      { itemId: 13452, name: "Elixir of the Mongoose", n: 2, for: "melee" },
+    ],
+    bosses: [
+      { name: "Lucifron", encounterId: 663, npcIds: [12118], rows: [{ label: "Tank principal", characterIds: [chars.Grumdal!.id], text: "" }, { label: "Décurse", characterIds: [chars.Morvh!.id], text: "" }] },
+      { name: "Magmadar", encounterId: 664, npcIds: [11982], rows: [{ label: "Tranquillisant", characterIds: [chars.Nyssaël!.id], text: "" }, { label: "Consigne", characterIds: [], text: "Tremor Totem près des tanks" }] },
+      { name: "Ragnaros", encounterId: 672, npcIds: [11502], rows: [
+        { label: "Tank principal", characterIds: [chars.Grumdal!.id], text: "" }, { label: "Tank de relève", characterIds: [chars.Thalwen!.id], text: "" },
+        { label: "Soins des tanks", characterIds: [chars.Sylvaë!.id, chars.Hadrien!.id], text: "" },
+        { label: "Fils de la flamme", characterIds: [], text: "Groupes 3 et 4, côté gauche" }, { label: "Consigne", characterIds: [], text: "Corps à corps dehors à chaque Wrath of Ragnaros" }] },
+    ],
+  };
+  const at = new Date(Date.now() + 3 * 86400e3); at.setHours(20, 30, 0, 0);
+  const raid = (await db.query("INSERT INTO raids (group_id, name, scheduled_at, size, created_by, loot_mode, prep) VALUES ($1, 'Molten Core', $2, 40, $3, 'council', $4) RETURNING id",
+    [group, at, me, JSON.stringify(prep)])).rows[0].id as string;
+  const counts: Record<string, [Record<number, number>, number] | null> = {
+    Thalwen: [{ 13457: 5, 13446: 3, 13510: 0 }, 1], Grumdal: [{ 13457: 8, 13446: 12, 13510: 2 }, 3], Sylvaë: [{ 13457: 6, 13446: 5, 13444: 14 }, 2],
+    Hadrien: [{ 13457: 5, 13446: 7, 13444: 4 }, 3], Gorrak: [{ 13457: 10, 13446: 9, 13452: 4 }, 1], Vesper: [{ 13457: 2, 13446: 6, 13452: 3 }, 50],
+    Nyssaël: [{ 13457: 5, 13446: 5 }, 4], Tavish: null, Morvh: [{ 13457: 5, 13446: 6 }, 2],
+  };
+  for (const n of names) {
+    const c = chars[n]!;
+    await db.query("INSERT INTO raid_signups (raid_id, user_id, display_name, character_id, cls, spec, status) VALUES ($1, $2, $3, $4, $5, $6, 'present')", [raid, c.user_id, n, c.id, c.cls, c.spec1]);
+    const k = counts[n];
+    await db.query("UPDATE characters SET consumables = $2, consumables_at = $3 WHERE id = $1", [c.id, JSON.stringify(k ? k[0] : {}), k ? new Date(Date.now() - k[1] * 3600e3) : null]);
+  }
+  await db.end();
+
+  await page.goto("/login");
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+
+  await page.goto(`/groups/${group}/raids/${raid}/preparation`);
+  const cons = page.locator("section[aria-labelledby=pr-cons]");
+  await expect(cons).toContainText("Qui est prêt");
+  await cons.screenshot({ path: `${OUT}/apercu-consommables.png` });
+  const boss = page.locator("section[aria-labelledby=pr-boss]");
+  await boss.getByRole("tab", { name: /^Ragnaros/ }).click();
+  await expect(boss.locator(".pr-arow")).toHaveCount(5);
+  await boss.screenshot({ path: `${OUT}/apercu-fiches-boss.png` });
+  await page.goto(`/groups/${group}/raids/${raid}/butin`);
+  const council = page.locator("section[aria-labelledby=pr-council]");
+  await expect(council).toContainText("Conseil du butin");
+  await council.screenshot({ path: `${OUT}/apercu-conseil.png` });
+  // Téléphone : onglet Préparation
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/groups/${group}/raids/${raid}/preparation`);
+  await expect(boss).toBeVisible();
+  await page.screenshot({ path: `${OUT}/apercu-preparation-mobile.png`, fullPage: true });
+});
+
 /**
  * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
  * Sortie : test-results/tour/.

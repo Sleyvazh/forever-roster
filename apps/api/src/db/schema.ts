@@ -1,4 +1,4 @@
-import type { LootMethod, LootMode, LootResponse, LootSettings, RoleTargets } from "@forever/game-data";
+import type { LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -121,6 +121,9 @@ export const characters = pgTable("characters", {
   talentNodes: jsonb("talent_nodes").$type<TalentNode[] | null>(),
   /** Dernière mise à jour de la fiche depuis l'addon (export collé sur le site). */
   addonSyncedAt: ts("addon_synced_at"),
+  /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
+  consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
+  consumablesAt: ts("consumables_at"),
   legacy: jsonb("legacy").$type<Legacy>().notNull().default({}),
   notes: text("notes").notNull().default(""),
   /** Portrait du perso (capture de la tête en jeu, 200×200). */
@@ -235,6 +238,10 @@ export const raids = pgTable("raids", {
   /** Mode de butin choisi à la création (journal, loot council, soft reserve) et visibilité des réservations. */
   lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
   srHidden: boolean("sr_hidden").notNull().default(false),
+  /** Loot council : comptes qui forment le conseil pour ce raid (null : les officiers du groupe). */
+  council: jsonb("council").$type<string[] | null>(),
+  /** Lot G : préparation (consommables demandés, fiches de boss), reprise du dernier raid du même nom. */
+  prep: jsonb("prep").$type<RaidPrep>().notNull().default({ instance: null, consumables: [], bosses: [] }),
   /** Format (10, 20 ou 40 joueurs) et rôles visés pour la compo (null : ceux du format). */
   size: smallint("size").notNull().default(40),
   targets: jsonb("targets").$type<RoleTargets | null>(),
@@ -497,6 +504,8 @@ export const raidLogs = pgTable("raid_logs", {
   endedAt: ts("ended_at").notNull(),
   attendees: jsonb("attendees").$type<RaidLogAttendee[]>().notNull().default([]),
   loot: jsonb("loot").$type<RaidLogLoot[]>().notNull().default([]),
+  /** Lot G : dernier appel aux consommables lancé en raid (quantités de chaque joueur). */
+  consumableCall: jsonb("consumable_call").$type<RaidLogExport["consumableCall"] | null>(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 

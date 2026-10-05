@@ -1,4 +1,4 @@
--- Fenêtre unique à onglets (Synchro, Raids, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
+-- Fenêtre unique à onglets (Synchro, Raids, En raid, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
 -- Deux habillages au choix (Options) : celui de l'interface de Forever, ou celui du site (sombre, liserés dorés).
 local ADDON, ns = ...
 local U = {}
@@ -342,11 +342,15 @@ local function colored(cls, name)
   return c and ("|c" .. (c.colorStr or "ffffffff") .. name .. "|r") or name
 end
 
+-- Outils partagés avec les fenêtres du raid (Raid.lua : butin, conseil, fiche du boss)
+U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea }
+
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
 local TABS = {
   { key = "synchro", label = "Synchro", icon = "Interface\\Icons\\INV_Letter_15" },
   { key = "raids", label = "Raids", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
+  { key = "enraid", label = "En raid", icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
   { key = "compo", label = "Compo", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
   { key = "patrons", label = "Patrons", icon = "Interface\\Icons\\INV_Scroll_03" },
   { key = "options", label = "Options", icon = "Interface\\Icons\\INV_Misc_Gear_01" },
@@ -701,7 +705,18 @@ refreshers.options = function(p)
   L.Done()
 end
 
-local builders = { synchro = buildSynchro, raids = buildRaids, compo = buildCompo, patrons = buildPatrons, options = buildOptions }
+-- Onglet « En raid » (lot G) : qui a l'addon, appel aux consommables, objets à remettre, fiches de boss, butin
+local function buildEnRaid(p)
+  hint(p, "Pendant le raid. Le butin s'ouvre seul quand tu es maître du butin (" .. GOLD .. "/fr butin|r pour la fenêtre, ou avec un lien d'objet).")
+  p.list = list(p, -40)
+end
+refreshers.enraid = function(p)
+  p.list.Reset()
+  if ns.Raid and ns.Raid.FillTab then ns.Raid.FillTab(p.list) end
+  p.list.Done()
+end
+
+local builders = { synchro = buildSynchro, raids = buildRaids, enraid = buildEnRaid, compo = buildCompo, patrons = buildPatrons, options = buildOptions }
 
 -- Onglet à icône sur le côté, comme ceux de la fiche de perso de Forever
 local function sideTab(parent, index, t)
@@ -740,7 +755,7 @@ local function sideTab(parent, index, t)
 end
 
 -- Onglet du site : texte sur la bande sous le titre, souligné d'or avec un losange quand il est choisi
-local TOP_W = 114
+local TOP_W = 98
 local function topTab(parent, index, t)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(TOP_W, 28)

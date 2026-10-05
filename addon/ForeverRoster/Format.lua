@@ -58,6 +58,15 @@ local function names(field)
 end
 -- Un ou plusieurs groupes à la suite (la page Addon du site donne tous les groupes du joueur d'un coup).
 -- Lignes : R raid à venir, P patron suivi (recherché par, connu par), B objet BiS recherché (par qui).
+-- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
+-- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
+-- I inscrit (rôle et type de DPS, pour les consommables).
+local function per(t, raidId) t[raidId] = t[raidId] or {} return t[raidId] end
+local function ids(field)
+  local out = {}
+  for id in tostring(field or ""):gmatch("%d+") do if #out < 8 then out[#out + 1] = tonumber(id) end end
+  return out
+end
 function F.ParseFRG(text)
   local groups, cur, count, n = {}, nil, nil, 0
   local function close()
@@ -72,10 +81,37 @@ function F.ParseFRG(text)
     if f[1] == "FRG" then
       if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
       if tonumber(f[2]) ~= 1 then return nil, "Version non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
-      cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {} }, nil, 0
+      cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {} }, nil, 0
     elseif cur and f[1] == "R" then
       n = n + 1
-      cur.raids[#cur.raids + 1] = { id = txt(f[2], 40), time = tonumber(f[3]) or 0, name = txt(f[4], 60), status = (f[5] or "") ~= "" and txt(f[5], 12) or nil, char = (f[6] or "") ~= "" and txt(f[6], 40) or nil }
+      cur.raids[#cur.raids + 1] = { id = txt(f[2], 40), time = tonumber(f[3]) or 0, name = txt(f[4], 60), status = (f[5] or "") ~= "" and txt(f[5], 12) or nil,
+        char = (f[6] or "") ~= "" and txt(f[6], 40) or nil, loot = (f[7] or "") ~= "" and txt(f[7], 12) or nil }
+    elseif cur and f[1] == "S" then
+      -- Réservations : Nom:bonus,Nom:bonus
+      local id = tonumber(f[3])
+      if id then
+        local list = {}
+        for name, bonus in tostring(f[4] or ""):gmatch("([^,:]+):(%d+)") do if #list < 40 then list[#list + 1] = { name = txt(name, 40), bonus = tonumber(bonus) or 0 } end end
+        per(cur.reserves, txt(f[2], 40))[id] = list
+      end
+    elseif cur and f[1] == "O" then
+      cur.officers = names(f[2])
+    elseif cur and f[1] == "C" then
+      local id, qty = tonumber(f[3]), tonumber(f[4])
+      if id and qty then local l = per(cur.consumables, txt(f[2], 40)) if #l < 30 then l[#l + 1] = { itemId = id, n = qty, target = txt(f[5], 8), name = txt(f[6], 80) } end end
+    elseif cur and f[1] == "F" then
+      local idx = tonumber(f[3])
+      if idx and idx <= 30 then per(cur.bosses, txt(f[2], 40))[idx] = { encounterId = tonumber(f[4]), npcIds = ids(f[5]), name = txt(f[6], 60), rows = {} } end
+    elseif cur and f[1] == "T" then
+      local sheet = cur.bosses[txt(f[2], 40)] and cur.bosses[txt(f[2], 40)][tonumber(f[3]) or 0]
+      if sheet and #sheet.rows < 12 then sheet.rows[#sheet.rows + 1] = { label = txt(f[4], 40), names = names(f[5]), text = txt(f[6], 120) } end
+    elseif cur and f[1] == "L" then
+      cur.council[txt(f[2], 40)] = names(f[3])
+    elseif cur and f[1] == "I" then
+      local r = per(cur.roster, txt(f[2], 40))
+      local name = txt(f[3], 40)
+      if name ~= "" then r[name] = { role = txt(f[4], 8), dps = txt(f[5], 8) } end
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])
@@ -91,6 +127,45 @@ function F.ParseFRG(text)
   if not cur then return nil, "Ce ne sont pas les données du site : page Addon du site (ou onglet Raids du groupe), « Copier », puis colle ici." end
   if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
   return groups
+end
+
+-- Jets de dés : motif tiré du texte du jeu (RANDOM_ROLL_RESULT, « %s obtient un %d (%d-%d). » en français),
+-- pour lire les jets quelle que soit la langue du client. Renvoie une fonction : message → nom, jet, min, max.
+function F.RollParser(fmt)
+  fmt = fmt or "%s rolls %d (%d-%d)"
+  local parts, order, k, i = {}, {}, 0, 1
+  while i <= #fmt do
+    local pos, t = fmt:match("^%%(%d)%$([sd])", i)
+    if pos then
+      order[#order + 1] = tonumber(pos) parts[#parts + 1] = t == "s" and "(.+)" or "(%d+)" i = i + 4
+    else
+      t = fmt:match("^%%([sd])", i)
+      if t then
+        k = k + 1 order[#order + 1] = k parts[#parts + 1] = t == "s" and "(.+)" or "(%d+)" i = i + 2
+      else
+        local c = fmt:sub(i, i)
+        parts[#parts + 1] = c:find("^[%(%)%.%[%]%*%+%-%?%^%$%%]$") and ("%" .. c) or c
+        i = i + 1
+      end
+    end
+  end
+  local pattern = "^" .. table.concat(parts) .. "$"
+  return function(msg)
+    local caps = { tostring(msg or ""):match(pattern) }
+    if #caps < 4 then return nil end
+    local v = {}
+    for j, p in ipairs(order) do v[p] = caps[j] end
+    return (tostring(v[1]):match("^[^%-]+")), tonumber(v[2]), tonumber(v[3]), tonumber(v[4])
+  end
+end
+
+-- Un consommable concerne-t-il ce joueur (rôle et type de DPS de son inscription) ? Sans inscription : seulement « all ».
+function F.Concerns(target, who)
+  if target == "all" or target == "" then return true end
+  if not who then return false end
+  if target == "tank" then return who.role == "Tank" end
+  if target == "heal" then return who.role == "Heal" end
+  return who.role == "DPS" and who.dps == target
 end
 
 -- Format court (FRC v2) : équipement sur une ligne, patrons regroupés par métier, seulement les talents pris.

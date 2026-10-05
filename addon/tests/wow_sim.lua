@@ -276,7 +276,7 @@ fire("CHAT_MSG_LOOT", "Bob reçoit le butin : |cffa335ee|Hitem:16833::::::::60::
 fire("CHAT_MSG_LOOT", "Bob reçoit le butin : |cff0070dd|Hitem:9999::::::::60:::::|h[Bleu]|h|r.", "Bob", "", "", "Bob")
 assert(#R.Current().loot == 1 and R.Current().loot[1].boss == "Lucifron" and R.Current().loot[1].who == "Bob", "butin épique noté avec le boss, le rare ignoré")
 local text, inc = ns.Export.Build({})
-assert(text:find("\nFRB;1;4a1e43ea%-54e8%-4b49%-888f%-5e19b5754f61;") or text:find("^FRB;1;4a1e43ea"), "bilan dans l'export")
+assert(text:find("\nFRB;2;4a1e43ea%-54e8%-4b49%-888f%-5e19b5754f61;") or text:find("^FRB;2;4a1e43ea"), "bilan dans l'export")
 assert(text:find("\nA;Greta;") and text:find("\nL;16833;Bob;%d+;Lucifron\nEND;4"), "présence et butin dans le bilan")
 assert(ns.Export.Size(inc) >= 1 and ns.Export.Names(inc)[#ns.Export.Names(inc)] == "bilan de Molten Core", "bilan nommé dans la synchro")
 ns.Minimap.Update()
@@ -301,12 +301,143 @@ run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
 assert(ns.Compo.Status()[1].state == "ok", "le joueur est dans son propre groupe")
 run("aide")
+-- 6. Lot G : réservations au survol, consommables (comptés, appel en raid), versions, fiche du boss, butin, conseil
+local sent = {}
+C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function(prefix, msg, dist, target) sent[#sent + 1] = { prefix = prefix, msg = msg, dist = dist, target = target } end }
+local COUNTS = { [13457] = 6, [13510] = 0, [19865] = 0 }
+function GetItemCount(id) return COUNTS[id] or 0 end
+local TARGET
+local realUnitName = UnitName
+UnitName = function(u) if u == "target" then return TARGET end return realUnitName(u) end
+function UnitGUID(u) if u == "target" and TARGET == "Ragnaros" then return "Creature-0-4372-409-2817-11502-00004A1B2C" end return nil end
+function UnitCanAttack() return true end
+function UnitIsDead() return false end
+function UnitAffectingCombat() return false end
+RANDOM_ROLL_RESULT = "%s obtient un %d (%d-%d)."
+local traded
+function InitiateTrade(unit) traded = unit end
+function ClickTradeButton() end
+C_Container.PickupContainerItem = function() end
+local RID = "5b1e43ea-54e8-4b49-888f-5e19b5754f62"
+assert(ns.UI.LoadFromSite(table.concat({
+  "FRG;1;g4;1789990000;Lot G", "R;" .. RID .. ";" .. (time() + 300) .. ";Molten Core;;;softres",
+  "S;" .. RID .. ";19865;Gorrak:20,Vesper:0", "O;Tournicoti",
+  "C;" .. RID .. ";13457;5;all;Greater Fire Protection Potion", "C;" .. RID .. ";13510;1;tank;Flask of the Titans",
+  "F;" .. RID .. ";1;672;11502;Ragnaros", "T;" .. RID .. ";1;Tank principal;Tournicoti;", "T;" .. RID .. ";1;Fils de la flamme;;Groupes 3 et 4",
+  "I;" .. RID .. ";Tournicoti;Tank;", "I;" .. RID .. ";Gorrak;DPS;melee", "END;1" }, "\n")), "données du lot G chargées")
+local RA = ns.Raid
+-- Réservations au survol
+tip.lines = {}
+tooltipHook(tip, { id = 19865 })
+assert(table.concat(tip.lines, "\n"):find("SR %(Molten Core%) : |cff4fd35fGorrak %(%+20%), Vesper"), "réservations dans l'infobulle")
+-- Consommables comptés à la synchro (ligne K)
+assert(ns.Export.Build():find("\nK;13457:6,13510:0\n"), "consommables dans l'export")
+-- En raid : relevé démarré sur ce raid
+IsInRaid = function() return true end
+IsInGroup = function() return true end
+ROSTER = { "Tournicoti", "Gorrak", "Vesper" }
+GetNumGroupMembers = function() return #ROSTER end
+tickers[1]()
+assert(R.Current() and R.Current().raidId == RID, "relevé du raid du lot G")
+assert(RA.Current() and RA.Current().loot == "softres" and #RA.Current().consumables == 2, "données du raid en cours")
+-- Versions de l'addon
+RA.AskVersions(true)
+assert(sent[#sent].msg == "VQ" and sent[#sent].dist == "RAID", "question des versions")
+fire("CHAT_MSG_ADDON", "FRoster", "VQ", "RAID", "Gorrak")
+assert(sent[#sent].msg == "VR;" .. ns.version, "réponse de version")
+fire("CHAT_MSG_ADDON", "FRoster", "VR;0.0.9", "RAID", "Gorrak-Forever EU") -- plus ancienne que la mienne (0.1.1 dans cette simulation)
+local vr = {}
+for _, r in ipairs(RA.VersionRows()) do vr[r.name] = r.state end
+assert(vr.Tournicoti == "ok" and vr.Gorrak == "old" and vr.Vesper == "wait", "versions dans le raid")
+-- Appel aux consommables : je réponds (moi-même), Gorrak répond, Vesper non
+assert(RA.CallConsumables(), "appel lancé")
+assert(sent[#sent].msg == "CQ;13457,13510", "appel envoyé au raid")
+fire("CHAT_MSG_ADDON", "FRoster", "CQ;13457,13510", "RAID", "Tournicoti")
+fire("CHAT_MSG_ADDON", "FRoster", "CR;13457:5,13510:0", "WHISPER", "Gorrak")
+local sum = RA.CallSummary()
+assert(#sum.ready == 1 and sum.ready[1] == "Gorrak", "Gorrak prêt (le flacon de tank ne le concerne pas)")
+assert(#sum.missing == 1 and sum.missing[1].name == "Tournicoti" and sum.missing[1].lacks[1] == "Flask of the Titans 0/1", "ce qui manque au tank")
+assert(#sum.silent == 1 and sum.silent[1] == "Vesper", "sans réponse")
+RA.AnnounceMissing()
+assert(said[#said - 1]:find("Consommables manquants : Tournicoti %(Flask of the Titans 0/1%)") and said[#said]:find("Pas de réponse.*Vesper"), "manques annoncés")
+local frb = ns.Export.Build({})
+assert(frb:find("\nQ;%d+;Tournicoti\n") and frb:find("\nK;Gorrak;13457:5,13510:0\n") and frb:find("\nK;Vesper;%-\n"), "appel gardé avec le bilan")
+-- Fiche du boss : en ciblant Ragnaros (avant le pull), fermée au début du combat ; PNJ appris
+TARGET = "Ragnaros"
+fire("PLAYER_TARGET_CHANGED")
+local sw = RA.sheetWindow()
+assert(sw and sw:IsShown() and sw.mine:GetText():find("Tank principal"), "fiche du boss au ciblage")
+assert(sw.text:GetText():find("Fils de la flamme : |rGroupes 3 et 4"), "reste de la fiche")
+RA.AnnounceSheet(sw.sheet)
+assert(said[#said]:find("^RAID:Ragnaros · Tank principal : Tournicoti · Fils de la flamme : Groupes 3 et 4"), "fiche annoncée en /raid")
+fire("ENCOUNTER_START", 672, "Ragnaros", 9, 40)
+assert(not sw:IsShown() and ForeverRosterDB.bossNpcs[11502] == 672 and ForeverRosterDB.bossNames[672] == "Ragnaros", "fermée au pull, PNJ appris")
+TARGET = nil
+run("boss")
+assert(sw:IsShown(), "/fr boss")
+-- Butin : jets SR (réservants seulement, bonus ajouté), objet donné puis remis par échange
+run("butin |cffa335ee|Hitem:19865::::::::60:::::|h[Band of Accuria]|h|r")
+assert(#RA.items == 1 and RA.items[1].itemId == 19865, "objet ajouté à la fenêtre du butin")
+assert(RA.StartRoll(RA.items[1], "sr"), "jets SR lancés")
+assert(said[#said]:find("réservé %(SR%) par Gorrak %(%+20%), Vesper · /roll 100"), "jets SR annoncés")
+fire("CHAT_MSG_SYSTEM", "Gorrak obtient un 61 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Vesper obtient un 85 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Bob obtient un 99 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Vesper obtient un 12 (1-100).")
+local rank, tied = RA.Ranking()
+assert(not tied and rank[1].name == "Vesper" and rank[1].total == 85 and rank[2].total == 81 and RA.session.ignored.Bob == 99, "classement SR (premier jet seul, Bob ignoré)")
+RA.ShowLoot()
+RA.AwardSession()
+assert(said[#said]:find("→ Vesper %(85%)") and #RA.Handover() == 1 and RA.Handover()[1].winner == "Vesper", "objet attribué, à remettre (corps fermé)")
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : |cffa335ee|Hitem:19865::::::::60:::::|h[Band of Accuria]|h|r.", "Tournicoti", "", "", "Tournicoti")
+COUNTS[19865] = 1
+assert(RA.Trade(RA.Handover()[1]) and traded == "raid3", "échange avec le gagnant")
+fire("TRADE_SHOW")
+COUNTS[19865] = 0
+fire("TRADE_CLOSED")
+assert(#RA.Handover() == 0, "objet remis")
+assert(ns.Export.Build({}):find("\nL;19865;Vesper;%d+;[^;\n]*;sr;;85\n"), "butin noté au gagnant, avec la méthode")
+-- Égalité en jet libre : relance entre ex æquo
+RA.AddItem("|cffa335ee|Hitem:18814::::::::60:::::|h[Choker]|h|r")
+RA.StartRoll(RA.items[1], "free")
+fire("CHAT_MSG_SYSTEM", "Gorrak obtient un 70 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Vesper obtient un 70 (1-100).")
+local _, tie = RA.Ranking()
+assert(tie and #tie == 2, "égalité détectée")
+RA.ShowLoot()
+RA.StartRoll(RA.items[1], "free", tie)
+fire("CHAT_MSG_SYSTEM", "Tournicoti obtient un 99 (1-100).")
+assert(RA.session.ignored.Tournicoti and not RA.session.rolls.Tournicoti, "relance : seuls les ex æquo")
+RA.session = nil
+-- Conseil du butin : proposé, réponses (la mienne et celle de Gorrak), vote, attribution
+RA.StartCouncil(RA.items[1])
+local sid = RA.session.sid
+assert(sent[#sent].msg == "LO;" .. sid .. ";18814", "objet proposé au conseil")
+fire("CHAT_MSG_ADDON", "FRoster", sent[#sent].msg, "RAID", "Tournicoti")
+assert(#RA.asks == 1, "fenêtre de réponse")
+RA.Respond(RA.asks[1], "bis", "pour mon set")
+fire("CHAT_MSG_ADDON", "FRoster", "LA;" .. sid .. ";upgrade;16866;", "WHISPER", "Gorrak")
+assert(RA.councils[sid].cands.Tournicoti.response == "bis" and RA.councils[sid].cands.Gorrak.response == "upgrade", "réponses reçues par le conseil")
+RA.Vote(sid, "Gorrak")
+assert(RA.Tally(sid).Gorrak == 1, "vote compté")
+RA.ShowCouncil(sid)
+RA.AwardCouncil(sid, "Gorrak")
+assert(said[#said]:find("→ Gorrak %(1 voix%)") and RA.Handover()[1].winner == "Gorrak" and RA.Handover()[1].method == "council", "conseil : objet attribué")
+-- Onglet En raid et commandes, sans erreur
+local beforeG = errors()
+run("enraid")
+run("conso")
+assert(errors() == beforeG and failures == 0, "onglet En raid sans erreur")
+IsInRaid = function() return false end
+IsInGroup = function() return false end
+UnitName = realUnitName
+
 -- Habillage du site : fenêtres reconstruites (UI rechargée), chaque onglet, la synchro rapide, le rappel et l'alerte
 ForeverRosterDB.skin = "site"
 assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
 assert(ns.UI.site(), "habillage du site choisi")
 local beforeSkin = errors()
-for _, tab in ipairs({ "synchro", "raids", "compo", "patrons", "options" }) do ns.UI.Show(tab) end
+for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "patrons", "options" }) do ns.UI.Show(tab) end
 ns.UI.Quick()
 ns.UI.LootAlert(16833, "|cffa335ee|Hitem:16833::::::::60:::::|h[Cenarion Vestments]|h|r")
 ForeverRosterDB.skin = nil -- changement d'habillage : proposé au rechargement

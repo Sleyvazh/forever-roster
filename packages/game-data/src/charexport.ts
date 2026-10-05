@@ -42,6 +42,8 @@ export interface CharacterExport {
   signups: { groupId: string; raidId: string; status: SignupStatus }[];
   /** Patrons marqués « recherché » (on) ou retirés en jeu, par l'objet patron. */
   wanted: { itemId: number; on: boolean }[];
+  /** Lot G : consommables demandés pour les raids à venir, comptés dans les sacs (et la banque) : objet → quantité. */
+  consumables: Record<number, number>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,7 +65,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const data: CharacterExport = {
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
-    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], wanted: [],
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], wanted: [], consumables: {},
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -97,6 +99,12 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
     } else if (f[0] === "W") {
       const itemId = int(f[1]);
       if (itemId > 0) data.wanted = data.wanted.filter(w => w.itemId !== itemId).concat({ itemId, on: f[2] === "1" });
+    } else if (f[0] === "K") {
+      // Consommables : objet:quantité, séparés par des virgules
+      for (const p of (f[1] ?? "").split(",").slice(0, 60)) {
+        const [id, n] = p.split(":");
+        if (int(id) > 0 && int(n) >= 0) data.consumables[int(id)] = Math.min(9999, int(n));
+      }
     } else if (f[0] === "T" && version === 2) {
       // Seulement les talents pris : arbre, puis nœud:rang
       const tree = int(f[1]);

@@ -51,15 +51,17 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.debug = nil
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", UI = "Show", Minimap = "Create" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", UI = "Show", Raid = "FillTab", Minimap = "Create" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060modules non chargés : " .. table.concat(missing, ", ") .. "|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)") end
 end)
 
 local HELP = {
-  "/fr : ouvrir la fenêtre (onglets Synchro, Raids, Compo, Patrons, Options) ; aussi par le bouton de la minicarte",
-  "/fr synchro | raids | compo | patrons | options : ouvrir directement un onglet",
+  "/fr : ouvrir la fenêtre (onglets Synchro, Raids, En raid, Compo, Patrons, Options) ; aussi par le bouton de la minicarte",
+  "/fr synchro | raids | enraid | compo | patrons | options : ouvrir directement un onglet",
+  "/fr butin : fenêtre du maître du butin (jets SR, MS / OS, libre, conseil) ; /fr butin <lien> pour un objet déjà dans tes sacs",
+  "/fr boss : fiche du boss ciblé (sinon la première du raid) ; /fr conso : appel aux consommables",
   "Synchro rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou clic droit sur le bouton de la minicarte",
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
@@ -77,7 +79,7 @@ function ns.safe(label, fn, ...)
   return ok
 end
 
-local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", compo = "compo", patrons = "patrons", options = "options" }
+local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", enraid = "enraid", raid = "enraid", compo = "compo", patrons = "patrons", options = "options" }
 
 -- Raccourcis clavier (Bindings.xml) : Échap > Options > Raccourcis > AddOns > Forever Roster
 BINDING_HEADER_FOREVERROSTER = "Forever Roster"
@@ -94,6 +96,13 @@ local function run(msg)
     ns.UI.Toggle()
   elseif TABS[cmd] then
     ns.UI.Show(TABS[cmd])
+  elseif cmd == "butin" or cmd == "loot" then
+    if rest ~= "" and not ns.Raid.AddItem(rest) then ns.print("tape /fr butin puis Maj+clic sur l'objet pour mettre son lien.") return end
+    ns.Raid.ShowLoot()
+  elseif cmd == "boss" then
+    ns.Raid.ShowSheetCommand()
+  elseif cmd == "conso" or cmd == "consommables" then
+    ns.Raid.CallConsumables()
   elseif cmd == "cherche" then
     local id = ns.Group.itemIdFrom(rest) or tonumber(rest)
     if not id then ns.print("tape /fr cherche puis Maj+clic sur le patron (sac, hôtel des ventes, chat) pour mettre son lien, et Entrée.") return end

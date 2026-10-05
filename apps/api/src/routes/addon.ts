@@ -1,10 +1,11 @@
-import { groupAddonExport, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
+import { dpsType, groupAddonExport, specDef, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
 import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
 import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups, softReserves } from "../db/schema";
 import { groupLootSettings, srBonuses } from "../lib/loot";
+import { groupNames } from "../lib/prep";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
@@ -25,7 +26,7 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
   if (!g) throw notFound("Groupe introuvable.");
 
   const now = Date.now();
-  const raidRows = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt, lootMode: raids.lootMode }).from(raids)
+  const raidRows = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt, lootMode: raids.lootMode, srHidden: raids.srHidden, prep: raids.prep, council: raids.council }).from(raids)
     .where(and(eq(raids.groupId, groupId), or(gte(raids.scheduledAt, new Date(now - RECENT_MS)), isNull(raids.scheduledAt))))
     .orderBy(asc(raids.scheduledAt), asc(raids.name)).limit(MAX_RAIDS);
   const mine = raidRows.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, character: characters.name })
@@ -68,10 +69,14 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
 
   // Lot C2 : réservations des raids en soft reserve (avec SR+) et persos des officiers (membres du conseil en jeu)
   const settings = await groupLootSettings(db, groupId);
+  const [me] = await db.select({ role: groupMembers.role }).from(groupMembers).where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
+  const officer = !!me && me.role !== "member";
   const reservesOf = new Map<string, { itemId: number; by: { name: string; bonus: number }[] }[]>();
   for (const r of raidRows.filter(x => x.lootMode === "softres")) {
+    // Réservations cachées : un membre ne reçoit que les siennes (comme sur le site)
     const rows = await db.select({ characterId: softReserves.characterId, itemId: softReserves.itemId, name: characters.name })
-      .from(softReserves).innerJoin(characters, eq(characters.id, softReserves.characterId)).where(eq(softReserves.raidId, r.id));
+      .from(softReserves).innerJoin(characters, eq(characters.id, softReserves.characterId))
+      .where(and(eq(softReserves.raidId, r.id), ...(r.srHidden && !officer ? [eq(characters.userId, userId)] : [])));
     const bonus = await srBonuses(db, r, rows, settings);
     const byItem2 = new Map<number, { name: string; bonus: number }[]>();
     for (const x of rows) byItem2.set(x.itemId, [...(byItem2.get(x.itemId) ?? []), { name: x.name, bonus: bonus.get(`${x.characterId}:${x.itemId}`) ?? 0 }]);
@@ -82,11 +87,21 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
     .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
     .where(and(eq(groupCharacters.groupId, groupId), inArray(groupMembers.role, ["owner", "officer"])))).map(c => c.name);
 
+  // Lot G : consommables demandés, fiches de boss (noms en jeu) et conseil choisi pour le raid (persos de ses membres)
+  const { byId, byUser } = await groupNames(db, groupId);
+  const withCons = raidRows.filter(r => r.prep.consumables.length).map(r => r.id);
+  const coming = withCons.length ? await db.select({ raidId: raidSignups.raidId, name: characters.name, cls: raidSignups.cls, spec: raidSignups.spec })
+    .from(raidSignups).innerJoin(characters, eq(characters.id, raidSignups.characterId))
+    .where(and(inArray(raidSignups.raidId, withCons), inArray(raidSignups.status, ["present", "late", "tentative"]))) : [];
   const text = groupAddonExport(g, Math.floor(now / 1000),
     raidRows.map(r => {
       const m = myByRaid.get(r.id);
       return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, status: m?.status ?? null, character: m?.character ?? null,
-        lootMode: r.lootMode, reserves: reservesOf.get(r.id) };
+        lootMode: r.lootMode, reserves: reservesOf.get(r.id),
+        consumables: r.prep.consumables,
+        bosses: r.prep.bosses.map(b => ({ ...b, rows: b.rows.map(row => ({ label: row.label, text: row.text, names: row.characterIds.flatMap(id => byId.get(id) ?? []) })) })),
+        council: r.lootMode === "council" && r.council ? r.council.flatMap(u => byUser.get(u) ?? []) : null,
+        roster: coming.filter(c => c.raidId === r.id).map(c => ({ name: c.name, role: specDef(c.cls, c.spec)?.role ?? null, dps: dpsType(c.cls, c.spec) })) };
     }),
     [...byItem.values()].sort((a, b) => a.recipe.localeCompare(b.recipe)),
     [...bis.values()].sort((a, b) => a.itemId - b.itemId),

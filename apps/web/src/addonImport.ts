@@ -117,7 +117,8 @@ export async function applyBlocks(blocks: CharacterExport[], targetOf: (d: Chara
       if (d.cls && c.cls && d.cls !== c.cls) { out.push({ name: d.name, ok: false, msg: `classe différente sur la fiche (${c.cls})` }); continue; }
       // Une nouvelle fiche prend toujours niveau, race et classe
       const p = await buildPatch(c, d, t === "new" ? new Set<Part>([...parts, "identity"]) : parts);
-      await patch(`/characters/${c.id}`, { ...p, addonSynced: true });
+      // Consommables comptés en jeu (lot G) : toujours repris, ils servent à l'onglet Préparation des raids
+      await patch(`/characters/${c.id}`, { ...p, addonSynced: true, ...(Object.keys(d.consumables).length && { consumables: d.consumables }) });
       const extras = await applyExtras(c.id, d, parts);
       remember(blockKey(d), c.id);
       out.push({ name: d.name, ok: true, msg: `${t === "new" ? "fiche créée" : "fiche mise à jour"}${extras ? ` · ${extras}` : ""}` });

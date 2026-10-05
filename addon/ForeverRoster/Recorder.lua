@@ -59,6 +59,11 @@ function R.Sample()
     ns.print("relevé du raid démarré : |cffe3b54b" .. (log.name or "raid") .. "|r (présence et butin, envoyés avec ta synchro). Onglet Options pour le couper.")
   end
   log.recorder = UnitName("player")
+  -- Instance réelle (bilan v2) : nom donné par le jeu, pour le catalogue de butin du site
+  if GetInstanceInfo then
+    local inst, kind = GetInstanceInfo()
+    if kind == "raid" and inst and inst ~= "" then log.instance = inst end
+  end
   for i = 1, GetNumGroupMembers() do
     local name = short(GetRaidRosterInfo(i))
     if name ~= "" then
@@ -80,9 +85,48 @@ function R.OnLoot(msg, playerName, _, _, playerName2)
   if not id or (QUALITY[(color or ""):lower()] or 0) < R.MinQuality() then return end
   local who = short((playerName2 ~= nil and playerName2 ~= "" and playerName2) or (playerName ~= nil and playerName ~= "" and playerName) or UnitName("player"))
   local boss = (R.boss and time() - R.boss.at < 15 * 60) and R.boss.name or ""
-  log.loot[#log.loot + 1] = { id = id, who = who, at = time(), boss = boss }
+  local entry = { id = id, who = who, at = time(), boss = boss }
+  -- Attribution décidée dans la fenêtre du butin (jets SR, MS/OS, conseil) : notée avec l'objet
+  local key = id .. ":" .. who
+  local award = R.awards[key]
+  if award and time() - award.at < 10 * 60 then entry.method, entry.response, entry.detail = award.method, award.response, award.detail R.awards[key] = nil end
+  log.loot[#log.loot + 1] = entry
   log.updated = time()
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
+end
+
+-- Attributions en attente (objet:joueur → méthode, réponse, détail) : jointes au butin quand le jeu l'annonce
+R.awards = {}
+function R.Award(itemId, who, method, response, detail)
+  R.awards[itemId .. ":" .. short(who)] = { method = method, response = response, detail = detail, at = time() }
+end
+-- Objet gardé par le maître du butin puis échangé au gagnant : le butin noté change de main
+function R.Reassign(itemId, from, to, method, detail)
+  local log = R.Current() or R.Last()
+  if not log then return false end
+  for i = #log.loot, 1, -1 do
+    local l = log.loot[i]
+    if l.id == itemId and l.who == short(from) then
+      l.who, l.method, l.detail = short(to), method or l.method, detail or l.detail
+      log.updated = time()
+      return true
+    end
+  end
+  return false
+end
+-- Dernier bilan (raid fini depuis peu) : un échange après la fin du relevé y est encore noté
+function R.Last()
+  local best
+  for _, log in pairs(db()) do if not best or (log.stop or 0) > (best.stop or 0) then best = log end end
+  return best and time() - (best.stop or 0) < 3 * 3600 and best or nil
+end
+
+-- Appel aux consommables lancé en raid : gardé avec le bilan (lignes Q et K), le dernier remplace le précédent
+function R.SetCall(call)
+  local log = R.Current()
+  if not log then return false end
+  log.call, log.updated = call, time()
+  return true
 end
 
 -- Bilans pas encore envoyés au site (ou modifiés depuis)
@@ -104,10 +148,10 @@ function R.MarkSent(logs)
   for _, log in ipairs(logs or {}) do log.sentAt = log.updated or time() end
 end
 
--- Bloc FRB d'un bilan
+-- Bloc FRB d'un bilan (version 2 : instance réelle, attribution de chaque objet, appel aux consommables)
 function R.Block(log)
   local F = ns.Format
-  local lines = { "FRB;1;" .. F.clean(log.raidId) .. ";" .. (log.start or 0) .. ";" .. (log.stop or log.start or 0) .. ";" .. F.clean(log.recorder) .. ";" .. F.clean(log.name) }
+  local lines = { "FRB;2;" .. F.clean(log.raidId) .. ";" .. (log.start or 0) .. ";" .. (log.stop or log.start or 0) .. ";" .. F.clean(log.recorder) .. ";" .. F.clean(log.name) .. ";" .. F.clean(log.instance) }
   local names = {}
   for name in pairs(log.people) do names[#names + 1] = name end
   table.sort(names)
@@ -116,7 +160,26 @@ function R.Block(log)
     lines[#lines + 1] = "A;" .. F.clean(name) .. ";" .. p.first .. ";" .. p.last .. ";" .. p.n
   end
   for _, l in ipairs(log.loot) do
-    lines[#lines + 1] = "L;" .. l.id .. ";" .. F.clean(l.who) .. ";" .. l.at .. ";" .. F.clean(l.boss)
+    local line = "L;" .. l.id .. ";" .. F.clean(l.who) .. ";" .. l.at .. ";" .. F.clean(l.boss)
+    if l.method then line = line .. ";" .. F.clean(l.method) .. ";" .. F.clean(l.response) .. ";" .. F.clean(l.detail) end
+    lines[#lines + 1] = line
+  end
+  -- Hors du compte de END : appel aux consommables (un site plus ancien ignore ces lignes)
+  if log.call then
+    lines[#lines + 1] = "Q;" .. (log.call.at or 0) .. ";" .. F.clean(log.call.by)
+    local who = {}
+    for name in pairs(log.call.counts or {}) do who[#who + 1] = name end
+    table.sort(who)
+    for _, name in ipairs(who) do
+      local c, items = log.call.counts[name], {}
+      if c then
+        local idList = {}
+        for id in pairs(c) do idList[#idList + 1] = id end
+        table.sort(idList)
+        for _, id in ipairs(idList) do items[#items + 1] = id .. ":" .. c[id] end
+      end
+      lines[#lines + 1] = "K;" .. F.clean(name) .. ";" .. (c and table.concat(items, ",") or "-")
+    end
   end
   lines[#lines + 1] = "END;" .. (#names + #log.loot)
   return table.concat(lines, "\n")

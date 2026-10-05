@@ -32,6 +32,7 @@ function G.Load(text)
     for _ in pairs(g.bis) do bis = bis + 1 end
   end
   ns.print(string.format("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis))
+  ns.safe("consommables", G.CountConsumables)
   return groups
 end
 
@@ -127,14 +128,77 @@ function G.Bis(itemId)
   return #out > 0 and out or nil
 end
 
--- Tout ce que l'addon sait d'un objet (patron suivi, BiS, marqué en jeu)
+-- Réservations (soft reserve) d'un objet pour le prochain raid qui en a : { raid, list = { { name, bonus } } }
+function G.Reserves(itemId)
+  for _, e in ipairs(G.Raids()) do
+    local list = e.group.reserves and e.group.reserves[e.raid.id] and e.group.reserves[e.raid.id][itemId]
+    if list and #list > 0 then return { raid = e.raid, list = list } end
+  end
+  return nil
+end
+function G.ReserveText(r)
+  local parts = {}
+  for _, x in ipairs(r.list) do parts[#parts + 1] = x.name .. ((x.bonus or 0) > 0 and (" (+" .. x.bonus .. ")") or "") end
+  return table.concat(parts, ", ")
+end
+
+-- Tout ce que l'addon sait d'un objet (patron suivi, BiS, marqué en jeu, réservé)
 function G.Info(itemId)
   if not itemId then return nil end
   local who, bis = G.Who(itemId), G.Bis(itemId)
   local mark = (ns.charDB().wanted or {})[itemId]
-  if not who and not bis and mark == nil then return nil end
-  return { who = who, bis = bis, mark = mark }
+  local sr = G.Reserves(itemId)
+  if not who and not bis and mark == nil and not sr then return nil end
+  return { who = who, bis = bis, mark = mark, sr = sr }
 end
+
+-- Lot G : données du raid (préparation, butin) d'une entrée de G.Raids()
+function G.RaidData(e)
+  if not e then return nil end
+  local g, id = e.group, e.raid.id
+  return {
+    entry = e, loot = e.raid.loot or "journal", reserves = (g.reserves or {})[id] or {},
+    consumables = (g.consumables or {})[id] or {}, bosses = (g.bosses or {})[id] or {},
+    council = ((g.council or {})[id] and #g.council[id] > 0) and g.council[id] or (g.officers or {}), roster = (g.roster or {})[id] or {},
+  }
+end
+
+-- Consommables demandés par les raids chargés : comptés dans les sacs (et la banque) du perso connecté
+function G.ConsumableIds()
+  local set, out = {}, {}
+  for _, g in pairs(db()) do
+    for _, list in pairs(g.consumables or {}) do
+      for _, c in ipairs(list) do if not set[c.itemId] then set[c.itemId] = true out[#out + 1] = c.itemId end end
+    end
+  end
+  table.sort(out)
+  return out
+end
+function G.CountConsumables()
+  local ids = G.ConsumableIds()
+  if #ids == 0 or not GetItemCount then return nil end
+  local counts = {}
+  for _, id in ipairs(ids) do counts[id] = GetItemCount(id, true) or 0 end
+  local c = ns.charDB()
+  c.consumables, c.consumablesAt = counts, time()
+  return counts
+end
+function G.ConsumableLines(c)
+  local counts = (c or ns.charDB()).consumables
+  if not counts or not next(counts) then return {} end
+  local list, parts = {}, {}
+  for id in pairs(counts) do list[#list + 1] = id end
+  table.sort(list)
+  for _, id in ipairs(list) do parts[#parts + 1] = id .. ":" .. counts[id] end
+  return { { "K", table.concat(parts, ",") } }
+end
+local counting = false
+local function countSoon()
+  if counting or not ForeverRosterDB then return end
+  counting = true
+  C_Timer.After(2, function() counting = false ns.safe("consommables", G.CountConsumables) end)
+end
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "BANKFRAME_OPENED" }) do ns.on(event, countSoon) end
 
 local function itemIdFrom(link) return link and tonumber(tostring(link):match("item:(%d+)")) end
 G.itemIdFrom = itemIdFrom
@@ -214,6 +278,7 @@ local function addLines(tooltip, itemId)
     if joinNames(info.who.known) then tooltip:AddLine(GREY .. "Connu par : " .. joinNames(info.who.known) .. "|r", 1, 1, 1, true) end
   end
   if info.bis then tooltip:AddLine("BiS de : " .. BLUE .. joinNames(info.bis) .. "|r", 1, 1, 1, true) end
+  if info.sr then tooltip:AddLine("SR (" .. info.sr.raid.name .. ") : " .. GREEN .. G.ReserveText(info.sr) .. "|r", 1, 1, 1, true) end
   if info.mark ~= nil then tooltip:AddLine(GREY .. (info.mark and "Marqué recherché par toi (à envoyer)" or "Retiré de tes recherchés (à envoyer)") .. "|r") end
   if tooltip.Show then tooltip:Show() end
 end

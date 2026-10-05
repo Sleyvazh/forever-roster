@@ -12,6 +12,9 @@ import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from
  *
  * Version 2 (lot C2) : l'en-tête ajoute l'instance réelle (nom renvoyé par le jeu), et L la façon dont l'objet
  * a été attribué : `L;<objet>;<reçu par>;<heure>;<boss>;<méthode>;<réponse>;<détail>` (champs vides permis).
+ *
+ * Lot G (hors du compte de END, ignoré par un site plus ancien) : appel aux consommables lancé en raid,
+ * `Q;<heure unix>;<lancé par>` puis `K;<nom en jeu>;<objet:quantité,…>` par joueur (`-` : pas de réponse, pas d'addon).
  */
 
 export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
@@ -21,6 +24,8 @@ export interface RaidLogExport {
   /** Version 2 : instance où le relevé a été fait (nom du jeu). */
   instance?: string;
   attendees: RaidLogAttendee[]; loot: RaidLogLoot[];
+  /** Lot G : dernier appel aux consommables (null par joueur : pas de réponse). */
+  consumableCall?: { at: number; by: string; counts: { name: string; items: Record<number, number> | null }[] };
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +58,22 @@ function parseBlock(lines: string[]): { ok: true; data: RaidLogExport } | { ok: 
       if ((LOOT_RESPONSES as readonly string[]).includes(f[6] ?? "")) entry.response = f[6] as LootResponse;
       if (txt(f[7], 60)) entry.detail = txt(f[7], 60);
       if (data.loot.length < MAX_LOOT) data.loot.push(entry);
+    } else if (f[0] === "Q") {
+      const at = int(f[1]);
+      if (at !== null) data.consumableCall = { at, by: gameNameOf(f[2] ?? ""), counts: [] };
+    } else if (f[0] === "K" && data.consumableCall) {
+      const name = gameNameOf(f[1] ?? "");
+      if (!name || data.consumableCall.counts.length >= MAX_PEOPLE) continue;
+      let items: Record<number, number> | null = null;
+      if ((f[2] ?? "-") !== "-") {
+        items = {};
+        for (const p of (f[2] ?? "").split(",").slice(0, 60)) {
+          const [id, n] = p.split(":");
+          const itemId = int(id), qty = int(n);
+          if (itemId && qty !== null) items[itemId] = Math.min(9999, qty);
+        }
+      }
+      data.consumableCall.counts.push({ name, items });
     } else if (f[0] === "END") {
       count = int(f[1]);
     }

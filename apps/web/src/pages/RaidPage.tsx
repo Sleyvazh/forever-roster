@@ -13,6 +13,7 @@ import { RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
 import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_HINT, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
 import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
+import { CouncilPicker, RaidPrepPanel } from "../components/RaidPrep";
 import { RaidReach, type Reach } from "../components/RaidReach";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
@@ -54,7 +55,7 @@ interface ServerState { version: string; slots: RaidSlot[]; name: string; schedu
 const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
 const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
 
-type RaidTab = "compo" | "inscriptions" | "butin" | "bilan" | "reglages";
+type RaidTab = "compo" | "inscriptions" | "preparation" | "butin" | "bilan" | "reglages";
 type Pick = { kind: "bench"; key: string } | { kind: "slot"; group: number; pos: number } | null;
 
 /** Ce qu'on peut placer : un perso du site, ou un inscrit sans compte (classe et spé choisies sur Discord). */
@@ -231,7 +232,7 @@ export function RaidPage() {
   const tabs: [RaidTab, string][] = [
     ...(canEdit ? [["compo", "Compo"] as [RaidTab, string], ["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string]]
       : [["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string], ["compo", "Compo"] as [RaidTab, string]]),
-    ["butin", "Butin"], ["bilan", "Bilan"], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
+    ["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
   ];
   const tab: RaidTab = tabs.some(([k]) => k === tabParam) ? tabParam as RaidTab : tabs[0]![0];
   const setTab = (k: RaidTab) => nav(`/groups/${groupId}/raids/${raidId}${k === tabs[0]![0] ? "" : `/${k}`}`, { replace: true });
@@ -414,7 +415,10 @@ export function RaidPage() {
               </section>
             ) : <p style={{ margin: 0 }}>Butin : <b>{LOOT_MODE_LABEL[r.lootMode]}</b> <span className="muted">· {LOOT_MODE_HINT[r.lootMode]}</span></p>}
             {r.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
+            {r.lootMode === "council" && <CouncilPicker groupId={groupId} raidId={raidId} />}
           </>}
+
+          {tab === "preparation" && <RaidPrepPanel groupId={groupId} raidId={raidId} />}
 
           {tab === "bilan" && <RaidLogPanel log={raidQ.data.log} />}
 

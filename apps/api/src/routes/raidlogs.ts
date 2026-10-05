@@ -25,6 +25,11 @@ const logInput = z.object({
   })).max(200),
   /** Bilan v2 : instance réelle (sinon, le nom du raid sert pour le catalogue de butin). */
   instance: z.string().trim().max(60).optional(),
+  /** Lot G : appel aux consommables lancé en raid (quantités par joueur, null : pas de réponse). */
+  consumableCall: z.object({
+    at: z.int().min(0), by: z.string().trim().max(40),
+    counts: z.array(z.object({ name: z.string().trim().min(1).max(40), items: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).nullable() })).max(80),
+  }).optional(),
 });
 
 type GroupChar = { id: string; name: string; cls: string; userId: string; owner: string; gear: Gear };
@@ -109,6 +114,8 @@ export async function raidLogRoutes(app: FastifyInstance) {
     const values = {
       recordedBy: u.id, recorder: body.recorder, startedAt: new Date(body.start * 1000), endedAt: new Date(body.end * 1000),
       attendees: body.attendees, loot: body.loot, updatedAt: new Date(),
+      // Un bilan recollé sans appel garde l'appel déjà enregistré
+      ...(body.consumableCall && { consumableCall: body.consumableCall }),
     };
     // Catalogue de butin appris (instance réelle, sinon le nom du raid) ; un nouveau collage ne recompte pas
     const [before] = await db.select({ loot: raidLogs.loot }).from(raidLogs).where(eq(raidLogs.raidId, raid.id));

@@ -11,6 +11,7 @@ import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { ensureRecurringRaids, MAX_RAIDS_PER_GROUP, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
+import { inheritPrep } from "../lib/prep";
 import { applyAbsencesToRaid } from "../lib/absences";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
@@ -114,6 +115,8 @@ export async function raidRoutes(app: FastifyInstance) {
       lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, size: body.size ?? 40,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
+    // Consommables, fiches de boss et conseil repris du dernier raid du même nom (lot G)
+    await inheritPrep(db, [r!.id]);
     if (body.weekly && r!.scheduledAt) {
       // Même jour, même heure (de Paris) chaque semaine ; ce raid est la première occurrence
       const z = zonedParts(r!.scheduledAt);
@@ -206,6 +209,8 @@ export async function raidRoutes(app: FastifyInstance) {
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
     if (moved) await applyAbsencesToRaid(db, p.raidId);
+    // Raid renommé avant d'être préparé : préparation reprise du raid qui porte le nouveau nom (lot G)
+    if (name !== current.name && !current.prep.consumables.length && !current.prep.bosses.length) await inheritPrep(db, [p.raidId]);
     bus.group({ t: "raid", g: p.id, r: p.raidId, by: u.id, byName: u.displayName });
     return {
       ...withCoverage(slots, chars, guests, await signupSpecs(p.raidId)),

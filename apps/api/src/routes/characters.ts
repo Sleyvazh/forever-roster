@@ -78,12 +78,18 @@ export async function characterRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
     // addonSynced : la fiche vient d'être mise à jour depuis l'addon (date de dernière synchro)
-    const { addonSynced, ...patch } = parse(characterFields.partial().extend({ addonSynced: z.literal(true).optional() }), req.body);
+    // consumables (lot G) : consommables demandés par les raids, comptés en jeu à la synchro
+    const { addonSynced, consumables, ...patch } = parse(characterFields.partial().extend({
+      addonSynced: z.literal(true).optional(),
+      consumables: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).refine(r => Object.keys(r).length <= 60, "Trop de consommables.").optional(),
+    }), req.body);
     const [existing] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
     if (!existing) throw notFound("Personnage introuvable.");
     const next = { ...existing, ...patch };
     const err = crossCheck(next); if (err) throw badRequest(err);
-    const [row] = await db.update(characters).set({ ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }) }).where(eq(characters.id, id)).returning();
+    const [row] = await db.update(characters).set({
+      ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }), ...(consumables && { consumables, consumablesAt: new Date() }),
+    }).where(eq(characters.id, id)).returning();
     return { character: toApi(row!) };
   });
 
