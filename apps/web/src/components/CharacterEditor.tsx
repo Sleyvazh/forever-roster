@@ -32,13 +32,15 @@ export interface EditorProps {
   /** Onglet piloté par l'appelant (adresse de la page) ; sinon gardé le temps de la session. */
   tab?: Tab;
   onTab?: (t: Tab) => void;
+  /** Bandeau sous l'en-tête (Mes persos : groupe et main / alt). */
+  subhead?: React.ReactNode;
 }
 
 const Bar = ({ pct, color }: { pct: number; color?: string }) => (
   <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, pct))}%`, ...(color ? { background: color } : {}) }} /></div>
 );
 
-export function CharacterEditor({ character: c, editable, onChange, footer, onPortrait, tab: tabProp, onTab }: EditorProps) {
+export function CharacterEditor({ character: c, editable, onChange, footer, onPortrait, tab: tabProp, onTab, subhead }: EditorProps) {
   const [tabState, setTab] = useState<Tab>(() => (sessionStorage.getItem("fr-tab") as Tab) || "profil");
   const tab = tabProp ?? tabState;
   const cl = CLASSES[c.cls as ClassName];
@@ -84,6 +86,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
           <button type="button" className="btn sm ghost" onClick={() => setPortraitOpen(false)}>Fermer</button>
         </div>
       )}
+      {subhead}
       <div className="tabs" role="tablist">
         {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => pick(k)}>{l}{k === "legacy" && <span className="tag gold tab-tag">Aperçu</span>}</button>)}
       </div>
@@ -165,7 +168,7 @@ function Profil({ c, onChange, editable }: SubProps) {
             onApply={(which, link, split) => onChange(which === "main" ? { talentLink: link, talents: split } : { talentLink2: link, talents2: split })} />
         )}
         {cl && (
-          <div className="builds">
+          <div className={`builds${view === "gauges" ? " two" : ""}`}>
             <Build id="main" title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
             <Build id="off" title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
@@ -220,10 +223,10 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
             })}
           </select>
         </div>
-        <div className="fld"><label htmlFor={`f-tal-${id}`}>Répartition (ex. 9/37/5)</label>
-          <input id={`f-tal-${id}`} className="num" type="text" placeholder="0/0/0" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={talents} onChange={e => onChange({ talents: e.target.value })} />
+        <div className="fld"><label htmlFor={`f-tal-${id}`}>Répartition</label>
+          <input id={`f-tal-${id}`} className="num" type="text" placeholder="ex. 9/37/5" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={talents} onChange={e => onChange({ talents: e.target.value })} />
         </div>
-        <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build (calculateur ForeverChanges)</label>
+        <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build</label>
           <input id={`f-link-${id}`} type="url" placeholder={`https://foreverchanges.pro/talents/${cl?.slug ?? ""}…`} value={link} onChange={e => setLink(e.target.value)} />
         </div>
       </div>

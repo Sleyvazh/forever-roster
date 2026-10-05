@@ -4,7 +4,7 @@ import { and, asc, eq, inArray, max, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PROFESSION_SKILL_LINES } from "@forever/game-data";
-import { characterRecipes, characters, gameRecipes, groupCharacters, users } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, groupCharacters, groups, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -34,8 +34,11 @@ export async function characterRoutes(app: FastifyInstance) {
 
   app.get("/", async (req) => {
     const u = currentUser(req);
-    const rows = await db.select().from(characters).where(eq(characters.userId, u.id)).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
-    return { characters: rows.map(toApi) };
+    const rows = await db.select({ c: characters, groupId: groupCharacters.groupId, groupName: groups.name, isMain: groupCharacters.isMain }).from(characters)
+      .leftJoin(groupCharacters, eq(groupCharacters.characterId, characters.id)).leftJoin(groups, eq(groups.id, groupCharacters.groupId))
+      .where(eq(characters.userId, u.id)).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
+    // Groupe où le perso est rangé (un seul, lot E) et s'il y est le main du joueur
+    return { characters: rows.map(r => ({ ...toApi(r.c), group: r.groupId ? { id: r.groupId, name: r.groupName!, isMain: !!r.isMain } : null })) };
   });
 
   app.post("/", async (req, reply) => {

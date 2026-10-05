@@ -16,10 +16,10 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   const me = useMe();
   const myId = me.data?.user?.id;
   const mine = signups.find(s => s.mine);
-  // Mes persos joués dans le groupe (main en tête) ; s'il n'y en a aucun, tous mes persos (s'inscrire l'ajoute au groupe)
+  // Mes persos rangés dans le groupe (main en tête), puis ceux sans groupe (s'inscrire les y range)
   const allMine = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
   const here = groupChars.filter(c => c.userId === myId && c.cls).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
-  const myChars = here.length ? here : (allMine.data?.characters ?? []).filter(c => c.cls);
+  const myChars = [...here, ...(allMine.data?.characters ?? []).filter(c => c.cls && !c.group && !here.some(h => h.id === c.id))];
 
   const [charId, setCharId] = useState<string>("");
   const [spec, setSpec] = useState<string>("");

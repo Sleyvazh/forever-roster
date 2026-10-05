@@ -165,7 +165,8 @@ export const groupMembers = pgTable("group_members", {
 
 /**
  * Persos qu'un joueur fait jouer dans un groupe, et son perso principal (main) dans ce groupe : exactement un main
- * par joueur qui a au moins un perso dans le groupe. Un perso hors du groupe n'apparaît que dans les Artisans.
+ * par joueur qui a au moins un perso dans le groupe. Un perso est rangé dans un seul groupe, ou aucun.
+ * Un perso hors du groupe n'apparaît que dans les Artisans.
  */
 export const groupCharacters = pgTable("group_characters", {
   groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
@@ -177,6 +178,8 @@ export const groupCharacters = pgTable("group_characters", {
 }, t => [
   primaryKey({ columns: [t.groupId, t.characterId] }),
   uniqueIndex("group_characters_main_uq").on(t.groupId, t.userId).where(sql`${t.isMain}`),
+  /** Un perso est rangé dans un seul groupe (lot E). */
+  uniqueIndex("group_characters_char_uq").on(t.characterId),
   index("group_characters_user_idx").on(t.userId),
 ]);
 

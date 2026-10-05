@@ -1,16 +1,29 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { characters, groupCharacters } from "../db/schema";
+import { characters, groupCharacters, groups } from "../db/schema";
+import { bus } from "./events";
+import { badRequest } from "./http";
 
 /**
- * Persos d'un joueur dans un groupe. Règle tenue ici : un joueur qui a au moins un perso dans le groupe y a
- * exactement un main (son premier perso ajouté, ou celui qu'il choisit ; un autre le remplace s'il est retiré).
+ * Persos d'un joueur dans un groupe. Règles tenues ici :
+ *  - un perso est rangé dans un seul groupe (ou aucun) ;
+ *  - un joueur qui a au moins un perso dans le groupe y a exactement un main (son premier perso ajouté, ou celui
+ *    qu'il choisit ; un autre le remplace s'il est retiré).
  */
 
 type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
 
-/** Ajoute un perso au groupe (sans effet s'il y est déjà) ; il devient main si le joueur n'en a pas. */
+/**
+ * Range un perso dans le groupe (sans effet s'il y est déjà) ; il devient main si le joueur n'en a pas.
+ * S'il était dans un autre groupe, il le quitte (ses inscriptions aux raids restent).
+ */
 export async function assignCharacter(db: Tx, groupId: string, characterId: string, userId: string, main = false) {
+  const [other] = await db.select().from(groupCharacters)
+    .where(and(eq(groupCharacters.characterId, characterId), ne(groupCharacters.groupId, groupId)));
+  if (other) {
+    await unassignCharacter(db, other.groupId, characterId, userId);
+    bus.group({ t: "chars", g: other.groupId });
+  }
   const [hasMain] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
     .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, userId), eq(groupCharacters.isMain, true)));
   await db.insert(groupCharacters).values({ groupId, characterId, userId, isMain: !hasMain && !main })
@@ -40,6 +53,22 @@ export async function promoteMain(db: Tx, groupId: string, userId: string) {
     .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, userId)))
     .orderBy(asc(characters.sortOrder), asc(characters.createdAt)).limit(1);
   if (next) await setMain(db, groupId, next.id, userId);
+}
+
+/**
+ * Perso choisi pour une inscription ou une réservation dans ce groupe : rangé dans le groupe s'il n'en a aucun,
+ * refusé s'il est rangé dans un autre (le joueur le déplace lui-même dans Mes persos).
+ */
+export async function ensureInGroup(db: Tx, groupId: string, characterId: string, userId: string) {
+  const [row] = await db.select({ groupId: groupCharacters.groupId, groupName: groups.name, name: characters.name }).from(groupCharacters)
+    .innerJoin(groups, eq(groups.id, groupCharacters.groupId)).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+    .where(eq(groupCharacters.characterId, characterId));
+  if (row && row.groupId !== groupId) throw badRequest(`${row.name} est rangé dans « ${row.groupName} ». Change son groupe dans Mes persos, ou choisis un autre perso.`);
+  if (!row) {
+    await assignCharacter(db, groupId, characterId, userId);
+    return true;
+  }
+  return false;
 }
 
 /** Jointure « perso dans ce groupe » pour les requêtes sur les persos d'un groupe. */

@@ -13,17 +13,15 @@ const hm = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", 
 export function LootModePicker({ mode, hidden, onChange, idPrefix = "lt" }: {
   mode: LootMode; hidden: boolean; onChange: (mode: LootMode, hidden: boolean) => void; idPrefix?: string;
 }) {
+  // Trois choix en un sélecteur ; l'explication seulement pour le choix fait (lot E)
   return (
     <div className="lt-pick">
-      <div className="lt-modes" role="radiogroup" aria-label="Butin">
+      <div className="seg" role="radiogroup" aria-label="Butin" id={`${idPrefix}-mode`}>
         {LOOT_MODES.map(m => (
-          <label key={m} className={`lt-mode${mode === m ? " on" : ""}`}>
-            <input type="radio" name={`${idPrefix}-mode`} value={m} checked={mode === m} onChange={() => onChange(m, hidden)} />
-            <b>{LOOT_MODE_LABEL[m]}</b><span>{LOOT_MODE_HINT[m]}</span>
-          </label>
+          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""} onClick={() => onChange(m, hidden)}>{LOOT_MODE_LABEL[m]}</button>
         ))}
-        <span className="lt-mode off" aria-disabled="true"><b>DKP</b><span>Bientôt.</span></span>
       </div>
+      <p className="hint lt-hint">{LOOT_MODE_HINT[mode]}</p>
       {mode === "softres" && (
         <label className="lt-check"><input type="checkbox" checked={hidden} onChange={e => onChange(mode, e.target.checked)} />
           Réservations cachées jusqu'à la fermeture <span className="muted small">(sinon visibles de tous)</span></label>
@@ -161,32 +159,33 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => { if (data && !s) setS(data.settings); }, [data, s]);
   if (!s) return null;
-  const save = async () => {
-    setMsg(null);
+  // Chaque réglage s'enregistre dès qu'il change (lot E), comme le reste du site
+  const change = async (next: LootSettings) => {
+    setS(next); setMsg(null);
     try {
-      const r = await put<{ settings: LootSettings }>(`/groups/${groupId}/loot-settings`, s);
+      const r = await put<{ settings: LootSettings }>(`/groups/${groupId}/loot-settings`, next);
       qc.setQueryData(["loot-settings", groupId], r); setS(r.settings);
-      setMsg({ ok: true, text: "Réglages enregistrés." });
+      setMsg({ ok: true, text: "Enregistré." });
     } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Enregistrement impossible." }); }
   };
+  const setS2 = (next: LootSettings) => void change(next);
   return (
     <section className="stack admin-sec" aria-labelledby="lt-set">
       <h3 id="lt-set">Butin</h3>
       <p className="hint" style={{ margin: 0 }}>Le mode (journal, loot council, soft reserve) se choisit à la création de chaque raid. Ici, les réglages communs.</p>
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="lt-count">Réservations par perso</label>
-          <select id="lt-count" value={s.srCount} onChange={e => setS({ ...s, srCount: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-close">Fermeture des réservations</label>
-          <select id="lt-close" value={s.srCloseMinutes} onChange={e => setS({ ...s, srCloseMinutes: Number(e.target.value) })}>
+          <select id="lt-count" value={s.srCount} onChange={e => setS2({ ...s, srCount: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
+        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-close">Fermeture SR</label>
+          <select id="lt-close" value={s.srCloseMinutes} onChange={e => setS2({ ...s, srCloseMinutes: Number(e.target.value) })}>
             {[[0, "à l'heure du raid"], [30, "30 min avant"], [60, "1 h avant"], [120, "2 h avant"], [1440, "la veille"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select></div>
-        <label className="lt-check"><input type="checkbox" checked={s.srPlus} onChange={e => setS({ ...s, srPlus: e.target.checked })} /> SR+ : bonus au jet</label>
+        <label className="lt-check"><input type="checkbox" checked={s.srPlus} onChange={e => setS2({ ...s, srPlus: e.target.checked })} /> SR+ : bonus au jet</label>
         {s.srPlus && <div className="fld" style={{ flex: "0 1 140px" }}><label htmlFor="lt-step">Bonus par raid</label>
-          <select id="lt-step" value={s.srPlusStep} onChange={e => setS({ ...s, srPlusStep: Number(e.target.value) })}>{[5, 10, 15, 20, 25].map(n => <option key={n} value={n}>+{n}</option>)}</select></div>}
-        <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS({ ...s, mainsFirst: e.target.checked })} /> Mains avant alts</label>
-        <button type="button" className="btn primary sm" onClick={() => void save()}>Enregistrer</button>
+          <select id="lt-step" value={s.srPlusStep} onChange={e => setS2({ ...s, srPlusStep: Number(e.target.value) })}>{[5, 10, 15, 20, 25].map(n => <option key={n} value={n}>+{n}</option>)}</select></div>}
+        <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS2({ ...s, mainsFirst: e.target.checked })} /> Mains avant alts</label>
       </div>
-      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} role="status">{msg.text}</div>}
+      {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
       <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>
     </section>
   );

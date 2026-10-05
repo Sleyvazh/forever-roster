@@ -59,7 +59,7 @@ export function AccountPage() {
       {params.get("bnet") === "linked" && <div className="alert ok">Ton compte Battle.net est maintenant lié.</div>}
       {params.get("discord") === "linked" && <div className="alert ok">Ton compte Discord est maintenant lié : tes clics dans le bot t'inscrivent avec tes persos.</div>}
       {DISCORD_ERROR[params.get("error") ?? ""] && <div className="alert error" role="alert">{DISCORD_ERROR[params.get("error")!]}</div>}
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, alignItems: "start" }}>
+      <div className="grid acct-grid">
         <Profile name={user.displayName} onDone={refreshMe} />
         <Section title="Image du compte" hint="Visible par toi et les membres de tes groupes.">
           <ImageUpload title="Avatar" hint="PNG, JPEG ou WebP. Recadrée en 200 × 200, métadonnées supprimées." currentId={user.avatarId} round
@@ -85,7 +85,7 @@ function Profile({ name, onDone }: { name: string; onDone: () => void }) {
       <form className="stack" onSubmit={(e: FormEvent) => { e.preventDefault(); void a.run(async () => { await patch("/account/profile", { displayName: v }); onDone(); return "Pseudo enregistré."; }); }}>
         <div className="fld"><label htmlFor="dn">Pseudo affiché</label><input id="dn" type="text" minLength={2} maxLength={32} required value={v} onChange={e => setV(e.target.value)} /></div>
         {a.view}
-        <button className="btn" type="submit">Enregistrer</button>
+        <button className="btn" type="submit" style={{ justifySelf: "start" }}>Enregistrer</button>
       </form>
     </Section>
   );
@@ -172,7 +172,7 @@ function Password({ hasPassword, canSet, onDone }: { hasPassword: boolean; canSe
         <div className="fld"><label htmlFor="np">Nouveau (12 caractères min.)</label><input id="np" type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={next} onChange={e => setNext(e.target.value)} /></div>
         <div className="fld"><label htmlFor="np2">Confirmation</label><input id="np2" type="password" autoComplete="new-password" required value={conf} onChange={e => setConf(e.target.value)} /></div>
         {a.view}
-        <button className="btn" type="submit">{hasPassword ? "Changer le mot de passe" : "Définir un mot de passe"}</button>
+        <button className="btn" type="submit" style={{ justifySelf: "start" }}>{hasPassword ? "Changer le mot de passe" : "Définir un mot de passe"}</button>
       </form>
     </Section>
   );

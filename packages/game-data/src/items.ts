@@ -139,3 +139,15 @@ export function gearStats(
     total: slots.length,
   };
 }
+
+
+/** Type d'emplacement « arme à deux mains » (INVTYPE_2HWEAPON) : la main gauche est alors vide. */
+export const INVTYPE_2H = 17;
+
+type GearCur = { cur?: string; curId?: number | null; q?: number | null };
+/** Retire l'objet porté d'un emplacement (l'objectif BiS et la case « obtenu » restent). */
+export function withoutCurrent<T extends GearCur>(e: T | undefined): Omit<T, "cur" | "curId" | "q"> | undefined {
+  if (!e) return e;
+  const { cur: _c, curId: _i, q: _q, ...rest } = e;
+  return rest;
+}

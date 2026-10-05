@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
 import { characters, discordDeletions, groupCharacters, raids, raidSignups } from "../db/schema";
-import { assignCharacter } from "./group-characters";
+import { ensureInGroup } from "./group-characters";
 import { badRequest } from "./http";
 import { bus } from "./events";
 
@@ -41,19 +41,15 @@ export async function signUpSiteUser(db: Db, raidId: string, user: { id: string;
   } else if (input.status !== "absent") {
     throw badRequest("Choisis le personnage avec lequel tu t'inscris.");
   }
+  // Le perso doit être rangé dans ce groupe ; sans groupe, il y entre (main si le joueur n'en a pas encore)
+  if (characterId) {
+    const [r] = await db.select({ groupId: raids.groupId }).from(raids).where(eq(raids.id, raidId));
+    if (r && await ensureInGroup(db, r.groupId, characterId, user.id)) bus.group({ t: "chars", g: r.groupId });
+  }
   const values = { raidId, userId: user.id, displayName: user.displayName, characterId, cls, spec, status: input.status, note: input.note ?? "", updatedAt: new Date() };
   const [row] = await db.insert(raidSignups).values(values)
     .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.userId], set: values })
     .returning();
-  // S'inscrire avec un perso le fait entrer dans le groupe (main si le joueur n'en a pas encore)
-  if (characterId) {
-    const [r] = await db.select({ groupId: raids.groupId }).from(raids).where(eq(raids.id, raidId));
-    if (r) {
-      const before = await db.$count(groupCharacters, and(eq(groupCharacters.groupId, r.groupId), eq(groupCharacters.characterId, characterId)));
-      await assignCharacter(db, r.groupId, characterId, user.id);
-      if (!before) bus.group({ t: "chars", g: r.groupId });
-    }
-  }
   await touchRaid(db, raidId);
   return row!;
 }
@@ -97,14 +93,18 @@ export async function listSignups(db: Db, raidId: string): Promise<SignupView[]>
 
 /** Nombre d'inscrits par statut pour une liste de raids, et le statut de l'utilisateur courant. */
 export async function signupSummary(db: Db, raidIds: string[], userId: string) {
-  if (!raidIds.length) return new Map<string, { counts: Partial<Record<SignupStatus, number>>; mine: SignupStatus | null }>();
-  const rows = await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, n: sql<number>`count(*)::int`, mine: sql<boolean>`bool_or(${raidSignups.userId} = ${userId})` })
-    .from(raidSignups).where(inArray(raidSignups.raidId, raidIds)).groupBy(raidSignups.raidId, raidSignups.status);
-  const out = new Map<string, { counts: Partial<Record<SignupStatus, number>>; mine: SignupStatus | null }>();
+  type Summary = { counts: Partial<Record<SignupStatus, number>>; mine: SignupStatus | null; roles: { Tank: number; Heal: number; DPS: number } };
+  if (!raidIds.length) return new Map<string, Summary>();
+  const rows = await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, spec: raidSignups.spec, n: sql<number>`count(*)::int`, mine: sql<boolean>`bool_or(${raidSignups.userId} = ${userId})` })
+    .from(raidSignups).where(inArray(raidSignups.raidId, raidIds)).groupBy(raidSignups.raidId, raidSignups.status, raidSignups.spec);
+  const out = new Map<string, Summary>();
   for (const r of rows) {
-    const e = out.get(r.raidId) ?? { counts: {}, mine: null };
-    e.counts[r.status] = r.n;
+    const e = out.get(r.raidId) ?? { counts: {}, mine: null, roles: { Tank: 0, Heal: 0, DPS: 0 } };
+    e.counts[r.status] = (e.counts[r.status] ?? 0) + r.n;
     if (r.mine) e.mine = r.status;
+    // Rôles de ceux qui viennent (présent, en retard)
+    const role = r.spec ? roleOf(r.spec) : null;
+    if (role && (r.status === "present" || r.status === "late")) e.roles[role] += r.n;
     out.set(r.raidId, e);
   }
   return out;

@@ -69,7 +69,8 @@ const QUICK: SignupStatus[] = ["present", "tentative", "absent"];
 
 function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
   const qc = useQueryClient();
-  const usable = chars.filter(c => c.cls);
+  // Persos rangés dans le groupe du raid, ou sans groupe (un perso est rangé dans un seul groupe)
+  const usable = chars.filter(c => c.cls && (!c.group || c.group.id === raid.groupId));
   // Main du groupe en tête de liste et choisi par défaut
   usable.sort((a, b) => Number(b.id === raid.mainId) - Number(a.id === raid.mainId));
   const [charId, setCharId] = useState(raid.mine?.characterId ?? usable[0]?.id ?? "");
@@ -117,8 +118,8 @@ const Counts = ({ r }: { r: WeekRaid }) => (
 
 function TodoItem({ t }: { t: Exclude<WeekTodo, { kind: "signup" }> }) {
   if (t.kind === "assign") return (
-    <li className="wk-item assign"><span>Choisis tes persos dans <b>{t.groupName}</b><span className="sub">Tu n'y joues encore aucun perso : coche-les, le premier devient ton main.</span></span>
-      <Link className="btn sm" to={`/groups/${t.groupId}/persos`}>Choisir</Link></li>
+    <li className="wk-item assign"><span>Range un perso dans <b>{t.groupName}</b><span className="sub">Tu n'y joues encore aucun perso : dans Mes persos, choisis son groupe en haut de sa fiche (le premier devient ton main).</span></span>
+      <Link className="btn sm" to="/persos">Choisir</Link></li>
   );
   if (t.kind === "sync") return (
     <li className="wk-item sync"><span><b>{t.name}</b> n'est pas synchronisé depuis {t.days} jours<span className="sub">En jeu : ta touche de synchro, Ctrl+C, puis Ctrl+V sur n'importe quelle page du site.</span></span>
@@ -231,7 +232,8 @@ export function StartSteps({ onCreate, compact }: { onCreate: () => void; compac
   const current = steps.findIndex(x => !x.done);
 
   if (compact) {
-    if (hidden || current < 0 || !week.data) return null;
+    // Plus que l'étape facultative (l'addon) : le bandeau disparaît de lui-même
+    if (hidden || current < 0 || !week.data || steps.slice(current).every(x => x.optional)) return null;
     const next = steps[current]!;
     return (
       <div className="steps-line" role="note" aria-label="Pour bien démarrer">

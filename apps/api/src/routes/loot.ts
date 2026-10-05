@@ -5,7 +5,7 @@ import { z } from "zod";
 import { characters, gameItems, groups, lootCatalog, raids, softReserves } from "../db/schema";
 import { audit } from "../lib/audit";
 import { bus } from "../lib/events";
-import { assignCharacter } from "../lib/group-characters";
+import { ensureInGroup } from "../lib/group-characters";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { groupLootSettings, softReserveView, srClosesAt } from "../lib/loot";
@@ -87,9 +87,9 @@ export async function lootRoutes(app: FastifyInstance) {
     if (!item) throw badRequest("Objet inconnu.");
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(softReserves).where(and(eq(softReserves.raidId, r.id), eq(softReserves.characterId, c.id)));
     if (n >= s.srCount) throw badRequest(`Déjà ${s.srCount} réservation${s.srCount > 1 ? "s" : ""} pour ce perso : retires-en une avant.`);
+    // Réserver avec un perso le fait entrer dans le groupe, comme s'inscrire (refusé s'il est rangé dans un autre)
+    await ensureInGroup(db, p.id, c.id, u.id);
     await db.insert(softReserves).values({ raidId: r.id, characterId: c.id, userId: u.id, itemId: item.id }).onConflictDoNothing();
-    // Réserver avec un perso le fait entrer dans le groupe, comme s'inscrire
-    await assignCharacter(db, p.id, c.id, u.id);
     bus.group({ t: "raid", g: p.id, r: r.id });
     return softReserveView(db, r, { id: u.id, officer: role !== "member" });
   });

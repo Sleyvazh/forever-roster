@@ -41,17 +41,17 @@ const Mark = ({ c }: { c: Character }) => c.isMain
 function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: string; groupName: string; assigned: Character[]; onError: (m: string | null) => void }) {
   const qc = useQueryClient();
   const mineQ = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
-  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const mine = mineQ.data?.characters ?? [];
-  const here = new Map(assigned.map(c => [c.id, c]));
   const main = assigned.find(c => c.isMain);
+  // Un perso est rangé dans un seul groupe (lot E) : ici, on ne propose que ceux qui n'en ont pas
+  const free = mine.filter(c => !c.group);
 
-  const set = async (id: string, body: { assigned: boolean; main?: boolean }) => {
+  const add = async (id: string) => {
     setBusy(id); onError(null);
     try {
-      await put(`/groups/${groupId}/characters/${id}`, body);
-      await Promise.all([qc.invalidateQueries({ queryKey: ["group-chars", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
+      await put(`/groups/${groupId}/characters/${id}`, { assigned: true });
+      await Promise.all([qc.invalidateQueries({ queryKey: ["group-chars", groupId] }), qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
     } catch (e) { onError(e instanceof ApiError ? e.message : "Modification impossible."); }
     finally { setBusy(null); }
   };
@@ -64,48 +64,25 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
     return (
       <section className="gm-panel gm-empty" aria-label="Mes persos dans ce groupe">
         <h3>Tu ne joues encore aucun perso dans {groupName}</h3>
-        <p className="hint">Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer).</p>
+        <p className="hint">{free.length ? "Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer dans Mes persos)." : "Tes persos sont tous rangés dans un autre groupe. Change le groupe de l'un d'eux dans Mes persos."}</p>
         <div className="gm-chips">
-          {mine.map(c => (
-            <button key={c.id} type="button" className="gm-chip" disabled={!!busy} onClick={() => void set(c.id, { assigned: true })}>
+          {free.map(c => (
+            <button key={c.id} type="button" className="gm-chip" disabled={!!busy} onClick={() => void add(c.id)}>
               <Face c={c} size={20} /><span style={{ color: color(c) }}>{c.name}</span> +
             </button>
           ))}
+          <Link className="btn ghost sm" to="/persos">Mes persos</Link>
         </div>
       </section>
     );
   }
-  if (!editing) {
-    return (
-      <div className="gm-fold">
-        <span className="muted small">Tes persos ici :</span>
-        {main && <b style={{ color: color(main) }}>★ {main.name}</b>}
-        {assigned.filter(c => !c.isMain).map(c => <span key={c.id}><span className="muted">· </span><span style={{ color: color(c) }}>{c.name}</span></span>)}
-        <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setEditing(true)}>Modifier</button>
-      </div>
-    );
-  }
   return (
-    <section className="gm-panel" aria-label="Mes persos dans ce groupe">
-      <header><h3>Mes persos dans ce groupe</h3><button type="button" className="btn ghost sm" onClick={() => setEditing(false)}>Replier</button></header>
-      <p className="hint">Coche les persos que tu joues dans <b>{groupName}</b>. Ton <b>main</b> est proposé en premier pour t'inscrire aux raids et compte dans le roster par rôle. Les autres persos restent visibles dans les Artisans.</p>
-      <ul className="gm-mines">
-        {mine.map(c => {
-          const g = here.get(c.id);
-          return (
-            <li key={c.id} className={`gm-mine${g ? "" : " out"}`}>
-              <Face c={c} size={28} />
-              <span className="gm-mn"><b style={{ color: color(c) }}>{c.name}</b><small>{[c.cls || "classe à choisir", c.spec1].filter(Boolean).join(" · ")}</small></span>
-              <button type="button" className={`gm-chk${g ? " on" : ""}`} aria-pressed={!!g} disabled={busy === c.id}
-                onClick={() => void set(c.id, { assigned: !g })}>{g ? "✓ Joué ici" : "+ Ajouter"}</button>
-              <button type="button" className={`gm-main${g?.isMain ? " on" : ""}`} aria-pressed={!!g?.isMain} disabled={!g || g.isMain || busy === c.id}
-                title={g ? (g.isMain ? "Ton main dans ce groupe" : "En faire ton main") : "Ajoute d'abord ce perso au groupe"}
-                onClick={() => void set(c.id, { assigned: true, main: true })}>{g?.isMain ? "★ Main" : "☆ Main"}</button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <div className="gm-fold">
+      <span className="muted small">Tes persos ici :</span>
+      {main && <b style={{ color: color(main) }}>★ {main.name}</b>}
+      {assigned.filter(c => !c.isMain).map(c => <span key={c.id}><span className="muted">· </span><span style={{ color: color(c) }}>{c.name}</span></span>)}
+      <Link className="btn ghost sm" style={{ marginLeft: "auto" }} to="/persos">Gérer dans Mes persos</Link>
+    </div>
   );
 }
 

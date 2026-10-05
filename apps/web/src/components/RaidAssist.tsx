@@ -74,6 +74,8 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
   const byKey = new Map(entries.map(e => [e.key, e]));
 
   const [more, setMore] = useState<Role | null>(null);
+  // Replié : une ligne par rôle (lot E) ; déplié : les propositions et le banc
+  const [open, setOpen] = useState(false);
   // « Demander à X » : le bot écrit au joueur (Discord lié, MP du bot gardés, salon lié, raid à venir)
   const askOf = new Map((reach?.asks ?? []).map(a => [a.characterId, a]));
   const dmOk = new Set(reach?.dmUsers ?? []);
@@ -99,7 +101,23 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
       <div className="ra-head">
         <h3 id="ra-title">Besoins <span className="muted small">raid à {size}</span></h3>
         {coming.length > 0 && <span className="hint">{coming.length} inscrit{coming.length > 1 ? "s" : ""} « présent / en retard » pour {size} places</span>}
+        <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? "Replier" : "Voir les propositions"}</button>
       </div>
+      {!open && (
+        <div className="ra-sum">
+          {ROLES.map(r => {
+            const n = sugg.filter(x => x.role === r).length;
+            return (
+              <button key={r} type="button" className={`ra-sumr ${gaps[r] > 0 ? "low" : gaps[r] < 0 ? "over" : "ok"}`} onClick={() => setOpen(true)}>
+                <span className={`role ${r}`}>{r}</span><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
+                <small>{gaps[r] > 0 ? `il en manque ${gaps[r]}${n ? ` · ${n} proposition${n > 1 ? "s" : ""}` : ""}` : gaps[r] < 0 ? `${-gaps[r]} de trop` : "complet"}</small>
+              </button>
+            );
+          })}
+          {toBench.length > 0 && <button type="button" className="ra-sumr low" onClick={() => setOpen(true)}><b>Banc</b><small>{toBench.length} à y mettre</small></button>}
+        </div>
+      )}
+      {open && <>
       <div className="ra-cols">
         {ROLES.map(r => {
           const list = sugg.filter(s => s.role === r);
@@ -136,6 +154,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
           </ul>
         </div>
       )}
+      </>}
     </section>
   );
 }

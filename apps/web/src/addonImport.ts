@@ -2,7 +2,7 @@
  * Application d'un export de l'addon (bloc FRC d'un perso) à une fiche : partagée par la fiche (« Importer depuis l'addon »)
  * et la page Addon (tous les persos d'un coup). L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
  */
-import { isValidCombo, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, SIGNUP_LABEL, type CharacterExport } from "@forever/game-data";
+import { GEAR_SLOTS, INVTYPE_2H, isValidCombo, withoutCurrent, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, SIGNUP_LABEL, type CharacterExport } from "@forever/game-data";
 import { ApiError, get, patch, post, put, type Character, type GameItem } from "./api";
 import { linkFromRanks, type Talent } from "./components/TalentTrees";
 
@@ -49,10 +49,16 @@ export async function buildPatch(c: Character, d: CharacterExport, parts: Set<Pa
     const ids = [...new Set(Object.values(d.gear))];
     const { items } = await get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${ids.join(",")}`);
     const gear = { ...c.gear };
-    for (const [slot, id] of Object.entries(d.gear)) {
-      const it = items[id!];
-      gear[slot] = { ...gear[slot], cur: it?.name ?? `Objet ${id}`, curId: it ? id : null, q: it?.quality ?? null };
+    // L'export liste ce qui est porté : un emplacement absent est vide en jeu (objet retiré, main gauche sous une arme à
+    // deux mains). L'objectif BiS reste.
+    for (const slot of GEAR_SLOTS) {
+      const id = d.gear[slot];
+      const it = id ? items[id] : undefined;
+      if (id) gear[slot] = { ...gear[slot], cur: it?.name ?? `Objet ${id}`, curId: it ? id : null, q: it?.quality ?? null };
+      else if (gear[slot]) gear[slot] = withoutCurrent(gear[slot])!;
     }
+    const main = d.gear["Main Hand"];
+    if (main && items[main]?.inventoryType === INVTYPE_2H && gear["Off Hand"]) gear["Off Hand"] = withoutCurrent(gear["Off Hand"])!;
     patch.gear = gear;
   }
   if (parts.has("professions") && d.professions.length) patch.professions = professionsFromExport(d.professions);

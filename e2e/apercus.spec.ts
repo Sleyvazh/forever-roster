@@ -116,6 +116,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   // 1. Page du raid : besoins, propositions, banc
   await page.goto(`/groups/${group}/raids/${raid}`);
   await expect(page.locator(".ra")).toContainText("raid à 10");
+  await page.locator(".ra").getByRole("button", { name: "Voir les propositions" }).click();
   await page.evaluate(() => { const r = document.querySelector(".ra")!.getBoundingClientRect(); window.scrollTo(0, r.top + window.scrollY - 90); });
   await page.setViewportSize({ width: 1360, height: 1200 });
   await page.screenshot({ path: `${OUT}/apercu-compo-assistee.png` });
@@ -124,10 +125,12 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await page.screenshot({ path: `${OUT}/apercu-format.png` });
 
   // 1 bis. Lot D2 : pas encore répondu, relance, demandes ; réglage dans l'Administration
+  await page.locator(".ra").screenshot({ path: `${OUT}/apercu-demander.png` });
+  await page.getByRole("tab", { name: /Inscriptions/ }).click();
   await expect(page.locator(".rr")).toContainText("Pas encore répondu");
   await page.locator(".rr").screenshot({ path: `${OUT}/apercu-sans-reponse.png` });
-  await page.locator(".ra").screenshot({ path: `${OUT}/apercu-demander.png` });
   await page.goto(`/groups/${group}/admin`);
+  await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
   const dc = page.locator("section[aria-labelledby=dc-title]");
   await expect(dc).toContainText("Relances");
   await dc.screenshot({ path: `${OUT}/apercu-reglage-relances.png` });
@@ -179,7 +182,8 @@ test("tour des pages", async ({ page }) => {
     ["persos", "/persos"], ["perso-profil", `/persos/${thalwen}`], ["perso-metiers", `/persos/${thalwen}/metiers`], ["perso-equipement", `/persos/${thalwen}/equipement`],
     ["perso-notes", `/persos/${thalwen}/notes`], ["groupes", "/groups"], ["groupe-raids", `/groups/${group}`], ["groupe-membres", `/groups/${group}/membres`],
     ["groupe-persos", `/groups/${group}/persos`], ["groupe-artisans", `/groups/${group}/artisans`], ["groupe-presence", `/groups/${group}/presence`],
-    ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["compte", "/account"], ["addon", "/addon"],
+    ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
+    ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account"], ["addon", "/addon"],
   ];
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
@@ -190,4 +194,23 @@ test("tour des pages", async ({ page }) => {
       await page.screenshot({ path: `${OUT_T}/${name}${suffix}.png`, fullPage: true });
     }
   }
+  // Formulaire « Nouveau raid » et sélecteur de date
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto(`/groups/${group}`);
+  await page.getByRole("button", { name: "+ Nouveau raid" }).click();
+  await page.fill("#gr-name", "Molten Core");
+  await page.locator(".dt-day").nth(2).click();
+  await page.locator(".gr-tog").click();
+  await page.locator(".gr-form").screenshot({ path: `${OUT_T}/nouveau-raid.png` });
+  await page.getByRole("button", { name: "Autre date" }).click();
+  await page.locator(".gr-form").screenshot({ path: `${OUT_T}/nouveau-raid-calendrier.png` });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.screenshot({ path: `${OUT_T}/nouveau-raid-mobile.png`, fullPage: true });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto(`/groups/${group}/raids/${raid}/reglages`);
+  await page.locator("#rw").click();
+  await page.screenshot({ path: `${OUT_T}/raid-date.png` });
+  await page.goto(`/groups/${group}/membres`);
+  await page.locator(".mb-menu summary").first().click();
+  await page.screenshot({ path: `${OUT_T}/membres-menu.png` });
 });

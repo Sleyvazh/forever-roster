@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 20, date: "2026-10-05", kind: "site", title: "Un site plus simple : raids, persos par groupe, page du raid en onglets",
+    text: "Onglet Raids : la liste d'abord (à venir / passés), « + Nouveau raid » ouvre un formulaire court avec les jours en boutons et l'heure en 24 h ; « Chaque semaine » en fait un raid récurrent. Mes persos se range par groupe : chaque perso a un groupe et tu choisis ton main sur sa fiche. La page du raid passe en onglets (Compo, Inscriptions, Butin, Bilan, Réglages). Et l'import de l'addon vide les emplacements retirés en jeu, main gauche comprise sous une arme à deux mains." },
   { n: 19, date: "2026-10-05", kind: "site", title: "Spé « Fury Tank » retirée",
     text: "Elle n'existera pas sur Forever : les guerriers qui l'avaient passent en Protection (ils restent tanks dans les compos). Les chamans ont aussi leurs icônes de spé, dont Enhancement Tank." },
   { n: 18, date: "2026-10-05", kind: "bot", title: "Le bot relance ceux qui n'ont pas répondu",

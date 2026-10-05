@@ -166,8 +166,9 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".itip")).toContainText("Connu par : Tournicoti (toi)");
     await page.mouse.move(0, 0);
     // Données pour l'addon : le patron Warbear Woolies (objet 15090) et qui le connaît
-    await page.getByRole("tab", { name: "Raids" }).click();
-    await page.getByText("Données pour l'addon").click();
+    await page.getByRole("tab", { name: "Administration" }).click();
+    await page.locator(".adm-nav").getByRole("button", { name: "Données pour l'addon" }).click();
+    await page.locator(".export summary").click();
     await expect(page.locator("#ga-text")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
   });
 
@@ -229,10 +230,18 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(mine).toContainText("Tu ne joues encore aucun perso dans Les Testeurs");
     await mine.getByRole("button", { name: /Tournicoti/ }).click();
     await expect(page.locator(".gm-fold")).toContainText("★ Tournicoti");
-    await page.locator(".gm-fold").getByRole("button", { name: "Modifier" }).click();
-    const panel = page.getByRole("region", { name: "Mes persos dans ce groupe" });
-    await panel.locator(".gm-mine").filter({ hasText: "Greta" }).getByRole("button", { name: "+ Ajouter" }).click();
-    await expect(panel.locator(".gm-mine").filter({ hasText: "Greta" }).getByRole("button", { name: "✓ Joué ici" })).toBeVisible();
+    // Greta : rangée dans le groupe depuis Mes persos (un perso = un groupe), en alt
+    await page.locator(".gm-fold").getByRole("link", { name: "Gérer dans Mes persos" }).click();
+    await expect(page.locator(".ch-sec").filter({ hasText: "Les Testeurs" })).toContainText("Tournicoti");
+    await page.locator(".card").filter({ hasText: "Greta" }).click();
+    await expect(page.locator("#ch-group")).toHaveValue("");
+    await page.selectOption("#ch-group", { label: "Les Testeurs" });
+    await expect(page.locator(".ch-sec").filter({ hasText: "Les Testeurs" })).toContainText("Greta");
+    await expect(page.locator(".ch-gbar").getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/persos-par-groupe.png", fullPage: true });
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: /Les Testeurs/ }).click();
+    await page.getByRole("tab", { name: "Personnages" }).click();
     await expect(page.locator(".grow").filter({ hasText: "Greta" })).toContainText("alt");
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/mains-alts.png", fullPage: true });
     // Mains seulement : l'alt disparaît ; vue par joueur
@@ -243,28 +252,32 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".gm-player")).toHaveCount(1);
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/par-joueur.png", fullPage: true });
     await page.getByRole("group", { name: "Affichage" }).getByRole("button", { name: "Liste" }).click();
-    await panel.getByRole("button", { name: "Replier" }).click();
   });
 
   await test.step("raid : création, inscription et composition", async () => {
     await page.getByRole("tab", { name: "Raids" }).click();
-    await page.fill("#r-name", "Molten Core");
-    await page.locator("form").filter({ has: page.locator("#r-name") }).getByRole("button", { name: "Créer" }).click();
+    await page.getByRole("button", { name: "+ Nouveau raid" }).click();
+    await page.fill("#gr-name", "Molten Core");
+    await page.getByRole("button", { name: "Créer le raid" }).click();
     await expect(page.getByRole("heading", { name: "Molten Core" })).toBeVisible();
     // Butin : passage en soft reserve depuis la page du raid (officier)
-    await page.locator("details.lt-raid summary").click();
-    await page.locator(".lt-raid").getByText("Soft reserve", { exact: true }).click();
+    await page.getByRole("tab", { name: "Butin" }).click();
+    await page.getByRole("radio", { name: "Soft reserve" }).click();
     await expect(page.getByRole("heading", { name: "Soft reserve" })).toBeVisible();
     await expect(page.getByText("Aucune réservation pour l'instant.")).toBeVisible();
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/softres.png", fullPage: true });
     // Format du raid : 10 joueurs, 2 groupes ; besoins de la compo
+    await page.getByRole("tab", { name: "Réglages" }).click();
     await page.getByRole("group", { name: "Format du raid" }).getByRole("button", { name: "10" }).click();
+    await page.getByRole("tab", { name: "Compo" }).click();
     await expect(page.locator(".rgroup")).toHaveCount(2);
     await expect(page.locator(".ra")).toContainText("raid à 10");
+    await page.getByRole("tab", { name: /Inscriptions/ }).click();
     await page.selectOption("#su-spec", "Feral Bear");
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
     await expect(page.getByText("Tu es inscrit : Présent avec Tournicoti (Feral Bear)")).toBeVisible();
     await expect(page.locator(".su-col").filter({ hasText: "Tank" })).toContainText("Tournicoti");
+    await page.getByRole("tab", { name: "Compo" }).click();
     // L'officier place l'inscrit : le rôle affiché suit la spé choisie pour ce raid
     await page.getByRole("button", { name: "Ajouter Tournicoti au raid" }).click();
     await expect(page.getByRole("button", { name: /Groupe 1, place 1 : Tournicoti/ })).toContainText("Tank");
@@ -275,7 +288,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.mouse.move(0, 0);
     // Inscrit sans compte (fait depuis le bot Discord) : placé comme un perso du site
     await expect(page.getByRole("status").filter({ hasText: "Enregistré." })).toBeVisible();
-    const raidId = page.url().split("/raids/")[1]!;
+    const raidId = page.url().split("/raids/")[1]!.split("/")[0]!;
     const db = new pg.Client({ connectionString: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e" });
     await db.connect();
     await db.query(`INSERT INTO raid_signups (raid_id, discord_user_id, display_name, cls, spec, status) VALUES ($1, '720000000000000001', 'Chamy', 'Shaman', 'Enhancement DPS', 'present')`, [raidId]);
@@ -283,37 +296,47 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.reload();
     await page.getByRole("button", { name: "Ajouter Chamy au raid" }).click();
     await expect(page.getByRole("button", { name: /Groupe 1, place 2 : Chamy/ })).toContainText("Discord");
+    await page.locator(".rp-covd summary").click();
     await expect(page.locator(".cov .it.on").filter({ hasText: "Windfury Totem" })).toBeVisible();
 
     // Compo publiée sur Discord, puis export pour le jeu
     await page.getByRole("button", { name: "Publier la compo" }).click();
-    await expect(page.locator(".roster-pub .tag")).toHaveText("Publiée");
+    await expect(page.locator(".rp-meta")).toContainText("Compo publiée");
     await page.getByText("Export pour le jeu").click();
     await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Chamy;SHAMAN;DPS;Enhancement DPS;1;2;present;discord\nEND;2$/);
     await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Tournicoti");
     await expect(page.getByText("À inviter à la main (inscrits sans compte, pseudo Discord) : Chamy.")).toBeVisible();
     // Temps réel : un second onglet ouvert sur le raid se met à jour sans recharger
     const other = await page.context().newPage();
-    await other.goto(page.url());
+    await other.goto(`/groups/${page.url().split("/groups/")[1]!.split("/")[0]}/raids/${raidId}/inscriptions`);
     await expect(other.getByText(/Tu es inscrit : Présent/)).toBeVisible();
     await page.waitForTimeout(500); // connexion en direct du second onglet établie
+    await page.getByRole("tab", { name: /Inscriptions/ }).click();
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "En retard" }).click();
     await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
     await expect(other.getByText("Tu es inscrit : En retard")).toBeVisible({ timeout: 5000 });
     await other.close();
     await page.getByRole("link", { name: "Retour au groupe" }).click();
-    await expect(page.getByRole("row", { name: /Molten Core/ })).toContainText("En retard");
+    await expect(page.locator(".gr-raid").filter({ hasText: "Molten Core" })).toContainText("En retard");
   });
 
   await test.step("groupe : raid récurrent", async () => {
-    await page.fill("#t-name", "Zul'Gurub");
-    await page.selectOption("#t-day", "5");
-    await page.fill("#t-time", "20:30");
-    await page.fill("#t-lead", "14");
-    await page.locator("form").filter({ has: page.locator("#t-name") }).getByRole("button", { name: "Ajouter" }).click();
-    await expect(page.getByRole("status").filter({ hasText: /raids? créés?\./ })).toBeVisible();
-    await expect(page.getByRole("row", { name: /Zul'Gurub.*Vendredi à 20 h 30/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Zul'Gurub" }).first()).toBeVisible();
+    // Un seul formulaire : la case « Chaque semaine » en fait un raid récurrent
+    await page.getByRole("button", { name: "+ Nouveau raid" }).click();
+    await page.fill("#gr-name", "Zul'Gurub");
+    await page.locator(".dt-day").nth(3).click();
+    await page.getByRole("group", { name: "Heure du raid" }).getByRole("button", { name: "20:30" }).click();
+    await page.locator(".gr-tog").click();
+    await page.fill("#gr-lead", "14");
+    await expect(page.locator(".gr-sum")).toContainText("chaque semaine");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/nouveau-raid.png", fullPage: true });
+    await page.getByRole("button", { name: "Créer le raid" }).click();
+    await expect(page.getByRole("heading", { name: "Zul'Gurub" })).toBeVisible();
+    await expect(page.locator(".rp-meta")).toContainText("20:30");
+    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await page.getByRole("button", { name: /Récurrents \(1\)/ }).click();
+    await expect(page.locator(".gr-recrow")).toContainText(/Zul'Gurub.*chaque .* 20:30/);
+    await expect(page.locator(".gr-raid").filter({ hasText: "Zul'Gurub" }).first()).toBeVisible();
   });
 
   await test.step("cette semaine : bandeau en haut de Mes persos", async () => {
@@ -390,6 +413,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await dialog.getByRole("button", { name: "Fermer" }).click();
     await page.getByRole("link", { name: "Groupes" }).first().click();
     await page.getByRole("article", { name: "Les Testeurs" }).getByRole("link", { name: /Molten Core/ }).click();
+    await page.getByRole("tab", { name: "Bilan" }).click();
     const bilan = page.getByRole("region", { name: "Bilan du raid" });
     await expect(bilan).toContainText("Helm of Might");
     await expect(bilan).toContainText("Lucifron");
@@ -406,10 +430,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   await test.step("groupe : code de liaison d'un salon Discord", async () => {
     await page.getByRole("tab", { name: "Administration" }).click();
     await expect(page.getByRole("heading", { name: "Invitations" })).toBeVisible();
+    await page.locator(".adm-nav").getByRole("button", { name: "Zone sensible" }).click();
     await expect(page.getByRole("button", { name: "Supprimer le groupe" })).toBeVisible();
+    await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
     await expect(page.getByRole("heading", { name: "Salon Discord" })).toBeVisible();
+    // Sans Discord lié à son compte, l'officier est invité à le lier d'abord (le bot vérifie qui tape la commande)
     await page.getByRole("button", { name: "Générer un code de liaison" }).click();
-    await expect(page.getByRole("textbox", { name: "Commande de liaison" })).toHaveValue(/^\/forever-lier code:[A-Z2-9]{8}$/);
+    await expect(page.locator(".alert.info")).toContainText("lie d'abord ton propre Discord");
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: "Discord" })).toBeVisible();
     await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord" }) })).toContainText("Non lié");

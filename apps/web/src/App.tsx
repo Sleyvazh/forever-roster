@@ -29,7 +29,7 @@ export function App() {
             <Route path="/persos/:charId?/:tab?" element={<RequireAuth><CharactersPage /></RequireAuth>} />
             <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
             <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupPage /></RequireAuth>} />
-            <Route path="/groups/:groupId/raids/:raidId" element={<RequireAuth><RaidPage /></RequireAuth>} />
+            <Route path="/groups/:groupId/raids/:raidId/:tab?" element={<RequireAuth><RaidPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
             <Route path="/addon" element={<RequireAuth><AddonPage /></RequireAuth>} />
             <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />

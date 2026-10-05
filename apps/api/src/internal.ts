@@ -354,13 +354,13 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const [current] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, cls: raidSignups.cls, spec: raidSignups.spec }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raidId), user && role ? eq(raidSignups.userId, user.id) : eq(raidSignups.discordUserId, discordUserId)));
     if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null };
-    // Persos joués dans ce groupe, main en tête ; s'il n'y en a aucun, tous ses persos (s'inscrire l'ajoute au groupe)
-    const all = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2, isMain: groupCharacters.isMain })
+    // Persos rangés dans ce groupe (main en tête), puis ceux sans groupe (s'inscrire les y range) ; pas ceux d'un autre groupe
+    const all = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2, isMain: groupCharacters.isMain, groupId: groupCharacters.groupId })
       .from(characters)
-      .leftJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, group.id)))
+      .leftJoin(groupCharacters, eq(groupCharacters.characterId, characters.id))
       .where(eq(characters.userId, user.id)).orderBy(asc(characters.sortOrder));
-    const here = all.filter(c => c.isMain !== null).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
-    const chars = (here.length ? here : all).map(({ isMain: _, ...c }) => c);
+    const here = all.filter(c => c.groupId === group.id).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
+    const chars = [...here, ...all.filter(c => !c.groupId)].map(({ isMain: _, groupId: __, ...c }) => c);
     return {
       mode: "member" as const, linked: true, current: current ?? null,
       characters: chars.filter(c => c.cls).map(c => ({

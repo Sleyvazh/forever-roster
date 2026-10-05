@@ -1,4 +1,4 @@
-import { CLASSES, GEAR_SLOTS, ITEM_QUALITIES, type ClassName } from "@forever/game-data";
+import { CLASSES, GEAR_SLOTS, INVTYPE_2H, ITEM_QUALITIES, withoutCurrent, type ClassName } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
@@ -58,7 +58,16 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
   });
   const items = itemsQ.data?.items ?? {};
 
-  const setSlot = (slot: Slot, patch: Partial<GearEntry>) => onChange({ gear: { ...c.gear, [slot]: { ...c.gear[slot], ...patch } } });
+  const setSlot = (slot: Slot, patch: Partial<GearEntry>) => {
+    const gear = { ...c.gear, [slot]: { ...c.gear[slot], ...patch } };
+    onChange({ gear });
+    // Arme à deux mains équipée : la main gauche se vide, comme en jeu
+    if (slot === "Main Hand" && patch.curId && c.gear["Off Hand"]?.cur) {
+      void get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${patch.curId}`).then(r => {
+        if (r.items[patch.curId!]?.inventoryType === INVTYPE_2H) onChange({ gear: { ...gear, "Off Hand": withoutCurrent(gear["Off Hand"])! } });
+      }).catch(() => {});
+    }
+  };
 
   const got = GEAR_SLOTS.filter(s => c.gear[s]?.got).length;
   const levels = GEAR_SLOTS.map(s => shownFor(c.gear[s] ?? {}, view, items)?.item?.itemLevel).filter((v): v is number => !!v);

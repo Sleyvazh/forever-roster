@@ -2,7 +2,7 @@ import { CLASSES, RACES, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, put, type Character } from "../api";
+import { ApiError, del, get, patch, post, put, type Character, type GroupSummary } from "../api";
 import { CharacterEditor, EDITOR_TAB_SLUG, editorTabFromSlug, type EditorTab } from "../components/CharacterEditor";
 import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { Portrait } from "../components/ImageUpload";
@@ -50,6 +50,9 @@ function useAutosave(id: string | null, onSaved: (c: Character) => void) {
 export function CharactersPage() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters") });
+  const groupsQ = useQuery({ queryKey: ["groups"], queryFn: () => get<{ groups: GroupSummary[] }>("/groups") });
+  const myGroups = (groupsQ.data?.groups ?? []).map(g => ({ id: g.id, name: g.name }));
+  const sections = [...myGroups.map(g => ({ key: g.id, name: g.name })), { key: "", name: "Sans groupe" }];
   const [local, setLocal] = useState<Character[]>([]);
   // Perso et onglet dans l'adresse : /persos/:charId/:tab (retour arrière, lien direct)
   const params = useParams();
@@ -62,7 +65,8 @@ export function CharactersPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
-  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => prev.find(p => p.id === sc.id) ?? sc)); }, [data]);
+  // Le groupe (et main / alt) vient toujours du serveur : il change hors de la fiche (glisser, page du groupe, inscription)
+  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => { const p = prev.find(x => x.id === sc.id); return p ? { ...p, group: sc.group } : sc; })); }, [data]);
   // Adresse sans perso (ou perso supprimé) : on montre le premier, sans ajouter d'étape à l'historique
   useEffect(() => {
     if (!data || !data.characters.length) return;
@@ -96,6 +100,15 @@ export function CharactersPage() {
     setConfirmDel(false);
     await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["week"] })]);
   };
+  /** Change le groupe d'un perso (un seul groupe ; ses inscriptions restent) ou en fait le main de son groupe. */
+  const moveTo = async (c: Character, to: string, main = false) => {
+    setError(null);
+    try {
+      if (to) await put(`/groups/${to}/characters/${c.id}`, { assigned: true, ...(main && { main: true }) });
+      else if (c.group) await put(`/groups/${c.group.id}/characters/${c.id}`, { assigned: false });
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Changement impossible."); }
+    await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["group-chars"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
+  };
   const saveOrder = async (ids: string[]) => {
     setLocal(list => ids.map(id => list.find(c => c.id === id)!));
     try { await put("/characters/order", { ids }); } catch { await qc.invalidateQueries({ queryKey: ["characters"] }); }
@@ -117,8 +130,9 @@ export function CharactersPage() {
         <WeekBand />
         <div className="split">
           <aside className="stack">
-            <p className="hint" style={{ margin: 0 }}>Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner.</p>
-            <SortableList items={local} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }} onReorder={ids => void saveOrder(ids)} />
+            <p className="hint" style={{ margin: 0 }}>{myGroups.length ? "Glisse ⋮⋮ pour réordonner, ou vers un autre groupe pour l'y ranger." : "Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner."}</p>
+            <SortableList items={local} sections={myGroups.length ? sections : [{ key: "", name: "Mes persos" }]} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }}
+              onReorder={ids => void saveOrder(ids)} onMove={(id, to) => { const c = local.find(x => x.id === id); if (c) void moveTo(c, to); }} />
           </aside>
           {current && (
             <CharacterEditor
@@ -127,6 +141,7 @@ export function CharactersPage() {
               editable
               tab={tab}
               onTab={t => nav(urlFor(current.id, t))}
+              subhead={<GroupBar c={current} groups={myGroups} onMove={to => void moveTo(current, to)} onMain={() => current.group && void moveTo(current, current.group.id, true)} />}
               onChange={edit}
               onPortrait={portraitId => {
                 setLocal(list => list.map(c => c.id === current.id ? { ...c, portraitId } : c));
@@ -158,48 +173,102 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
         <Portrait id={c.portraitId} size={42} className="round"
           fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
       </span>
-      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.name}</span>
+      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans ce groupe">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
       {race ? <FactionBadge faction={race.faction} /> : <span />}
       <span className="sub">{[c.cls, c.race].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}</span>
     </button>
   );
 }
 
-/** Liste réordonnable à la souris, au doigt (pointer events) et au clavier. */
-function SortableList({ items, selected, onSelect, onReorder }: { items: Character[]; selected: string | null; onSelect: (id: string) => void; onReorder: (ids: string[]) => void }) {
+/**
+ * Liste réordonnable à la souris, au doigt (pointer events) et au clavier, rangée par groupe (lot E) : une section par
+ * groupe, puis « Sans groupe ». Lâcher un perso dans une autre section le change de groupe.
+ */
+function SortableList({ items, sections, selected, onSelect, onReorder, onMove }: {
+  items: Character[]; sections: { key: string; name: string }[]; selected: string | null;
+  onSelect: (id: string) => void; onReorder: (ids: string[]) => void; onMove: (id: string, to: string) => void;
+}) {
+  const secOfItem = (c: Character) => c.group?.id ?? "";
   const [order, setOrder] = useState<string[]>(items.map(c => c.id));
+  const [secs, setSecs] = useState<Record<string, string>>({});
   const [dragging, setDragging] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (!dragging) setOrder(items.map(c => c.id)); }, [items, dragging]);
+  const base = () => Object.fromEntries(items.map(c => [c.id, secOfItem(c)]));
+  useEffect(() => { if (!dragging) { setOrder(items.map(c => c.id)); setSecs(base()); } }, [items, dragging]); // eslint-disable-line react-hooks/exhaustive-deps
   const byId = new Map(items.map(c => [c.id, c]));
+  const secOf = (id: string) => secs[id] ?? secOfItem(byId.get(id)!);
 
   const move = (id: string, delta: number) => {
-    const i = order.indexOf(id), j = i + delta;
-    if (j < 0 || j >= order.length) return;
-    const next = [...order]; next.splice(j, 0, next.splice(i, 1)[0]!);
+    // Clavier : dans sa section seulement (le groupe se change dans la fiche)
+    const same = order.filter(x => secOf(x) === secOf(id));
+    const i = same.indexOf(id), j = i + delta;
+    if (j < 0 || j >= same.length) return;
+    const next = [...order]; const a = next.indexOf(id), b = next.indexOf(same[j]!);
+    next[a] = same[j]!; next[b] = id;
     setOrder(next); onReorder(next);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!dragging || !listRef.current) return;
-    const rows = [...listRef.current.querySelectorAll<HTMLElement>("[data-id]")].filter(n => n.dataset.id !== dragging);
+    const sec = [...listRef.current.querySelectorAll<HTMLElement>("[data-sec]")].find(n => { const r = n.getBoundingClientRect(); return e.clientY >= r.top && e.clientY <= r.bottom; });
+    const target = sec?.dataset.sec ?? secOf(dragging);
+    const rows = [...(sec ?? listRef.current).querySelectorAll<HTMLElement>("[data-id]")].filter(n => n.dataset.id !== dragging);
     const before = rows.find(n => { const r = n.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
     const rest = order.filter(id => id !== dragging);
-    const idx = before ? rest.indexOf(before.dataset.id!) : rest.length;
+    const last = [...rest].reverse().find(id => secOf(id) === target);
+    const idx = before ? rest.indexOf(before.dataset.id!) : last ? rest.indexOf(last) + 1 : rest.length;
     rest.splice(idx, 0, dragging);
     if (rest.join() !== order.join()) setOrder(rest);
+    if (target !== secOf(dragging)) setSecs(s => ({ ...s, [dragging]: target }));
   };
-  const end = () => { if (dragging) { setDragging(null); if (order.join() !== items.map(c => c.id).join()) onReorder(order); } };
+  const end = () => {
+    if (!dragging) return;
+    const id = dragging, from = secOfItem(byId.get(id)!), to = secOf(id);
+    setDragging(null);
+    if (order.join() !== items.map(c => c.id).join()) onReorder(order);
+    if (to !== from) onMove(id, to);
+  };
 
   return (
     <div className="roster" ref={listRef} onPointerMove={onPointerMove} onPointerUp={end} onPointerCancel={end}>
-      {order.map(id => byId.get(id)).filter((c): c is Character => !!c).map(c => (
-        <div key={c.id} data-id={c.id} className={`item${dragging === c.id ? " dragging" : ""}`}>
-          <button type="button" className="grip" aria-label={`Déplacer ${c.name} (flèches haut/bas)`}
-            onPointerDown={e => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDragging(c.id); }}
-            onKeyDown={e => { if (e.key === "ArrowUp") { e.preventDefault(); move(c.id, -1); } if (e.key === "ArrowDown") { e.preventDefault(); move(c.id, 1); } }}>⋮⋮</button>
-          <CharacterCard c={c} current={c.id === selected} onClick={() => onSelect(c.id)} />
+      {sections.map(sec => {
+        const list = order.filter(id => secOf(id) === sec.key).map(id => byId.get(id)).filter((c): c is Character => !!c);
+        if (!list.length && !dragging && sec.key === "") return null;
+        return (
+          <div key={sec.key || "none"} className={`ch-sec${dragging && secOf(dragging) === sec.key ? " over" : ""}`} data-sec={sec.key}>
+            <div className={`ch-sech${sec.key ? "" : " none"}`}><span>{sec.name}</span><small>{list.length ? `${list.length} perso${list.length > 1 ? "s" : ""}` : ""}</small></div>
+            {list.map(c => (
+              <div key={c.id} data-id={c.id} className={`item${dragging === c.id ? " dragging" : ""}`}>
+                <button type="button" className="grip" aria-label={`Déplacer ${c.name} (flèches haut/bas)`}
+                  onPointerDown={e => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDragging(c.id); }}
+                  onKeyDown={e => { if (e.key === "ArrowUp") { e.preventDefault(); move(c.id, -1); } if (e.key === "ArrowDown") { e.preventDefault(); move(c.id, 1); } }}>⋮⋮</button>
+                <CharacterCard c={c} current={c.id === selected} onClick={() => onSelect(c.id)} />
+              </div>
+            ))}
+            {!list.length && <p className="ch-drop">{dragging ? "Lâche ici pour ranger ce perso dans ce groupe" : "Aucun perso : glisse-en un ici, ou choisis ce groupe dans sa fiche."}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** En haut de la fiche : groupe du perso (un seul, ou aucun) et main / alt dans ce groupe. */
+function GroupBar({ c, groups, onMove, onMain }: { c: Character; groups: { id: string; name: string }[]; onMove: (to: string) => void; onMain: () => void }) {
+  if (!groups.length) return null;
+  return (
+    <div className="ch-gbar">
+      <label className="lbl" htmlFor="ch-group">Groupe</label>
+      <select id="ch-group" value={c.group?.id ?? ""} onChange={e => onMove(e.target.value)}>
+        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        <option value="">Aucun groupe</option>
+      </select>
+      {c.group && (
+        <div className="seg" role="group" aria-label="Main ou alt dans ce groupe">
+          <button type="button" className={c.group.isMain ? "on" : ""} aria-pressed={c.group.isMain} onClick={() => { if (!c.group?.isMain) onMain(); }}>★ Main</button>
+          <button type="button" className={c.group.isMain ? "" : "on"} aria-pressed={!c.group.isMain} disabled={c.group.isMain} title={c.group.isMain ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined}>Alt</button>
         </div>
-      ))}
+      )}
+      <span className="hint ch-ghint">{c.group ? (c.group.isMain ? "Ton main est proposé en premier pour les inscriptions." : "Un seul main par groupe : en choisir un autre fait passer l'ancien en alt.") : "Sans groupe : il entre dans le groupe du premier raid où tu l'inscris."}</span>
     </div>
   );
 }

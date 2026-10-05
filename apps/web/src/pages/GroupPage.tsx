@@ -1,24 +1,23 @@
 import { AttendanceTab } from "../components/RaidLog";
-import { LOOT_MODE_LABEL, LOOT_MODES, RAID_SIZES, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type LootMode, type RaidSize, type SignupStatus } from "@forever/game-data";
+import { CLASSES, SKILL_LINE_NAMES, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, put, type CraftersRecipe, type GroupRole, type Member } from "../api";
+import { ApiError, del, get, patch, post, put, type Character, type CraftersRecipe, type GroupRole, type Member } from "../api";
 import { useMe } from "../auth";
 import { CRAFTING } from "../components/GameData";
 import { Portrait } from "../components/ImageUpload";
 import { ItemHover, ItemIcon } from "../components/ItemTooltip";
 import { NumberField } from "../components/NumberField";
 import { GroupAddonExport } from "../components/GroupAddonExport";
+import { GroupRaids } from "../components/GroupRaids";
 import { GroupCharacters } from "../components/GroupRoster";
-import { LootModePicker, LootSettingsPanel } from "../components/Loot";
+import { LootSettingsPanel } from "../components/Loot";
 import { PlayerSheet } from "../components/PlayerSheet";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
-interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; size: number; recurring: boolean; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
-interface RaidTemplate { id: string; name: string; description: string; weekday: number; time: string; leadDays: number; active: boolean; generatedUntil: string | null; lootMode: LootMode; srHidden: boolean; size: RaidSize }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
@@ -85,28 +84,46 @@ export function GroupPage() {
           {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
         </div>
         <div className="pane">
-          {tab === "raids" && <Raids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
+          {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} groupName={group.name} members={members} myId={myId} myRole={role} />}
           {tab === "crafters" && <Crafters groupId={groupId} />}
           {tab === "presence" && <AttendanceTab groupId={groupId} />}
           {tab === "admin" && isOfficer && (
-            <div className="admin">
-              <Invites groupId={groupId} guard={guard} />
-              <LootSettingsPanel groupId={groupId} />
-              <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
-              <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>
-              {isOwner && (
+            <Admin isOwner={isOwner} sections={{
+              invites: <Invites groupId={groupId} guard={guard} />,
+              loot: <LootSettingsPanel groupId={groupId} />,
+              discord: <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />,
+              addon: <GroupAddonExport groupId={groupId} />,
+              journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
+              danger: (
                 <section className="stack admin-sec danger-zone">
                   <h3>Zone sensible</h3>
                   <p className="hint" style={{ margin: 0 }}>Supprime définitivement le groupe, ses raids, ses invitations et la liaison Discord. Les persos des membres ne sont pas touchés.</p>
                   <div><DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} /></div>
                 </section>
-              )}
-            </div>
+              ),
+            }} />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+type AdminKey = "invites" | "loot" | "discord" | "addon" | "journal" | "danger";
+const ADMIN_NAV: [AdminKey, string][] = [["invites", "Invitations"], ["loot", "Butin"], ["discord", "Discord et relances"], ["addon", "Données pour l'addon"], ["journal", "Journal"], ["danger", "Zone sensible"]];
+
+/** Administration (lot E) : une petite navigation à gauche, une section à la fois. */
+function Admin({ sections, isOwner }: { sections: Record<AdminKey, React.ReactNode>; isOwner: boolean }) {
+  const [cur, setCur] = useState<AdminKey>("invites");
+  const nav = ADMIN_NAV.filter(([k]) => k !== "danger" || isOwner);
+  return (
+    <div className="adm">
+      <nav className="adm-nav" aria-label="Sections de l'administration">
+        {nav.map(([k, l]) => <button key={k} type="button" className={`${cur === k ? "on" : ""}${k === "danger" ? " bad" : ""}`} aria-current={cur === k ? "true" : undefined} onClick={() => setCur(k)}>{l}</button>)}
+      </nav>
+      <div className="adm-body admin">{sections[cur]}</div>
     </div>
   );
 }
@@ -152,145 +169,52 @@ function DeleteGroup({ onDelete }: { onDelete: () => void }) {
 
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 
-function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean; guard: Guard }) {
-  const qc = useQueryClient();
-  const nav = useNavigate();
-  const { data } = useQuery({ queryKey: ["raids", groupId], queryFn: () => get<{ raids: RaidSummary[] }>(`/groups/${groupId}/raids`) });
-  const [name, setName] = useState(""), [when, setWhen] = useState("");
-  const [loot, setLoot] = useState<{ mode: LootMode; hidden: boolean }>({ mode: "journal", hidden: false });
-  const [size, setSize] = useState<RaidSize>(40);
-  const create = (e: FormEvent) => {
-    e.preventDefault();
-    void guard(async () => {
-      const r = await post<{ raid: { id: string } }>(`/groups/${groupId}/raids`, { name, scheduledAt: when ? new Date(when).toISOString() : null, lootMode: loot.mode, srHidden: loot.hidden, size });
-      await qc.invalidateQueries({ queryKey: ["raids", groupId] });
-      nav(`/groups/${groupId}/raids/${r.raid.id}`);
-    });
-  };
-  return (
-    <div className="sec">
-      {canEdit && (
-        <form className="row" onSubmit={create} style={{ alignItems: "flex-end" }}>
-          <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="r-name">Nouveau raid</label><input id="r-name" type="text" required minLength={2} maxLength={60} placeholder="Molten Core" value={name} onChange={e => setName(e.target.value)} /></div>
-          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="r-when">Date</label><input id="r-when" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
-          <div className="fld" style={{ flex: "0 0 auto" }}><span className="lbl">Format</span>
-            <div className="seg" role="group" aria-label="Format du raid">{RAID_SIZES.map(n => <button key={n} type="button" className={size === n ? "on" : ""} aria-pressed={size === n} onClick={() => setSize(n)}>{n}</button>)}</div></div>
-          <button className="btn primary" type="submit">Créer</button>
-          <div className="fld" style={{ flex: "1 1 100%" }}><span className="lbl">Butin</span>
-            <LootModePicker mode={loot.mode} hidden={loot.hidden} idPrefix="new" onChange={(mode, hidden) => setLoot({ mode, hidden })} /></div>
-        </form>
-      )}
-      {!data?.raids.length ? <p className="muted">Aucun raid prévu.</p> : (
-        <div className="tscroll"><table className="data">
-          <thead><tr><th>Raid</th><th>Date</th><th>Inscrits</th><th>Moi</th><th>Places</th></tr></thead>
-          <tbody>{data.raids.map(r => {
-            const coming = (r.signups.present ?? 0) + (r.signups.late ?? 0);
-            return (
-              <tr key={r.id}>
-                <td><Link to={`/groups/${groupId}/raids/${r.id}`}>{r.name}</Link>{r.recurring && <span className="muted small" title="Créé par un raid récurrent"> ↻</span>}</td>
-                <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
-                <td className="small"><span className="num">{coming}</span> viennent{r.signups.tentative ? <span className="muted"> · {r.signups.tentative} peut-être</span> : null}{r.signups.absent ? <span className="muted"> · {r.signups.absent} absent{r.signups.absent > 1 ? "s" : ""}</span> : null}</td>
-                <td>{r.mySignup ? <span className={`tag su-tag ${r.mySignup}`}>{SIGNUP_LABEL[r.mySignup]}</span> : <Link className="small" to={`/groups/${groupId}/raids/${r.id}`}>S'inscrire</Link>}</td>
-                <td className="num">{r.filled}/{r.size}</td>
-              </tr>
-            );
-          })}</tbody>
-        </table></div>
-      )}
-      <Recurring groupId={groupId} canEdit={canEdit} guard={guard} />
-      <GroupAddonExport groupId={groupId} />
-    </div>
-  );
-}
-
-/** Raids récurrents : le site crée chaque semaine le raid suivant, et le bot l'annonce. */
-function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean; guard: Guard }) {
-  const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["raid-templates", groupId], queryFn: () => get<{ templates: RaidTemplate[] }>(`/groups/${groupId}/raid-templates`) });
-  const [form, setForm] = useState<{ name: string; weekday: number; time: string; leadDays: number; description: string; lootMode: LootMode; srHidden: boolean; size: RaidSize }>({ name: "", weekday: 3, time: "21:00", leadDays: 7, description: "", lootMode: "journal", srHidden: false, size: 40 });
-  const [msg, setMsg] = useState<string | null>(null);
-  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raid-templates", groupId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
-  const list = data?.templates ?? [];
-  if (!canEdit && !list.length) return null;
-  const created = (n: number) => setMsg(n ? `${n} raid${n > 1 ? "s" : ""} créé${n > 1 ? "s" : ""}.` : "Aucun nouveau raid dans la période choisie.");
-  return (
-    <section className="stack" aria-labelledby="rec-title" style={{ marginTop: 20 }}>
-      <div><h3 id="rec-title" style={{ margin: 0 }}>Raids récurrents</h3>
-        <p className="hint" style={{ margin: "4px 0 0" }}>Chaque semaine, le raid est créé automatiquement quelques jours à l'avance (heure de Paris), puis annoncé sur Discord si un salon est lié. Supprimer un raid créé ainsi ne le fait pas revenir.</p></div>
-      {list.length > 0 && (
-        <div className="tscroll"><table className="data">
-          <thead><tr><th>Raid</th><th>Quand</th><th>Format</th><th>Créé</th><th>Butin</th><th>État</th>{canEdit && <th />}</tr></thead>
-          <tbody>{list.map(t => (
-            <tr key={t.id}>
-              <td>{t.name}</td>
-              <td>{WEEKDAYS[t.weekday - 1]} à {t.time.replace(":", " h ")}</td>
-              <td className="num small">{t.size}</td>
-              <td className="small">{t.leadDays} jour{t.leadDays > 1 ? "s" : ""} avant</td>
-              <td className="small">{LOOT_MODE_LABEL[t.lootMode]}</td>
-              <td>{t.active ? <span className="tag ok">Actif</span> : <span className="tag">En pause</span>}</td>
-              {canEdit && <td className="row" style={{ flexWrap: "nowrap" }}>
-                <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { const r = await patch<{ created: number }>(`/groups/${groupId}/raid-templates/${t.id}`, { active: !t.active }); await refresh(); if (!t.active) created(r.created); else setMsg(null); })}>{t.active ? "Mettre en pause" : "Reprendre"}</button>
-                <button className="btn ghost sm" type="button" aria-label={`Supprimer le raid récurrent ${t.name}`} onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${t.id}`); await refresh(); setMsg("Raid récurrent supprimé (les raids déjà créés restent)."); })}>Supprimer</button>
-              </td>}
-            </tr>
-          ))}</tbody>
-        </table></div>
-      )}
-      {canEdit && (
-        <form className="row" style={{ alignItems: "flex-end" }} onSubmit={e => {
-          e.preventDefault();
-          void guard(async () => {
-            const r = await post<{ created: number }>(`/groups/${groupId}/raid-templates`, form);
-            setForm(f => ({ ...f, name: "", description: "" })); await refresh(); created(r.created);
-          });
-        }}>
-          <div className="fld" style={{ flex: "2 1 180px" }}><label htmlFor="t-name">Raid récurrent</label><input id="t-name" type="text" required minLength={2} maxLength={60} placeholder="Molten Core" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="fld" style={{ flex: "1 1 130px" }}><label htmlFor="t-day">Jour</label>
-            <select id="t-day" value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })}>{WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</select></div>
-          <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-time">Heure</label><input id="t-time" type="time" required value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></div>
-          <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor="t-lead">Créé (jours avant)</label><NumberField id="t-lead" min={1} max={28} value={form.leadDays} onChange={leadDays => setForm({ ...form, leadDays })} /></div>
-          <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-size">Format</label>
-            <select id="t-size" value={form.size} onChange={e => setForm({ ...form, size: Number(e.target.value) as RaidSize })}>{RAID_SIZES.map(n => <option key={n} value={n}>{n} joueurs</option>)}</select></div>
-          <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="t-loot">Butin</label>
-            <select id="t-loot" value={form.lootMode} onChange={e => setForm({ ...form, lootMode: e.target.value as LootMode })}>{LOOT_MODES.map(m => <option key={m} value={m}>{LOOT_MODE_LABEL[m]}</option>)}</select></div>
-          <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="t-desc">Description (reprise dans chaque raid)</label><input id="t-desc" type="text" maxLength={1000} placeholder="Ex. Pull à 21 h 15, flasques obligatoires" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
-          <button className="btn primary" type="submit">Ajouter</button>
-        </form>
-      )}
-      {msg && <div className="alert ok" role="status">{msg}</div>}
-    </section>
-  );
-}
-
 function Members({ groupId, members, myRole, myId, guard }: { groupId: string; members: Member[]; myRole: GroupRole; myId?: string; guard: Guard }) {
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: ["group", groupId] });
   const rank = { member: 0, officer: 1, owner: 2 };
   const [sheet, setSheet] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ userId: string; action: "owner" | "remove" } | null>(null);
+  // Main de chaque joueur dans le groupe (à la place de Battle.net, presque toujours vide)
+  const charsQ = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
+  const mainOf = new Map((charsQ.data?.characters ?? []).filter(c => c.isMain).map(c => [c.userId, c]));
+  const setRole = (m: Member, role: GroupRole) => guard(async () => { await patch(`/groups/${groupId}/members/${m.userId}`, { role }); setConfirm(null); await refresh(); });
+  const remove = (m: Member) => guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); setConfirm(null); await refresh(); });
   return (
     <div className="stack">
     <p className="hint" style={{ margin: 0 }}>Clique un nom pour voir sa fiche dans le groupe : persos, présence, butin.</p>
-    <div className="tscroll"><table className="data">
-      <thead><tr><th>Joueur</th><th>Battle.net</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
-      <tbody>{members.map(m => (
+    <div className="tscroll"><table className="data mb-table">
+      <thead><tr><th>Joueur</th><th>Main</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
+      <tbody>{members.map(m => {
+        const main = mainOf.get(m.userId);
+        const canRole = myRole === "owner" && m.userId !== myId;
+        const canRemove = m.userId !== myId && rank[myRole] > rank[m.role];
+        const asking = confirm?.userId === m.userId ? confirm.action : null;
+        return (
         <tr key={m.userId} className={sheet === m.userId ? "ps-sel" : undefined}>
           <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>
             <button type="button" className="ps-link" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
-          <td className="muted">{m.battletag ?? "—"}</td>
-          <td>
-            {myRole === "owner" && m.userId !== myId ? (
-              <select aria-label={`Rôle de ${m.displayName}`} value={m.role} style={{ width: "auto" }}
-                onChange={e => void guard(async () => { await patch(`/groups/${groupId}/members/${m.userId}`, { role: e.target.value }); await refresh(); })}>
-                <option value="member">Membre</option><option value="officer">Officier</option><option value="owner">Propriétaire (transfert)</option>
-              </select>
-            ) : ROLE_LABEL[m.role]}
-          </td>
+          <td>{main ? <b style={{ color: CLASSES[main.cls as ClassName]?.color }}>{main.name}</b> : <span className="muted">—</span>}</td>
+          <td>{m.role === "member" ? <span className="muted">{ROLE_LABEL[m.role]}</span> : <span className={`tag ${m.role === "owner" ? "gold" : ""}`}>{ROLE_LABEL[m.role]}</span>}</td>
           <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>
-          <td>{m.userId !== myId && rank[myRole] > rank[m.role] && (
-            <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); await refresh(); })}>Retirer</button>
-          )}</td>
+          <td className="mb-act">
+            {asking === "owner" && <span className="row small">Lui donner le groupe ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
+            {asking === "remove" && <span className="row small">Retirer {m.displayName} ? <button type="button" className="btn danger sm" onClick={() => void remove(m)}>Retirer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
+            {!asking && (canRole || canRemove) && (
+              <details className="mb-menu">
+                <summary aria-label={`Actions pour ${m.displayName}`}>…</summary>
+                <div className="mb-pop" role="menu">
+                  {canRole && m.role === "member" && <button type="button" role="menuitem" onClick={() => void setRole(m, "officer")}>Nommer officier</button>}
+                  {canRole && m.role === "officer" && <button type="button" role="menuitem" onClick={() => void setRole(m, "member")}>Repasser membre</button>}
+                  {canRole && <button type="button" role="menuitem" onClick={() => setConfirm({ userId: m.userId, action: "owner" })}>Transférer la propriété…</button>}
+                  {canRemove && <button type="button" role="menuitem" className="bad" onClick={() => setConfirm({ userId: m.userId, action: "remove" })}>Retirer du groupe…</button>}
+                </div>
+              </details>
+            )}
+          </td>
         </tr>
-      ))}</tbody>
+        );
+      })}</tbody>
     </table></div>
     {sheet && <PlayerSheet key={sheet} groupId={groupId} userId={sheet} onClose={() => setSheet(null)} />}
     </div>
@@ -343,6 +267,7 @@ function Crafters({ groupId }: { groupId: string }) {
 function Journal({ groupId }: { groupId: string }) {
   const { data } = useQuery({ queryKey: ["group-audit", groupId], queryFn: () => get<{ events: GroupEvent[] }>(`/groups/${groupId}/audit`) });
   if (!data) return <p className="muted">Chargement…</p>;
+  if (!data.events.length) return <p className="muted" style={{ margin: 0 }}>Rien pour l'instant : les actions des officiers (invitations, raids, réglages) s'afficheront ici.</p>;
   return (
     <div className="tscroll"><table className="data">
       <thead><tr><th>Date</th><th>Qui</th><th>Action</th></tr></thead>
@@ -397,6 +322,7 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [wantCode, setWantCode] = useState(false);
   const cmd = code ? `/forever-lier code:${code.code}` : "";
   return (
     <section className="stack admin-sec" aria-labelledby="dc-title">
@@ -408,11 +334,11 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
         Le bot publie chaque raid à venir dans ce salon, avec des boutons d'inscription. Les inscriptions faites sur Discord et sur le site sont les mêmes.
         Les joueurs sans compte peuvent aussi s'inscrire (classe et spé), marqués ✱.
       </p>
-      {!hasDiscord && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
+      {!hasDiscord && (!linked || wantCode) && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
-        <button className="btn primary sm" type="button" onClick={() => void guard(async () => {
+        <button className="btn primary sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
           setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/code`)); setCopied(false);
-        })}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
+        }); }}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
         {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
           await del(`/groups/${groupId}/discord`); setCode(null);
           await qc.invalidateQueries({ queryKey: ["group", groupId] });

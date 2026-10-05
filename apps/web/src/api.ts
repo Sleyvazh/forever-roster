@@ -62,6 +62,8 @@ export interface Character {
   addonSyncedAt?: string | null;
   /** Dans la liste des persos d'un groupe : perso principal (main) de son joueur dans ce groupe. */
   isMain?: boolean;
+  /** Dans Mes persos : groupe où le perso est rangé (un seul, ou aucun) et s'il y est le main. */
+  group?: { id: string; name: string; isMain: boolean } | null;
   /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
   gearStats?: import("@forever/game-data").GearStats;
 }

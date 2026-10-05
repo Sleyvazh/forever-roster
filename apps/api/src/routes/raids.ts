@@ -1,8 +1,8 @@
-import { computeCoverage, DEFAULT_TARGETS, GROUP_SIZE, groupsFor, isRaidSize, isValidSpec, LOOT_MODES, RAID_GROUPS, type RaidSize } from "@forever/game-data";
+import { computeCoverage, DEFAULT_TARGETS, zonedParts, GROUP_SIZE, groupsFor, isRaidSize, isValidSpec, LOOT_MODES, RAID_GROUPS, type RaidSize } from "@forever/game-data";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, groupCharacters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
+import { characters, groupCharacters, groupMembers, raids, raidSignups, raidTemplates, users, type RaidSlot } from "../db/schema";
 import { listSignups, signupInput, signupSummary, signUpSiteUser, touchRaid } from "../lib/signups";
 import { discordDeletions } from "../db/schema";
 import { SIGNUP_STATUSES } from "@forever/game-data";
@@ -10,7 +10,7 @@ import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
-import { MAX_RAIDS_PER_GROUP } from "../lib/recurring";
+import { ensureRecurringRaids, MAX_RAIDS_PER_GROUP, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
 import { raidLogView } from "./raidlogs";
@@ -87,12 +87,12 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await membership(db, id, u.id);
-    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size })
+    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size, lootMode: raids.lootMode })
       .from(raids).where(eq(raids.groupId, id)).orderBy(desc(raids.scheduledAt), asc(raids.name));
     const summary = await signupSummary(db, rows.map(r => r.id), u.id);
     return { raids: rows.map(r => ({
-      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, updatedAt: r.updatedAt, recurring: !!r.templateId,
-      signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null,
+      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, updatedAt: r.updatedAt, recurring: !!r.templateId, lootMode: r.lootMode,
+      signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null, roles: summary.get(r.id)?.roles ?? { Tank: 0, Heal: 0, DPS: 0 },
     })) };
   });
 
@@ -100,14 +100,31 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await requireRole(db, id, u.id, "officer");
-    const body = parse(raidFields, req.body);
+    // « Chaque semaine » (lot E) : le raid devient aussi un raid récurrent, créé `leadDays` jours à l'avance
+    const body = parse(raidFields.extend({ weekly: z.object({ leadDays: z.int().min(1).max(28) }).optional() }), req.body);
     const existing = await db.select({ id: raids.id }).from(raids).where(eq(raids.groupId, id));
     if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
+    if (body.weekly) {
+      if (!body.scheduledAt) throw badRequest("Choisis la date du premier raid.");
+      if (await db.$count(raidTemplates, eq(raidTemplates.groupId, id)) >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
+    }
     const [r] = await db.insert(raids).values({
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
       lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, size: body.size ?? 40,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
+    if (body.weekly && r!.scheduledAt) {
+      // Même jour, même heure (de Paris) chaque semaine ; ce raid est la première occurrence
+      const z = zonedParts(r!.scheduledAt);
+      const time = `${String(z.hour).padStart(2, "0")}:${String(z.minute).padStart(2, "0")}`;
+      const [t] = await db.insert(raidTemplates).values({
+        groupId: id, name: r!.name, description: r!.description, weekday: z.weekday, time, leadDays: body.weekly.leadDays,
+        size: r!.size, lootMode: r!.lootMode, srHidden: r!.srHidden, createdBy: u.id, generatedUntil: r!.scheduledAt,
+      }).returning();
+      await db.update(raids).set({ templateId: t!.id }).where(eq(raids.id, r!.id));
+      await ensureRecurringRaids(db, new Date(), t!.id);
+      await audit(db, req, "raid_template_created", { userId: u.id, groupId: id, meta: { templateId: t!.id, name: t!.name, weekday: t!.weekday, time } });
+    }
     bus.group({ t: "raids", g: id });
     return reply.code(201).send({ raid: { id: r!.id } });
   });

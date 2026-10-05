@@ -11,11 +11,12 @@ import { useLiveListener, type LiveEvent } from "../live";
 import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
-import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
+import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_HINT, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
 import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
 import { RaidReach, type Reach } from "../components/RaidReach";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
+import { DateTimeField, longDate, partsOf } from "../components/DateTime";
 import { FloatingTip } from "../components/ItemTooltip";
 
 /** Carte d'un joueur au survol : spé, inscription, métiers, niveau d'objet moyen et BiS obtenus. */
@@ -50,8 +51,8 @@ interface ServerState { version: string; slots: RaidSlot[]; name: string; schedu
 
 const KIND_LABEL: Record<EffectKind, string> = { buff: "Buffs de raid", aura: "Auras et totems (par groupe)", debuff: "Debuffs sur la cible", utility: "Utilitaires" };
 const EXCL_LABEL: Record<string, string> = { blessing: "Bénédictions / paladins", curse: "Malédictions / démonistes", judgement: "Jugements / paladins", "air-totem": "Totems d'air / chamans", "pally-aura": "Auras / paladins" };
-const toLocalInput = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "");
 
+type RaidTab = "compo" | "inscriptions" | "butin" | "bilan" | "reglages";
 type Pick = { kind: "bench"; key: string } | { kind: "slot"; group: number; pos: number } | null;
 
 /** Ce qu'on peut placer : un perso du site, ou un inscrit sans compte (classe et spé choisies sur Discord). */
@@ -63,7 +64,7 @@ interface Entry {
 }
 
 export function RaidPage() {
-  const { groupId = "", raidId = "" } = useParams();
+  const { groupId = "", raidId = "", tab: tabParam } = useParams();
   const qc = useQueryClient();
   const nav = useNavigate();
   const raidQ = useQuery({ queryKey: ["raid", raidId], queryFn: () => get<RaidResponse>(`/groups/${groupId}/raids/${raidId}`) });
@@ -71,7 +72,7 @@ export function RaidPage() {
 
   const [slots, setSlots] = useState<RaidSlot[]>([]);
   const [name, setName] = useState("");
-  const [when, setWhen] = useState("");
+  const [when, setWhen] = useState<string | null>(null);
   const [desc, setDesc] = useState("");
   const [pick, setPick] = useState<Pick>(null);
   const [status, setStatus] = useState<string>("");
@@ -86,16 +87,16 @@ export function RaidPage() {
   const edit = useRef(0);
   const pending = useRef(false);
   const myId = useMe().data?.user?.id;
-  // Mes persos pour réserver : ceux joués dans le groupe (main en tête), sinon tous les miens
+  // Mes persos pour réserver : ceux rangés dans le groupe (main en tête), puis ceux sans groupe
   const myAllQ = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
   const myLootChars = useMemo(() => {
     const here = (charsQ.data?.characters ?? []).filter(c => c.userId === myId && c.cls).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
-    return here.length ? here : (myAllQ.data?.characters ?? []).filter(c => c.cls);
+    return [...here, ...(myAllQ.data?.characters ?? []).filter(c => c.cls && !c.group && !here.some(h => h.id === c.id))];
   }, [charsQ.data, myAllQ.data, myId]);
 
   const applyServer = (st: ServerState) => {
     server.current = st;
-    setSlots(st.slots); setName(st.name); setWhen(toLocalInput(st.scheduledAt)); setDesc(st.description);
+    setSlots(st.slots); setName(st.name); setWhen(st.scheduledAt); setDesc(st.description);
   };
   const fromResponse = (d: RaidResponse): ServerState =>
     ({ version: d.version, slots: d.slots, name: d.raid.name, scheduledAt: d.raid.scheduledAt, description: d.raid.description });
@@ -166,7 +167,7 @@ export function RaidPage() {
       const base = server.current;
       try {
         const res = await put<SaveResponse>(`/groups/${groupId}/raids/${raidId}`, {
-          name: meta.name.trim() || "Raid", scheduledAt: meta.when ? new Date(meta.when).toISOString() : null, description: meta.desc, slots: next,
+          name: meta.name.trim() || "Raid", scheduledAt: meta.when, description: meta.desc, slots: next,
           ...(base && { base }),
         });
         const st: ServerState = { version: res.version, slots: res.slots, ...res.raid };
@@ -221,72 +222,64 @@ export function RaidPage() {
   if (!raidQ.data) return <div className="panel empty"><h2>Raid introuvable</h2><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div>;
 
   const byKind = (k: EffectKind) => coverage.filter(c => c.effect.kind === k);
+  const r = raidQ.data.raid;
+  const t = r.targets;
+  const covOn = coverage.filter(c => c.covered).length;
+  const covPart = coverage.filter(c => c.effect.scope === "party" && c.sources > 0 && !c.covered);
+  const tabs: [RaidTab, string][] = [
+    ...(canEdit ? [["compo", "Compo"] as [RaidTab, string], ["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string]]
+      : [["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string], ["compo", "Compo"] as [RaidTab, string]]),
+    ["butin", "Butin"], ["bilan", "Bilan"], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
+  ];
+  const tab: RaidTab = tabs.some(([k]) => k === tabParam) ? tabParam as RaidTab : tabs[0]![0];
+  const setTab = (k: RaidTab) => nav(`/groups/${groupId}/raids/${raidId}${k === tabs[0]![0] ? "" : `/${k}`}`, { replace: true });
+  const publish = () => void (async () => {
+    try {
+      if (r.rosterPublished) await del(`/groups/${groupId}/raids/${raidId}/roster`);
+      else await post(`/groups/${groupId}/raids/${raidId}/roster`);
+      await qc.invalidateQueries({ queryKey: ["raid", raidId] });
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
+  })();
+  const roleTag = (role: "Tank" | "Heal" | "DPS", n: number, want: number) => (
+    <span className={`role ${role}`} title={`${n} placé${n > 1 ? "s" : ""} pour ${want} visé${want > 1 ? "s" : ""}`}>{n}/{want} {role === "DPS" ? "DPS" : `${role.toLowerCase()}${want > 1 ? "s" : ""}`}</span>
+  );
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
-      <div className="page-head">
-        <div><div className="eyebrow"><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div><h1>{name || "Raid"}</h1></div>
+    <div className="stack" style={{ gap: 16 }}>
+      <div className="page-head rp-head">
+        <div style={{ minWidth: 0 }}>
+          <div className="eyebrow"><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div>
+          <h1>{name || "Raid"}</h1>
+          <div className="rp-meta">
+            <span>{longDate(partsOf(when))}</span>
+            <span className="tag">{size} joueurs</span>
+            <LootModeTag mode={r.lootMode} />
+            {r.rosterPublished && <span className="tag ok" title="L'annonce Discord affiche la compo">Compo publiée</span>}
+          </div>
+        </div>
         <div className="counts" aria-label="Rôles">
-          <span className="role Tank">{roles.Tank} tank{roles.Tank > 1 ? "s" : ""}</span>
-          <span className="role Heal">{roles.Heal} heal{roles.Heal > 1 ? "s" : ""}</span>
-          <span className="role DPS">{roles.DPS} DPS</span>
+          {roleTag("Tank", roles.Tank, t.tank)}{roleTag("Heal", roles.Heal, t.heal)}{roleTag("DPS", roles.DPS, t.dps)}
           {roles["?"] > 0 && <span className="role">{roles["?"]} sans spé</span>}
           <span className="tag num">{slots.length}/{size}</span>
+          {canEdit && <button className={`btn sm ${r.rosterPublished ? "ghost" : ""}`} type="button" onClick={publish}
+            title={r.rosterPublished ? "L'annonce Discord revient aux colonnes par rôle" : "L'annonce Discord affichera les groupes, mis à jour à chaque changement"}>{r.rosterPublished ? "Retirer de Discord" : "Publier la compo"}</button>}
         </div>
       </div>
-
-      {canEdit && (
-        <div className="panel pad row" style={{ alignItems: "flex-end" }}>
-          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when, desc }); }} /></div>
-          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="rw">Date</label><input id="rw" type="datetime-local" value={when} onChange={e => { setWhen(e.target.value); persist(slots, { name, when: e.target.value, desc }); }} /></div>
-          <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="rd">Description (visible par le groupe et sur Discord)</label>
-            <textarea id="rd" maxLength={1000} style={{ minHeight: 60 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
-          </div>
-          <RaidFormat size={size} targets={raidQ.data.raid.targets} custom={raidQ.data.raid.customTargets}
-            onChange={body => void patch(`/groups/${groupId}/raids/${raidId}/format`, body).then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] }))
-              .catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
-          <span className="small muted" role="status" style={{ flex: "1 1 120px" }}>{status}</span>
-          {confirmDel
-            ? <span className="row small">Supprimer ce raid ? <button className="btn danger sm" type="button" onClick={() => void del(`/groups/${groupId}/raids/${raidId}`).then(() => nav(`/groups/${groupId}`))}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
-            : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le raid</button>}
-        </div>
-      )}
-      {!canEdit && desc && <div className="panel pad"><p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{desc}</p></div>}
-      {canEdit ? (
-        <details className="panel pad lt-raid" open={raidQ.data.raid.lootMode !== "journal"}>
-          <summary>Butin : <b>{LOOT_MODE_LABEL[raidQ.data.raid.lootMode]}</b></summary>
-          <LootModePicker mode={raidQ.data.raid.lootMode} hidden={raidQ.data.raid.srHidden} idPrefix="rp"
-            onChange={(lootMode, srHidden) => void patch(`/groups/${groupId}/raids/${raidId}/loot`, { lootMode, srHidden })
-              .then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
-        </details>
-      ) : raidQ.data.raid.lootMode !== "journal" && <div className="row"><span className="muted small">Butin :</span><LootModeTag mode={raidQ.data.raid.lootMode} /></div>}
-      <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
-      {canEdit && reachQ.data && <RaidReach groupId={groupId} raidId={raidId} reach={reachQ.data} onChanged={() => void qc.invalidateQueries({ queryKey: ["reach", raidId] })} />}
-      {raidQ.data.raid.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
-      <RaidLogPanel log={raidQ.data.log} />
+      {desc && <p className="rp-desc">{desc}</p>}
       {error && <div className="alert error" role="alert">{error}</div>}
       {notice && <div className="alert info" role="status">{notice}</div>}
-      {canEdit && (
-        <div className="panel pad row between roster-pub">
-          <span>
-            <b>Compo sur Discord</b>{raidQ.data.raid.rosterPublished && <span className="tag ok" style={{ marginLeft: 8 }}>Publiée</span>}<br />
-            <span className="hint">{raidQ.data.raid.rosterPublished
-              ? "L'annonce Discord affiche les groupes et se met à jour à chaque changement de la compo."
-              : "Une fois la compo prête, publie-la : l'annonce Discord affichera les 8 groupes à la place des colonnes par rôle."}</span>
-          </span>
-          <button className={`btn sm ${raidQ.data.raid.rosterPublished ? "ghost" : "primary"}`} type="button" onClick={() => void (async () => {
-            try {
-              if (raidQ.data!.raid.rosterPublished) await del(`/groups/${groupId}/raids/${raidId}/roster`);
-              else await post(`/groups/${groupId}/raids/${raidId}/roster`);
-              await qc.invalidateQueries({ queryKey: ["raid", raidId] });
-            } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
-          })()}>{raidQ.data.raid.rosterPublished ? "Retirer de Discord" : "Publier la compo"}</button>
-        </div>
+      {hover && hovered && (
+        <FloatingTip rect={hover.rect}><PlayerCard e={hovered} c={"characterId" in hovered.ref ? chars.get(hovered.ref.characterId) : undefined} /></FloatingTip>
       )}
-      {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
-      {canEdit && (
-      <RaidAssist size={size} targets={raidQ.data.raid.targets} groupChars={allChars} signups={raidQ.data.signups} history={historyQ.data} reach={reachQ.data}
+      <div className="panel lift">
+        <div className="tabs" role="tablist">
+          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
+        </div>
+        <div className="pane stack">
+          {tab === "compo" && <>
+            {canEdit && (
+        <RaidAssist size={size} targets={raidQ.data.raid.targets} groupChars={allChars} signups={raidQ.data.signups} history={historyQ.data} reach={reachQ.data}
         onAsk={(characterId, spec) => void post(`/groups/${groupId}/raids/${raidId}/asks`, { characterId, spec })
           .then(() => qc.invalidateQueries({ queryKey: ["reach", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Demande impossible."))}
         entries={[...entries.values()].map(e => ({ key: e.key, name: e.name, cls: e.cls, spec: e.spec, owner: e.owner, signup: e.signup,
@@ -303,10 +296,9 @@ export function RaidPage() {
             await qc.invalidateQueries({ queryKey: ["raid", raidId] });
           } catch (e) { setError(e instanceof ApiError ? e.message : "Changement impossible."); }
         })()} />
-          )}
-      {hover && hovered && (
-        <FloatingTip rect={hover.rect}><PlayerCard e={hovered} c={"characterId" in hovered.ref ? chars.get(hovered.ref.characterId) : undefined} /></FloatingTip>
-      )}
+            )}
+            {canEdit && <div className="row between"><p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>
+              <span className="small muted" role="status">{status}</span></div>}
       <div className="raid">
         <div className="rgroups">
           {Array.from({ length: nGroups }, (_, gi) => gi + 1).map(g => {
@@ -367,6 +359,11 @@ export function RaidPage() {
 
           <div className="panel pad stack">
             <h3>Couverture</h3>
+            <div className="rp-covsum">
+              <span><span className="rp-dot ok" />{covOn} effet{covOn > 1 ? "s" : ""} couvert{covOn > 1 ? "s" : ""} sur {coverage.length}</span>
+              {covPart.length > 0 && <span><span className="rp-dot warn" />Partiels : {covPart.map(c => `${c.effect.name} (G${c.missingGroups.join(", G")})`).join(", ")}</span>}
+            </div>
+            <details className="rp-covd"><summary>Détail des {coverage.length} effets</summary>
             <div className="cov">
               {(["buff", "aura", "debuff", "utility"] as EffectKind[]).map(k => (
                 <div key={k} className="stack" style={{ gap: 4 }}>
@@ -393,10 +390,54 @@ export function RaidPage() {
               )}
               <p className="hint" style={{ margin: "8px 0 0" }}>Règles de WoW Classic ({RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé choisie à l'inscription, sinon spé principale.</p>
             </div>
+            </details>
           </div>
         </aside>
       </div>
-      <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when ? new Date(when).toISOString() : null }} slots={slots} chars={chars} signups={raidQ.data.signups} />
+            <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when }} slots={slots} chars={chars} signups={raidQ.data.signups} />
+          </>}
+
+          {tab === "inscriptions" && <>
+            <RaidSignups groupId={groupId} raidId={raidId} signups={raidQ.data.signups} groupChars={allChars} canEdit={canEdit} />
+            {canEdit && reachQ.data && <RaidReach groupId={groupId} raidId={raidId} reach={reachQ.data} onChanged={() => void qc.invalidateQueries({ queryKey: ["reach", raidId] })} />}
+          </>}
+
+          {tab === "butin" && <>
+            {canEdit ? (
+              <section className="stack" aria-labelledby="rp-loot"><h3 id="rp-loot" style={{ margin: 0 }}>Mode de butin</h3>
+                <LootModePicker mode={r.lootMode} hidden={r.srHidden} idPrefix="rp"
+                  onChange={(lootMode, srHidden) => void patch(`/groups/${groupId}/raids/${raidId}/loot`, { lootMode, srHidden })
+                    .then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
+              </section>
+            ) : <p style={{ margin: 0 }}>Butin : <b>{LOOT_MODE_LABEL[r.lootMode]}</b> <span className="muted">· {LOOT_MODE_HINT[r.lootMode]}</span></p>}
+            {r.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
+          </>}
+
+          {tab === "bilan" && <RaidLogPanel log={raidQ.data.log} />}
+
+          {tab === "reglages" && canEdit && (
+            <div className="rp-set">
+              <div className="fld"><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when, desc }); }} /></div>
+              <div className="fld"><label htmlFor="rw">Date et heure (Paris)</label>
+                <DateTimeField id="rw" value={when} onChange={iso => { setWhen(iso); persist(slots, { name, when: iso, desc }); }} /></div>
+              <div className="fld rp-wide"><label htmlFor="rd">Description (visible par le groupe et sur Discord)</label>
+                <textarea id="rd" maxLength={1000} style={{ minHeight: 70 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
+              </div>
+              <div className="rp-wide">
+                <RaidFormat size={size} targets={r.targets} custom={r.customTargets}
+                  onChange={body => void patch(`/groups/${groupId}/raids/${raidId}/format`, body).then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] }))
+                    .catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
+              </div>
+              <div className="row between rp-wide">
+                <span className="small muted" role="status">{status || "Les modifications sont enregistrées automatiquement."}</span>
+                {confirmDel
+                  ? <span className="row small">Supprimer ce raid ? <button className="btn danger sm" type="button" onClick={() => void del(`/groups/${groupId}/raids/${raidId}`).then(() => nav(`/groups/${groupId}`))}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
+                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le raid</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
