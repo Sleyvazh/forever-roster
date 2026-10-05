@@ -17,6 +17,7 @@ import { RaidReach, type Reach } from "../components/RaidReach";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 import { DateTimeField, longDate, partsOf } from "../components/DateTime";
+import { syncAge } from "../addonImport";
 import { FloatingTip } from "../components/ItemTooltip";
 
 /** Carte d'un joueur au survol : spé, inscription, métiers, niveau d'objet moyen et BiS obtenus. */
@@ -31,6 +32,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
       <div className="t-dim">{e.guest ? "Inscrit depuis Discord, sans compte sur le site" : `Joueur : ${e.owner}`}</div>
       {e.signup && <div className="t-row">Inscription : {SIGNUP_LABEL[e.signup.status]}{e.signup.note ? ` — « ${e.signup.note} »` : ""}</div>}
       {profs.length > 0 && <div className="t-row">Métiers : {profs.map(p => `${p.name} ${p.skill}`).join(", ")}</div>}
+      {c && !e.guest && <div className={c.addonSyncedAt ? "t-dim" : "t-warn"}>Addon : {syncAge(c.addonSyncedAt).text}{!c.addonSyncedAt && " (équipement et talents saisis à la main)"}</div>}
       {st && (
         <div className="t-where">
           <div className="t-row t-split"><span>Niveau d'objet moyen</span><b className="t-ilvl">{st.ilvl != null ? String(st.ilvl).replace(".", ",") : "—"}</b></div>
@@ -347,6 +349,7 @@ export function RaidPage() {
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })} {...hoverProps(c)}>
                         <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, c.spec || c.cls || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
                         {su && su.status !== "present" && <span className="tag">{SIGNUP_LABEL[su.status]}</span>}
+                        {!c.guest && "characterId" in c.ref && chars.get(c.ref.characterId) && !chars.get(c.ref.characterId)!.addonSyncedAt && <span className="rp-nosync" title="Jamais synchronisé avec l'addon">⚠</span>}
                       </button>
                       <button type="button" className="btn sm ghost" title="Placer à la première place libre" aria-label={`Ajouter ${c.name} au raid`} onClick={() => addToRaid(c)}>+</button>
                     </div>

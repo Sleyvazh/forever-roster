@@ -5,6 +5,12 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 23, date: "2026-10-05", kind: "site", title: "Déclare tes absences à l'avance",
+    text: "Sur Mes persos, « + Déclarer une absence » : une période (du … au …) ou chaque semaine (« jamais le vendredi »). Les raids de ces jours où tu n'as pas répondu passent en « Absent » dans tous tes groupes, même ceux créés plus tard ; une réponse déjà donnée ne change pas. Le motif est facultatif et tu choisis qui le voit. Les membres du groupe ont aussi leur taux de présence dans l'onglet Membres." },
+  { n: 22, date: "2026-10-05", kind: "bot", title: "Les commandes d'artisanat dans un salon Discord",
+    text: "Un officier lie un salon aux commandes (Administration → Discord, puis /forever-lier dans le salon) : le bot y poste chaque commande avec les artisans qui savent la faire, et un bouton « Je m'en charge ». Le message suit la commande jusqu'à ce qu'elle soit faite." },
+  { n: 21, date: "2026-10-05", kind: "site", title: "Commande une fabrication aux artisans du groupe",
+    text: "Onglet Artisans : « Commander » sur une recette (ou cherche-la), choisis la quantité et coche les composants que tu fournis. Les artisans qui la connaissent la voient, l'un d'eux la prend puis la marque faite. Sur ta fiche de perso, l'import de l'addon devient une ligne de synchro : tout passe par Ctrl+V, avec « Choisir quoi importer »." },
   { n: 20, date: "2026-10-05", kind: "site", title: "Un site plus simple : raids, persos par groupe, page du raid en onglets",
     text: "Onglet Raids : la liste d'abord (à venir / passés), « + Nouveau raid » ouvre un formulaire court avec les jours en boutons et l'heure en 24 h ; « Chaque semaine » en fait un raid récurrent. Mes persos se range par groupe : chaque perso a un groupe et tu choisis ton main sur sa fiche. La page du raid passe en onglets (Compo, Inscriptions, Butin, Bilan, Réglages). Et l'import de l'addon vide les emplacements retirés en jeu, main gauche comprise sous une arme à deux mains." },
   { n: 19, date: "2026-10-05", kind: "site", title: "Spé « Fury Tank » retirée",

@@ -7,6 +7,7 @@ import { characters, gameItems, groupCharacters as gc, groupMembers, raidLogs, r
 import { bus } from "../lib/events";
 import { membership } from "../lib/groups";
 import { learnLoot } from "../lib/loot";
+import { sheetAbsences } from "./absences";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 
@@ -162,7 +163,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
       const got = logs.flatMap(l => l.loot.filter(x => key(x.name) === k).map(x => ({ ...x, raidName: l.name }))).sort((a, b) => b.at - a.at);
       const last = got[0];
       return {
-        id: c.id, name: c.name, cls: c.cls, owner: c.owner, cells,
+        id: c.id, name: c.name, cls: c.cls, owner: c.owner, userId: c.userId, cells,
         attended: cells.filter(s => s && ATTENDED.includes(s)).length,
         loot: got.length,
         lastItem: last ? { id: last.itemId, name: itemOf.get(last.itemId)?.name ?? `Objet ${last.itemId}`, quality: itemOf.get(last.itemId)?.quality ?? 4, raidName: last.raidName } : null,
@@ -180,7 +181,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
   app.get("/groups/:id/members/:userId/sheet", async (req) => {
     const u = currentUser(req);
     const p = parse(z.object({ id: z.uuid(), userId: z.uuid() }), req.params);
-    await membership(db, p.id, u.id);
+    const myRole = await membership(db, p.id, u.id);
     const [m] = await db.select({ userId: users.id, displayName: users.displayName, avatarId: users.avatarId, discordId: users.discordId, role: groupMembers.role, joinedAt: groupMembers.joinedAt })
       .from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
@@ -219,6 +220,8 @@ export async function raidLogRoutes(app: FastifyInstance) {
       characters: mine.map(r => ({ id: r.c.id, name: r.c.name, cls: r.c.cls, spec1: r.c.spec1, spec2: r.c.spec2, level: r.c.level, portraitId: r.c.portraitId, isMain: r.isMain,
         gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })),
       attendance: { raids: recent.length, cells, attended: cells.filter(c => c.status && ATTENDED.includes(c.status)).length, benched: cells.filter(c => c.status === "bench").length },
+      // Absences déclarées à venir (lot F) : le motif selon le choix du joueur (officiers ou tout le groupe)
+      absences: await sheetAbsences(db, p.userId, { id: u.id, officer: myRole !== "member" }),
       loot: got.map(g => ({ itemId: g.itemId, name: itemOf.get(g.itemId)?.name ?? `Objet ${g.itemId}`, quality: itemOf.get(g.itemId)?.quality ?? 4, character: g.name, boss: g.boss,
         raidName: g.raidName, raidId: g.raidId, at: g.at, bis: bisOf.has(`${key(g.name)}:${g.itemId}`) })),
     };

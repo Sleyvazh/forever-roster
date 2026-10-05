@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { get, type GroupRole } from "../api";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
+import { absenceLabel } from "./Absences";
 
 /** Fiche d'un joueur dans le groupe (lot D1) : persos joués ici, présence, banc, butin reçu. Classes CSS « ps- ». */
 
@@ -11,6 +12,7 @@ interface Sheet {
   member: { userId: string; displayName: string; avatarId: string | null; role: GroupRole; joinedAt: string; discordLinked: boolean };
   characters: { id: string; name: string; cls: string; spec1: string; spec2: string; level: number; portraitId: string | null; isMain: boolean; gearStats: GearStats }[];
   attendance: { raids: number; attended: number; benched: number; cells: { raidId: string; name: string; scheduledAt: string; status: AttendanceStatus | null }[] };
+  absences: { startDate: string | null; endDate: string | null; weekdays: number[]; reason: string }[];
   loot: { itemId: number; name: string; quality: number; character: string; boss: string; raidName: string; raidId: string; at: number; bis: boolean }[];
 }
 
@@ -33,6 +35,9 @@ export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; use
         <span className="tag">{ROLE_NAME[m.role]}</span>
         <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={onClose}>Fermer</button>
       </header>
+      {data.absences.length > 0 && (
+        <p className="ps-abs">Absent{data.absences.map((a, i) => <span key={i}>{i ? " ; " : " "}{absenceLabel(a)}{a.reason && <span className="muted"> ({a.reason})</span>}</span>)}</p>
+      )}
       <div className="ps-kpis">
         <div><b className="num">{a.raids ? `${a.attended}/${a.raids}` : "—"}</b><span>raids venus</span></div>
         <div><b className="num">{a.benched}</b><span>fois sur le banc</span></div>

@@ -162,6 +162,13 @@
       "when": 1791219963720,
       "tag": "0022_one_group_per_character",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791226700403,
+      "tag": "0023_craft_orders_absences",
+      "breakpoints": true
     }
   ]
 }

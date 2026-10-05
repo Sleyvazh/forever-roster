@@ -1,5 +1,5 @@
 /**
- * Application d'un export de l'addon (bloc FRC d'un perso) à une fiche : partagée par la fiche (« Importer depuis l'addon »)
+ * Application d'un export de l'addon (bloc FRC d'un perso) à une fiche : utilisée par le collage n'importe où (Ctrl+V)
  * et la page Addon (tous les persos d'un coup). L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
  */
 import { GEAR_SLOTS, INVTYPE_2H, isValidCombo, withoutCurrent, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, SIGNUP_LABEL, type CharacterExport } from "@forever/game-data";
@@ -14,21 +14,6 @@ export const PARTS: [Part, string][] = [
 export const ALL_PARTS = new Set<Part>(PARTS.map(p => p[0]));
 
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
-
-/** Résumé de chaque partie de l'export (affiché à côté des cases à cocher). */
-export function partSummary(d: CharacterExport, build: { split: string } | null): Record<Part, string> {
-  const gear = Object.keys(d.gear).length;
-  const spent = d.talents.reduce((a, t) => a + t.rank, 0);
-  const marked = d.wanted.length;
-  return {
-    identity: `niveau ${d.level}${d.cls ? ` · ${d.cls}` : ""}${d.race ? ` · ${d.race}` : ""}`,
-    gear: plural(gear, "pièce"),
-    professions: d.professions.map(p => `${p.name} ${p.skill}`).join(", ") || "aucun lu (addon 0.1.3 ou plus)",
-    recipes: `${plural(d.recipes.length, "patron")}${marked ? ` · ${marked} marqué${marked > 1 ? "s" : ""} en jeu` : ""}${d.recipes.length || marked ? "" : " (ouvre tes fenêtres de métier en jeu)"}${d.ignored.length ? ` · ignorés : ${d.ignored.join(", ")}` : ""}`,
-    talents: build ? `répartition ${build.split} (spé principale)` : `${plural(spent, "point")} dans ${d.talents.filter(t => t.rank > 0).length} talents`,
-    signups: d.signups.length ? d.signups.map(s => SIGNUP_LABEL[s.status]).join(", ") : "aucune",
-  };
-}
 
 /** Talents en jeu → lien du calculateur et répartition (arbres de Forever de la classe). */
 export async function talentBuild(cls: string, d: CharacterExport, talents?: Talent[]) {

@@ -10,6 +10,7 @@ import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
 import { createFeedback, isFeedbackId } from "./feedback";
 import { confirmation, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, splitValue } from "./ids";
+import { createOrderSync, renderOrder } from "./orders";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { createSync, type Publisher } from "./sync";
@@ -65,6 +66,20 @@ async function start() {
     },
   };
   const sync = createSync(api, publisher, log);
+  // Commandes d'artisanat (lot F) : même principe que les annonces, dans le salon des commandes
+  const orders = createOrderSync(api, {
+    async upsert(o, messageId) {
+      const ch = await client.channels.fetch(o.channelId);
+      if (!ch || !ch.isSendable()) throw new Error(`Salon ${o.channelId} inaccessible`);
+      const payload = renderOrder(o);
+      if (messageId) {
+        try { const m = await ch.messages.edit(messageId, payload); return { channelId: ch.id, messageId: m.id }; }
+        catch (e) { if (!(e instanceof DiscordAPIError && e.code === UNKNOWN_MESSAGE)) throw e; }
+      }
+      const m = await ch.send(payload);
+      return { channelId: ch.id, messageId: m.id };
+    },
+  }, log);
   const publishSoon = (view: RaidView) => { sync.publish(view).catch(e => log.warn("Mise à jour de l'annonce impossible", e?.message)); };
 
   /** Envoie les icônes du serveur comme émojis d'application (au démarrage, puis toutes les 6 h). */
@@ -133,6 +148,7 @@ async function start() {
     await refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message));
     setInterval(() => { refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message)); }, 6 * 3600e3);
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendNudges().catch(e => log.warn("Relances impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendAsks().catch(e => log.warn("Demandes impossibles", e?.message)); }, 15e3);
@@ -176,7 +192,12 @@ async function start() {
       if (!i.appPermissions.has(need)) {
         return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");
       }
-      const { group } = await api.bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
+      const { group, kind } = await api.bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
+      if (kind === "orders") {
+        await i.editReply(`✅ Salon lié aux commandes d'artisanat de **${group.name}**. Chaque commande y sera postée avec un bouton « Je m'en charge ».`);
+        void orders.tick().catch(() => {});
+        return;
+      }
       await i.editReply(`✅ Salon lié au groupe **${group.name}**. Les raids à venir y seront publiés dans quelques secondes.`);
       void sync.tick().catch(() => {});
       return;
@@ -205,6 +226,12 @@ async function start() {
   async function button(i: ButtonInteraction) {
     const id = decodeId(i.customId);
     if (!id) return;
+    if (id.a === "otake") {
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      const { view } = await api.takeOrder(id.orderId, i.user.id);
+      if (view) void orders.publish(view).catch(e => log.warn("Commande non mise à jour", e?.message));
+      return i.editReply(`✅ C'est noté : tu t'en charges. Marque-la « Faite » sur le site une fois l'objet remis${view ? ` : ${view.url}` : "."}`);
+    }
     if (id.a === "ask") {
       await i.deferUpdate();
       const r = await api.answerAsk(id.askId, i.user.id, id.yes);

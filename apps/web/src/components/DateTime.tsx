@@ -183,3 +183,26 @@ export function DateTimeField({ value, onChange, id, habitDays }: { value: strin
     </Popover>
   );
 }
+
+const isoDay = (d: { y: number; m: number; d: number }) => `${d.y}-${pad(d.m)}-${pad(d.d)}`;
+/** « lundi 10 novembre » depuis « 2026-11-10 ». */
+export function dayLabel(day: string) {
+  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
+  return `${DAY_LONG[weekdayOf(y, m, d) - 1]!} ${d} ${MONTHS[m - 1]!}${y !== today().y ? ` ${y}` : ""}`;
+}
+
+/** Champ date seule (absences) : « AAAA-MM-JJ », calendrier au clic. */
+export function DateField({ value, onChange, id, min }: { value: string; onChange: (day: string) => void; id?: string; min?: string }) {
+  const [open, setOpen] = useState(false);
+  const cur = value ? (() => { const [y, m, d] = value.split("-").map(Number) as [number, number, number]; return { y, m, d, h: 0, mi: 0 }; })() : null;
+  return (
+    <Popover open={open} onClose={() => setOpen(false)} button={
+      <button id={id} type="button" className="dt-field" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        <span>{value ? dayLabel(value) : "Choisir"}</span><span aria-hidden="true">▾</span>
+      </button>
+    }>
+      <Calendar value={cur} onPick={d => { if (!min || isoDay(d) >= min) { onChange(isoDay(d)); setOpen(false); } }} />
+    </Popover>
+  );
+}
+export const todayIso = () => isoDay(today());

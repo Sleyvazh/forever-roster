@@ -34,6 +34,12 @@ export interface Ask {
   raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string };
 }
 export interface AskAnswer { answer: "yes" | "no"; character: string; spec: string; url: string; view: RaidView | null; already: boolean }
+/** Commande d'artisanat dans son salon Discord (lot F). */
+export interface OrderView {
+  id: string; group: { id: string; name: string }; channelId: string; messageId: string | null; changedAt: string; url: string;
+  item: { id: number; name: string; quality: number } | null; recipeName: string; quantity: number; requester: string; character: string | null;
+  crafters: string[]; status: "open" | "taken" | "done"; taker: string | null; reagents: { name: string; n: number; provided: boolean }[]; note: string;
+}
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
@@ -70,7 +76,7 @@ export class InternalApi {
   }
 
   bind(b: { code: string; guildId: string; channelId: string; discordUserId: string }) {
-    return this.req<{ group: { id: string; name: string } }>("POST", "/internal/discord/bind", b);
+    return this.req<{ group: { id: string; name: string }; kind: "raids" | "orders" }>("POST", "/internal/discord/bind", b);
   }
   createRaid(b: { guildId: string; channelId: string; discordUserId: string; name: string; scheduledAt: string; description?: string }) {
     return this.req<RaidView>("POST", "/internal/discord/raids", b);
@@ -86,6 +92,11 @@ export class InternalApi {
   answerAsk(id: string, discordUserId: string, yes: boolean) {
     return this.req<AskAnswer>("POST", `/internal/discord/asks/${id}/answer`, { discordUserId, yes });
   }
+  ordersOutbox() { return this.req<{ orders: OrderView[] }>("GET", "/internal/discord/orders/outbox"); }
+  orderPublished(id: string, b: { channelId: string; messageId: string; changedAt: string }) {
+    return this.req<{ ok: true }>("POST", `/internal/discord/orders/${id}/published`, b);
+  }
+  takeOrder(id: string, discordUserId: string) { return this.req<{ view: OrderView | null }>("POST", `/internal/discord/orders/${id}/take`, { discordUserId }); }
   deletionDone(id: number) { return this.req<{ ok: true }>("DELETE", `/internal/discord/deletions/${id}`); }
   view(raidId: string) { return this.req<RaidView>("GET", `/internal/discord/raids/${raidId}/view`); }
   choices(raidId: string, discordUserId: string) {

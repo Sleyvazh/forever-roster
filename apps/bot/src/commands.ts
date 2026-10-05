@@ -5,7 +5,7 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   {
     type: ApplicationCommandType.ChatInput,
     name: "forever-lier",
-    description: "Lie ce salon à un groupe Forever Roster (code à générer sur la page du groupe).",
+    description: "Lie ce salon à un groupe Forever Roster : raids ou commandes (code donné par le site).",
     contexts: [InteractionContextType.Guild],
     options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
   },

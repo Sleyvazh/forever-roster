@@ -2,10 +2,10 @@ import { parseCharacterExports, parseRaidLogs, type CharacterExport, type RaidLo
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, get, post, type Character } from "../api";
-import { ALL_PARTS, applyBlocks, blockKey, blockSummary, guessTarget, type ApplyResult, type Target } from "../addonImport";
+import { ALL_PARTS, applyBlocks, blockKey, blockSummary, guessTarget, PARTS, type ApplyResult, type Part, type Target } from "../addonImport";
 import { ClassIcon } from "./Icons";
 
-/** Collage dans un champ de saisie : on laisse faire (la fiche a sa propre zone d'import). */
+/** Collage dans un champ de saisie : on laisse faire (c'est du texte tapé ou collé exprès). */
 const typing = (el: Element | null) => !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable);
 
 /**
@@ -21,6 +21,8 @@ export function PasteImport() {
   const [errors, setErrors] = useState<string[]>([]);
   const [targets, setTargets] = useState<Record<string, Target>>({});
   const [busy, setBusy] = useState(false);
+  // Ce qu'on reprend de l'export (lot F) : tout par défaut ; le choix reste pour la visite
+  const [parts, setParts] = useState<Set<Part>>(new Set(ALL_PARTS));
   const [results, setResults] = useState<ApplyResult[] | null>(null);
   const mine = chars.data?.characters ?? [];
 
@@ -54,12 +56,13 @@ export function PasteImport() {
   if (!blocks) return null;
   const targetOf = (d: CharacterExport) => targets[blockKey(d)] ?? guessTarget(d, mine);
   const count = blocks.filter(d => targetOf(d) !== "skip").length;
+  const fresh = blocks.filter(d => targetOf(d) === "new").length;
   const logsToSave = logs.filter(l => !skipLogs.has(l.raidId));
   const close = () => { setBlocks(null); setLogs([]); setResults(null); };
   const apply = async () => {
     setBusy(true);
     const out: ApplyResult[] = [];
-    out.push(...await applyBlocks(blocks, targetOf, ALL_PARTS, mine));
+    out.push(...await applyBlocks(blocks, targetOf, parts, mine));
     // Bilans après les persos : le BiS reçu est coché sur la fiche à jour (sinon l'équipement des persos l'écraserait)
     for (const l of logsToSave) {
       const label = `Bilan de ${l.raidName || "raid"}`;
@@ -114,9 +117,26 @@ export function PasteImport() {
               </li>
             ))}
           </ul>
+          {blocks.length > 0 && (
+            <details className="pi-parts">
+              <summary>Choisir quoi importer {parts.size < ALL_PARTS.size && <span className="tag warn">{parts.size}/{ALL_PARTS.size}</span>}</summary>
+              <div className="ai-parts">
+                {PARTS.map(([k, label]) => (
+                  <label key={k} className="ai-part">
+                    <input type="checkbox" checked={parts.has(k)} onChange={() => setParts(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
           <div className="row">
-            <button type="button" className="btn primary sm" disabled={busy || !total} onClick={() => void apply()}>
-              {busy ? "Mise à jour…" : [count ? `Mettre à jour ${count} perso${count > 1 ? "s" : ""}` : "", logsToSave.length ? `${count ? "et le" : "Enregistrer le"} bilan${logsToSave.length > 1 ? "s" : ""}` : ""].filter(Boolean).join(" ") || "Rien à faire"}
+            <button type="button" className="btn primary sm" disabled={busy || !total || (count > 0 && !parts.size && !logsToSave.length)} onClick={() => void apply()}>
+              {busy ? "Mise à jour…" : [
+                count - fresh ? `Mettre à jour ${count - fresh} perso${count - fresh > 1 ? "s" : ""}` : "",
+                fresh ? `${count - fresh ? "et créer" : "Créer"} ${fresh} fiche${fresh > 1 ? "s" : ""}` : "",
+                logsToSave.length ? `${count ? "et le" : "Enregistrer le"} bilan${logsToSave.length > 1 ? "s" : ""}` : "",
+              ].filter(Boolean).join(" ") || "Rien à faire"}
             </button>
             <button type="button" className="btn ghost sm" onClick={close}>Ignorer</button>
           </div>

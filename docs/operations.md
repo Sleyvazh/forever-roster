@@ -309,7 +309,7 @@ Pour changer un seul secret (jeton régénéré chez Discord, par exemple), rela
 ### Utilisation
 
 1. Chaque joueur lie son Discord dans **Compte & sécurité** : ses clics dans le bot l'inscrivent alors avec ses persos. Sans liaison, il peut quand même s'inscrire en choisissant classe et spé (marqué ✱ sur le site).
-2. Un officier (Discord lié) génère un code dans l'encart **Salon Discord** de la page du groupe, puis tape `/forever-lier code:XXXXXXXX` dans le salon voulu. Code valable 30 minutes, une seule fois.
+2. Un officier (Discord lié) génère un code dans l'encart **Salon Discord** (Administration → Discord et relances), puis tape `/forever-lier code:XXXXXXXX` dans le salon voulu. Code valable 30 minutes, une seule fois.
 3. Les raids à venir y sont publiés dans les secondes qui suivent. Toute inscription, sur le site ou sur Discord, met l'annonce à jour.
 4. `/raid nom:Molten Core date:12/11/2026 21:00 description:…` crée un raid depuis Discord (officiers, heure de Paris).
 
@@ -320,6 +320,9 @@ Pour changer un seul secret (jeton régénéré chez Discord, par exemple), rela
 9. **Demander à X** (lot D2) : dans l'encart Besoins, « Demander » sur un alt d'un inscrit ou le main d'un membre sans réponse. Le bot lui écrit en privé (sous 15 s) : « Oui, avec <perso> » l'inscrit présent avec ce perso et cette spé (à la place de son inscription actuelle), « Non » est simplement noté. L'état (demandé, a dit oui / non, MP impossible) s'affiche sur le site. Une demande par perso et par raid, annulable.
 
 Les relances et les demandes respectent le réglage « Messages privés du bot » de Compte & sécurité.
+
+10. **Commandes d'artisanat** (lot F) : dans Administration → Discord et relances, encart **Salon des commandes d'artisanat**, « Générer un code », puis `/forever-lier code:XXXXXXXX` dans un salon dédié (celui des raids marche aussi, mais les annonces s'y mélangent). La même commande sert aux deux salons : le code dit lequel est lié. Le bot y poste chaque commande passée depuis l'onglet Artisans (objet, quantité, demandeur, artisans du groupe qui connaissent la recette, composants fournis, détails) avec un bouton **Je m'en charge** (Discord lié et membre du groupe, pas pour sa propre commande). Le message suit la commande (prise, faite) ; annuler la commande, changer de salon ou délier le supprime. Une commande faite reste affichée 14 jours sur le site. Au plus 10 commandes en cours par joueur.
+11. **Absences déclarées** (lot F) : chaque joueur, sur Mes persos, déclare une période (du … au …, 6 mois au plus) ou des jours de la semaine. Les raids à venir de ces jours **sans réponse** passent en « Absent » avec la note « Absence déclarée », dans tous ses groupes, y compris les raids créés plus tard (raid ajouté, récurrent généré, `/raid`, date changée, groupe rejoint). Une réponse déjà donnée n'est jamais remplacée. Retirer l'absence enlève les « Absent » qu'elle avait posés (sauf si une autre absence couvre encore ce jour). Le motif est facultatif ; le joueur choisit s'il est visible des officiers ou de tout le groupe (fiche joueur). Ces « Absent » n'envoient ni relance ni rappel.
 
 Changer de salon ou délier efface les anciennes annonces. Supprimer un raid ou le groupe aussi. Une annonce reste synchronisée jusqu'à 12 heures après l'heure du raid.
 

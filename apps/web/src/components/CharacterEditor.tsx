@@ -4,6 +4,7 @@ import {
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, parseTalentLink, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { Character, Prof } from "../api";
 import { CRAFTING, RecipeCard } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
@@ -12,7 +13,7 @@ import { del, uploadImage } from "../api";
 import { Paperdoll } from "./Paperdoll";
 import { ranksFrom, TalentTrees, useTalentData, type Talent, type TreeView } from "./TalentTrees";
 import { useViewPref } from "../prefs";
-import { AddonImport } from "./AddonImport";
+import { syncAge } from "../addonImport";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 export type EditorTab = Tab;
@@ -71,6 +72,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
             Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls || "Classe ?"}</span> · {c.race || "Race ?"}
             {race && ` · ${race.faction}`}{c.owner && ` · Joueur : ${c.owner}`}
           </div>
+          {editable && <SyncLine at={c.addonSyncedAt} />}
         </div>
         <div className="row">
           {!editable && <span className="tag warn">Lecture seule</span>}
@@ -128,7 +130,6 @@ function Profil({ c, onChange, editable }: SubProps) {
 
   return (
     <>
-      {editable && <div className="sec" style={{ paddingBottom: 0 }}><AddonImport c={c} onChange={onChange} /></div>}
       <div className="sec">
         <h3>Identité</h3>
         <div className="grid">
@@ -383,5 +384,20 @@ function LegacyTab({ c, onChange }: SubProps) {
         <textarea aria-label="Notes" maxLength={5000} placeholder="Objectifs, route de leveling, rôle en raid…" value={c.notes} onChange={e => onChange({ notes: e.target.value })} />
       </div>
     </>
+  );
+}
+
+/**
+ * Dernière synchro de l'addon (lot F) : la mise à jour se fait par Ctrl+V sur n'importe quelle page,
+ * la fiche rappelle seulement comment et depuis quand.
+ */
+function SyncLine({ at }: { at?: string | null }) {
+  const age = syncAge(at);
+  return (
+    <div className={`ce-sync${age.stale ? " stale" : ""}`}>
+      {at
+        ? <><b>Addon</b> · {age.text} · en jeu : ta touche, Ctrl+C, puis Ctrl+V ici</>
+        : <><b>Addon</b> · jamais synchronisé · <Link to="/addon">installer et synchroniser</Link></>}
+    </div>
   );
 }

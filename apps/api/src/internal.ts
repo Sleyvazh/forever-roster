@@ -3,7 +3,7 @@ import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, s
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
-import { characters, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, users } from "./db/schema";
+import { characters, craftOrders, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, users } from "./db/schema";
 import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
@@ -11,6 +11,8 @@ import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
 import { bus } from "./lib/events";
 import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
+import { applyAbsencesToRaid } from "./lib/absences";
+import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 
 /**
@@ -126,8 +128,23 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
 
   app.post("/internal/discord/bind", async (req: FastifyRequest) => {
     const body = parse(z.object({ code: z.string().trim().min(6).max(32), guildId: snowflake, channelId: snowflake, discordUserId: snowflake }), req.body);
-    const [g] = await db.select().from(groups).where(and(eq(groups.discordLinkCodeHash, sha256(body.code.toUpperCase())), gt(groups.discordLinkCodeExpiresAt, new Date())));
-    if (!g) throw badRequest("Code invalide ou expiré. Génère un nouveau code sur la page du groupe.");
+    const hash = sha256(body.code.toUpperCase());
+    const [g] = await db.select().from(groups).where(and(eq(groups.discordLinkCodeHash, hash), gt(groups.discordLinkCodeExpiresAt, new Date())));
+    if (!g) {
+      // Code du salon des commandes d'artisanat (lot F)
+      const [o] = await db.select().from(groups).where(and(eq(groups.ordersLinkCodeHash, hash), gt(groups.ordersLinkCodeExpiresAt, new Date())));
+      if (!o) throw badRequest("Code invalide ou expiré. Génère un nouveau code sur la page du groupe.");
+      const { user, role } = await linkedMember(body.discordUserId, o.id);
+      if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
+      if (!role || RANK[role] < RANK.officer) throw forbidden("Réservé aux officiers du groupe.");
+      await db.update(groups).set({ ordersGuildId: body.guildId, ordersChannelId: body.channelId, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, o.id));
+      await retireOrderMessages(db, o.id, body.channelId);
+      // Les commandes en cours seront (re)publiées dans ce salon
+      await db.update(craftOrders).set({ discordChangedAt: new Date() }).where(and(eq(craftOrders.groupId, o.id), ne(craftOrders.status, "done")));
+      await audit(db, req, "group_orders_linked", { userId: user.id, groupId: o.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+      bus.group({ t: "group", g: o.id });
+      return { group: { id: o.id, name: o.name }, kind: "orders" as const };
+    }
     // Le code ne suffit pas : il faut aussi être officier du groupe, avec son Discord lié au site.
     const { user, role } = await linkedMember(body.discordUserId, g.id);
     if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
@@ -139,7 +156,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
     await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
     bus.group({ t: "group", g: g.id });
-    return { group: { id: g.id, name: g.name } };
+    return { group: { id: g.id, name: g.name }, kind: "raids" as const };
   });
 
   /* ----- Création d'un raid depuis Discord (/raid) ----- */
@@ -159,6 +176,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
     }).returning({ id: raids.id });
     await audit(db, req, "raid_created", { userId: user.id, groupId: g.id, meta: { raidId: r!.id, name: body.name, via: "discord" } });
+    await applyAbsencesToRaid(db, r!.id);
     bus.group({ t: "raids", g: g.id });
     return view(r!.id);
   });
@@ -169,7 +187,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const rows = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
       .where(and(
         isNotNull(groups.discordChannelId),
-        or(isNull(raids.discordSyncedAt), lt(raids.discordSyncedAt, raids.discordChangedAt), sql`${raids.discordChannelId} IS DISTINCT FROM ${groups.discordChannelId}`),
+        // Comparaison à la milliseconde : la date confirmée par le bot passe par JavaScript (ms), la base garde les µs
+        or(isNull(raids.discordSyncedAt), sql`${raids.discordSyncedAt} < date_trunc('milliseconds', ${raids.discordChangedAt})`, sql`${raids.discordChannelId} IS DISTINCT FROM ${groups.discordChannelId}`),
         or(isNull(raids.scheduledAt), gt(raids.scheduledAt, new Date(Date.now() - KEEP_AFTER_MS))),
       ))
       .orderBy(asc(raids.discordChangedAt)).limit(20);
@@ -339,6 +358,45 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     await db.update(raidAsks).set({ answer: body.yes ? "yes" : "no", answeredAt: new Date() }).where(eq(raidAsks.id, id));
     await notifyRaid(raid.id);
     return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: a.ask.spec, url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
+  });
+
+  /* ----- Commandes d'artisanat dans leur salon (lot F) ----- */
+
+  /** Commandes à publier ou mettre à jour (en cours, ou faites depuis moins de 2 jours). */
+  app.get("/internal/discord/orders/outbox", async () => {
+    const rows = await db.select({ id: craftOrders.id }).from(craftOrders).innerJoin(groups, eq(groups.id, craftOrders.groupId))
+      .where(and(
+        isNotNull(groups.ordersChannelId),
+        or(isNull(craftOrders.discordSyncedAt), sql`${craftOrders.discordSyncedAt} < date_trunc('milliseconds', ${craftOrders.discordChangedAt})`, sql`${craftOrders.discordChannelId} IS DISTINCT FROM ${groups.ordersChannelId}`),
+        or(ne(craftOrders.status, "done"), gt(craftOrders.doneAt, new Date(Date.now() - 2 * 86400e3))),
+      )).orderBy(asc(craftOrders.discordChangedAt)).limit(20);
+    const orders = [];
+    for (const r of rows) { const v = await orderDiscordView(db, cfg.APP_ORIGIN, r.id); if (v) orders.push(v); }
+    return { orders };
+  });
+
+  app.post("/internal/discord/orders/:id/published", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ channelId: snowflake, messageId: snowflake, changedAt: z.iso.datetime({ offset: true }) }), req.body);
+    await db.update(craftOrders).set({ discordChannelId: body.channelId, discordMessageId: body.messageId, discordSyncedAt: new Date(body.changedAt) }).where(eq(craftOrders.id, id));
+    return { ok: true };
+  });
+
+  /** « Je m'en charge » depuis Discord : un membre du groupe avec son compte lié. */
+  app.post("/internal/discord/orders/:id/take", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ discordUserId: snowflake }), req.body);
+    const [o] = await db.select().from(craftOrders).where(eq(craftOrders.id, id));
+    if (!o) throw notFound("Cette commande n'existe plus.");
+    const { user, role } = await linkedMember(body.discordUserId, o.groupId);
+    if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité) pour prendre une commande.");
+    if (!role) throw forbidden("Tu n'es pas membre de ce groupe.");
+    if (o.requesterId === user.id) throw badRequest("C'est ta propre commande.");
+    if (o.status !== "open") throw badRequest(o.status === "taken" ? "Quelqu'un s'en charge déjà." : "Cette commande est déjà faite.");
+    await db.update(craftOrders).set({ status: "taken", takerId: user.id, takenAt: new Date(), discordChangedAt: new Date() })
+      .where(and(eq(craftOrders.id, id), eq(craftOrders.status, "open")));
+    bus.group({ t: "group", g: o.groupId });
+    return { view: await orderDiscordView(db, cfg.APP_ORIGIN, id) };
   });
 
   /* ----- Inscription depuis un bouton ----- */

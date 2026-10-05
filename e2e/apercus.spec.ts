@@ -144,6 +144,136 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
 });
 
 /**
+ * Aperçus du lot F (après ceux des lots D1 et D2, mêmes données) : commandes d'artisanat, absences déclarées,
+ * présence dans Membres, salon des commandes, ligne de synchro et choix des parties à l'import.
+ */
+test("aperçus du lot F", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
+  const group = (await db.query("SELECT group_id FROM group_members WHERE user_id = $1 ORDER BY joined_at LIMIT 1", [me])).rows[0].group_id as string;
+  const user = async (name: string) => (await db.query("SELECT id FROM users WHERE display_name = $1", [name])).rows[0].id as string;
+  const char = async (name: string) => (await db.query("SELECT id FROM characters WHERE name = $1", [name])).rows[0].id as string;
+  await db.query("UPDATE users SET discord_id = '800000000000000099', discord_username = 'thalion' WHERE id = $1", [me]);
+  // Objets et recettes (noms du jeu), artisans du groupe
+  await db.query(`INSERT INTO game_items (id, name, quality, item_level, req_level, class_id, subclass_id, inventory_type) VALUES
+    (18263, 'Flarecore Wraps', 4, 66, 60, 4, 1, 9), (14342, 'Mooncloth', 2, 50, 0, 7, 0, 0), (17010, 'Fiery Core', 3, 60, 0, 7, 0, 0), (14227, 'Ironweb Spider Silk', 1, 50, 0, 7, 0, 0),
+    (13510, 'Flask of the Titans', 1, 60, 50, 0, 0, 0), (8846, 'Gromsblood', 1, 47, 0, 7, 0, 0), (13423, 'Stonescale Oil', 1, 50, 0, 7, 0, 0), (13468, 'Black Lotus', 2, 60, 0, 7, 0, 0), (8925, 'Crystal Vial', 1, 50, 0, 7, 0, 0),
+    (13446, 'Major Healing Potion', 1, 55, 45, 0, 0, 0), (13464, 'Golden Sansam', 1, 52, 0, 7, 0, 0), (13465, 'Mountain Silversage', 1, 54, 0, 7, 0, 0),
+    (14152, 'Robe of the Archmage', 4, 62, 57, 4, 1, 20) ON CONFLICT DO NOTHING`);
+  await db.query(`INSERT INTO game_recipes (spell_id, skill_line, name, req_skill, trivial_low, trivial_high, created_item_id, reagents) VALUES
+    (23666, 197, 'Flarecore Wraps', 300, 300, 320, 18263, '[{"id":14342,"n":4},{"id":17010,"n":2},{"id":14227,"n":2}]'),
+    (17635, 171, 'Flask of the Titans', 300, 300, 315, 13510, '[{"id":8846,"n":30},{"id":13423,"n":10},{"id":13468,"n":1},{"id":8925,"n":1}]'),
+    (17556, 171, 'Major Healing Potion', 275, 275, 295, 13446, '[{"id":13464,"n":2},{"id":13465,"n":1},{"id":8925,"n":1}]'),
+    (18457, 197, 'Robe of the Archmage', 300, 300, 315, 14152, '[]') ON CONFLICT DO NOTHING`);
+  const prof = (name: string) => JSON.stringify({ prof1: { name, skill: 300 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 });
+  for (const [c, p, spells] of [["Sylvaë", "Tailoring", [23666]], ["Tavish", "Alchemy", [17635, 17556]], ["Hadrien", "Alchemy", [17556]]] as const) {
+    const id = await char(c);
+    await db.query("UPDATE characters SET professions = $2 WHERE id = $1", [id, prof(p)]);
+    for (const s of spells) await db.query("INSERT INTO character_recipes (character_id, spell_id, status) VALUES ($1, $2, 'known') ON CONFLICT DO NOTHING", [id, s]);
+  }
+  // Commandes : ouverte (composants en partie fournis), prise, faite, sans artisan
+  const reag = (list: [number, string, number, boolean][]) => JSON.stringify(list.map(([itemId, name, n, provided]) => ({ itemId, name, n, provided })));
+  const order = (spell: number, recipe: string, item: number, qty: number, by: string, ch: string | null, reagents: string, note: string, status: string, taker: string | null, ago: number) =>
+    db.query(`INSERT INTO craft_orders (group_id, spell_id, recipe_name, item_id, item_name, quantity, requester_id, character_id, reagents, note, status, taker_id, created_at, taken_at, done_at)
+      VALUES ($1, $2, $3, $4, $3, $5, $6, $7, $8, $9, $10, $11, now() - make_interval(hours => $12), CASE WHEN $11::uuid IS NULL THEN NULL ELSE now() - make_interval(hours => $12 - 1) END, CASE WHEN $10 = 'done' THEN now() - interval '2 hours' END)`,
+      [group, spell, recipe, item, qty, by, ch, reagents, note, status, taker, ago]);
+  await order(23666, "Flarecore Wraps", 18263, 1, await user("Gorrak"), await char("Gorrak"), reag([[14342, "Mooncloth", 4, true], [17010, "Fiery Core", 2, false], [14227, "Ironweb Spider Silk", 2, true]]),
+    "Il me manque les Fiery Core, je rembourse à la prochaine MC.", "open", null, 3);
+  await order(18457, "Robe of the Archmage", 14152, 1, await user("Morvan"), await char("Morvh"), "[]", "", "open", null, 20);
+  await order(17635, "Flask of the Titans", 13510, 2, me, await char("Thalwen"), reag([[8846, "Gromsblood", 60, true], [13423, "Stonescale Oil", 20, true], [13468, "Black Lotus", 2, false], [8925, "Crystal Vial", 2, true]]),
+    "Pour mercredi si possible.", "taken", await user("Tavish"), 26);
+  await order(17556, "Major Healing Potion", 13446, 10, await user("Orlane"), await char("Vesper"), reag([[13464, "Golden Sansam", 20, true], [13465, "Mountain Silversage", 10, true], [8925, "Crystal Vial", 10, true]]),
+    "", "done", await user("Hadrien"), 50);
+  // Absence de Gorrak (motif visible du groupe) ; persos synchronisés ou non
+  await db.query("INSERT INTO absences (user_id, start_date, end_date, weekdays, reason, reason_visibility) VALUES ($1, (now() AT TIME ZONE 'Europe/Paris')::date + 5, (now() AT TIME ZONE 'Europe/Paris')::date + 9, '[]', 'Déménagement', 'group')",
+    [await user("Gorrak")]);
+  await db.query("UPDATE characters SET addon_synced_at = now() - interval '3 hours' WHERE name NOT IN ('Morvh', 'Tavish', 'Hadrien')");
+  // Présence variée : Rissa manque les deux raids relevés, Elwin et Maëlle le premier
+  await db.query(`UPDATE raid_logs l SET attendees = (SELECT coalesce(jsonb_agg(a), '[]') FROM jsonb_array_elements(l.attendees) a
+    WHERE a->>'name' <> 'Rissa' AND (a->>'name' NOT IN ('Elwin', 'Maëlle') OR l.started_at > now() - interval '10 days'))
+    WHERE raid_id IN (SELECT id FROM raids WHERE group_id = $1)`, [group]);
+  const thalwen = await char("Thalwen");
+  await db.end();
+
+  await page.goto("/login");
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+
+  // 1. Onglet Artisans : commandes en cours, composants dépliés
+  await page.goto(`/groups/${group}/artisans`);
+  const co = page.locator("section.co");
+  await expect(co).toContainText("Flarecore Wraps");
+  await co.locator(".co-reag-sum").first().click();
+  await co.screenshot({ path: `${OUT}/apercu-commandes.png` });
+  // 2. Nouvelle commande : recherche, recette choisie, composants à cocher
+  await co.getByRole("button", { name: "+ Demander une fabrication" }).click();
+  await page.fill("#co-q", "titans");
+  await co.locator(".co-hits button").first().click();
+  await co.locator(".co-reagpick label").first().click();
+  await co.locator(".co-form").screenshot({ path: `${OUT}/apercu-nouvelle-commande.png` });
+
+  // 3. Mes absences : formulaire « chaque semaine », puis la liste
+  await page.goto("/persos");
+  await page.getByRole("button", { name: "+ Déclarer une absence" }).click();
+  await page.getByRole("button", { name: "Chaque semaine" }).click();
+  await page.getByRole("button", { name: "ven." }).click();
+  await page.fill("#ab-why", "Soirée jeux de société");
+  await page.selectOption("#ab-vis", "group");
+  await page.locator("section.ab").screenshot({ path: `${OUT}/apercu-absence-formulaire.png` });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.locator("section.ab")).toContainText("chaque vendredi");
+  await page.getByRole("button", { name: "+ Déclarer une absence" }).click();
+  await page.getByRole("button", { name: "Une période" }).click();
+  await page.locator("#ab-from").click();
+  await page.getByRole("button", { name: "Mois suivant" }).click();
+  await page.getByRole("button", { name: "9", exact: true }).click();
+  await page.locator("#ab-to").click();
+  await page.getByRole("button", { name: "15", exact: true }).click();
+  await page.fill("#ab-why", "Vacances");
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page.locator("section.ab .ab-chip")).toHaveCount(2);
+  await page.locator("section.ab").screenshot({ path: `${OUT}/apercu-absences.png` });
+
+  // 4. Membres : colonne Présence ; fiche joueur avec son absence
+  await page.goto(`/groups/${group}/membres`);
+  await expect(page.locator("table.data")).toContainText("Présence");
+  await page.locator("table.data").screenshot({ path: `${OUT}/apercu-membres-presence.png` });
+  await page.getByRole("button", { name: "Gorrak" }).click();
+  await expect(page.locator(".ps")).toContainText("Déménagement");
+  await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-absence.png` });
+
+  // 5. Administration : salon des commandes
+  await page.goto(`/groups/${group}/admin`);
+  await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
+  const oc = page.locator("section[aria-labelledby=oc-title]");
+  await oc.getByRole("button", { name: "Générer un code de liaison" }).click();
+  await expect(oc.getByRole("textbox")).toHaveValue(/forever-lier code:/);
+  await oc.screenshot({ path: `${OUT}/apercu-salon-commandes.png` });
+
+  // 6. Fiche perso : ligne de synchro, puis Ctrl+V avec le choix des parties
+  await page.goto(`/persos/${thalwen}`);
+  await expect(page.locator(".ce-sync")).toBeVisible();
+  await page.locator(".ce-sync").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${OUT}/apercu-ligne-synchro.png` });
+  await page.evaluate(text => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", text);
+    (document.activeElement as HTMLElement | null)?.blur();
+    document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+  }, readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
+  const pasted = page.getByRole("dialog", { name: "Export de l'addon" });
+  await pasted.getByText("Choisir quoi importer").click();
+  await pasted.screenshot({ path: `${OUT}/apercu-import-choix.png` });
+});
+
+/**
  * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
  * Sortie : test-results/tour/.
  */

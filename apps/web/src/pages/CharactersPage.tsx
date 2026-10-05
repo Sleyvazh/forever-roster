@@ -7,6 +7,7 @@ import { CharacterEditor, EDITOR_TAB_SLUG, editorTabFromSlug, type EditorTab } f
 import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { Portrait } from "../components/ImageUpload";
 import { StartSteps, WeekBand } from "../components/Week";
+import { MyAbsences } from "../components/Absences";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -66,7 +67,8 @@ export function CharactersPage() {
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
   // Le groupe (et main / alt) vient toujours du serveur : il change hors de la fiche (glisser, page du groupe, inscription)
-  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => { const p = prev.find(x => x.id === sc.id); return p ? { ...p, group: sc.group } : sc; })); }, [data]);
+  // Une fiche modifiée ailleurs (import de l'addon par Ctrl+V, autre onglet) : la version du serveur remplace la copie
+  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => { const p = prev.find(x => x.id === sc.id); return !p || p.updatedAt !== sc.updatedAt ? sc : { ...p, group: sc.group }; })); }, [data]);
   // Adresse sans perso (ou perso supprimé) : on montre le premier, sans ajouter d'étape à l'historique
   useEffect(() => {
     if (!data || !data.characters.length) return;
@@ -128,6 +130,7 @@ export function CharactersPage() {
       ) : (<>
         <StartSteps compact onCreate={() => void add()} />
         <WeekBand />
+        <MyAbsences />
         <div className="split">
           <aside className="stack">
             <p className="hint" style={{ margin: 0 }}>{myGroups.length ? "Glisse ⋮⋮ pour réordonner, ou vers un autre groupe pour l'y ranger." : "Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner."}</p>

@@ -1,7 +1,7 @@
 import type { LootMethod, LootMode, LootResponse, LootSettings, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn, bigserial, boolean, customType, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
+  type AnyPgColumn, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -148,6 +148,11 @@ export const groups = pgTable("groups", {
   nudgeHours: smallint("nudge_hours").default(48),
   /** La liste des sans-réponse est aussi envoyée en MP aux officiers, au moment de la relance automatique. */
   nudgeOfficers: boolean("nudge_officers").notNull().default(true),
+  /** Salon Discord des commandes d'artisanat (lot F), lié comme celui des raids : code à usage unique + /forever-lier. */
+  ordersGuildId: text("orders_guild_id"),
+  ordersChannelId: text("orders_channel_id"),
+  ordersLinkCodeHash: text("orders_link_code_hash"),
+  ordersLinkCodeExpiresAt: ts("orders_link_code_expires_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
@@ -351,6 +356,63 @@ export const characterRecipes = pgTable("character_recipes", {
   primaryKey({ columns: [t.characterId, t.spellId] }),
   index("character_recipes_spell_idx").on(t.spellId),
   check("character_recipes_status", sql`${t.status} IN ('known', 'wanted')`),
+]);
+
+/**
+ * Commande d'artisanat (lot F) : un membre demande une fabrication dans son groupe ; un artisan la prend, puis la
+ * marque faite. Recette et objet recopiés (les tables du jeu sont réimportées à chaque version).
+ */
+export interface OrderReagent { itemId: number; name: string; n: number; provided: boolean }
+export const craftOrders = pgTable("craft_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  spellId: integer("spell_id").notNull(),
+  recipeName: text("recipe_name").notNull(),
+  itemId: integer("item_id"),
+  itemName: text("item_name"),
+  quantity: smallint("quantity").notNull().default(1),
+  requesterId: uuid("requester_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** Perso qui recevra l'objet (facultatif). */
+  characterId: uuid("character_id").references(() => characters.id, { onDelete: "set null" }),
+  /** Composants de la recette (× quantité) et ceux déjà fournis par le demandeur. */
+  reagents: jsonb("reagents").$type<OrderReagent[]>().notNull().default([]),
+  /** Délai, pourboire, détails : texte libre. */
+  note: text("note").notNull().default(""),
+  status: text("status").$type<"open" | "taken" | "done">().notNull().default("open"),
+  takerId: uuid("taker_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  takenAt: ts("taken_at"),
+  doneAt: ts("done_at"),
+  /** Message du bot dans le salon des commandes (republié quand discord_changed_at > discord_synced_at). */
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
+}, t => [
+  index("craft_orders_group_idx").on(t.groupId, t.status),
+  check("craft_orders_status_chk", sql`${t.status} in ('open', 'taken', 'done')`),
+  check("craft_orders_qty_chk", sql`${t.quantity} between 1 and 99`),
+]);
+
+/**
+ * Absence déclarée (lot F) : une période (du … au …, dates de Paris incluses) ou des jours de la semaine (« jamais le
+ * vendredi », jusqu'à ce que le joueur la retire). Les raids sans réponse de ces jours passent en « Absent », dans tous
+ * ses groupes, y compris ceux créés ensuite. Le motif est facultatif ; le joueur choisit qui le voit.
+ */
+export const absences = pgTable("absences", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  /** 1 = lundi … 7 = dimanche (absence récurrente). */
+  weekdays: jsonb("weekdays").$type<number[]>().notNull().default([]),
+  reason: text("reason").notNull().default(""),
+  reasonVisibility: text("reason_visibility").$type<"officers" | "group">().notNull().default("officers"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("absences_user_idx").on(t.userId),
+  check("absences_kind_chk", sql`(${t.startDate} is not null and ${t.endDate} is not null and ${t.endDate} >= ${t.startDate}) or jsonb_array_length(${t.weekdays}) > 0`),
+  check("absences_visibility_chk", sql`${t.reasonVisibility} in ('officers', 'group')`),
 ]);
 
 /* ---------- Images envoyées par les joueurs ---------- */

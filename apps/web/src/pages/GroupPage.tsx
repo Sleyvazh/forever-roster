@@ -1,5 +1,5 @@
 import { AttendanceTab } from "../components/RaidLog";
-import { CLASSES, SKILL_LINE_NAMES, type ClassName } from "@forever/game-data";
+import { ATTENDED, CLASSES, SKILL_LINE_NAMES, type AttendanceStatus, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -11,12 +11,13 @@ import { ItemHover, ItemIcon } from "../components/ItemTooltip";
 import { NumberField } from "../components/NumberField";
 import { GroupAddonExport } from "../components/GroupAddonExport";
 import { GroupRaids } from "../components/GroupRaids";
+import { CraftOrders, type OrderPrefill } from "../components/CraftOrders";
 import { GroupCharacters } from "../components/GroupRoster";
 import { LootSettingsPanel } from "../components/Loot";
 import { PlayerSheet } from "../components/PlayerSheet";
 import { ROLE_LABEL } from "./GroupsPage";
 
-interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
+interface GroupDetail { group: { id: string; name: string; discordLinked: boolean; ordersLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
@@ -87,13 +88,14 @@ export function GroupPage() {
           {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} groupName={group.name} members={members} myId={myId} myRole={role} />}
-          {tab === "crafters" && <Crafters groupId={groupId} />}
+          {tab === "crafters" && <Crafters groupId={groupId} myId={myId} />}
           {tab === "presence" && <AttendanceTab groupId={groupId} />}
           {tab === "admin" && isOfficer && (
             <Admin isOwner={isOwner} sections={{
               invites: <Invites groupId={groupId} guard={guard} />,
               loot: <LootSettingsPanel groupId={groupId} />,
-              discord: <DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />,
+              discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
+                <OrdersChannel groupId={groupId} linked={group.ordersLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} /></>,
               addon: <GroupAddonExport groupId={groupId} />,
               journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
               danger: (
@@ -178,13 +180,20 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
   // Main de chaque joueur dans le groupe (à la place de Battle.net, presque toujours vide)
   const charsQ = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
   const mainOf = new Map((charsQ.data?.characters ?? []).filter(c => c.isMain).map(c => [c.userId, c]));
+  // Présence sur les derniers raids relevés (lot F) : un raid compte si l'un de ses persos y était (banc compris)
+  const attQ = useQuery({ queryKey: ["attendance", groupId], queryFn: () => get<{ raids: { id: string }[]; characters: { userId: string; cells: (AttendanceStatus | null)[] }[] }>(`/groups/${groupId}/attendance`) });
+  const nRaids = attQ.data?.raids.length ?? 0;
+  const presence = (userId: string) => {
+    const mine = (attQ.data?.characters ?? []).filter(c => c.userId === userId);
+    return Array.from({ length: nRaids }, (_, i) => mine.some(c => { const s = c.cells[i]; return !!s && ATTENDED.includes(s); })).filter(Boolean).length;
+  };
   const setRole = (m: Member, role: GroupRole) => guard(async () => { await patch(`/groups/${groupId}/members/${m.userId}`, { role }); setConfirm(null); await refresh(); });
   const remove = (m: Member) => guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); setConfirm(null); await refresh(); });
   return (
     <div className="stack">
     <p className="hint" style={{ margin: 0 }}>Clique un nom pour voir sa fiche dans le groupe : persos, présence, butin.</p>
     <div className="tscroll"><table className="data mb-table">
-      <thead><tr><th>Joueur</th><th>Main</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
+      <thead><tr><th>Joueur</th><th>Main</th><th>Rôle</th><th title={nRaids ? `Sur les ${nRaids} derniers raids relevés par l'addon` : undefined}>Présence</th><th>Depuis</th><th /></tr></thead>
       <tbody>{members.map(m => {
         const main = mainOf.get(m.userId);
         const canRole = myRole === "owner" && m.userId !== myId;
@@ -196,6 +205,7 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
             <button type="button" className="ps-link" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
           <td>{main ? <b style={{ color: CLASSES[main.cls as ClassName]?.color }}>{main.name}</b> : <span className="muted">—</span>}</td>
           <td>{m.role === "member" ? <span className="muted">{ROLE_LABEL[m.role]}</span> : <span className={`tag ${m.role === "owner" ? "gold" : ""}`}>{ROLE_LABEL[m.role]}</span>}</td>
+          <td className="nowrap">{nRaids ? (() => { const n = presence(m.userId), pct = Math.round(n / nRaids * 100); return <><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{n}/{nRaids}</span></>; })() : <span className="muted">—</span>}</td>
           <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>
           <td className="mb-act">
             {asking === "owner" && <span className="row small">Lui donner le groupe ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
@@ -222,8 +232,9 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
 }
 
 /** « Qui crafte quoi ? » : les patrons connus et recherchés par les persos du groupe. */
-function Crafters({ groupId }: { groupId: string }) {
+function Crafters({ groupId, myId }: { groupId: string; myId?: string }) {
   const [input, setInput] = useState(""), [q, setQ] = useState(""), [prof, setProf] = useState("");
+  const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
   useEffect(() => { const t = window.setTimeout(() => setQ(input.trim()), 300); return () => window.clearTimeout(t); }, [input]);
   const params = new URLSearchParams({ ...(q.length >= 2 && { q }), ...(prof && { profession: prof }) });
   const { data, isLoading } = useQuery({
@@ -233,6 +244,8 @@ function Crafters({ groupId }: { groupId: string }) {
   const names = (list: { name: string; owner: string }[]) => list.map(w => `${w.name} (${w.owner})`).join(", ");
   return (
     <div className="sec">
+      <CraftOrders groupId={groupId} myId={myId} prefill={prefill} />
+      <h3 style={{ margin: "8px 0 0" }}>Qui crafte quoi ?</h3>
       <p className="hint" style={{ margin: 0 }}>Retrouve qui sait fabriquer un objet pour lui envoyer les composants, et quels patrons les membres recherchent.</p>
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="cr-q">Recette ou objet</label>
@@ -248,13 +261,14 @@ function Crafters({ groupId }: { groupId: string }) {
         <p className="muted">{q || prof ? "Aucun membre n'a renseigné cette recette." : "Aucun patron renseigné pour l'instant. Chaque joueur les coche dans l'onglet Métiers de ses persos."}</p>
       ) : (
         <div className="tscroll"><table className="data">
-          <thead><tr><th>Recette</th><th>Métier</th><th>Sait la faire</th><th>La recherche</th></tr></thead>
+          <thead><tr><th>Recette</th><th>Métier</th><th>Sait la faire</th><th>La recherche</th><th /></tr></thead>
           <tbody>{data.recipes.map(r => (
             <tr key={r.spellId}>
               <td><ItemHover item={r.item} className="with-icon" link>{r.item && <ItemIcon item={r.item} size={22} />}<span className={r.item ? `q${r.item.quality}` : ""}>{r.name}</span></ItemHover>{r.enchant && <span className="muted small"> · {r.enchant}</span>}</td>
               <td className="small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} <span className="muted num">{r.reqSkill}</span></td>
               <td>{r.known.length ? names(r.known) : <span className="muted">—</span>}</td>
               <td className="small">{r.wanted.length ? names(r.wanted) : <span className="muted">—</span>}</td>
+              <td>{r.known.length > 0 && <button type="button" className="btn ghost sm" onClick={() => { setPrefill({ spellId: r.spellId, name: r.item?.name ?? r.name, key: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Commander</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -353,6 +367,41 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
         </div>
       )}
       <NudgeSettings groupId={groupId} linked={linked} guard={guard} />
+    </section>
+  );
+}
+
+/** Salon Discord des commandes d'artisanat (lot F) : même liaison par code que le salon des raids. */
+function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [wantCode, setWantCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const cmd = code ? `/forever-lier code:${code.code}` : "";
+  return (
+    <section className="stack admin-sec" aria-labelledby="oc-title">
+      <div className="row between">
+        <h3 id="oc-title" style={{ margin: 0 }}>Salon des commandes d'artisanat</h3>
+        <span className={`tag ${linked ? "ok" : ""}`}>{linked ? "Lié" : "Non lié"}</span>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>Facultatif. Le bot y poste chaque commande de l'onglet Artisans avec un bouton « Je m'en charge », et met le message à jour quand elle est prise ou faite.</p>
+      {!hasDiscord && wantCode && <div className="alert info">Lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
+      <div className="row">
+        <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/orders-code`)); setCopied(false);
+        }); }}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
+        {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
+          await del(`/groups/${groupId}/discord/orders`); setCode(null);
+          await qc.invalidateQueries({ queryKey: ["group", groupId] });
+        })}>Délier le salon</button>}
+      </div>
+      {code && (
+        <div className="alert info stack" style={{ gap: 8 }}>
+          <span>Dans le salon Discord des commandes, tape cette commande (valable jusqu'à {new Intl.DateTimeFormat("fr-FR", { timeStyle: "short" }).format(new Date(code.expiresAt))}, une seule fois) :</span>
+          <div className="row"><input type="text" readOnly value={cmd} onFocus={e => e.currentTarget.select()} aria-label="Commande de liaison du salon des commandes" className="num" style={{ flex: 1 }} />
+            <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
+        </div>
+      )}
     </section>
   );
 }

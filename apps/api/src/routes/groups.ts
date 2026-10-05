@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { applyUserAbsences } from "../lib/absences";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
@@ -14,6 +15,7 @@ import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
 import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
+import { retireOrderMessages } from "../lib/orders";
 import { bus } from "../lib/events";
 
 const MAX_GROUPS_PER_USER = 20;
@@ -89,7 +91,7 @@ export async function groupRoutes(app: FastifyInstance) {
       userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
     }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
-    return { group: { id: g!.id, name: g!.name, discordLinked: !!g!.discordChannelId }, role, members };
+    return { group: { id: g!.id, name: g!.name, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members };
   });
 
   app.patch("/:id", async (req) => {
@@ -111,6 +113,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "owner");
     await retireAnnouncements(db, id);
+    await retireOrderMessages(db, id);
     const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
     for (const m of members) await bus.membership(db, m.u);
@@ -234,6 +237,29 @@ export async function groupRoutes(app: FastifyInstance) {
     const expiresAt = new Date(Date.now() + 30 * 60e3);
     await db.update(groups).set({ discordLinkCodeHash: sha256(code), discordLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
     return { code, expiresAt };
+  });
+
+  /** Salon des commandes d'artisanat (lot F) : même principe, code à taper avec /forever-lier dans le salon voulu. */
+  app.post("/:id/discord/orders-code", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const code = Array.from(randomBytes(8), b => alphabet[b % alphabet.length]).join("");
+    const expiresAt = new Date(Date.now() + 30 * 60e3);
+    await db.update(groups).set({ ordersLinkCodeHash: sha256(code), ordersLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    return { code, expiresAt };
+  });
+
+  app.delete("/:id/discord/orders", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    await db.update(groups).set({ ordersGuildId: null, ordersChannelId: null, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    await retireOrderMessages(db, id);
+    await audit(db, req, "group_orders_unlinked", { userId: u.id, groupId: id });
+    bus.group({ t: "group", g: id });
+    return { ok: true };
   });
 
   app.delete("/:id/discord", async (req) => {
@@ -365,6 +391,8 @@ export async function groupRoutes(app: FastifyInstance) {
     await bus.membership(db, u.id);
     bus.group({ t: "group", g: groupId });
     bus.group({ t: "chars", g: groupId });
+    // Absences déclarées : les raids du groupe rejoint pendant la période passent en « Absent »
+    await applyUserAbsences(db, u.id);
     return { groupId };
   });
 

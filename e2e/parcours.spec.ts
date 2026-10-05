@@ -137,13 +137,23 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
 
   await test.step("addon : mise à jour de la fiche depuis l'export du jeu", async () => {
     await page.getByRole("tab", { name: "Profil & talents" }).click();
-    await page.getByText("Importer depuis l'addon").click();
-    await page.fill("#f-addon", readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
-    await expect(page.locator(".addon-import .bi-result")).toContainText("Tournicoti");
-    await expect(page.locator(".addon-import")).toContainText("2 patrons");
-    await expect(page.locator(".addon-import")).toContainText("répartition 0/8/0 (spé principale)");
-    await page.getByRole("button", { name: "Mettre à jour la fiche" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Fiche mise à jour depuis le jeu." })).toContainText("2 patrons cochés");
+    // La fiche n'a plus de zone d'import : Ctrl+V n'importe où (lot F), avec le choix des parties
+    await expect(page.locator(".ce-sync")).toContainText("jamais synchronisé");
+    await page.evaluate(text => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      (document.activeElement as HTMLElement | null)?.blur();
+      document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+    }, readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
+    const pasted = page.getByRole("dialog", { name: "Export de l'addon" });
+    await expect(pasted).toContainText("Tournicoti");
+    await expect(pasted).toContainText("2 patrons");
+    await pasted.getByText("Choisir quoi importer").click();
+    await expect(pasted.getByRole("checkbox", { name: "Équipement porté" })).toBeChecked();
+    await pasted.getByRole("button", { name: "Mettre à jour 1 perso" }).click();
+    await expect(pasted).toContainText("Tournicoti : fiche mise à jour · 2 patrons cochés");
+    await pasted.getByRole("button", { name: "Fermer" }).click();
+    await expect(page.locator(".ce-sync")).toContainText("synchro il y a moins d'une heure");
     await expect(page.locator("#f-tal-main")).toHaveValue("0/8/0");
     await expect(page.locator("#f-link-main")).toHaveValue("https://foreverchanges.pro/talents/druid?b=-53");
     await expect(page.locator(".build").first().locator(".tt-col.main .tg-slot.on")).toHaveCount(2);
@@ -165,6 +175,18 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".itip")).toContainText("Pattern: Warbear Woolies");
     await expect(page.locator(".itip")).toContainText("Connu par : Tournicoti (toi)");
     await page.mouse.move(0, 0);
+    // Commandes d'artisanat (lot F) : « Commander » depuis la liste, composants de la recette, puis annulation
+    await page.getByRole("row", { name: /Warbear Woolies.*Tournicoti/ }).getByRole("button", { name: "Commander" }).click();
+    await expect(page.locator(".co-pick")).toContainText("Peuvent le faire : Tournicoti");
+    await page.fill("#co-note", "Pas pressé");
+    await page.getByRole("button", { name: "Envoyer la commande" }).click();
+    const order = page.locator(".co-table tr").filter({ hasText: "Warbear Woolies" });
+    await expect(order).toContainText("Ouverte");
+    await expect(order).toContainText("Pas pressé");
+    await expect(page.locator(".co-head")).toContainText("1 en cours");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/commandes.png", fullPage: true });
+    await order.getByRole("button", { name: "Annuler" }).click();
+    await expect(page.locator(".co-head")).toContainText("0 en cours");
     // Données pour l'addon : le patron Warbear Woolies (objet 15090) et qui le connaît
     await page.getByRole("tab", { name: "Administration" }).click();
     await page.locator(".adm-nav").getByRole("button", { name: "Données pour l'addon" }).click();
@@ -204,7 +226,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(dialog).toContainText("Export de l'addon reconnu");
     await expect(dialog.getByRole("combobox", { name: "Fiche pour Tournicoti" })).toHaveValue(/[0-9a-f-]{36}/);
     await expect(dialog.getByRole("combobox", { name: "Fiche pour Greta" })).toHaveValue("new");
-    await dialog.getByRole("button", { name: "Mettre à jour 2 persos" }).click();
+    await dialog.getByRole("button", { name: "Mettre à jour 1 perso et créer 1 fiche" }).click();
     await expect(dialog).toContainText("Greta : fiche créée · 1 recherché ajouté");
     await expect(dialog).toContainText("Tournicoti : fiche mise à jour");
     await expect(page.getByRole("button", { name: /Greta/ }).first()).toBeVisible();
@@ -427,6 +449,24 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: "Raids" }).click();
   });
 
+  await test.step("absences déclarées : chaque semaine, puis retirée", async () => {
+    await page.getByRole("link", { name: "Mes persos" }).first().click();
+    const ab = page.getByRole("region", { name: "Mes absences" });
+    await expect(ab).toContainText("aucune de prévue");
+    await ab.getByRole("button", { name: "+ Déclarer une absence" }).click();
+    await ab.getByRole("button", { name: "Chaque semaine" }).click();
+    await ab.getByRole("group", { name: "Jours d'absence" }).getByRole("button", { name: "ven." }).click();
+    await page.fill("#ab-why", "Travail");
+    await ab.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(ab).toContainText("chaque vendredi");
+    await expect(ab).toContainText("Travail");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/absences.png" });
+    await ab.getByRole("button", { name: /Retirer l'absence/ }).click();
+    await expect(ab).toContainText("aucune de prévue");
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: /Les Testeurs/ }).click();
+  });
+
   await test.step("groupe : code de liaison d'un salon Discord", async () => {
     await page.getByRole("tab", { name: "Administration" }).click();
     await expect(page.getByRole("heading", { name: "Invitations" })).toBeVisible();
@@ -435,8 +475,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
     await expect(page.getByRole("heading", { name: "Salon Discord" })).toBeVisible();
     // Sans Discord lié à son compte, l'officier est invité à le lier d'abord (le bot vérifie qui tape la commande)
-    await page.getByRole("button", { name: "Générer un code de liaison" }).click();
-    await expect(page.locator(".alert.info")).toContainText("lie d'abord ton propre Discord");
+    await page.locator("section[aria-labelledby=dc-title]").getByRole("button", { name: "Générer un code de liaison" }).click();
+    await expect(page.locator("section[aria-labelledby=dc-title] .alert.info")).toContainText("lie d'abord ton propre Discord");
+    // Salon des commandes d'artisanat (lot F) : même liaison, bloc à part
+    await expect(page.getByRole("heading", { name: "Salon des commandes d'artisanat" })).toBeVisible();
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: "Discord" })).toBeVisible();
     await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord" }) })).toContainText("Non lié");

@@ -11,6 +11,7 @@ import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { ensureRecurringRaids, MAX_RAIDS_PER_GROUP, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
+import { applyAbsencesToRaid } from "../lib/absences";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
 import { raidLogView } from "./raidlogs";
@@ -125,6 +126,8 @@ export async function raidRoutes(app: FastifyInstance) {
       await ensureRecurringRaids(db, new Date(), t!.id);
       await audit(db, req, "raid_template_created", { userId: u.id, groupId: id, meta: { templateId: t!.id, name: t!.name, weekday: t!.weekday, time } });
     }
+    // Membres qui ont déclaré une absence ce jour-là : « Absent » d'office
+    await applyAbsencesToRaid(db, r!.id);
     bus.group({ t: "raids", g: id });
     return reply.code(201).send({ raid: { id: r!.id } });
   });
@@ -202,6 +205,7 @@ export async function raidRoutes(app: FastifyInstance) {
       ...(body.srHidden !== undefined && { srHidden: body.srHidden }),
       discordChangedAt: new Date(),
     }).where(eq(raids.id, p.raidId));
+    if (moved) await applyAbsencesToRaid(db, p.raidId);
     bus.group({ t: "raid", g: p.id, r: p.raidId, by: u.id, byName: u.displayName });
     return {
       ...withCoverage(slots, chars, guests, await signupSpecs(p.raidId)),

@@ -2,6 +2,7 @@ import { GAME_TIMEZONE, weeklyOccurrences } from "@forever/game-data";
 import { and, count, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { raids, raidTemplates } from "../db/schema";
+import { applyAbsencesToRaids } from "./absences";
 import { bus } from "./events";
 
 export const MAX_RAIDS_PER_GROUP = 100;
@@ -30,6 +31,7 @@ export async function ensureRecurringRaids(db: Db, now = new Date(), onlyTemplat
       lootMode: t.lootMode, srHidden: t.srHidden, size: t.size,
     }))).onConflictDoNothing().returning({ id: raids.id });
     created += rows.length;
+    await applyAbsencesToRaids(db, rows.map(r => r.id));
     if (rows.length) bus.group({ t: "raids", g: t.groupId });
     await db.update(raidTemplates).set({ generatedUntil: todo.at(-1)! }).where(eq(raidTemplates.id, t.id));
   }

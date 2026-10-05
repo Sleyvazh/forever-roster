@@ -17,7 +17,7 @@ function refresh(qc: QueryClient, e: LiveEvent) {
   switch (e.t) {
     case "raid": inv(["raids", e.g]); inv(["raid", e.r]); inv(["softres", e.r]); inv(["reach", e.r]); inv(["week"]); inv(["attendance", e.g]); break;
     case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
-    case "group": inv(["group", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
+    case "group": inv(["group", e.g]); inv(["orders", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
     case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
     case "membership": inv(["groups"]); inv(["week"]); break;
   }
