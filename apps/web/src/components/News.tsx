@@ -46,7 +46,7 @@ export function News() {
             {NEWS.map(x => (
               <li key={x.n} className={x.n > seenAtOpen ? "new" : ""}>
                 <span className="news-when">
-                  <span className={`news-k ${x.kind}`}>{x.kind === "addon" ? `Addon${x.version ? ` ${x.version}` : ""}` : "Site"}</span>
+                  <span className={`news-k ${x.kind}`}>{x.kind === "addon" ? `Addon${x.version ? ` ${x.version}` : ""}` : x.kind === "bot" ? "Bot Discord" : "Site"}</span>
                   {dateText(x.date)}{x.n > seenAtOpen && <span className="news-new">· Nouveau</span>}
                 </span>
                 <span className="news-t">{x.title}</span>

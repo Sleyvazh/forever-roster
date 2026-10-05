@@ -27,6 +27,8 @@ export type Choices =
   | { mode: "guest"; linked: boolean; current: Current | null };
 export interface SignupBody { status: SignupStatus; characterId?: string | null; cls?: string; spec?: string }
 export interface Deletion { id: number; channelId: string; messageId: string }
+export interface FeedbackConfig { guildId: string; inboxChannelId: string; panelChannelId: string | null; panelMessageId: string | null; allowAnonymous: boolean }
+export interface FeedbackRecord { id: string; guildId: string; channelId: string; messageId: string; anonymous: boolean; authorId: string }
 
 /** Erreur renvoyée par le site ; `message` peut être montré tel quel au joueur. */
 export class ApiError extends Error {
@@ -72,6 +74,14 @@ export class InternalApi {
   signup(raidId: string, b: SignupBody & { discordUserId: string; discordName: string }) {
     return this.req<RaidView>("POST", `/internal/discord/raids/${raidId}/signup`, b);
   }
+  /* Avis (feedback) : fonction autonome, sans groupe du site */
+  feedbackConfig(guildId: string) { return this.req<{ config: FeedbackConfig | null }>("GET", `/internal/feedback/config/${guildId}`); }
+  saveFeedbackConfig(guildId: string, b: Omit<FeedbackConfig, "guildId"> & { updatedBy: string }) {
+    return this.req<{ config: FeedbackConfig; previous: FeedbackConfig | null }>("PUT", `/internal/feedback/config/${guildId}`, b);
+  }
+  removeFeedbackConfig(guildId: string) { return this.req<{ previous: FeedbackConfig | null }>("DELETE", `/internal/feedback/config/${guildId}`); }
+  recordFeedback(b: FeedbackRecord) { return this.req<{ ok: true }>("POST", "/internal/feedback", b); }
+  feedback(id: string) { return this.req<{ feedback: FeedbackRecord }>("GET", `/internal/feedback/${id}`); }
   unsign(raidId: string, discordUserId: string) {
     return this.req<RaidView>("DELETE", `/internal/discord/raids/${raidId}/signup/${discordUserId}`);
   }

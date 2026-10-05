@@ -1,5 +1,5 @@
 import {
-  Client, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, PermissionFlagsBits,
+  Client, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, Partials, PermissionFlagsBits,
   type ButtonInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction,
 } from "discord.js";
 import { ApiError, InternalApi, type RaidView } from "./api";
@@ -7,6 +7,7 @@ import { COMMANDS } from "./commands";
 import { loadConfig } from "./config";
 import { parseRaidDate } from "./dates";
 import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
+import { createFeedback, isFeedbackId } from "./feedback";
 import { confirmation, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, splitValue } from "./ids";
 import { renderAnnouncement, renderReminder } from "./render";
@@ -28,8 +29,9 @@ if (!cfg.token) {
 
 async function start() {
   const api = new InternalApi(cfg.apiUrl, cfg.apiSecret);
-  // Intent « Guilds » seulement : le bot ne lit aucun message ni la liste des membres.
-  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  // Intents « Guilds » et « Direct Messages » : le bot ne lit aucun message des salons ni la liste des membres.
+  // Il ne lit que les MP qu'on lui écrit (l'avis en cours d'écriture), sans les garder.
+  const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages], partials: [Partials.Channel] });
 
   const UNKNOWN_MESSAGE = 10008, UNKNOWN_CHANNEL = 10003, CANNOT_DM = 50007;
   /** Émojis de classe / spé (vide tant que les icônes ne sont pas envoyées à Discord). */
@@ -118,15 +120,21 @@ async function start() {
     return (m?.displayName ?? m?.nick ?? i.user.globalName ?? i.user.username).slice(0, 64);
   };
 
+  const feedback = createFeedback(client, api, log, nameOf);
+  client.on(Events.MessageCreate, m => { feedback.dm(m).catch(e => log.warn("MP d'avis non traité", (e as Error).message)); });
+
   async function handle(i: Interaction) {
     if (i.isChatInputCommand()) return command(i);
-    if (i.isButton()) return button(i);
+    if (i.isButton()) return isFeedbackId(i.customId) ? feedback.button(i) : button(i);
+    if (i.isModalSubmit()) return feedback.modal(i);
     if (i.isStringSelectMenu()) return menu(i);
   }
 
   async function command(i: ChatInputCommandInteraction) {
     if (!i.inGuild() || !i.channelId) return i.reply({ content: "Commande à utiliser dans un salon de serveur.", flags: MessageFlags.Ephemeral });
     await i.deferReply({ flags: MessageFlags.Ephemeral });
+
+    if (i.commandName === "feedback" || i.commandName === "feedback-config") return feedback.command(i);
 
     if (i.commandName === "forever-lier") {
       const need = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];

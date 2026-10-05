@@ -2,9 +2,11 @@
  * Nouveautés du site et de l'addon (bouton « Nouveautés » de la barre du haut), écrites pour les joueurs.
  * Ajouter les nouvelles en tête, avec un numéro `n` plus grand que le précédent (sert à savoir ce qui est déjà lu).
  */
-export interface NewsItem { n: number; date: string; kind: "site" | "addon"; version?: string; title: string; text: string }
+export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 14, date: "2026-10-05", kind: "bot", title: "Donne ton avis à ton équipe, signé ou anonyme",
+    text: "Sur Discord, /feedback (ou le bouton « Donner mon avis » du salon prévu) : le bot t'écrit en privé, tu écris ton avis, puis tu choisis de l'envoyer signé ou anonyme. L'équipe peut te répondre, même anonyme. Marche aussi sur un serveur qui n'utilise pas le site." },
   { n: 13, date: "2026-10-04", kind: "addon", version: "0.9", title: "L'addon habillé comme le site",
     text: "Dans l'onglet Options, choisis l'habillage « Site » : fond sombre, liserés dorés, titres du site et onglets en haut. « Forever (jeu) » garde l'interface du jeu. Aussi avec /fr habillage." },
   { n: 12, date: "2026-10-04", kind: "addon", version: "0.8.1", title: "Inscriptions en jeu aux couleurs du site",

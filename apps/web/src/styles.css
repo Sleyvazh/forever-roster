@@ -777,7 +777,7 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .news li.new { background: linear-gradient(90deg, var(--gold-soft), transparent 75%); }
 .news-when { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-3); }
 .news-k { font: 600 9.5px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; padding: 3px 6px; border-radius: 3px; border: 1px solid; }
-.news-k.site { color: var(--alli); } .news-k.addon { color: var(--gold); }
+.news-k.site { color: var(--alli); } .news-k.addon { color: var(--gold); } .news-k.bot { color: var(--ok); }
 .news-new { font-weight: 600; color: var(--gold); }
 .news-t { font-weight: 600; font-size: 14.5px; color: var(--ink); }
 .news-d { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }

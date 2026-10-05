@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
 import { characters, discordDeletions, groupMembers, groups, raidSignups, raids, users } from "./db/schema";
+import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
@@ -282,6 +283,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return view(raidId);
   });
 
+  feedbackRoutes(app, db);
   return app;
 }
 

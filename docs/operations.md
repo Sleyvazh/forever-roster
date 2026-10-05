@@ -276,8 +276,9 @@ Sur <https://discord.com/developers/applications>, **New Application** (« Forev
 2. **OAuth2** : ajouter la redirection `https://forever-roster.sleyvazh.fr/api/auth/discord/callback`. Noter le **Client ID** (public). **Reset Secret** donne le **Client Secret** : ne le coller que dans le terminal du serveur (étape suivante).
 3. **Bot** : décocher **Public Bot** (toi seul peux l'inviter), laisser les trois *Privileged Gateway Intents* **désactivés**. **Reset Token** donne le jeton du bot : même règle que le secret.
 4. Inviter le bot sur le serveur Discord, en remplaçant `CLIENT_ID` :
-   `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands&permissions=19456`
-   (droits : Voir les salons, Envoyer des messages, Intégrer des liens. Rien d'autre.)
+   `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands&permissions=84992`
+   (droits : Voir les salons, Envoyer des messages, Intégrer des liens, Voir les anciens messages. Rien d'autre.
+   « Voir les anciens messages » sert aux réponses sous les avis ; sur un serveur où le bot est déjà, l'ajouter à son rôle.)
 
 ### Renseigner les secrets sur le serveur
 
@@ -317,6 +318,24 @@ Pour changer un seul secret (jeton régénéré chez Discord, par exemple), rela
 7. **Rappels** : la veille (entre 24 h et 1 h avant), le bot envoie un message privé à chaque inscrit qui vient ou hésite, avec les boutons de statut. Les comptes liés peuvent les couper dans Compte & sécurité. Un joueur qui refuse les messages privés du serveur est simplement ignoré. Changer la date du raid renvoie un rappel.
 
 Changer de salon ou délier efface les anciennes annonces. Supprimer un raid ou le groupe aussi. Une annonce reste synchronisée jusqu'à 12 heures après l'heure du raid.
+
+### Avis (feedback)
+
+Fonction autonome : un serveur Discord l'utilise sans groupe ni compte sur le site, et sans l'addon, pour n'importe quel jeu.
+
+1. **Activer** (membre avec « Gérer le serveur ») : `/feedback-config regler destination:#avis-equipe bouton:#donner-son-avis anonyme:True`.
+   - `destination` : salon **privé** de l'équipe, où arrivent les avis. Le bot prévient s'il est visible par @everyone.
+   - `bouton` (facultatif) : salon dédié où le bot pose le message « Donner mon avis ». Il le **verrouille** (plus personne n'y écrit, @everyone garde la lecture) s'il a le droit « Gérer les permissions » **sur ce salon** : à donner sur ce salon seulement, pas au rôle du bot. Sinon il indique quoi retirer à la main.
+   - `anonyme` : `False` pour n'accepter que des avis signés.
+   - Relancer la commande change les réglages (l'ancien bouton est retiré). `/feedback-config retirer` désactive tout.
+2. **Donner son avis** : `/feedback` depuis n'importe quel salon, ou le bouton. Le bot écrit en MP, le joueur répond par un message (1 800 caractères), voit un aperçu, puis choisit **Envoyer signé** ou **Envoyer anonyme**. MP fermés : le bot propose une fenêtre pour écrire sur le serveur. Limite : 1 avis par minute et 5 par heure par personne.
+3. **Répondre** : bouton « Répondre » sous chaque avis. La réponse part en MP à l'auteur, sans que l'équipe sache qui il est si l'avis est anonyme ; elle est aussi notée sous l'avis. L'auteur peut répondre à son tour (toujours anonyme).
+
+**Ce qui est gardé :** les réglages du serveur, et pour chaque avis le lien avis ↔ auteur pendant 30 jours (table `feedbacks`, pour la réponse), puis il est effacé. Le texte reste uniquement dans Discord. L'avis en cours d'écriture n'existe qu'en mémoire du bot (perdu au redémarrage). Un avis anonyme ne contient aucune trace de l'auteur dans Discord ; seul l'hébergeur du bot pourrait retrouver l'auteur dans la base pendant ces 30 jours.
+
+**Intents :** le bot utilise *Guilds* et *Direct Messages*. Aucun n'est privilégié : rien à cocher dans le portail. Le contenu des MP envoyés au bot lui est transmis sans l'intent *Message Content*.
+
+**Autres serveurs :** le bot est privé (« Public Bot » décoché) : seul toi peux l'inviter. Pour qu'une autre guilde l'ajoute elle-même, cocher **Public Bot** et lui donner le lien d'invitation ci-dessus. Les commandes de raid restent inutiles sans groupe lié sur le site.
 
 **Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/spec/` comme émojis de l'application (`fr_druid`, `fr_druid_feral_bear`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
 

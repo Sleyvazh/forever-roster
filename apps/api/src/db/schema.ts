@@ -370,3 +370,30 @@ export const discordDeletions = pgTable("discord_deletions", {
   messageId: text("message_id").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
+
+/* ---------- Avis (feedback) par le bot Discord, sans compte sur le site ---------- */
+
+/** Réglages d'un serveur Discord : salon où arrivent les avis, salon du bouton « Donner mon avis ». */
+export const feedbackSettings = pgTable("feedback_settings", {
+  guildId: text("guild_id").primaryKey(),
+  inboxChannelId: text("inbox_channel_id").notNull(),
+  panelChannelId: text("panel_channel_id"),
+  panelMessageId: text("panel_message_id"),
+  allowAnonymous: boolean("allow_anonymous").notNull().default(true),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Avis publiés. Le texte n'est pas gardé ici (il est dans le message Discord) ; l'auteur l'est 30 jours,
+ * pour que l'équipe puisse lui répondre par le bot (même anonyme, sans le connaître), puis il est effacé.
+ */
+export const feedbacks = pgTable("feedbacks", {
+  id: uuid("id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  channelId: text("channel_id").notNull(),
+  messageId: text("message_id").notNull(),
+  anonymous: boolean("anonymous").notNull(),
+  authorId: text("author_id"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [index("feedbacks_created_idx").on(t.createdAt)]);
