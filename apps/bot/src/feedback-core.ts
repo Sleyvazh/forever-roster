@@ -221,7 +221,7 @@ export function teamReplyDm(id: string, guildName: string, responder: string, te
   return {
     embeds: [{
       color: COLOR,
-      title: `Réponse de l'équipe de ${escapeMd(guildName)}`,
+      title: `Réponse de l'équipe · ${escapeMd(guildName)}`,
       author: { name: responder },
       description: text,
       ...(excerpt ? { fields: [{ name: "Ton avis", value: excerpt }] } : {}),
