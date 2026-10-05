@@ -7,3 +7,4 @@ export * from "./talents";
 export * from "./charexport";
 export * from "./raidlog";
 export * from "./loot";
+export * from "./assist";

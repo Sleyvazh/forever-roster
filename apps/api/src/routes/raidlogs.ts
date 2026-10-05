@@ -1,9 +1,9 @@
-import { ATTENDED, attendanceStatus, gameName, LOOT_METHODS, LOOT_RESPONSES, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { ATTENDED, attendanceStatus, gameName, GEAR_SLOTS, gearStats, LOOT_METHODS, LOOT_RESPONSES, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, gameItems, groupCharacters as gc, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
+import { characters, gameItems, groupCharacters as gc, groupMembers, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
 import { bus } from "../lib/events";
 import { membership } from "../lib/groups";
 import { learnLoot } from "../lib/loot";
@@ -171,5 +171,56 @@ export async function raidLogRoutes(app: FastifyInstance) {
       .sort((a, b) => b.attended - a.attended || a.name.localeCompare(b.name));
 
     return { raids: recent.map(l => ({ id: l.raidId, name: l.name, scheduledAt: l.scheduledAt ?? l.startedAt })), characters: out };
+  });
+
+  /**
+   * Fiche d'un joueur dans le groupe (visible par tous les membres) : ses persos joués ici, sa présence sur les
+   * derniers raids relevés (le meilleur statut de ses persos), son passage sur le banc et le butin reçu.
+   */
+  app.get("/groups/:id/members/:userId/sheet", async (req) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), userId: z.uuid() }), req.params);
+    await membership(db, p.id, u.id);
+    const [m] = await db.select({ userId: users.id, displayName: users.displayName, avatarId: users.avatarId, discordId: users.discordId, role: groupMembers.role, joinedAt: groupMembers.joinedAt })
+      .from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
+      .where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
+    if (!m) throw notFound("Ce joueur n'est pas membre du groupe.");
+
+    const mine = await db.select({ c: characters, isMain: gc.isMain }).from(characters)
+      .innerJoin(gc, and(eq(gc.characterId, characters.id), eq(gc.groupId, p.id)))
+      .where(eq(characters.userId, p.userId)).orderBy(desc(gc.isMain), asc(characters.sortOrder));
+    const itemIds = [...new Set(mine.flatMap(r => GEAR_SLOTS.map(s => r.c.gear[s]?.curId).filter((v): v is number => !!v)))];
+    const levels = itemIds.length ? new Map((await db.select({ id: gameItems.id, lvl: gameItems.itemLevel }).from(gameItems).where(inArray(gameItems.id, itemIds))).map(x => [x.id, x.lvl])) : new Map<number, number>();
+    const keys = new Set(mine.map(r => key(r.c.name)));
+
+    const logs = await db.select({ raidId: raidLogs.raidId, name: raids.name, scheduledAt: raids.scheduledAt, startedAt: raidLogs.startedAt, endedAt: raidLogs.endedAt, attendees: raidLogs.attendees, loot: raidLogs.loot })
+      .from(raidLogs).innerJoin(raids, eq(raids.id, raidLogs.raidId)).where(eq(raids.groupId, p.id))
+      .orderBy(desc(sql`coalesce(${raids.scheduledAt}, ${raidLogs.startedAt})`)).limit(50);
+    const recent = logs.slice(0, RECENT_RAIDS);
+    const signups = recent.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status }).from(raidSignups)
+      .where(and(inArray(raidSignups.raidId, recent.map(l => l.raidId)), eq(raidSignups.userId, p.userId))) : [];
+    const signupOf = new Map(signups.map(s => [s.raidId, s.status as SignupStatus]));
+    const RANK: AttendanceStatus[] = ["present", "late", "left", "bench", "absent"];
+    const cells = recent.map(l => {
+      const span = { start: Math.floor(l.startedAt.getTime() / 1000), end: Math.floor(l.endedAt.getTime() / 1000) };
+      const ref = l.scheduledAt ? Math.floor(l.scheduledAt.getTime() / 1000) : null;
+      const seen = l.attendees.filter(a => keys.has(key(a.name)))
+        .map(a => attendanceStatus(a, span, ref, signupOf.get(l.raidId) ?? null)).filter((x): x is AttendanceStatus => !!x);
+      const status = seen.length ? seen.sort((a, b) => RANK.indexOf(a) - RANK.indexOf(b))[0]! : attendanceStatus(null, span, ref, signupOf.get(l.raidId) ?? null);
+      return { raidId: l.raidId, name: l.name, scheduledAt: l.scheduledAt ?? l.startedAt, status };
+    });
+    const got = logs.flatMap(l => l.loot.filter(x => keys.has(key(x.name))).map(x => ({ ...x, raidName: l.name, raidId: l.raidId }))).sort((a, b) => b.at - a.at).slice(0, 12);
+    const items = got.length ? await db.select({ id: gameItems.id, name: gameItems.name, quality: gameItems.quality }).from(gameItems).where(inArray(gameItems.id, [...new Set(got.map(g => g.itemId))])) : [];
+    const itemOf = new Map(items.map(i => [i.id, i]));
+    const bisOf = new Set(mine.flatMap(r => Object.values(r.c.gear ?? {}).flatMap(g => (g?.bisId ? [`${key(r.c.name)}:${g.bisId}`] : []))));
+
+    return {
+      member: { userId: m.userId, displayName: m.displayName, avatarId: m.avatarId, role: m.role, joinedAt: m.joinedAt, discordLinked: !!m.discordId },
+      characters: mine.map(r => ({ id: r.c.id, name: r.c.name, cls: r.c.cls, spec1: r.c.spec1, spec2: r.c.spec2, level: r.c.level, portraitId: r.c.portraitId, isMain: r.isMain,
+        gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })),
+      attendance: { raids: recent.length, cells, attended: cells.filter(c => c.status && ATTENDED.includes(c.status)).length, benched: cells.filter(c => c.status === "bench").length },
+      loot: got.map(g => ({ itemId: g.itemId, name: itemOf.get(g.itemId)?.name ?? `Objet ${g.itemId}`, quality: itemOf.get(g.itemId)?.quality ?? 4, character: g.name, boss: g.boss,
+        raidName: g.raidName, raidId: g.raidId, at: g.at, bis: bisOf.has(`${key(g.name)}:${g.itemId}`) })),
+    };
   });
 }

@@ -84,6 +84,8 @@ test("captures d'écran de la documentation", async ({ page, browser }) => {
       [u, name, race, cls, spec, off, profs(none, none)])).rows[0].id as string;
     chars.push({ id: c, cls, spec, user: u, name });
   }
+  // Chaque perso est joué dans le groupe, comme main de son joueur
+  for (const c of chars) await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, true)", [group, c.id, c.user]);
   const when = new Date(Date.now() + 3 * 86400e3); when.setHours(20, 30, 0, 0);
   const layout = [[0, 1, 4, 6, 9], [3, 2, 7, 11, 5], [8, 10, 12]];
   const slots = layout.flatMap((g, gi) => g.map((ci, pi) => ({ group: gi + 1, pos: pi + 1, characterId: chars[ci]!.id })));

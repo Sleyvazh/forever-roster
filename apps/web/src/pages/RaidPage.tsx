@@ -11,7 +11,8 @@ import { useLiveListener, type LiveEvent } from "../live";
 import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
-import { LOOT_MODE_LABEL, type LootMode } from "@forever/game-data";
+import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
+import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
 import { SIGNUP_AVAILABLE, SIGNUP_LABEL } from "@forever/game-data";
 import { ClassIcon } from "../components/Icons";
 import { FloatingTip } from "../components/ItemTooltip";
@@ -41,7 +42,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
   );
 }
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean; lootMode: LootMode; srHidden: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean; lootMode: LootMode; srHidden: boolean; size: RaidSize; targets: RoleTargets; customTargets: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
 interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
 /** Dernier état connu du serveur : base de la fusion quand deux officiers modifient la compo en même temps. */
 interface ServerState { version: string; slots: RaidSlot[]; name: string; scheduledAt: string | null; description: string }
@@ -76,6 +77,7 @@ export function RaidPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const [filter, setFilter] = useState("");
+  const historyQ = useQuery({ queryKey: ["bench-history", raidId], queryFn: () => get<BenchHistory>(`/groups/${groupId}/raids/${raidId}/bench-history`) });
   const [notice, setNotice] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const server = useRef<ServerState | null>(null);
@@ -205,7 +207,10 @@ export function RaidPage() {
     }
     if (here) setPick({ kind: "slot", group: g, pos: p });
   };
-  const firstFree = () => { for (let g = 1; g <= RAID_GROUPS; g++) for (let p = 1; p <= GROUP_SIZE; p++) if (!at(g, p)) return { g, p }; return null; };
+  const size = raidQ.data?.raid.size ?? 40;
+  // Groupes du format (2 à 10, 4 à 20, 8 à 40), plus ceux encore occupés
+  const nGroups = Math.min(RAID_GROUPS, Math.max(groupsFor(size), ...slots.map(s => s.group)));
+  const firstFree = () => { for (let g = 1; g <= groupsFor(size); g++) for (let p = 1; p <= GROUP_SIZE; p++) if (!at(g, p)) return { g, p }; return null; };
   const addToRaid = (e: Entry) => { const f = firstFree(); if (f) persist([...slots, { group: f.g, pos: f.p, ...e.ref }]); };
   const removeFrom = (g: number, p: number) => { setPick(null); persist(slots.filter(s => !(s.group === g && s.pos === p))); };
 
@@ -223,7 +228,7 @@ export function RaidPage() {
           <span className="role Heal">{roles.Heal} heal{roles.Heal > 1 ? "s" : ""}</span>
           <span className="role DPS">{roles.DPS} DPS</span>
           {roles["?"] > 0 && <span className="role">{roles["?"]} sans spé</span>}
-          <span className="tag num">{slots.length}/40</span>
+          <span className="tag num">{slots.length}/{size}</span>
         </div>
       </div>
 
@@ -234,6 +239,9 @@ export function RaidPage() {
           <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="rd">Description (visible par le groupe et sur Discord)</label>
             <textarea id="rd" maxLength={1000} style={{ minHeight: 60 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
           </div>
+          <RaidFormat size={size} targets={raidQ.data.raid.targets} custom={raidQ.data.raid.customTargets}
+            onChange={body => void patch(`/groups/${groupId}/raids/${raidId}/format`, body).then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] }))
+              .catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
           <span className="small muted" role="status" style={{ flex: "1 1 120px" }}>{status}</span>
           {confirmDel
             ? <span className="row small">Supprimer ce raid ? <button className="btn danger sm" type="button" onClick={() => void del(`/groups/${groupId}/raids/${raidId}`).then(() => nav(`/groups/${groupId}`))}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
@@ -273,12 +281,29 @@ export function RaidPage() {
       )}
       {canEdit && <p className="hint" style={{ margin: 0 }}>{pick ? "Choisis maintenant une place (clique à nouveau pour annuler)." : "Clique un perso du banc puis une place. Clique un perso placé pour le déplacer ou l'échanger."}</p>}
 
+      {canEdit && (
+      <RaidAssist size={size} targets={raidQ.data.raid.targets} groupChars={allChars} signups={raidQ.data.signups} history={historyQ.data}
+        entries={[...entries.values()].map(e => ({ key: e.key, name: e.name, cls: e.cls, spec: e.spec, owner: e.owner, signup: e.signup,
+          characterId: "characterId" in e.ref ? e.ref.characterId : null, placed: placed.has(e.key) }))}
+        onPlace={key => { const e = entries.get(key); if (e) addToRaid(e); }}
+        onSpec={(signupId, spec) => void patch(`/groups/${groupId}/raids/${raidId}/signups/${signupId}`, { spec })
+          .then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))}
+        onBench={ids => void (async () => {
+          try {
+            for (const id of ids) await patch(`/groups/${groupId}/raids/${raidId}/signups/${id}`, { status: "bench" });
+            // Les persos mis sur le banc quittent la compo
+            const benched = new Set([...entries.values()].filter(e => e.signup && ids.includes(e.signup.id)).map(e => e.key));
+            if (slots.some(s => benched.has(slotKey(s)))) persist(slots.filter(s => !benched.has(slotKey(s))));
+            await qc.invalidateQueries({ queryKey: ["raid", raidId] });
+          } catch (e) { setError(e instanceof ApiError ? e.message : "Changement impossible."); }
+        })()} />
+          )}
       {hover && hovered && (
         <FloatingTip rect={hover.rect}><PlayerCard e={hovered} c={"characterId" in hovered.ref ? chars.get(hovered.ref.characterId) : undefined} /></FloatingTip>
       )}
       <div className="raid">
         <div className="rgroups">
-          {Array.from({ length: RAID_GROUPS }, (_, gi) => gi + 1).map(g => {
+          {Array.from({ length: nGroups }, (_, gi) => gi + 1).map(g => {
             const missing = coverage.filter(c => c.effect.scope === "party" && c.effect.kind === "aura" && c.missingGroups.includes(g) && c.sources > 0).map(c => c.effect.name);
             return (
               <div className="rgroup" key={g}>
@@ -366,6 +391,31 @@ export function RaidPage() {
         </aside>
       </div>
       <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when ? new Date(when).toISOString() : null }} slots={slots} chars={chars} signups={raidQ.data.signups} />
+    </div>
+  );
+}
+
+/** Format du raid (10, 20, 40) et rôles visés ; « par défaut » reprend ceux du format. */
+function RaidFormat({ size, targets, custom, onChange }: { size: RaidSize; targets: RoleTargets; custom: boolean; onChange: (b: { size?: RaidSize; targets?: RoleTargets | null }) => void }) {
+  const [t, setT] = useState(targets);
+  useEffect(() => setT(targets), [targets.tank, targets.heal, targets.dps]); // eslint-disable-line react-hooks/exhaustive-deps
+  const field = (k: keyof RoleTargets, label: string) => (
+    <label className="ra-t"><span>{label}</span>
+      <input type="number" min={0} max={40} value={t[k]} onChange={e => setT({ ...t, [k]: Math.max(0, Math.min(40, Number(e.target.value) || 0)) })}
+        onBlur={() => { if (t[k] !== targets[k]) onChange({ targets: t }); }} /></label>
+  );
+  return (
+    <div className="fld ra-format" style={{ flex: "1 1 100%" }}>
+      <span className="lbl">Format et rôles visés</span>
+      <div className="row" style={{ alignItems: "center" }}>
+        <div className="seg" role="group" aria-label="Format du raid">
+          {RAID_SIZES.map(n => <button key={n} type="button" className={size === n ? "on" : ""} aria-pressed={size === n} onClick={() => size !== n && onChange({ size: n })}>{n}</button>)}
+        </div>
+        {field("tank", "Tanks")}{field("heal", "Heals")}{field("dps", "DPS")}
+        {custom
+          ? <button type="button" className="btn ghost sm" onClick={() => onChange({ targets: null })}>Par défaut ({DEFAULT_TARGETS[size].tank}/{DEFAULT_TARGETS[size].heal}/{DEFAULT_TARGETS[size].dps})</button>
+          : <span className="hint">par défaut pour un raid à {size}</span>}
+      </div>
     </div>
   );
 }

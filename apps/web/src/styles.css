@@ -865,3 +865,45 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .lt-x { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 14px; padding: 0 0 0 2px; }
 .lt-x:hover { color: var(--bad); }
 .lt-me select { width: auto; flex: 0 1 220px; }
+
+/* Compo assistée et format du raid (lot D1, ra-) */
+.ra-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; } .ra-head h3 { margin: 0; display: flex; align-items: baseline; gap: 8px; }
+.ra-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+@media (max-width: 860px) { .ra-cols { grid-template-columns: 1fr; } }
+.ra-col { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.ra-col.low { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); }
+.ra-gap { display: flex; align-items: baseline; gap: 8px; }
+.ra-gap b { font-size: 16px; } .ra-gap small { font-size: 12px; color: var(--ink-3); }
+.ra-col.low .ra-gap small { color: var(--warn); } .ra-col.ok .ra-gap small { color: var(--ok); }
+.ra-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ra-list li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.ra-inline { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.ra-inline .ra-go { border: 0; background: none; padding: 0; }
+.ra-list li .btn { margin-left: auto; flex: none; }
+.ra-list .role { flex: none; padding: 2px 4px; font-size: 9px; }
+.ra-txt { display: grid; min-width: 0; } .ra-txt small { color: var(--ink-3); font-size: 12px; } .ra-txt i { color: var(--ink-2); }
+.ra-bench { border-top: 1px dashed var(--line-2); padding-top: 10px; }
+.ra-format .row { gap: 10px; }
+.ra-t { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.ra-t input { width: 64px; }
+
+/* Fiche joueur (lot D1, ps-) */
+.ps-link { border: 0; background: none; padding: 0; font: inherit; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.ps-sel td { background: var(--panel-2); }
+.ps { border: 1px solid var(--frame); border-radius: 8px; background: var(--panel-2); padding: 14px 16px; display: grid; gap: 14px; }
+.ps-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ps-head h3 { margin: 0; font-size: 22px; }
+.ps-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 620px) { .ps-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ps-kpis div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; }
+.ps-kpis b { font-size: 20px; color: var(--gold); } .ps-kpis span { font-size: 12px; color: var(--ink-3); }
+.ps-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 760px) { .ps-cols { grid-template-columns: 1fr; } }
+.ps-chars, .ps-loot { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.ps-char { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); text-decoration: none; }
+.ps-char:hover { border-color: var(--gold); }
+.ps-cn { display: grid; min-width: 0; } .ps-cn small { color: var(--ink-3); font-size: 12px; }
+.ps-prog { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; }
+.ps-cells { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.ps-cell { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 4px; border: 1px solid var(--line-2); font: 700 12px/1 var(--f-mono); color: var(--ink-3); text-decoration: none; }
+.ps-cell.present { color: var(--ok); border-color: var(--ok); } .ps-cell.late, .ps-cell.left { color: var(--warn); border-color: var(--warn); }
+.ps-cell.bench { color: var(--gold); border-color: var(--gold); } .ps-cell.absent { color: var(--bad); border-color: var(--bad); }

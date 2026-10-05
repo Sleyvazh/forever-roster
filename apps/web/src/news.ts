@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 17, date: "2026-10-05", kind: "site", title: "Raids à 10, 20 ou 40, compo assistée, banc équitable, fiche joueur",
+    text: "Choisis le format du raid : la compo vise les bons rôles. L'encart Besoins dit ce qui manque et propose qui peut combler (inscrits, off-spec, alts). Trop d'inscrits ? Le site propose de mettre sur le banc ceux qui y sont allés le moins. Et un clic sur un membre ouvre sa fiche : persos, présence, butin." },
   { n: 16, date: "2026-10-05", kind: "site", title: "Butin : mode choisi à la création du raid, soft reserve",
     text: "En créant un raid, choisis le butin : Journal, Loot council ou Soft reserve. En soft reserve, chacun réserve ses objets sur la page du raid (bonus SR+ si on réserve le même objet raid après raid). Le site apprend le butin de chaque raid grâce aux bilans de l'addon." },
   { n: 15, date: "2026-10-05", kind: "site", title: "Ton main et tes alts dans chaque groupe",

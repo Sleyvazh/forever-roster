@@ -1,5 +1,5 @@
 import { AttendanceTab } from "../components/RaidLog";
-import { LOOT_MODE_LABEL, LOOT_MODES, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type LootMode, type SignupStatus } from "@forever/game-data";
+import { LOOT_MODE_LABEL, LOOT_MODES, RAID_SIZES, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type LootMode, type RaidSize, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -12,12 +12,13 @@ import { NumberField } from "../components/NumberField";
 import { GroupAddonExport } from "../components/GroupAddonExport";
 import { GroupCharacters } from "../components/GroupRoster";
 import { LootModePicker, LootSettingsPanel } from "../components/Loot";
+import { PlayerSheet } from "../components/PlayerSheet";
 import { ROLE_LABEL } from "./GroupsPage";
 
 interface GroupDetail { group: { id: string; name: string; discordLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
-interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; recurring: boolean; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
-interface RaidTemplate { id: string; name: string; description: string; weekday: number; time: string; leadDays: number; active: boolean; generatedUntil: string | null; lootMode: LootMode; srHidden: boolean }
+interface RaidSummary { id: string; name: string; scheduledAt: string | null; filled: number; size: number; recurring: boolean; signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null }
+interface RaidTemplate { id: string; name: string; description: string; weekday: number; time: string; leadDays: number; active: boolean; generatedUntil: string | null; lootMode: LootMode; srHidden: boolean; size: RaidSize }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
@@ -156,10 +157,11 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
   const { data } = useQuery({ queryKey: ["raids", groupId], queryFn: () => get<{ raids: RaidSummary[] }>(`/groups/${groupId}/raids`) });
   const [name, setName] = useState(""), [when, setWhen] = useState("");
   const [loot, setLoot] = useState<{ mode: LootMode; hidden: boolean }>({ mode: "journal", hidden: false });
+  const [size, setSize] = useState<RaidSize>(40);
   const create = (e: FormEvent) => {
     e.preventDefault();
     void guard(async () => {
-      const r = await post<{ raid: { id: string } }>(`/groups/${groupId}/raids`, { name, scheduledAt: when ? new Date(when).toISOString() : null, lootMode: loot.mode, srHidden: loot.hidden });
+      const r = await post<{ raid: { id: string } }>(`/groups/${groupId}/raids`, { name, scheduledAt: when ? new Date(when).toISOString() : null, lootMode: loot.mode, srHidden: loot.hidden, size });
       await qc.invalidateQueries({ queryKey: ["raids", groupId] });
       nav(`/groups/${groupId}/raids/${r.raid.id}`);
     });
@@ -170,6 +172,8 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
         <form className="row" onSubmit={create} style={{ alignItems: "flex-end" }}>
           <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="r-name">Nouveau raid</label><input id="r-name" type="text" required minLength={2} maxLength={60} placeholder="Molten Core" value={name} onChange={e => setName(e.target.value)} /></div>
           <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="r-when">Date</label><input id="r-when" type="datetime-local" value={when} onChange={e => setWhen(e.target.value)} /></div>
+          <div className="fld" style={{ flex: "0 0 auto" }}><span className="lbl">Format</span>
+            <div className="seg" role="group" aria-label="Format du raid">{RAID_SIZES.map(n => <button key={n} type="button" className={size === n ? "on" : ""} aria-pressed={size === n} onClick={() => setSize(n)}>{n}</button>)}</div></div>
           <button className="btn primary" type="submit">Créer</button>
           <div className="fld" style={{ flex: "1 1 100%" }}><span className="lbl">Butin</span>
             <LootModePicker mode={loot.mode} hidden={loot.hidden} idPrefix="new" onChange={(mode, hidden) => setLoot({ mode, hidden })} /></div>
@@ -186,7 +190,7 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
                 <td>{r.scheduledAt ? fmt.format(new Date(r.scheduledAt)) : <span className="muted">À définir</span>}</td>
                 <td className="small"><span className="num">{coming}</span> viennent{r.signups.tentative ? <span className="muted"> · {r.signups.tentative} peut-être</span> : null}{r.signups.absent ? <span className="muted"> · {r.signups.absent} absent{r.signups.absent > 1 ? "s" : ""}</span> : null}</td>
                 <td>{r.mySignup ? <span className={`tag su-tag ${r.mySignup}`}>{SIGNUP_LABEL[r.mySignup]}</span> : <Link className="small" to={`/groups/${groupId}/raids/${r.id}`}>S'inscrire</Link>}</td>
-                <td className="num">{r.filled}/40</td>
+                <td className="num">{r.filled}/{r.size}</td>
               </tr>
             );
           })}</tbody>
@@ -202,7 +206,7 @@ function Raids({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean;
 function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: boolean; guard: Guard }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["raid-templates", groupId], queryFn: () => get<{ templates: RaidTemplate[] }>(`/groups/${groupId}/raid-templates`) });
-  const [form, setForm] = useState<{ name: string; weekday: number; time: string; leadDays: number; description: string; lootMode: LootMode; srHidden: boolean }>({ name: "", weekday: 3, time: "21:00", leadDays: 7, description: "", lootMode: "journal", srHidden: false });
+  const [form, setForm] = useState<{ name: string; weekday: number; time: string; leadDays: number; description: string; lootMode: LootMode; srHidden: boolean; size: RaidSize }>({ name: "", weekday: 3, time: "21:00", leadDays: 7, description: "", lootMode: "journal", srHidden: false, size: 40 });
   const [msg, setMsg] = useState<string | null>(null);
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raid-templates", groupId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
   const list = data?.templates ?? [];
@@ -214,11 +218,12 @@ function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: bool
         <p className="hint" style={{ margin: "4px 0 0" }}>Chaque semaine, le raid est créé automatiquement quelques jours à l'avance (heure de Paris), puis annoncé sur Discord si un salon est lié. Supprimer un raid créé ainsi ne le fait pas revenir.</p></div>
       {list.length > 0 && (
         <div className="tscroll"><table className="data">
-          <thead><tr><th>Raid</th><th>Quand</th><th>Créé</th><th>Butin</th><th>État</th>{canEdit && <th />}</tr></thead>
+          <thead><tr><th>Raid</th><th>Quand</th><th>Format</th><th>Créé</th><th>Butin</th><th>État</th>{canEdit && <th />}</tr></thead>
           <tbody>{list.map(t => (
             <tr key={t.id}>
               <td>{t.name}</td>
               <td>{WEEKDAYS[t.weekday - 1]} à {t.time.replace(":", " h ")}</td>
+              <td className="num small">{t.size}</td>
               <td className="small">{t.leadDays} jour{t.leadDays > 1 ? "s" : ""} avant</td>
               <td className="small">{LOOT_MODE_LABEL[t.lootMode]}</td>
               <td>{t.active ? <span className="tag ok">Actif</span> : <span className="tag">En pause</span>}</td>
@@ -243,6 +248,8 @@ function Recurring({ groupId, canEdit, guard }: { groupId: string; canEdit: bool
             <select id="t-day" value={form.weekday} onChange={e => setForm({ ...form, weekday: Number(e.target.value) })}>{WEEKDAYS.map((d, i) => <option key={d} value={i + 1}>{d}</option>)}</select></div>
           <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-time">Heure</label><input id="t-time" type="time" required value={form.time} onChange={e => setForm({ ...form, time: e.target.value })} /></div>
           <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor="t-lead">Créé (jours avant)</label><NumberField id="t-lead" min={1} max={28} value={form.leadDays} onChange={leadDays => setForm({ ...form, leadDays })} /></div>
+          <div className="fld" style={{ flex: "0 1 110px" }}><label htmlFor="t-size">Format</label>
+            <select id="t-size" value={form.size} onChange={e => setForm({ ...form, size: Number(e.target.value) as RaidSize })}>{RAID_SIZES.map(n => <option key={n} value={n}>{n} joueurs</option>)}</select></div>
           <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="t-loot">Butin</label>
             <select id="t-loot" value={form.lootMode} onChange={e => setForm({ ...form, lootMode: e.target.value as LootMode })}>{LOOT_MODES.map(m => <option key={m} value={m}>{LOOT_MODE_LABEL[m]}</option>)}</select></div>
           <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor="t-desc">Description (reprise dans chaque raid)</label><input id="t-desc" type="text" maxLength={1000} placeholder="Ex. Pull à 21 h 15, flasques obligatoires" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
@@ -258,12 +265,16 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: ["group", groupId] });
   const rank = { member: 0, officer: 1, owner: 2 };
+  const [sheet, setSheet] = useState<string | null>(null);
   return (
+    <div className="stack">
+    <p className="hint" style={{ margin: 0 }}>Clique un nom pour voir sa fiche dans le groupe : persos, présence, butin.</p>
     <div className="tscroll"><table className="data">
       <thead><tr><th>Joueur</th><th>Battle.net</th><th>Rôle</th><th>Depuis</th><th /></tr></thead>
       <tbody>{members.map(m => (
-        <tr key={m.userId}>
-          <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>{m.displayName}{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
+        <tr key={m.userId} className={sheet === m.userId ? "ps-sel" : undefined}>
+          <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>
+            <button type="button" className="ps-link" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
           <td className="muted">{m.battletag ?? "—"}</td>
           <td>
             {myRole === "owner" && m.userId !== myId ? (
@@ -280,6 +291,8 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
         </tr>
       ))}</tbody>
     </table></div>
+    {sheet && <PlayerSheet key={sheet} groupId={groupId} userId={sheet} onClose={() => setSheet(null)} />}
+    </div>
   );
 }
 

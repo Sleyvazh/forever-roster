@@ -1,4 +1,4 @@
-import type { LootMethod, LootMode, LootResponse, LootSettings } from "@forever/game-data";
+import type { LootMethod, LootMode, LootResponse, LootSettings, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigserial, boolean, customType, check, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -214,6 +214,9 @@ export const raids = pgTable("raids", {
   /** Mode de butin choisi à la création (journal, loot council, soft reserve) et visibilité des réservations. */
   lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
   srHidden: boolean("sr_hidden").notNull().default(false),
+  /** Format (10, 20 ou 40 joueurs) et rôles visés pour la compo (null : ceux du format). */
+  size: smallint("size").notNull().default(40),
+  targets: jsonb("targets").$type<RoleTargets | null>(),
   /** Raid créé automatiquement à partir d'un modèle récurrent. */
   templateId: uuid("template_id").references((): AnyPgColumn => raidTemplates.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -221,6 +224,7 @@ export const raids = pgTable("raids", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [
   index("raids_group_idx").on(t.groupId),
+  check("raids_size_chk", sql`${t.size} in (10, 20, 40)`),
   uniqueIndex("raids_template_occurrence_uq").on(t.templateId, t.scheduledAt),
 ]);
 
@@ -239,6 +243,7 @@ export const raidTemplates = pgTable("raid_templates", {
   /** Heure locale (fuseau du serveur de jeu), « HH:MM ». */
   time: text("time").notNull(),
   leadDays: smallint("lead_days").notNull().default(7),
+  size: smallint("size").notNull().default(40),
   lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
   srHidden: boolean("sr_hidden").notNull().default(false),
   active: boolean("active").notNull().default(true),

@@ -215,6 +215,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
+  await test.step("fiche joueur", async () => {
+    await page.getByRole("tab", { name: /Membres/ }).click();
+    await page.locator(".ps-link").first().click();
+    await expect(page.locator(".ps")).toContainText("raids venus");
+    await page.locator(".ps").getByRole("button", { name: "Fermer" }).click();
+  });
+
   await test.step("persos du groupe : main et alts", async () => {
     await page.getByRole("tab", { name: "Personnages" }).click();
     // Rien par défaut : on choisit ses persos, le premier devient main
@@ -250,6 +257,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByRole("heading", { name: "Soft reserve" })).toBeVisible();
     await expect(page.getByText("Aucune réservation pour l'instant.")).toBeVisible();
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/softres.png", fullPage: true });
+    // Format du raid : 10 joueurs, 2 groupes ; besoins de la compo
+    await page.getByRole("group", { name: "Format du raid" }).getByRole("button", { name: "10" }).click();
+    await expect(page.locator(".rgroup")).toHaveCount(2);
+    await expect(page.locator(".ra")).toContainText("raid à 10");
     await page.selectOption("#su-spec", "Feral Bear");
     await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
     await expect(page.getByText("Tu es inscrit : Présent avec Tournicoti (Feral Bear)")).toBeVisible();

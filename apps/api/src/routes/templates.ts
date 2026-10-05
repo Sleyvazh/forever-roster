@@ -17,6 +17,7 @@ const fields = z.object({
   weekday: z.int().min(1).max(7),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure au format HH:MM"),
   leadDays: z.int().min(1).max(28).default(7),
+  size: z.union([z.literal(10), z.literal(20), z.literal(40)]).default(40),
   lootMode: z.enum(LOOT_MODES).default("journal"),
   srHidden: z.boolean().default(false),
   active: z.boolean().default(true),
@@ -25,7 +26,7 @@ const gid = z.object({ id: z.uuid() });
 const tid = gid.extend({ templateId: z.uuid() });
 const view = (t: typeof raidTemplates.$inferSelect) => ({
   id: t.id, name: t.name, description: t.description, weekday: t.weekday, time: t.time, leadDays: t.leadDays, active: t.active, generatedUntil: t.generatedUntil,
-  lootMode: t.lootMode, srHidden: t.srHidden,
+  lootMode: t.lootMode, srHidden: t.srHidden, size: t.size,
 });
 
 export async function templateRoutes(app: FastifyInstance) {

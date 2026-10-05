@@ -1,5 +1,5 @@
-import { computeCoverage, GROUP_SIZE, LOOT_MODES, RAID_GROUPS } from "@forever/game-data";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { computeCoverage, DEFAULT_TARGETS, GROUP_SIZE, groupsFor, isRaidSize, isValidSpec, LOOT_MODES, RAID_GROUPS, type RaidSize } from "@forever/game-data";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { characters, groupCharacters, groupMembers, raids, raidSignups, users, type RaidSlot } from "../db/schema";
@@ -23,7 +23,13 @@ const raidFields = z.object({
   /** Mode de butin (choisi à la création, modifiable ensuite) et réservations cachées jusqu'à la fermeture. */
   lootMode: z.enum(LOOT_MODES).optional(),
   srHidden: z.boolean().optional(),
+  /** Format du raid : 10, 20 ou 40 joueurs. */
+  size: z.union([z.literal(10), z.literal(20), z.literal(40)]).optional(),
 });
+const targetsInput = z.object({ tank: z.int().min(0).max(40), heal: z.int().min(0).max(40), dps: z.int().min(0).max(40) });
+/** Rôles visés d'un raid : les siens, sinon ceux de son format. */
+const targetsOf = (r: { size: number; targets: { tank: number; heal: number; dps: number } | null }) =>
+  r.targets ?? DEFAULT_TARGETS[(isRaidSize(r.size) ? r.size : 40) as RaidSize];
 const slot = z.object({
   group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
   characterId: z.uuid().optional(), signupId: z.uuid().optional(),
@@ -81,11 +87,11 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await membership(db, id, u.id);
-    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId })
+    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size })
       .from(raids).where(eq(raids.groupId, id)).orderBy(desc(raids.scheduledAt), asc(raids.name));
     const summary = await signupSummary(db, rows.map(r => r.id), u.id);
     return { raids: rows.map(r => ({
-      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, updatedAt: r.updatedAt, recurring: !!r.templateId,
+      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, updatedAt: r.updatedAt, recurring: !!r.templateId,
       signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null,
     })) };
   });
@@ -99,7 +105,7 @@ export async function raidRoutes(app: FastifyInstance) {
     if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     const [r] = await db.insert(raids).values({
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
-      lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false,
+      lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, size: body.size ?? 40,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
     bus.group({ t: "raids", g: id });
@@ -114,7 +120,8 @@ export async function raidRoutes(app: FastifyInstance) {
     const chars = await slotCharacters(p.id, r.slots);
     const signups = await listSignups(db, r.id);
     return {
-      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt, lootMode: r.lootMode, srHidden: r.srHidden },
+      raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt, lootMode: r.lootMode, srHidden: r.srHidden,
+        size: r.size, targets: targetsOf(r), customTargets: !!r.targets },
       version: r.updatedAt.toISOString(),
       canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
@@ -157,6 +164,7 @@ export async function raidRoutes(app: FastifyInstance) {
       merged = true;
     }
 
+    if (slots.some(s => s.group > groupsFor(current.size))) throw badRequest(`Ce raid est à ${current.size} : ${groupsFor(current.size)} groupes au plus.`);
     const seatKeys = new Set(slots.map(s => `${s.group}:${s.pos}`));
     if (seatKeys.size !== slots.length) throw badRequest("Deux personnages occupent la même place.");
     if (new Set(slots.map(slotKey)).size !== slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
@@ -230,15 +238,59 @@ export async function raidRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Officiers : changer le statut d'un inscrit (ex. le passer sur le banc) ou retirer une inscription. */
+  /** Officiers : format du raid (10, 20, 40) et rôles visés (null : ceux du format). */
+  app.patch("/:id/raids/:raidId/format", async (req) => {
+    const u = currentUser(req);
+    const p = parse(raidParams, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const r = await loadRaid(p.id, p.raidId);
+    const body = parse(z.object({ size: raidFields.shape.size, targets: targetsInput.nullable().optional() }), req.body);
+    const size = body.size ?? r.size;
+    const beyond = [...new Set(r.slots.filter(s => s.group > groupsFor(size)).map(s => s.group))];
+    if (beyond.length) throw badRequest(`Des persos sont placés dans le${beyond.length > 1 ? "s groupes" : " groupe"} ${beyond.join(", ")} : retire-les avant de passer à ${size}.`);
+    const targets = body.targets === undefined ? r.targets : body.targets;
+    await db.update(raids).set({ size, targets, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
+    bus.group({ t: "raid", g: p.id, r: r.id });
+    return { size, targets: targetsOf({ size, targets }), customTargets: !!targets };
+  });
+
+  /**
+   * Bancs passés des inscrits (rotation du banc) : sur les 8 raids précédents du groupe, combien de fois chaque perso
+   * inscrit a été mis sur le banc, et s'il l'était au raid précédent (il est alors protégé).
+   */
+  app.get("/:id/raids/:raidId/bench-history", async (req) => {
+    const u = currentUser(req);
+    const p = parse(raidParams, req.params);
+    await membership(db, p.id, u.id);
+    const r = await loadRaid(p.id, p.raidId);
+    if (!r.scheduledAt) return { raids: 0, stats: {} };
+    const prev = await db.select({ id: raids.id }).from(raids)
+      .where(and(eq(raids.groupId, p.id), lt(raids.scheduledAt, r.scheduledAt))).orderBy(desc(raids.scheduledAt)).limit(8);
+    if (!prev.length) return { raids: 0, stats: {} };
+    const rows = await db.select({ raidId: raidSignups.raidId, characterId: raidSignups.characterId, status: raidSignups.status }).from(raidSignups)
+      .where(and(inArray(raidSignups.raidId, prev.map(x => x.id)), isNotNull(raidSignups.characterId)));
+    const stats: Record<string, { bench: number; signed: number; lastBenched: boolean }> = {};
+    for (const row of rows) {
+      const s = (stats[row.characterId!] ??= { bench: 0, signed: 0, lastBenched: false });
+      if (row.status !== "absent") s.signed++;
+      if (row.status === "bench") { s.bench++; if (row.raidId === prev[0]!.id) s.lastBenched = true; }
+    }
+    return { raids: prev.length, stats };
+  });
+
+  /** Officiers : changer le statut d'un inscrit (ex. le passer sur le banc), sa spé, ou retirer une inscription. */
   const signupParams = raidParams.extend({ signupId: z.uuid() });
   app.patch("/:id/raids/:raidId/signups/:signupId", async (req) => {
     const u = currentUser(req);
     const p = parse(signupParams, req.params);
     await requireRole(db, p.id, u.id, "officer");
     await loadRaid(p.id, p.raidId);
-    const { status } = parse(z.object({ status: z.enum(SIGNUP_STATUSES) }), req.body);
-    const [row] = await db.update(raidSignups).set({ status, updatedAt: new Date() })
+    const body = parse(z.object({ status: z.enum(SIGNUP_STATUSES).optional(), spec: z.string().trim().max(20).optional() })
+      .refine(b => b.status || b.spec, "Rien à changer."), req.body);
+    const [cur] = await db.select({ cls: raidSignups.cls }).from(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId)));
+    if (!cur) throw notFound("Inscription introuvable.");
+    if (body.spec && !isValidSpec(cur.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${cur.cls}.`);
+    const [row] = await db.update(raidSignups).set({ ...(body.status && { status: body.status }), ...(body.spec && { spec: body.spec }), updatedAt: new Date() })
       .where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId))).returning({ id: raidSignups.id });
     if (!row) throw notFound("Inscription introuvable.");
     await touchRaid(db, p.raidId);

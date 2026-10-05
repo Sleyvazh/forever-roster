@@ -134,6 +134,13 @@
       "when": 1791209269699,
       "tag": "0018_loot_modes",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791214761272,
+      "tag": "0019_raid_size",
+      "breakpoints": true
     }
   ]
 }
