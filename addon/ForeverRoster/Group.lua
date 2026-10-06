@@ -20,10 +20,11 @@ local function db()
 end
 
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.
-function G.Load(text)
+-- replace (Roster Companion) : tous les groupes du joueur, qui remplacent toujours ceux chargés ; quiet : sans message.
+function G.Load(text, replace, quiet)
   local groups, err = ns.Format.ParseFRG(text)
   if not groups then return nil, err end
-  if #groups > 1 then wipe(db()) end
+  if #groups > 1 or replace then wipe(db()) end
   local raids, patterns, bis = 0, 0, 0
   for _, g in ipairs(groups) do
     db()[g.id] = g
@@ -31,7 +32,7 @@ function G.Load(text)
     for _ in pairs(g.patterns) do patterns = patterns + 1 end
     for _ in pairs(g.bis) do bis = bis + 1 end
   end
-  ns.print(string.format("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis))
+  if not quiet then ns.print(string.format("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
   ns.safe("consommables", G.CountConsumables)
   return groups
 end

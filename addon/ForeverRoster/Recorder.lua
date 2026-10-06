@@ -59,6 +59,9 @@ function R.Sample()
     ns.print("relevé du raid démarré : |cffe3b54b" .. (log.name or "raid") .. "|r (présence et butin, envoyés avec ta synchro). Onglet Options pour le couper.")
   end
   log.recorder = UnitName("player")
+  -- Chef de raid (lot K1) : celui qui mène le raid la plupart du temps, ou qui distribue le butin (R.Award)
+  log.ticks = (log.ticks or 0) + 1
+  if UnitIsGroupLeader and UnitIsGroupLeader("player") then log.leadTicks = (log.leadTicks or 0) + 1 end
   -- Instance réelle (bilan v2) : nom donné par le jeu, pour le catalogue de butin du site
   if GetInstanceInfo then
     local inst, kind = GetInstanceInfo()
@@ -99,6 +102,15 @@ end
 R.awards = {}
 function R.Award(itemId, who, method, response, detail)
   R.awards[itemId .. ":" .. short(who)] = { method = method, response = response, detail = detail, at = time() }
+  local log = R.Current()
+  if log then log.given = (log.given or 0) + 1 end
+end
+-- Relevé par le chef de raid : il a distribué du butin, ou menait le raid au moins la moitié du temps.
+-- Roster Companion n'envoie tout seul que ce bilan-là (les autres officiers peuvent envoyer le leur à la main).
+function R.IsLead(log)
+  if not log then return false end
+  if (log.given or 0) > 0 then return true end
+  return (log.leadTicks or 0) * 2 >= math.max(1, log.ticks or 0) and (log.leadTicks or 0) > 0
 end
 -- Objet gardé par le maître du butin puis échangé au gagnant : le butin noté change de main
 function R.Reassign(itemId, from, to, method, detail)
@@ -151,7 +163,8 @@ end
 -- Bloc FRB d'un bilan (version 2 : instance réelle, attribution de chaque objet, appel aux consommables)
 function R.Block(log)
   local F = ns.Format
-  local lines = { "FRB;2;" .. F.clean(log.raidId) .. ";" .. (log.start or 0) .. ";" .. (log.stop or log.start or 0) .. ";" .. F.clean(log.recorder) .. ";" .. F.clean(log.name) .. ";" .. F.clean(log.instance) }
+  -- 9e champ (lot K1) : 1 si relevé par le chef de raid ; un site plus ancien l'ignore
+  local lines = { "FRB;2;" .. F.clean(log.raidId) .. ";" .. (log.start or 0) .. ";" .. (log.stop or log.start or 0) .. ";" .. F.clean(log.recorder) .. ";" .. F.clean(log.name) .. ";" .. F.clean(log.instance) .. ";" .. (R.IsLead(log) and "1" or "0") }
   local names = {}
   for name in pairs(log.people) do names[#names + 1] = name end
   table.sort(names)

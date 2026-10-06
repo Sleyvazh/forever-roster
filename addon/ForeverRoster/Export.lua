@@ -265,6 +265,16 @@ function E.Names(included, color)
   return names
 end
 
+-- Roster Companion (lot K1) : blocs à envoyer (persos changés depuis leur dernier envoi), avec leur empreinte.
+-- Le site renvoie l'empreinte des blocs reçus (accusés, ForeverRoster_Data) : le perso est alors marqué envoyé.
+function E.Outbox()
+  local out = {}
+  for _, e in ipairs(E.Pending()) do
+    out[#out + 1] = { kind = "frc", key = e.key, sig = signature(e.char, e.snap), text = block(e.char, e.snap) }
+  end
+  return out
+end
+
 -- L'export a été copié (Ctrl+C) : ces persos sont à jour sur le site jusqu'au prochain changement
 function E.MarkSent(included)
   for _, e in ipairs(included or {}) do

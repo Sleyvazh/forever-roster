@@ -77,7 +77,7 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.debug = nil
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Minimap = "Create" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", Companion = "Apply", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Minimap = "Create" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060modules non chargés : " .. table.concat(missing, ", ") .. "|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)") end

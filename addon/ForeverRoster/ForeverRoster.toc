@@ -2,8 +2,9 @@
 ## Title: Forever Roster
 ## Notes: Compo de raid, inscriptions, butin (soft reserve, conseil), fiches de boss et consommables du site Forever Roster ; export du perso vers le site.
 ## Author: Sleyvazh
-## Version: 1.2.1
+## Version: 1.3.0
 ## SavedVariables: ForeverRosterDB
+## OptionalDeps: ForeverRoster_Data
 ## IconTexture: Interface\AddOns\ForeverRoster\Media\Logo
 
 Core.lua
@@ -13,6 +14,7 @@ Talents.lua
 Export.lua
 Group.lua
 Recorder.lua
+Companion.lua
 UI.lua
 Raid.lua
 RaidUI.lua

@@ -585,6 +585,54 @@ do
   GetItemInfo, GetItemInfoInstant, GetItemCount, C_Item = gi, gii, gic, nil
 end
 
+-- 8. Roster Companion (lot K1) : outbox à la déconnexion, données et accusés de l'appli à la connexion
+do
+  local C = ns.Companion
+  assert(not C.Active(), "appli jamais vue : copier-coller")
+  -- Le raid du lot G a été relevé par le chef de raid (UnitIsGroupLeader vrai dans la simulation)
+  local logs = R.Pending()
+  assert(#logs > 0, "bilans à envoyer")
+  fire("PLAYER_LOGOUT")
+  local out = ForeverRosterDB.outbox
+  assert(out and out.v == 1 and out.addon == ns.version, "outbox écrite à la déconnexion")
+  local frc, frb
+  for _, b in ipairs(out.blocks) do
+    if b.kind == "frc" and b.key == "Tournicoti-Forever EU" then frc = b end
+    if b.kind == "frb" then frb = frb or b end
+  end
+  assert(frc and frc.text:match("^FRC;2;Tournicoti;") and frc.sig ~= "", "bloc du perso avec son empreinte")
+  assert(frb and frb.lead == true and frb.text:match("^FRB;2;[^\n]*;1\n"), "bilan du chef de raid (9e champ à 1)")
+  -- L'appli a envoyé ces blocs et déposé les données du site (ForeverRoster_Data)
+  local acks = { [frc.key] = frc.sig }
+  for _, b in ipairs(out.blocks) do if b.kind == "frb" then acks[b.key] = b.sig end end
+  ForeverRosterData = { v = 1, at = time(), app = "0.1.0", frgAt = time() + 5, acks = acks,
+    frg = "FRG;1;g1;1790000000;Par l'appli\nR;r1;0;Onyxia;;\nEND;1",
+    report = { at = time(), items = { "Tournicoti", "bilan de « Molten Core » |cffff0000piège" } } }
+  local before = #printed
+  fire("PLAYER_LOGIN")
+  for i = before + 1, #printed do assert(not printed[i]:find("groupe%(s%) chargé"), "chargement silencieux") end
+  local names = {}
+  for _, e in ipairs(ns.Export.Pending()) do names[#names + 1] = e.key end
+  assert(not table.concat(names, ","):find("Tournicoti", 1, true), "perso marqué envoyé par l'accusé")
+  assert(#R.Pending() == 0, "bilans marqués envoyés")
+  local groups = ns.Group.List()
+  assert(#groups == 1 and groups[1].name == "Par l'appli", "données du site : tous les groupes remplacés")
+  assert(ForeverRosterDB.lastLoad.companion, "chargement noté comme venant de l'appli")
+  assert(C.Active(), "appli active")
+  local status = C.StatusText()
+  assert(status:find("Roster Companion s'en occupe", 1, true) and status:find("Tournicoti", 1, true) and not status:find("|cffff0000", 1, true), "ligne de l'onglet Synchro, codes du jeu retirés")
+  run("synchro")
+  -- Un collage manuel plus récent n'est pas écrasé par des données plus anciennes de l'appli
+  ns.UI.LoadFromSite("FRG;1;g2;1790000000;Collé à la main\nR;r2;0;Naxxramas;;\nEND;1")
+  ForeverRosterDB.lastLoad.at = time() + 60
+  ForeverRosterData.frgAt = time() + 30
+  fire("PLAYER_LOGIN")
+  local found = false
+  for _, g in ipairs(ns.Group.List()) do if g.name == "Collé à la main" then found = true end end
+  assert(found, "collage manuel plus récent gardé")
+  ForeverRosterData = nil
+end
+
 if failures > 0 then os.exit(1) end
 local export = ns.Export.Build()
 assert(export:find("\nP;Leatherworking;150;225\n"), "compétence lue dans la fenêtre de métier")

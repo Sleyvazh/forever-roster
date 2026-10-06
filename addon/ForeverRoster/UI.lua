@@ -696,8 +696,9 @@ local function onPaste(self, user)
   if ok then self:SetText("") self:ClearFocus() U.Refresh() else self.page.loadStatus:SetText("|cffff6b5e" .. msg .. "|r") end
 end
 
+local SYNC_HINT = "Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide."
 local function buildSynchro(p)
-  hint(p, "Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide.")
+  p.hint = hint(p, SYNC_HINT)
   headerBar(p, -32, "1 · Du site vers le jeu")
   p.input = textArea(p, 6, -74, 526, 34)
   p.input.page = p
@@ -727,6 +728,8 @@ local function buildSynchro(p)
   p.chars:SetPoint("TOPLEFT", 6, -434) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
 end
 refreshers.synchro = function(p)
+  -- Roster Companion (lot K1) : l'appli fait la synchro ; le copier-coller reste possible pour forcer un envoi
+  p.hint:SetText(ns.Companion.Active() and ns.Companion.StatusText(GREEN) or SYNC_HINT)
   local last = ForeverRosterDB.lastLoad
   p.loadStatus:SetText(last and (GREEN .. "Chargé le " .. date("%d/%m %H:%M", last.at) .. " : " .. last.text .. "|r")
     or (GREY .. "Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul.|r"))
