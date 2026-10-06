@@ -28,6 +28,8 @@ services:
     environment:
       NODE_ENV: production
       APP_ORIGIN: ${APP_ORIGIN}
+      # Deuxième adresse du même site : Roster (WoW Retail), ex. https://roster.sleyvazh.fr ; vide = Forever Roster seul
+      RETAIL_ORIGIN: ${RETAIL_ORIGIN:-}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       COOKIE_SECURE: "true"
       TRUST_PROXY: "true"
@@ -72,6 +74,7 @@ services:
     depends_on: [api]
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      RETAIL_DOMAIN: ${RETAIL_DOMAIN:-roster.localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     ports:
       - "80:80"

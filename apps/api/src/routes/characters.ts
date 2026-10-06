@@ -11,6 +11,7 @@ import { currentUser, requireAuth } from "../lib/session";
 import { canSee } from "../lib/visibility";
 import { currentLines } from "../lib/professions";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
+import { siteOf } from "../lib/site";
 
 const MAX_CHARACTERS = 50;
 const MAX_RECIPES = 2000;
@@ -32,11 +33,13 @@ export async function characterRoutes(app: FastifyInstance) {
     if (req.method !== "GET" && reply.statusCode < 400 && req.user) await charsChanged(db, req.user.id).catch(() => {});
   });
 
+  // Mes persos du jeu de cette adresse (un site, deux adresses)
   app.get("/", async (req) => {
     const u = currentUser(req);
+    const game = siteOf(app.ctx.cfg, req).game;
     const rows = await db.select({ c: characters, groupId: groupCharacters.groupId, groupName: groups.name, isMain: groupCharacters.isMain }).from(characters)
       .leftJoin(groupCharacters, eq(groupCharacters.characterId, characters.id)).leftJoin(groups, eq(groups.id, groupCharacters.groupId))
-      .where(eq(characters.userId, u.id)).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
+      .where(and(eq(characters.userId, u.id), eq(characters.game, game))).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
     // Groupe où le perso est rangé (un seul, lot E) et s'il y est le main du joueur
     return { characters: rows.map(r => ({ ...toApi(r.c), group: r.groupId ? { id: r.groupId, name: r.groupName!, isMain: !!r.isMain } : null })) };
   });
@@ -46,16 +49,19 @@ export async function characterRoutes(app: FastifyInstance) {
     const body = parse(characterFields.partial().extend({ name: characterFields.shape.name }), req.body);
     const merged = { race: "", cls: "", spec1: "", spec2: "", talents: "", ...body };
     const err = crossCheck(merged); if (err) throw badRequest(err);
-    const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters).where(eq(characters.userId, u.id)) as [{ n: number; top: number | null }];
+    const game = siteOf(app.ctx.cfg, req).game;
+    const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
+      .where(and(eq(characters.userId, u.id), eq(characters.game, game))) as [{ n: number; top: number | null }];
     if (n >= MAX_CHARACTERS) throw badRequest(`Limite de ${MAX_CHARACTERS} personnages atteinte.`);
-    const [row] = await db.insert(characters).values({ ...body, userId: u.id, sortOrder: (top ?? -1) + 1 }).returning();
+    const [row] = await db.insert(characters).values({ ...body, userId: u.id, game, sortOrder: (top ?? -1) + 1 }).returning();
     return reply.code(201).send({ character: toApi(row!) });
   });
 
   app.put("/order", async (req) => {
     const u = currentUser(req);
     const { ids } = parse(z.object({ ids: z.array(z.uuid()).max(MAX_CHARACTERS) }), req.body);
-    const own = await db.select({ id: characters.id }).from(characters).where(eq(characters.userId, u.id));
+    const own = await db.select({ id: characters.id }).from(characters)
+      .where(and(eq(characters.userId, u.id), eq(characters.game, siteOf(app.ctx.cfg, req).game)));
     const ownIds = new Set(own.map(r => r.id));
     if (ids.length !== ownIds.size || !ids.every(id => ownIds.has(id))) throw badRequest("La liste doit contenir exactement tes personnages.");
     await db.transaction(async tx => {

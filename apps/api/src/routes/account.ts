@@ -11,6 +11,7 @@ import { normalizeEmail, publicUser } from "../lib/users";
 import { assertStrongPassword, invalidateEmailTokens, issueEmailToken } from "./auth";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { verifyEmail } from "../lib/email-templates";
+import { siteOf } from "../lib/site";
 
 export async function accountRoutes(app: FastifyInstance) {
   const { db, mailer } = app.ctx;
@@ -70,8 +71,8 @@ export async function accountRoutes(app: FastifyInstance) {
     const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
     if (taken) throw conflict("Cette adresse ne peut pas être utilisée.");
     await db.update(users).set({ email: body.email, emailVerifiedAt: null, updatedAt: new Date() }).where(eq(users.id, u.id));
-    const link = await issueEmailToken(app, u.id, "verify");
-    await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN, false) });
+    const link = await issueEmailToken(app, u.id, "verify", siteOf(app.ctx.cfg, req).origin);
+    await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req), false) });
     return reply.code(202).send({ message: "Un e-mail de confirmation a été envoyé." });
   });
 

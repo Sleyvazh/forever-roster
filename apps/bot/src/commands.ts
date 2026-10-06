@@ -10,6 +10,14 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
     options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
   },
   {
+    // Même commande pour Roster (WoW Retail) : un seul bot, deux sites
+    type: ApplicationCommandType.ChatInput,
+    name: "roster-lier",
+    description: "Lie ce salon à un groupe Roster ou Forever Roster : raids ou commandes (code donné par le site).",
+    contexts: [InteractionContextType.Guild],
+    options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
+  },
+  {
     type: ApplicationCommandType.ChatInput,
     name: "raid",
     description: "Crée un raid dans le groupe lié à ce salon (officiers).",

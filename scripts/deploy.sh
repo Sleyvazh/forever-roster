@@ -13,6 +13,8 @@ main() {
   [ "${1:-}" = "--skip-ci" ] && skip_ci=true
 
   DOMAIN=$(grep -E '^DOMAIN=' .env | cut -d= -f2)
+  # Deuxième adresse (Roster, WoW Retail) : vide tant qu'elle n'est pas en service
+  RETAIL_DOMAIN=$(grep -E '^RETAIL_DOMAIN=' .env | cut -d= -f2 || true)
   step() { printf '\n\033[1;33m== %s\033[0m\n' "$1"; }
 
   step "Récupération du code"
@@ -51,6 +53,10 @@ main() {
     # -fs : silencieux pendant les essais (un 502 est normal le temps que l'API redémarre)
     if curl -fs --max-time 3 "https://$DOMAIN/api/health" > /dev/null; then
       echo "OK : l'application répond."
+      if [ -n "$RETAIL_DOMAIN" ]; then
+        if curl -fs --max-time 5 "https://$RETAIL_DOMAIN/api/health" > /dev/null; then echo "OK : $RETAIL_DOMAIN répond aussi."
+        else printf '\033[1;31mAttention : https://%s ne répond pas (DNS, certificat ?).\033[0m\n' "$RETAIL_DOMAIN"; fi
+      fi
       echo "Bot Discord : $(sudo docker compose logs --tail=1 --no-log-prefix bot 2>/dev/null || echo 'pas de journal')"
       sudo docker image prune -f > /dev/null
       echo "Version déployée : $CURRENT (précédente : $PREVIOUS)"

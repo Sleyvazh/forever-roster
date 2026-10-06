@@ -16,8 +16,10 @@ import { GroupCharacters } from "../components/GroupRoster";
 import { LootSettingsPanel } from "../components/Loot";
 import { PlayerSheet } from "../components/PlayerSheet";
 import { ROLE_LABEL } from "./GroupsPage";
+import { useSite } from "../site";
+import type { Game } from "@forever/game-data";
 
-interface GroupDetail { group: { id: string; name: string; discordLinked: boolean; ordersLinked: boolean }; role: GroupRole; members: Member[] }
+interface GroupDetail { group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean }; role: GroupRole; members: Member[] }
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
@@ -42,6 +44,7 @@ export function GroupPage() {
   const nav = useNavigate();
   const me = useMe();
   const myId = me.data?.user?.id;
+  const site = useSite();
   const [error, setError] = useState<string | null>(null);
 
   const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
@@ -56,6 +59,14 @@ export function GroupPage() {
   if (detail.isLoading) return <p className="muted">Chargement…</p>;
   if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
   const { group, role, members } = detail.data;
+  // Un site, deux adresses : un groupe de l'autre jeu s'ouvre sur son site
+  if (group.game !== site.game) return (
+    <div className="panel lift pad stack" style={{ maxWidth: 620 }}>
+      <h2 style={{ margin: 0 }}>{group.name}</h2>
+      <p style={{ margin: 0 }}>Ce groupe est sur <b>{group.site.name}</b>. Ton compte y est le même.</p>
+      <p style={{ margin: 0 }}><a className="btn primary" href={`${group.site.origin}/groups/${group.id}`}>Ouvrir sur {group.site.name}</a></p>
+    </div>
+  );
 
   const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ["presence", "Présence & butin"], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
   // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
@@ -331,13 +342,17 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
   );
 }
 
-/** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier dans le salon voulu. */
+/** Commande du bot pour lier un salon : la même, sous le nom du site (un seul bot pour les deux). */
+const linkCommand = (game: Game) => (game === "retail" ? "/roster-lier" : "/forever-lier");
+
+/** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier (ou /roster-lier) dans le salon voulu. */
 function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+  const game = useSite().game;
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [wantCode, setWantCode] = useState(false);
-  const cmd = code ? `/forever-lier code:${code.code}` : "";
+  const cmd = code ? `${linkCommand(game)} code:${code.code}` : "";
   return (
     <section className="stack admin-sec" aria-labelledby="dc-title">
       <div className="row between">
@@ -373,11 +388,12 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
 
 /** Salon Discord des commandes d'artisanat (lot F) : même liaison par code que le salon des raids. */
 function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+  const game = useSite().game;
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [wantCode, setWantCode] = useState(false);
   const [copied, setCopied] = useState(false);
-  const cmd = code ? `/forever-lier code:${code.code}` : "";
+  const cmd = code ? `${linkCommand(game)} code:${code.code}` : "";
   return (
     <section className="stack admin-sec" aria-labelledby="oc-title">
       <div className="row between">

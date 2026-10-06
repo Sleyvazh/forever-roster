@@ -5,20 +5,24 @@ import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
 import { LaunchPill } from "./Countdown";
 import { ClassIcon } from "./Icons";
-import { Logo } from "./Logo";
+import { Logo, RosterLogo } from "./Logo";
 import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
 import { useLiveEvents } from "../live";
 import { CopyForGame } from "./CopyForGame";
 import { PasteImport } from "./PasteImport";
 import { News } from "./News";
+import { useApplySite, useSite } from "../site";
 
-const Brand = () => (
-  <Link to="/" className="brand" aria-label="Forever Roster, accueil">
-    <Logo size={32} />
-    <strong>Forever Roster</strong>
-  </Link>
-);
+const Brand = () => {
+  const site = useSite();
+  return (
+    <Link to="/" className="brand" aria-label={`${site.name}, accueil`}>
+      {site.game === "retail" ? <RosterLogo size={32} /> : <Logo size={32} />}
+      <strong>{site.name}</strong>
+    </Link>
+  );
+};
 
 /** Avatar du compte : l'image du compte, sinon le portrait du premier perso, sinon son icône de classe. */
 function Avatar({ size = 30 }: { size?: number }) {
@@ -78,14 +82,18 @@ const TAB_ICONS = {
 /** Bandeau du haut : logo, onglets, compte à rebours, menu du compte. Sur téléphone, onglets en bas de l'écran. */
 export function TopBar() {
   const me = useMe();
+  const site = useSite();
+  useApplySite(site);
+  // Site pas encore ouvert (Roster avant les données Retail) : comptes seulement, pas d'onglets
   const user = me.data?.user;
-  useLiveEvents(!!user);
+  const app = !!user && site.open;
+  useLiveEvents(app);
   return (
     <>
       <header className="topnav">
         <div className="bar-in">
           <Brand />
-          {user ? (
+          {app ? (
             <nav className="nav" aria-label="Navigation principale">
               <NavLink to="/persos">Mes persos</NavLink>
               <NavLink to="/groups">Groupes</NavLink>
@@ -93,15 +101,15 @@ export function TopBar() {
             </nav>
           ) : <span />}
           <div className="bar-right">
-            {user && <CopyForGame />}
-            <LaunchPill />
-            {user && <News />}
+            {app && <CopyForGame />}
+            {site.game === "forever" && <LaunchPill />}
+            {app && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>
       </header>
-      {user && <PasteImport />}
-      {user && (
+      {app && <PasteImport />}
+      {app && (
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
           <NavLink to="/groups">{TAB_ICONS.groupes}Groupes</NavLink>

@@ -9,7 +9,7 @@ const BNET_ERRORS: Record<string, string> = {
   bnet_state: "La connexion Battle.net a expiré ou ne venait pas de ce navigateur. Réessaie.",
   bnet_exchange: "Battle.net n'a pas répondu correctement. Réessaie dans un instant.",
   bnet_session: "Ta session a changé pendant la liaison Battle.net. Reconnecte-toi puis recommence.",
-  bnet_taken: "Ce compte Battle.net est déjà lié à un autre compte Forever Roster.",
+  bnet_taken: "Ce compte Battle.net est déjà lié à un autre compte.",
 };
 
 /** Lit le jeton placé dans le fragment (#) du lien reçu par e-mail, puis l'efface de la barre d'adresse. */

@@ -10,3 +10,14 @@ export function Logo({ size = 30, className }: { size?: number; className?: stri
     </svg>
   );
 }
+
+/** Logo provisoire de Roster (WoW Retail) : un écu et une liste. À revoir (décision de Flo, 06/10). */
+export function RosterLogo({ size = 30, className }: { size?: number; className?: string }) {
+  return (
+    <svg className={`logo ${className ?? ""}`} viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" focusable="false">
+      <path d="M32 4 L54 12 V30 C54 44 44 54 32 60 C20 54 10 44 10 30 V12 Z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M21 24 H43 M21 33 H43 M21 42 H36" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="43" cy="42" r="3.2" fill="currentColor" />
+    </svg>
+  );
+}

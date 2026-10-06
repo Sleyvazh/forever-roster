@@ -187,7 +187,7 @@ async function start() {
 
     if (i.commandName === "feedback" || i.commandName === "feedback-config") return feedback.command(i);
 
-    if (i.commandName === "forever-lier") {
+    if (i.commandName === "forever-lier" || i.commandName === "roster-lier") {
       const need = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
       if (!i.appPermissions.has(need)) {
         return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");

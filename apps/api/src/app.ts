@@ -27,6 +27,7 @@ import { weekRoutes } from "./routes/week";
 import { raidLogRoutes } from "./routes/raidlogs";
 import { imageRoutes } from "./routes/images";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
+import { siteRoutes } from "./routes/site";
 
 export interface AppContext {
   db: Db;
@@ -60,7 +61,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   });
   await app.register(cookie);
   if (withRateLimit) {
-    await app.register(rateLimit, { global: true, max: 300, timeWindow: "1 minute" });
+    await app.register(rateLimit, { global: true, max: ctx.cfg.RATE_LIMIT_MAX, timeWindow: "1 minute" });
   }
 
   registerSession(app);
@@ -80,6 +81,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
 
   app.get("/api/health", async () => ({ ok: true }));
 
+  await app.register(siteRoutes, { prefix: "/api/site" });
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(battlenetRoutes, { prefix: "/api/auth/battlenet" });
   await app.register(discordRoutes, { prefix: "/api/auth/discord" });

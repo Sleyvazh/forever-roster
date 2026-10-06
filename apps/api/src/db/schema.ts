@@ -1,4 +1,4 @@
-import type { LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RoleTargets } from "@forever/game-data";
+import type { Game, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -103,6 +103,8 @@ export type Legacy = Partial<Record<string, { name: string; rank: number; max: n
 export const characters = pgTable("characters", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** Jeu du perso (un site, deux adresses) : forever (Forever Roster) ou retail (Roster). */
+  game: text("game").$type<Game>().notNull().default("forever"),
   name: text("name").notNull(),
   race: text("race").notNull().default(""),
   cls: text("cls").notNull().default(""),
@@ -134,11 +136,14 @@ export const characters = pgTable("characters", {
 }, t => [
   index("characters_user_idx").on(t.userId, t.sortOrder),
   check("characters_level", sql`${t.level} BETWEEN 1 AND 60`),
+  check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
 
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  /** Jeu du groupe (un site, deux adresses) : ses persos et ses raids sont de ce jeu. */
+  game: text("game").$type<Game>().notNull().default("forever"),
   /** Salon Discord où le bot publie les raids du groupe (lié par un officier avec un code à usage unique). */
   discordGuildId: text("discord_guild_id"),
   discordChannelId: text("discord_channel_id"),
@@ -159,6 +164,7 @@ export const groups = pgTable("groups", {
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
+  check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
 
 export const groupMembers = pgTable("group_members", {

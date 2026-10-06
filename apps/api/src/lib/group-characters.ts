@@ -18,6 +18,10 @@ type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
  * S'il était dans un autre groupe, il le quitte (ses inscriptions aux raids restent).
  */
 export async function assignCharacter(db: Tx, groupId: string, characterId: string, userId: string, main = false) {
+  // Un site, deux adresses : un perso ne rejoint qu'un groupe de son jeu (Forever ou Retail)
+  const [c] = await db.select({ game: characters.game }).from(characters).where(eq(characters.id, characterId));
+  const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, groupId));
+  if (c && g && c.game !== g.game) throw badRequest("Ce perso n'est pas du même jeu que ce groupe.");
   const [other] = await db.select().from(groupCharacters)
     .where(and(eq(groupCharacters.characterId, characterId), ne(groupCharacters.groupId, groupId)));
   if (other) {

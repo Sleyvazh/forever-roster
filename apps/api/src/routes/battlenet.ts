@@ -7,6 +7,7 @@ import { audit } from "../lib/audit";
 import { randomToken, safeEqual, sha256 } from "../lib/crypto";
 import { HttpError, conflict, noStore, parse } from "../lib/http";
 import { createSession, requireAuth } from "../lib/session";
+import { siteOf } from "../lib/site";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const STATE_COOKIE = "fr_oauth";
@@ -16,14 +17,14 @@ interface BnetUser { id: string; battletag: string }
 
 export async function battlenetRoutes(app: FastifyInstance) {
   const { db, cfg } = app.ctx;
-  const redirectUri = `${cfg.APP_ORIGIN}/api/auth/battlenet/callback`;
+  const redirectUri = (req: FastifyRequest) => `${siteOf(cfg, req).origin}/api/auth/battlenet/callback`;
 
   const ensureEnabled = () => {
     if (!battlenetEnabled(cfg)) throw new HttpError(503, "La connexion Battle.net n'est pas configurée sur ce serveur.");
   };
 
   /** Crée un state aléatoire, stocké haché en base ET lié au navigateur par un cookie (double vérification). */
-  async function authorizeUrl(reply: FastifyReply, mode: "login" | "link", userId: string | null) {
+  async function authorizeUrl(req: FastifyRequest, reply: FastifyReply, mode: "login" | "link", userId: string | null) {
     await db.delete(oauthStates).where(lt(oauthStates.expiresAt, new Date()));
     const state = randomToken();
     await db.insert(oauthStates).values({ stateHash: sha256(state), mode, userId, expiresAt: new Date(Date.now() + STATE_TTL_MS) });
@@ -32,7 +33,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
     });
     const url = new URL("/authorize", cfg.BNET_OAUTH_HOST);
     url.search = new URLSearchParams({
-      client_id: cfg.BNET_CLIENT_ID, redirect_uri: redirectUri, response_type: "code", scope: "openid", state,
+      client_id: cfg.BNET_CLIENT_ID, redirect_uri: redirectUri(req), response_type: "code", scope: "openid", state,
     }).toString();
     return url.toString();
   }
@@ -40,21 +41,21 @@ export async function battlenetRoutes(app: FastifyInstance) {
   // Connexion : simple navigation vers Battle.net.
   app.get("/start", async (req, reply) => {
     ensureEnabled();
-    if (req.user) return reply.redirect(`${cfg.APP_ORIGIN}/`);
-    return reply.redirect(await authorizeUrl(reply, "login", null));
+    if (req.user) return reply.redirect(`${siteOf(cfg, req).origin}/`);
+    return reply.redirect(await authorizeUrl(req, reply, "login", null));
   });
 
   // Liaison à un compte existant : POST protégé par le jeton CSRF, le front suit ensuite l'URL renvoyée.
   app.post("/link", { preHandler: requireAuth }, async (req, reply) => {
     ensureEnabled();
     noStore(reply);
-    return { url: await authorizeUrl(reply, "link", req.user!.id) };
+    return { url: await authorizeUrl(req, reply, "link", req.user!.id) };
   });
 
   app.get("/callback", async (req, reply) => {
     const fail = (code: string) => {
       reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH });
-      return reply.redirect(`${cfg.APP_ORIGIN}/login?error=${encodeURIComponent(code)}`);
+      return reply.redirect(`${siteOf(cfg, req).origin}/login?error=${encodeURIComponent(code)}`);
     };
     ensureEnabled();
     const q = z.object({ code: z.string().max(500).optional(), state: z.string().max(100).optional(), error: z.string().max(100).optional() }).safeParse(req.query);
@@ -69,7 +70,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
     reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH });
 
     let bnet: BnetUser;
-    try { bnet = await fetchBnetUser(app, q.data.code, redirectUri); }
+    try { bnet = await fetchBnetUser(app, q.data.code, redirectUri(req)); }
     catch (err) { req.log.warn({ err }, "Échec OAuth Battle.net"); return fail("bnet_exchange"); }
 
     const [owner] = await db.select().from(users).where(eq(users.battlenetId, bnet.id));
@@ -80,7 +81,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
       if (owner && owner.id !== req.user.id) return fail("bnet_taken");
       await db.update(users).set({ battlenetId: bnet.id, battletag: bnet.battletag, updatedAt: new Date() }).where(eq(users.id, req.user.id));
       await audit(db, req, "battlenet_linked", { userId: req.user.id, meta: { battletag: bnet.battletag } });
-      return reply.redirect(`${cfg.APP_ORIGIN}/account?bnet=linked`);
+      return reply.redirect(`${siteOf(cfg, req).origin}/account?bnet=linked`);
     }
 
     let userId = owner?.id;
@@ -96,7 +97,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
     }
     await createSession(app, req, reply, userId!);
     await audit(db, req, "login_success", { userId, meta: { method: "battlenet" } });
-    return reply.redirect(`${cfg.APP_ORIGIN}/`);
+    return reply.redirect(`${siteOf(cfg, req).origin}/`);
   });
 
   app.delete("/", { preHandler: requireAuth }, async (req: FastifyRequest) => {

@@ -2,6 +2,7 @@ import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characterRecipes, characters, craftOrders, discordDeletions, gameItems, gameRecipes, groupMembers, groups, users, type OrderReagent } from "../db/schema";
 import { currentLines } from "./professions";
+import type { Game } from "@forever/game-data";
 
 /** Commandes d'artisanat (lot F) : artisans d'une recette, composants, et vue du message Discord. */
 
@@ -40,7 +41,7 @@ export async function reagentsFor(db: Tx, reagents: { id: number; n: number }[],
 export const touchOrder = () => ({ discordChangedAt: new Date() });
 
 /** Ce qu'il faut au bot pour dessiner le message d'une commande. */
-export async function orderDiscordView(db: Tx, origin: string, orderId: string) {
+export async function orderDiscordView(db: Tx, originFor: (game: Game) => string, orderId: string) {
   const [r] = await db.select({ o: craftOrders, group: groups, requester: users.displayName, quality: gameItems.quality, character: characters.name })
     .from(craftOrders).innerJoin(groups, eq(groups.id, craftOrders.groupId)).innerJoin(users, eq(users.id, craftOrders.requesterId))
     .leftJoin(gameItems, eq(gameItems.id, craftOrders.itemId)).leftJoin(characters, eq(characters.id, craftOrders.characterId))
@@ -52,7 +53,7 @@ export async function orderDiscordView(db: Tx, origin: string, orderId: string) 
   return {
     id: o.id, group: { id: r.group.id, name: r.group.name }, channelId: r.group.ordersChannelId,
     messageId: o.discordChannelId === r.group.ordersChannelId ? o.discordMessageId : null, changedAt: o.discordChangedAt,
-    url: `${origin}/groups/${o.groupId}/artisans`,
+    url: `${originFor(r.group.game)}/groups/${o.groupId}/artisans`, // site du jeu du groupe
     item: o.itemId ? { id: o.itemId, name: o.itemName ?? o.recipeName, quality: r.quality ?? 1 } : null, recipeName: o.recipeName,
     quantity: o.quantity, requester: r.requester, character: r.character, crafters: crafters.map(c => c.name),
     status: o.status, taker: taker?.name ?? null, reagents: o.reagents.map(x => ({ name: x.name, n: x.n, provided: x.provided })), note: o.note,

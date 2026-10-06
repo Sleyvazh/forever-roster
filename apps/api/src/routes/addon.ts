@@ -10,6 +10,7 @@ import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
 import { currentUser, requireAuth } from "../lib/session";
+import { siteOf } from "../lib/site";
 
 /** Raids envoyés à l'addon : à venir (ou commencés depuis moins de 3 h), puis ceux sans date. */
 const MAX_RAIDS = 15;
@@ -124,7 +125,9 @@ export async function addonRoutes(app: FastifyInstance) {
   /** Tous mes groupes d'un coup (page Addon du site) : un bloc FRG par groupe. */
   app.get("/addon/export", async (req) => {
     const u = currentUser(req);
-    const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).where(eq(groupMembers.userId, u.id)).limit(MAX_GROUPS);
+    // Groupes du jeu de cette adresse (un site, deux adresses)
+    const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
+      .where(and(eq(groupMembers.userId, u.id), eq(groups.game, siteOf(app.ctx.cfg, req).game))).limit(MAX_GROUPS);
     const parts = [];
     for (const g of mine) parts.push(await groupExport(db, g.id, u.id));
     parts.sort((a, b) => a.name.localeCompare(b.name));

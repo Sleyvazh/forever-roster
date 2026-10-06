@@ -8,15 +8,19 @@
  * dans l'e-mail permettrait d'y glisser un texte d'hameçonnage envoyé depuis notre domaine.
  */
 
-export interface EmailContent { subject: string; text: string; html: string }
+/** fromName : nom d'expéditeur affiché (celui du site), l'adresse reste celle de MAIL_FROM. */
+export interface EmailContent { subject: string; text: string; html: string; fromName: string }
+/** Site d'où part l'e-mail (un site, deux adresses) : son nom, sa phrase de présentation et son adresse. */
+export interface MailSite { origin: string; name: string; tagline: string }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
 interface Block { title: string; intro: string[]; action?: { label: string; url: string; note: string }; outro: string[] }
 
-function render(subject: string, greetingName: string | null, b: Block, appOrigin: string): EmailContent {
+function render(subject: string, greetingName: string | null, b: Block, site: MailSite): EmailContent {
   const hello = greetingName ? `Bonjour ${greetingName},` : "Bonjour,";
-  const footer = `Forever Roster — gestion de personnages et de raids pour WoW Forever\n${appOrigin}\nCet e-mail automatique a été envoyé suite à une action sur ton compte. Merci de ne pas y répondre.`;
+  const appOrigin = site.origin;
+  const footer = `${site.name} — ${site.tagline}\n${appOrigin}\nCet e-mail automatique a été envoyé suite à une action sur ton compte. Merci de ne pas y répondre.`;
 
   const text = [
     hello, "",
@@ -32,7 +36,7 @@ function render(subject: string, greetingName: string | null, b: Block, appOrigi
 <body style="margin:0;padding:0;background:#eef0f4">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f4;padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Segoe UI,Helvetica,Arial,sans-serif">
-<tr><td style="background:#0e1427;padding:18px 28px;color:#e6bf57;font-size:18px;letter-spacing:.04em;font-family:Georgia,serif">Forever Roster</td></tr>
+<tr><td style="background:#0e1427;padding:18px 28px;color:#e6bf57;font-size:18px;letter-spacing:.04em;font-family:Georgia,serif">${esc(site.name)}</td></tr>
 <tr><td style="padding:28px">
 <h1 style="margin:0 0 16px;font-size:20px;color:#0e1427;font-weight:600">${esc(b.title)}</h1>
 ${p(hello)}
@@ -45,43 +49,43 @@ ${b.action ? `<table role="presentation" cellpadding="0" cellspacing="0" style="
 ${b.outro.map(p).join("\n")}
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid #e3e6ec;font-size:12px;line-height:1.5;color:#7a8296">
-Forever Roster — gestion de personnages et de raids pour WoW Forever<br>
+${esc(site.name)} — ${esc(site.tagline)}<br>
 <a href="${esc(appOrigin)}" style="color:#7a8296">${esc(appOrigin.replace(/^https?:\/\//, ""))}</a><br>
 Cet e-mail automatique a été envoyé suite à une action sur ton compte. Merci de ne pas y répondre.
 </td></tr>
 </table></td></tr></table>
 </body></html>`;
 
-  return { subject, text, html };
+  return { subject, text, html, fromName: site.name };
 }
 
-export function verifyEmail(link: string, name: string | null, appOrigin: string, welcome = true): EmailContent {
+export function verifyEmail(link: string, name: string | null, site: MailSite, welcome = true): EmailContent {
   return render("Confirme ton adresse e-mail", name, {
-    title: welcome ? "Bienvenue sur Forever Roster" : "Confirme ton adresse e-mail",
+    title: welcome ? `Bienvenue sur ${site.name}` : "Confirme ton adresse e-mail",
     intro: [
       welcome
         ? "Ton compte est presque prêt. Il ne reste qu'à confirmer que cette adresse t'appartient."
         : "Voici un nouveau lien pour confirmer ton adresse e-mail.",
     ],
     action: { label: "Confirmer mon adresse", url: link, note: "Ce lien est valable 24 heures et ne fonctionne qu'une fois." },
-    outro: ["Si tu n'as pas créé de compte sur Forever Roster, ignore simplement ce message : aucun compte ne sera activé."],
-  }, appOrigin);
+    outro: [`Si tu n'as pas créé de compte sur ${site.name}, ignore simplement ce message : aucun compte ne sera activé.`],
+  }, site);
 }
 
-export function resetPassword(link: string, name: string | null, appOrigin: string): EmailContent {
+export function resetPassword(link: string, name: string | null, site: MailSite): EmailContent {
   return render("Réinitialisation de ton mot de passe", name, {
     title: "Choisir un nouveau mot de passe",
-    intro: ["Une réinitialisation du mot de passe a été demandée pour ton compte Forever Roster."],
+    intro: [`Une réinitialisation du mot de passe a été demandée pour ton compte ${site.name}.`],
     action: { label: "Choisir un nouveau mot de passe", url: link, note: "Ce lien est valable 30 minutes et ne fonctionne qu'une fois. Toutes tes sessions ouvertes seront fermées." },
     outro: ["Si tu n'as rien demandé, ignore ce message : ton mot de passe actuel reste valable. Si tu reçois ces e-mails sans raison, change ton mot de passe par précaution."],
-  }, appOrigin);
+  }, site);
 }
 
-export function registerAttempt(name: string | null, appOrigin: string): EmailContent {
-  return render("Tentative d'inscription sur Forever Roster", name, {
+export function registerAttempt(name: string | null, site: MailSite): EmailContent {
+  return render(`Tentative d'inscription sur ${site.name}`, name, {
     title: "Ton adresse a été utilisée pour une inscription",
-    intro: ["Quelqu'un vient d'essayer de créer un compte Forever Roster avec ton adresse e-mail, qui a déjà un compte."],
-    action: { label: "Me connecter", url: `${appOrigin}/login`, note: "Si c'est toi, connecte-toi ou utilise « Mot de passe oublié »." },
+    intro: [`Quelqu'un vient d'essayer de créer un compte ${site.name} avec ton adresse e-mail, qui a déjà un compte.`],
+    action: { label: "Me connecter", url: `${site.origin}/login`, note: "Si c'est toi, connecte-toi ou utilise « Mot de passe oublié »." },
     outro: ["Si ce n'est pas toi, aucune action n'est nécessaire : ton compte n'a pas été modifié."],
-  }, appOrigin);
+  }, site);
 }

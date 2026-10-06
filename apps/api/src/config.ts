@@ -7,6 +7,8 @@ const schema = z.object({
   PORT: z.coerce.number().int().default(3000),
   HOST: z.string().default("0.0.0.0"),
   APP_ORIGIN: z.url().transform(u => u.replace(/\/$/, "")),
+  /** Deuxième adresse du même site : Roster (WoW Retail), ex. https://roster.sleyvazh.fr. Vide : Forever Roster seul. */
+  RETAIL_ORIGIN: z.union([z.literal(""), z.url().transform(u => u.replace(/\/$/, ""))]).default(""),
   DATABASE_URL: z.string().min(1),
   COOKIE_SECURE: bool.default(true),
   SMTP_URL: z.string().default("smtp://localhost:1025"),
@@ -16,6 +18,8 @@ const schema = z.object({
   BNET_CLIENT_SECRET: z.string().default(""),
   BNET_OAUTH_HOST: z.url().default("https://oauth.battle.net"),
   TRUST_PROXY: bool.default(false),
+  /** Requêtes par minute et par adresse IP, toutes routes confondues. Relevé seulement pour les tests de bout en bout (tout vient de 127.0.0.1). */
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   DISCORD_CLIENT_ID: z.string().default(""),
   DISCORD_CLIENT_SECRET: z.string().default(""),
   DISCORD_HOST: z.url().default("https://discord.com"),

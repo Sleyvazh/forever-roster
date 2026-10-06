@@ -1,6 +1,6 @@
 # Exploitation
 
-Procédures pour faire tourner Forever Roster en production : https://forever-roster.sleyvazh.fr
+Procédures pour faire tourner Forever Roster en production : https://forever-roster.sleyvazh.fr, et sa deuxième adresse Roster (WoW Retail) : https://roster.sleyvazh.fr.
 
 ## Serveur
 
@@ -188,6 +188,37 @@ PY
 unset SMTP_PASS
 sudo docker compose up -d api
 ```
+
+## Deuxième adresse : Roster (WoW Retail)
+
+Un seul site, deux adresses : même serveur, même code, même base. L'adresse de la requête choisit le jeu (`forever` ou `retail`), le nom, le logo, la couleur, la page d'accueil publique, l'adresse des liens dans les e-mails et les invitations, et le retour de la connexion Discord. Les comptes sont communs (même e-mail, même mot de passe, même liaison Discord) ; la connexion se fait une fois par adresse (cookie propre à chaque sous-domaine). Persos et groupes appartiennent à un jeu : chaque adresse ne montre que les siens.
+
+Tant que `RETAIL_ORIGIN` et `RETAIL_DOMAIN` sont vides, seul Forever Roster existe. Avant l'arrivée des données Retail (lot R2), Roster n'ouvre que l'accueil et le compte : une fois connecté, « Roster arrive bientôt ».
+
+Mise en service, **dans cet ordre** (Caddy ne peut obtenir le certificat que si le DNS pointe déjà vers le serveur) :
+
+1. **DNS chez OVH** : *Web Cloud → Noms de domaine → sleyvazh.fr → Zone DNS → Ajouter une entrée → CNAME*, sous-domaine `roster`, cible `forever-roster.sleyvazh.fr.` (avec le point final). Vérifier sur le serveur, après quelques minutes : `getent hosts roster.sleyvazh.fr` doit donner l'adresse du serveur.
+2. **Discord** (<https://discord.com/developers/applications>, application Forever Roster → OAuth2 → Redirects) : ajouter `https://roster.sleyvazh.fr/api/auth/discord/callback` à côté de celle de Forever Roster, puis **Save Changes**. Rien d'autre ne change chez Discord : un seul bot pour les deux sites.
+3. **`.env` sur le serveur** (ce ne sont pas des secrets) :
+
+   ```bash
+   cd ~/forever-roster
+   python3 - <<'PY'
+   vals = {"RETAIL_ORIGIN": "https://roster.sleyvazh.fr", "RETAIL_DOMAIN": "roster.sleyvazh.fr"}
+   lines = [l for l in open(".env").read().splitlines() if l.split("=", 1)[0] not in vals]
+   lines += [f"{k}={v}" for k, v in vals.items()]
+   open(".env", "w").write("\n".join(lines) + "\n")
+   PY
+   sudo docker compose up -d api web
+   ```
+
+4. **Vérifier** : `curl -s https://roster.sleyvazh.fr/api/site` doit répondre `"game":"retail"`, et <https://roster.sleyvazh.fr> afficher l'accueil de Roster. Si le certificat manque : `sudo docker compose logs --tail=30 web`. `deploy.sh` vérifie ensuite les deux adresses.
+
+Bot Discord : `/roster-lier` fait la même chose que `/forever-lier` (un code de groupe Roster ou Forever Roster, peu importe la commande). Le bot enregistre ses commandes à chaque démarrage : rien à faire après le déploiement (relancer Discord avec Ctrl+R si la commande n'apparaît pas tout de suite).
+
+Battle.net (quand il sera activé) : déclarer aussi `https://roster.sleyvazh.fr/api/auth/battlenet/callback` chez Blizzard.
+
+Référencement : chaque adresse sert sa propre page d'accueil statique (titre, description, aperçu pour les réseaux) et `robots.txt` (tout sauf `/api/`). Pour suivre l'indexation, ajouter les deux adresses dans Google Search Console (facultatif).
 
 ## Données du jeu (objets et recettes)
 

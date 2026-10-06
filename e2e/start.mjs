@@ -14,9 +14,13 @@ const env = {
   ...process.env,
   NODE_ENV: "development",
   APP_ORIGIN: `http://localhost:${process.env.E2E_PORT ?? 4173}`,
+  // Deuxième adresse (Roster, WoW Retail) : même serveur, autre nom d'hôte
+  RETAIL_ORIGIN: `http://127.0.0.1:${process.env.E2E_PORT ?? 4173}`,
   DATABASE_URL: process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e",
   COOKIE_SECURE: "false",
   HIBP_CHECK: "false",
+  // Toutes les requêtes des tests viennent de 127.0.0.1 : la limite par minute de la production (300) se remplit vite
+  RATE_LIMIT_MAX: "3000",
   SMTP_URL: "smtp://127.0.0.1:1", // aucun serveur : les e-mails sont seulement journalisés
   MAIL_FROM: "Forever Roster <no-reply@e2e.test>",
   PORT: "3000",

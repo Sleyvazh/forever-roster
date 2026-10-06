@@ -1142,3 +1142,11 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .ricon { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; flex: none; object-fit: contain; }
 .rtag { display: inline-flex; align-items: center; gap: 4px; font: 600 12px/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
 .rtag .ricon { vertical-align: 0; }
+
+/* Un site, deux adresses : Roster (WoW Retail) garde le même système, accent argent-azur au lieu de l'or */
+:root.site-retail { --gold: #4a6f99; --frame: #6d88a8; --gold-soft: #dde6f0; --on-gold: #f6f9fc; }
+@media (prefers-color-scheme: dark) { :root.site-retail:not([data-theme="light"]) { --gold: #a9c6ea; --frame: #4f6582; --gold-soft: #17223a; --on-gold: #0e1427; } }
+:root.site-retail[data-theme="dark"] { --gold: #a9c6ea; --frame: #4f6582; --gold-soft: #17223a; --on-gold: #0e1427; }
+.soon { max-width: 640px; margin: 40px auto 0; }
+.soon h1 { font-size: clamp(26px, 4vw, 36px); }
+.soon p { margin: 0; color: var(--ink-2); }

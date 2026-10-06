@@ -176,6 +176,13 @@
       "when": 1791230898598,
       "tag": "0024_prep_consumables_council",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791273542241,
+      "tag": "0025_sites_game",
+      "breakpoints": true
     }
   ]
 }

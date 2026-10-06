@@ -15,6 +15,7 @@ import { applyAbsencesToRaid } from "./lib/absences";
 import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
+import { siteForGame } from "./lib/site";
 
 /**
  * API interne utilisée par le bot Discord.
@@ -56,7 +57,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
 
   async function groupForChannel(guildId: string, channelId: string) {
     const [g] = await db.select().from(groups).where(and(eq(groups.discordGuildId, guildId), eq(groups.discordChannelId, channelId)));
-    if (!g) throw notFound("Ce salon n'est lié à aucun groupe Forever Roster. Un officier peut le lier avec /forever-lier.");
+    if (!g) throw notFound("Ce salon n'est lié à aucun groupe (Forever Roster ou Roster). Un officier peut le lier avec /forever-lier ou /roster-lier.");
     return g;
   }
 
@@ -107,7 +108,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const view = {
       raid: {
         id: raid.id, name: raid.name, description: raid.description, scheduledAt: raid.scheduledAt,
-        url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt, size: raid.size,
+        url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt, size: raid.size,
       },
       group: { id: group.id, name: group.name },
       channelId: group.discordChannelId!,
@@ -352,14 +353,14 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     // Demande annulée, ou bouton cliqué par quelqu'un d'autre (custom_id forgé) : même réponse, rien n'est révélé
     if (!a || a.discordId !== body.discordUserId) throw notFound("Cette demande n'existe plus : l'officier l'a peut-être annulée.");
     const { raid, group } = await loadRaid(a.ask.raidId);
-    if (a.ask.answer) return { answer: a.ask.answer, character: a.name, spec: a.ask.spec, url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, view: null, already: true };
+    if (a.ask.answer) return { answer: a.ask.answer, character: a.name, spec: a.ask.spec, url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: null, already: true };
     if (!raid.scheduledAt || raid.scheduledAt.getTime() < Date.now()) throw badRequest("Ce raid est déjà passé.");
     const [m] = await db.select({ role: groupMembers.role }).from(groupMembers).where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, a.ask.userId)));
     if (!m) throw forbidden("Tu ne fais plus partie de ce groupe.");
     if (body.yes) await signUpSiteUser(db, raid.id, { id: a.ask.userId, displayName: a.displayName }, { status: "present", characterId: a.ask.characterId, spec: a.ask.spec });
     await db.update(raidAsks).set({ answer: body.yes ? "yes" : "no", answeredAt: new Date() }).where(eq(raidAsks.id, id));
     await notifyRaid(raid.id);
-    return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: a.ask.spec, url: `${cfg.APP_ORIGIN}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
+    return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: a.ask.spec, url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
   });
 
   /* ----- Commandes d'artisanat dans leur salon (lot F) ----- */
@@ -373,7 +374,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         or(ne(craftOrders.status, "done"), gt(craftOrders.doneAt, new Date(Date.now() - 2 * 86400e3))),
       )).orderBy(asc(craftOrders.discordChangedAt)).limit(20);
     const orders = [];
-    for (const r of rows) { const v = await orderDiscordView(db, cfg.APP_ORIGIN, r.id); if (v) orders.push(v); }
+    for (const r of rows) { const v = await orderDiscordView(db, g => siteForGame(cfg, g).origin, r.id); if (v) orders.push(v); }
     return { orders };
   });
 
@@ -398,7 +399,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     await db.update(craftOrders).set({ status: "taken", takerId: user.id, takenAt: new Date(), discordChangedAt: new Date() })
       .where(and(eq(craftOrders.id, id), eq(craftOrders.status, "open")));
     bus.group({ t: "group", g: o.groupId });
-    return { view: await orderDiscordView(db, cfg.APP_ORIGIN, id) };
+    return { view: await orderDiscordView(db, g => siteForGame(cfg, g).origin, id) };
   });
 
   /* ----- Inscription depuis un bouton ----- */

@@ -17,6 +17,7 @@ import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { bus } from "../lib/events";
+import { siteForGame, siteOf } from "../lib/site";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -35,7 +36,7 @@ export async function groupRoutes(app: FastifyInstance) {
       id: groups.id, name: groups.name, role: groupMembers.role, discordLinked: sql<boolean>`${groups.discordChannelId} is not null`,
       members: sql<number>`(select count(*)::int from group_members gm where gm.group_id = ${groups.id})`,
     }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
-      .where(eq(groupMembers.userId, u.id)).orderBy(asc(groups.name));
+      .where(and(eq(groupMembers.userId, u.id), eq(groups.game, siteOf(cfg, req).game))).orderBy(asc(groups.name));
     const ids = rows.map(r => r.id);
     if (!ids.length) return { groups: [] };
 
@@ -70,10 +71,12 @@ export async function groupRoutes(app: FastifyInstance) {
   app.post("/", async (req, reply) => {
     const u = currentUser(req);
     const { name } = parse(z.object({ name: z.string().trim().min(2).max(48) }), req.body);
-    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(groupMembers).where(eq(groupMembers.userId, u.id)) as [{ n: number }];
+    const game = siteOf(cfg, req).game;
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
+      .where(and(eq(groupMembers.userId, u.id), eq(groups.game, game))) as [{ n: number }];
     if (n >= MAX_GROUPS_PER_USER) throw badRequest(`Limite de ${MAX_GROUPS_PER_USER} groupes atteinte.`);
     const g = await db.transaction(async tx => {
-      const [g] = await tx.insert(groups).values({ name }).returning();
+      const [g] = await tx.insert(groups).values({ name, game }).returning();
       await tx.insert(groupMembers).values({ groupId: g!.id, userId: u.id, role: "owner" });
       return g!;
     });
@@ -91,7 +94,9 @@ export async function groupRoutes(app: FastifyInstance) {
       userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
     }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
-    return { group: { id: g!.id, name: g!.name, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members };
+    // game : un groupe de l'autre jeu ouvert sur cette adresse renvoie vers son site
+    const site = siteForGame(cfg, g!.game);
+    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members };
   });
 
   app.patch("/:id", async (req) => {
@@ -341,8 +346,9 @@ export async function groupRoutes(app: FastifyInstance) {
     }).returning({ id: groupInvites.id, expiresAt: groupInvites.expiresAt });
     await audit(db, req, "invite_created", { userId: u.id, groupId: id, meta: { inviteId: inv!.id, maxUses: body.maxUses } });
     bus.group({ t: "group", g: id });
-    // Le lien n'est montré qu'une fois : seul son hash est conservé.
-    return reply.code(201).send({ invite: { ...inv, url: `${cfg.APP_ORIGIN}/join#${raw}` } });
+    // Le lien n'est montré qu'une fois : seul son hash est conservé. Il mène au site du jeu du groupe.
+    const [grp] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, id));
+    return reply.code(201).send({ invite: { ...inv, url: `${siteForGame(cfg, grp!.game).origin}/join#${raw}` } });
   });
 
   app.delete("/:id/invites/:inviteId", async (req) => {
@@ -365,17 +371,21 @@ export async function groupRoutes(app: FastifyInstance) {
 
   app.post("/invites/preview", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
     const { token } = parse(inviteBody, req.body);
-    const [row] = await db.select({ groupId: groups.id, name: groups.name }).from(groupInvites)
+    const [row] = await db.select({ groupId: groups.id, name: groups.name, game: groups.game }).from(groupInvites)
       .innerJoin(groups, eq(groups.id, groupInvites.groupId)).where(liveInvite(token));
     if (!row) throw notFound("Cette invitation n'est plus valable.");
-    return { group: { id: row.groupId, name: row.name } };
+    const site = siteForGame(cfg, row.game);
+    return { group: { id: row.groupId, name: row.name }, site: { game: site.game, name: site.name, origin: site.origin } };
   });
 
   app.post("/invites/accept", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
     const u = currentUser(req);
     const { token } = parse(inviteBody, req.body);
-    const [inv] = await db.select({ groupId: groupInvites.groupId }).from(groupInvites).where(liveInvite(token));
+    const [inv] = await db.select({ groupId: groupInvites.groupId, game: groups.game }).from(groupInvites)
+      .innerJoin(groups, eq(groups.id, groupInvites.groupId)).where(liveInvite(token));
     if (!inv) throw notFound("Cette invitation n'est plus valable.");
+    const site = siteForGame(cfg, inv.game);
+    if (site.game !== siteOf(cfg, req).game) throw conflict(`Cette invitation est pour ${site.name} : ouvre-la sur ${site.origin}.`);
     const [already] = await db.select({ role: groupMembers.role }).from(groupMembers)
       .where(and(eq(groupMembers.groupId, inv.groupId), eq(groupMembers.userId, u.id)));
     if (already) return { groupId: inv.groupId }; // déjà membre : l'invitation n'est pas consommée

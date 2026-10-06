@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { sessions, users } from "../db/schema";
 import { randomToken, safeEqual, sha256 } from "./crypto";
 import { forbidden, unauthorized } from "./http";
+import { siteOf } from "./site";
 
 export const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // durée absolue
 export const SESSION_IDLE_MS = 7 * 24 * 3600 * 1000; // inactivité
@@ -52,7 +53,8 @@ export function registerSession(app: FastifyInstance) {
   app.addHook("onRequest", async (req) => {
     if (!UNSAFE.has(req.method)) return;
     const origin = req.headers.origin ?? originOf(req.headers.referer);
-    if (origin !== cfg.APP_ORIGIN) throw forbidden("Origine de la requête refusée.");
+    // Origine du site auquel la requête est adressée (un site, deux adresses : chacune n'accepte que la sienne)
+    if (origin !== siteOf(cfg, req).origin) throw forbidden("Origine de la requête refusée.");
     if (req.session) {
       const sent = req.headers["x-csrf-token"];
       if (typeof sent !== "string" || !safeEqual(sent, req.session.csrfToken)) throw forbidden("Jeton CSRF invalide. Recharge la page.");

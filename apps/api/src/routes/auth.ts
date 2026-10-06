@@ -12,6 +12,7 @@ import {
 import { createSession, destroySession } from "../lib/session";
 import { registerAttempt, resetPassword, verifyEmail } from "../lib/email-templates";
 import { normalizeEmail, publicUser } from "../lib/users";
+import { siteOf } from "../lib/site";
 
 export const MAX_FAILED_LOGINS = 10;
 export const LOCK_MS = 15 * 60 * 1000;
@@ -42,7 +43,7 @@ export async function invalidateEmailTokens(db: FastifyInstance["ctx"]["db"], us
     .where(and(eq(emailTokens.userId, userId), eq(emailTokens.purpose, purpose), isNull(emailTokens.usedAt)));
 }
 
-export async function issueEmailToken(app: FastifyInstance, userId: string, purpose: "verify" | "reset") {
+export async function issueEmailToken(app: FastifyInstance, userId: string, purpose: "verify" | "reset", origin: string) {
   const raw = randomToken();
   await invalidateEmailTokens(app.ctx.db, userId, purpose);
   await app.ctx.db.insert(emailTokens).values({
@@ -50,7 +51,7 @@ export async function issueEmailToken(app: FastifyInstance, userId: string, purp
     expiresAt: new Date(Date.now() + (purpose === "verify" ? VERIFY_TTL_MS : RESET_TTL_MS)),
   });
   // Le jeton est dans le fragment (#) : il n'apparaît ni dans les journaux du serveur ni dans l'en-tête Referer.
-  return `${app.ctx.cfg.APP_ORIGIN}/${purpose === "verify" ? "verify-email" : "reset-password"}#${raw}`;
+  return `${origin}/${purpose === "verify" ? "verify-email" : "reset-password"}#${raw}`;
 }
 
 async function consumeEmailToken(app: FastifyInstance, raw: string, purpose: "verify" | "reset") {
@@ -84,13 +85,13 @@ export async function authRoutes(app: FastifyInstance) {
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
     if (existing) {
       // Même réponse qu'une inscription réussie : on ne révèle pas quelles adresses ont un compte.
-      await mailer.send({ to: body.email, ...registerAttempt(null, app.ctx.cfg.APP_ORIGIN) });
+      await mailer.send({ to: body.email, ...registerAttempt(null, siteOf(app.ctx.cfg, req)) });
     } else {
       const [u] = await db.insert(users).values({
         email: body.email, displayName: body.displayName, passwordHash: await hashPassword(body.password),
       }).returning({ id: users.id });
-      const link = await issueEmailToken(app, u!.id, "verify");
-      await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN) });
+      const link = await issueEmailToken(app, u!.id, "verify", siteOf(app.ctx.cfg, req).origin);
+      await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req)) });
       await audit(db, req, "register", { userId: u!.id });
     }
     return reply.code(202).send({ message: "Si cette adresse est disponible, un e-mail de confirmation vient d'être envoyé." });
@@ -108,8 +109,8 @@ export async function authRoutes(app: FastifyInstance) {
     const body = parse(z.object({ email }), req.body);
     const [u] = await db.select().from(users).where(eq(users.email, body.email));
     if (u && !u.emailVerifiedAt) {
-      const link = await issueEmailToken(app, u.id, "verify");
-      await mailer.send({ to: body.email, ...verifyEmail(link, null, app.ctx.cfg.APP_ORIGIN, false) });
+      const link = await issueEmailToken(app, u.id, "verify", siteOf(app.ctx.cfg, req).origin);
+      await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req), false) });
     }
     return reply.code(202).send({ message: "Si un compte non confirmé existe pour cette adresse, un nouvel e-mail a été envoyé." });
   });
@@ -159,8 +160,8 @@ export async function authRoutes(app: FastifyInstance) {
     const body = parse(z.object({ email }), req.body);
     const [u] = await db.select().from(users).where(eq(users.email, body.email));
     if (u) {
-      const link = await issueEmailToken(app, u.id, "reset");
-      await mailer.send({ to: body.email, ...resetPassword(link, null, app.ctx.cfg.APP_ORIGIN) });
+      const link = await issueEmailToken(app, u.id, "reset", siteOf(app.ctx.cfg, req).origin);
+      await mailer.send({ to: body.email, ...resetPassword(link, null, siteOf(app.ctx.cfg, req)) });
       await audit(db, req, "password_reset_requested", { userId: u.id });
     }
     return reply.code(202).send({ message: "Si un compte existe pour cette adresse, un e-mail vient d'être envoyé." });

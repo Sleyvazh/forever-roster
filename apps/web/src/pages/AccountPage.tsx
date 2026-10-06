@@ -125,7 +125,7 @@ const DISCORD_ERROR: Record<string, string> = {
   discord_state: "La liaison Discord a expiré ou ne venait pas de ce navigateur. Réessaie.",
   discord_exchange: "Discord n'a pas répondu correctement. Réessaie dans un instant.",
   discord_session: "Ta session a changé pendant la liaison Discord. Recommence.",
-  discord_taken: "Ce compte Discord est déjà lié à un autre compte Forever Roster.",
+  discord_taken: "Ce compte Discord est déjà lié à un autre compte.",
 };
 
 /** Liaison Discord : sert uniquement au bot d'inscription (pas de connexion au site via Discord). */

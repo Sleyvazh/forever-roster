@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 30, date: "2026-10-06", kind: "site", title: "Roster, la version pour WoW Retail, se prépare",
+    text: "Le site a maintenant une page d'accueil publique, et une deuxième adresse arrive : Roster (roster.sleyvazh.fr), les mêmes outils pour les guildes de WoW Retail. Ton compte y marche déjà : même e-mail, même mot de passe (connexion à faire une fois sur chaque adresse). Persos et groupes restent séparés par jeu. Le bot Discord sert les deux sites, avec /roster-lier pour les groupes Roster." },
   { n: 29, date: "2026-10-06", kind: "addon", version: "1.1", title: "Raid d'essai corrigé",
     text: "Les objets s'affichent avec leur nom du jeu (plus de « objet 16901 »), le gagnant d'un jet est marqué par l'étoile des marqueurs de raid, et un /roll compte même avec le nom de famille de Forever (« John Poutre »). Sur le site, un perso ouvert depuis la fiche d'un joueur s'affiche maintenant dans le groupe, plus dans Mes persos." },
   { n: 28, date: "2026-10-06", kind: "addon", version: "1.1", title: "Raid d'essai : tout essayer seul",

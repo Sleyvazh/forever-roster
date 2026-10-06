@@ -3,7 +3,9 @@
 	email {$ACME_EMAIL:admin@example.com}
 }
 
-{$DOMAIN:localhost} {
+# Un site, deux adresses : Forever Roster (DOMAIN) et Roster, la version WoW Retail (RETAIL_DOMAIN), même configuration.
+# Seule la page d'accueil publique (« / ») change : HTML statique propre à chaque adresse, lisible par les moteurs de recherche.
+(site) {
 	# Pas de compression pour le flux en direct (/api/events) : elle retiendrait les événements.
 	@compress not path /api/events
 	encode @compress zstd gzip
@@ -57,4 +59,15 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+{$DOMAIN:localhost} {
+	rewrite / /landing/forever.html
+	import site
+}
+
+# Tant que le sous-domaine n'existe pas chez OVH, laisser RETAIL_DOMAIN vide (adresse locale sans effet).
+{$RETAIL_DOMAIN:roster.localhost} {
+	rewrite / /landing/retail.html
+	import site
 }

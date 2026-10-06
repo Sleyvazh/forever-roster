@@ -3,6 +3,7 @@ import { and, asc, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { characters, groupCharacters, groupMembers, groups, raids, raidSignups } from "../db/schema";
 import { currentUser, requireAuth } from "../lib/session";
+import { siteOf } from "../lib/site";
 
 /** Fenêtre de « Cette semaine » : raids commencés depuis moins de 3 h, jusqu'à 7 jours. */
 const RECENT_MS = 3 * 3600_000;
@@ -24,10 +25,11 @@ export async function weekRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     const u = currentUser(req);
     const now = Date.now();
+    const game = siteOf(app.ctx.cfg, req).game; // groupes et persos du jeu de cette adresse
 
     const myGroups = await db.select({ id: groups.id, name: groups.name })
       .from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
-      .where(eq(groupMembers.userId, u.id)).orderBy(asc(groups.name));
+      .where(and(eq(groupMembers.userId, u.id), eq(groups.game, game))).orderBy(asc(groups.name));
     const groupName = new Map(myGroups.map(g => [g.id, g.name]));
 
     const raidRows = myGroups.length ? await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt })
@@ -63,7 +65,7 @@ export async function weekRoutes(app: FastifyInstance) {
     });
 
     const chars = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, addonSyncedAt: characters.addonSyncedAt })
-      .from(characters).where(eq(characters.userId, u.id)).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
+      .from(characters).where(and(eq(characters.userId, u.id), eq(characters.game, game))).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
 
     type Todo =
       | { kind: "signup"; raidId: string; groupId: string; name: string; groupName: string; scheduledAt: Date | null }

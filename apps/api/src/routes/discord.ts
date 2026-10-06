@@ -1,5 +1,5 @@
 import { and, eq, gt, lt } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { discordEnabled } from "../config";
 import { oauthStates, users } from "../db/schema";
@@ -7,6 +7,7 @@ import { audit } from "../lib/audit";
 import { randomToken, safeEqual, sha256 } from "../lib/crypto";
 import { HttpError, noStore, parse } from "../lib/http";
 import { requireAuth } from "../lib/session";
+import { siteOf } from "../lib/site";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const STATE_COOKIE = "fr_discord";
@@ -19,7 +20,8 @@ const COOKIE_PATH = "/api/auth/discord";
  */
 export async function discordRoutes(app: FastifyInstance) {
   const { db, cfg } = app.ctx;
-  const redirectUri = `${cfg.APP_ORIGIN}/api/auth/discord/callback`;
+  // Retour sur l'adresse d'où part la liaison (un site, deux adresses : les deux sont déclarées chez Discord)
+  const redirectUri = (req: FastifyRequest) => `${siteOf(cfg, req).origin}/api/auth/discord/callback`;
   const ensureEnabled = () => { if (!discordEnabled(cfg)) throw new HttpError(503, "La liaison Discord n'est pas configurée sur ce serveur."); };
 
   app.post("/link", { preHandler: requireAuth }, async (req, reply) => {
@@ -30,12 +32,12 @@ export async function discordRoutes(app: FastifyInstance) {
     await db.insert(oauthStates).values({ stateHash: sha256(state), mode: "discord_link", userId: req.user!.id, expiresAt: new Date(Date.now() + STATE_TTL_MS) });
     reply.setCookie(STATE_COOKIE, state, { httpOnly: true, secure: cfg.COOKIE_SECURE, sameSite: "lax", path: COOKIE_PATH, maxAge: STATE_TTL_MS / 1000 });
     const url = new URL("/oauth2/authorize", cfg.DISCORD_HOST);
-    url.search = new URLSearchParams({ client_id: cfg.DISCORD_CLIENT_ID, redirect_uri: redirectUri, response_type: "code", scope: "identify", state, prompt: "none" }).toString();
+    url.search = new URLSearchParams({ client_id: cfg.DISCORD_CLIENT_ID, redirect_uri: redirectUri(req), response_type: "code", scope: "identify", state, prompt: "none" }).toString();
     return { url: url.toString() };
   });
 
   app.get("/callback", async (req, reply) => {
-    const back = (q: string) => { reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH }); return reply.redirect(`${cfg.APP_ORIGIN}/account?${q}`); };
+    const back = (q: string) => { reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH }); return reply.redirect(`${siteOf(cfg, req).origin}/account?${q}`); };
     ensureEnabled();
     const q = z.object({ code: z.string().max(500).optional(), state: z.string().max(100).optional(), error: z.string().max(100).optional() }).safeParse(req.query);
     if (!q.success || q.data.error || !q.data.code || !q.data.state) return back("error=discord_cancelled");
@@ -49,7 +51,7 @@ export async function discordRoutes(app: FastifyInstance) {
     if (!req.user || req.user.id !== st.userId) return back("error=discord_session");
 
     let du: { id: string; username: string };
-    try { du = await fetchDiscordUser(app, q.data.code, redirectUri); }
+    try { du = await fetchDiscordUser(app, q.data.code, redirectUri(req)); }
     catch (err) { req.log.warn({ err }, "Échec OAuth Discord"); return back("error=discord_exchange"); }
 
     const [owner] = await db.select({ id: users.id }).from(users).where(eq(users.discordId, du.id));
