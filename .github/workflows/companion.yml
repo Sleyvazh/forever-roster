@@ -28,6 +28,15 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v7
+      # La commande tauri build refuse un crate tauri et un paquet @tauri-apps/api de versions 2.x différentes :
+      # vérifié ici en une seconde plutôt qu'après 15 minutes sur Windows
+      - name: Versions de Tauri (crate et paquet npm)
+        run: >-
+          node -e "const l=require('fs').readFileSync('Cargo.lock','utf8');
+          const c=l.match(/name = \"tauri\"\nversion = \"(\d+\.\d+)/)[1];
+          const n=require('./package-lock.json').packages['node_modules/@tauri-apps/api'].version.split('.').slice(0,2).join('.');
+          if(c!==n){console.error('tauri '+c+' différent de @tauri-apps/api '+n);process.exit(1)}
+          console.log('tauri '+c+' = @tauri-apps/api '+n)"
       - name: Lua 5.1 (aller-retour avec l'addon)
         run: sudo apt-get install -y -qq lua5.1 > /dev/null
       - uses: actions/cache@v6

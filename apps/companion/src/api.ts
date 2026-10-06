@@ -74,7 +74,11 @@ export function atLeast(version: string | null | undefined, min: string) {
   return true;
 }
 
-export const errorText = (e: unknown) => (typeof e === "string" ? e : e instanceof Error ? e.message : "Action impossible.");
+/** Message d'erreur à afficher seul : majuscule en tête (« le site ne répond pas » → « Le site ne répond pas »). */
+export function errorText(e: unknown) {
+  const text = typeof e === "string" ? e : e instanceof Error ? e.message : "";
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "Action impossible.";
+}
 
 /* ---------- Dates ---------- */
 
