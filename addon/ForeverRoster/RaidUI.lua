@@ -134,51 +134,143 @@ function RA.ShowAsk()
 end
 
 local councilWin
+-- Conseil du butin (lot I) : un tableau, une ligne par joueur, fenêtre redimensionnable (taille mémorisée)
+local COUNCIL_COLS = {
+  { title = "Joueur", w = 150 },
+  { title = "Réponse", w = 78 },
+  { title = "Porte", flex = 1.4, min = 150, small = true, lines = 2, tip = true },
+  { title = "Précision", flex = 1, min = 100, small = true, lines = 2, tip = true },
+  { title = "Reçus", w = 96, justify = "CENTER", tip = true },
+  { title = "Voix", flex = 0.8, min = 100, small = true, lines = 2 },
+  { title = "", w = 168, buttons = true },
+}
+local RECV_COL = 5
 function RA.ShowCouncil(sid)
-  if not councilWin then councilWin = listWindow("ForeverRosterCouncil", "Conseil du butin", 470) end
+  if not councilWin then
+    local w = K.window("ForeverRosterCouncil", "Conseil du butin", 980, 420)
+    local p = CreateFrame("Frame", nil, w)
+    p:SetPoint("TOPLEFT", 14, K.site() and -36 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
+    w.hintText = K.hint(p, "")
+    w.hintText:SetPoint("RIGHT", p, "RIGHT", -10, 0)
+    w.grid = K.grid(p, -40, 44, COUNCIL_COLS)
+    w.foot = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    w.foot:SetPoint("BOTTOMLEFT", 8, 4) w.foot:SetPoint("BOTTOMRIGHT", -26, 4)
+    w.foot:SetJustifyH("LEFT")
+    K.resizable(w, "council", 720, 280, 1600, 1000, function() if councilWin and councilWin.grid then councilWin.grid.Layout() end end)
+    councilWin = w
+  end
   councilWin.sid = sid
   K.front(councilWin)
   councilWin:Show()
   RA.RefreshCouncil()
 end
+
+-- Objets reçus par un joueur : compte du site sur la période du groupe (ses persos ensemble si le groupe compte par joueur)
+-- plus ceux de ce soir pas encore sur le site, avec la même règle (spé principale)
+function RA.LootCounts(l)
+  if l.method == "council" and (l.response == "off" or l.response == "transmo") then return false end
+  if l.method == "roll" then
+    local d = tostring(l.detail or "")
+    if d:match("^OS") or d:match("^jet") then return false end
+  end
+  return true
+end
+function RA.Received(name, d)
+  local c = d and d.counts
+  local e = c and c.byName and c.byName[name]
+  local names = e and e.names or { name }
+  local log = RA.test and RA.test.log or ns.Recorder.Current()
+  local tonight = 0
+  for _, l in ipairs(log and log.loot or {}) do
+    for _, n in ipairs(names) do if l.who == n and RA.LootCounts(l) then tonight = tonight + 1 end end
+  end
+  return e and e.n or 0, tonight, c, names
+end
+
 function RA.RefreshCouncil()
   if not councilWin or not councilWin:IsShown() then return end
-  local c, L, d = RA.councils[councilWin.sid], councilWin.list, RA.Current()
-  L.Reset()
+  local c, G, d = RA.councils[councilWin.sid], councilWin.grid, RA.Current()
+  G.Reset()
   if not c then
     councilWin.hintText:SetText(GREY .. "Ce conseil est terminé.|r")
-    L.Done()
+    councilWin.foot:SetText("")
+    G.Done()
     return
   end
   local isML = c.ml == UnitName("player")
   local votes, by = RA.Tally(councilWin.sid)
-  councilWin.hintText:SetText(linkFor(c.itemId, c.link, c.name, c.quality) .. GREY .. "  · maître du butin : " .. c.ml .. (isML and " (toi)" or "") .. "|r")
-  local log, got = RA.test and RA.test.log or ns.Recorder.Current(), {}
-  for _, l in ipairs(log and log.loot or {}) do got[l.who] = (got[l.who] or 0) + 1 end
+  local counts = d and d.counts
+  G.SetTitle(RECV_COL, counts and ("Reçus · " .. counts.short) or "Reçus ce soir")
   local order = { bis = 1, upgrade = 2, off = 3, transmo = 4, pass = 5 }
   local list = {}
   for n, x in pairs(c.cands) do list[#list + 1] = { name = n, x = x } end
-  table.sort(list, function(a, b) local oa, ob = order[a.x.response] or 9, order[b.x.response] or 9 if oa ~= ob then return oa < ob end return (votes[a.name] or 0) > (votes[b.name] or 0) end)
-  L.Header("Réponses · " .. #list)
-  if #list == 0 then L.Add(GREY .. "En attente des réponses...|r") end
-  for _, e in ipairs(list) do
-    local gear = {}
-    for _, id in ipairs(e.x.gear) do gear[#gear + 1] = linkFor(id) end
-    local mine = c.votes[UnitName("player")] == e.name
-    local who = d and d.roster[e.name]
-    local text = (who and who.role and (K.roleIcon(who.role) .. " ") or "") .. GOLD .. e.name .. "|r  " .. (e.x.response == "bis" and GREEN or e.x.response == "upgrade" and BLUE or GREY) .. (RA.RESPONSES[e.x.response] or e.x.response) .. "|r"
-      .. GREY .. "  · ce soir : " .. (got[e.name] or 0) .. " objet(s)  · " .. (votes[e.name] or 0) .. " voix|r"
-      .. (#gear > 0 and ("\n" .. GREY .. "porte |r" .. table.concat(gear, ", ")) or "") .. (e.x.note ~= "" and ("\n" .. GREY .. "« " .. e.x.note .. " »|r") or "")
-    local buttons = {}
-    if e.x.response ~= "pass" then buttons[#buttons + 1] = { mine and "Voté" or "Voter", 90, function() RA.Vote(councilWin.sid, e.name) end } end
-    if isML and e.x.response ~= "pass" then buttons[#buttons + 1] = { "Donner à " .. e.name, 170, function() RA.AwardCouncil(councilWin.sid, e.name) end } end
-    L.Add(text, buttons)
-  end
+  table.sort(list, function(a, b)
+    local oa, ob = order[a.x.response] or 9, order[b.x.response] or 9
+    if oa ~= ob then return oa < ob end
+    if (votes[a.name] or 0) ~= (votes[b.name] or 0) then return (votes[a.name] or 0) > (votes[b.name] or 0) end
+    return a.name < b.name
+  end)
+  local voters = {}
+  for voter, cand in pairs(c.votes) do voters[cand] = voters[cand] or {} table.insert(voters[cand], voter) end
   local waiting = {}
   for _, n in ipairs(RA.Members()) do if not c.cands[n] then waiting[#waiting + 1] = n end end
-  if #waiting > 0 then L.Add(GREY .. "Pas encore répondu : " .. names(waiting, 12) .. "|r") end
-  if #by > 0 then L.Add(GREY .. "Voix : " .. table.concat(by, " · ") .. "|r") end
-  L.Done()
+  local nVotes = #by
+  councilWin.hintText:SetText(linkFor(c.itemId, c.link, c.name, c.quality) .. GREY .. "  · maître du butin : " .. c.ml .. (isML and " (toi)" or "")
+    .. "  · |r" .. GOLD .. #list .. " réponse(s)|r" .. GREY .. (#waiting > 0 and (", " .. #waiting .. " en attente") or "")
+    .. "  · " .. nVotes .. " voix sur " .. #RA.CouncilNames() .. " membre(s) du conseil|r")
+  for _, e in ipairs(list) do
+    local whispered = e.x.note == "chuchoté"
+    local gear = {}
+    for _, id in ipairs(e.x.gear) do gear[#gear + 1] = linkFor(id) end
+    local who = d and d.roster and d.roster[e.name]
+    local resp = e.x.response
+    local site, tonight = RA.Received(e.name, d)
+    local vs = voters[e.name] or {}
+    table.sort(vs)
+    local mine = c.votes[UnitName("player")] == e.name
+    local buttons = {}
+    if resp ~= "pass" then
+      buttons[#buttons + 1] = { mine and "Voté" or "Voter", 74, function() RA.Vote(councilWin.sid, e.name) end }
+      if isML then buttons[#buttons + 1] = { "Donner", 86, function() RA.AwardCouncil(councilWin.sid, e.name) end } end
+    end
+    G.Row({
+      (who and who.role and (K.roleIcon(who.role) .. " ") or "") .. GOLD .. e.name .. "|r",
+      (resp == "bis" and GREEN or resp == "upgrade" and BLUE or GREY) .. (RA.RESPONSES[resp] or resp) .. "|r",
+      whispered and (GREY .. "réponse chuchotée|r") or (#gear > 0 and table.concat(gear, "\n") or (GREY .. "rien à cet emplacement|r")),
+      (not whispered and e.x.note ~= "") and ("|cffc9cfdb« " .. e.x.note .. " »|r") or "",
+      tostring(site + tonight) .. (tonight > 0 and (GREY .. " (+" .. tonight .. ")|r") or ""),
+      #vs > 0 and ("|cffffffff" .. #vs .. "|r " .. GREY .. table.concat(vs, ", ") .. "|r") or (GREY .. "0|r"),
+    }, {
+      buttons = buttons, dim = resp == "pass",
+      tip = function(col, owner)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+        if col == 3 and e.x.gear[1] then
+          GameTooltip:SetHyperlink("item:" .. e.x.gear[1])
+          for k = 2, #e.x.gear do GameTooltip:AddLine("et " .. linkFor(e.x.gear[k])) end
+        elseif col == 4 and e.x.note ~= "" and not whispered then
+          GameTooltip:SetText(e.name) GameTooltip:AddLine(e.x.note, 1, 1, 1, true)
+        elseif col == RECV_COL then
+          GameTooltip:SetText(e.name .. " : objets reçus")
+          if counts then GameTooltip:AddLine(site .. " sur le site, " .. counts.label, 1, 1, 1, true)
+          else GameTooltip:AddLine("Données du site non chargées : colle-les dans l'onglet Synchro.", 1, 1, 1, true) end
+          GameTooltip:AddLine(tonight .. " ce soir (pas encore sur le site)", 1, 1, 1, true)
+          GameTooltip:AddLine("Spé principale : soft reserve, jets MS, conseil BiS / Upgrade.", 0.6, 0.64, 0.71, true)
+        else
+          return
+        end
+        GameTooltip:Show()
+      end,
+    })
+  end
+  if #list == 0 then G.Row({ GREY .. "En attente...|r", "", GREY .. "Les réponses arrivent ici au fil de l'eau.|r" }) end
+  G.Done()
+  councilWin.foot:SetText((#waiting > 0 and (GREY .. "Pas encore répondu : |r" .. table.concat(waiting, ", ")) or (GREY .. "Tout le monde a répondu.|r"))
+    .. "\n" .. GREY .. "Survol : objet porté, précision, détail des objets reçus." .. (isML and " « Donner » attribue l'objet." or "") .. "|r")
+  -- Hauteur selon le nombre de réponses, tant que la fenêtre n'a pas été redimensionnée à la main
+  if not (ForeverRosterDB.sizes and ForeverRosterDB.sizes.council) then
+    councilWin:SetHeight(math.max(300, math.min(640, 150 + 30 * math.max(#list, 3))))
+  end
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -310,7 +402,7 @@ end
 
 -- Un objet arrive du serveur (premier affichage) : les fenêtres reprennent son vrai nom
 local itemsDue = false
-ns.on("GET_ITEM_INFO_RECEIVED", function()
+local function itemArrived()
   if itemsDue then return end
   itemsDue = true
   C_Timer.After(0.3, function()
@@ -319,7 +411,9 @@ ns.on("GET_ITEM_INFO_RECEIVED", function()
     if ask and ask:IsShown() then RA.ShowAsk() end
     if ns.UI.Refresh then ns.UI.Refresh() end
   end)
-end)
+end
+ns.on("GET_ITEM_INFO_RECEIVED", itemArrived)
+ns.on("ITEM_DATA_LOAD_RESULT", itemArrived) -- clients récents (C_Item.RequestLoadItemDataByID)
 
 function RA.RefreshWindows()
   ns.safe("butin", RA.RefreshLoot)

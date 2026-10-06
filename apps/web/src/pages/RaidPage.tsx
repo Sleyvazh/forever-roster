@@ -421,7 +421,7 @@ export function RaidPage() {
 
           {tab === "preparation" && <RaidPrepPanel groupId={groupId} raidId={raidId} />}
 
-          {tab === "bilan" && <RaidLogPanel log={raidQ.data.log} />}
+          {tab === "bilan" && <RaidLogPanel log={raidQ.data.log} groupId={groupId} raidId={raidId} officer={canEdit} />}
 
           {tab === "reglages" && canEdit && (
             <div className="rp-set">

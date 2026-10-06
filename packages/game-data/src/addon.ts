@@ -90,10 +90,16 @@ const list = (names: string[]) => [...new Set(names.map(gameName).filter(Boolean
 export interface GroupExportBis { itemId: number; characters: string[] }
 
 /**
+ * Lot I : objets reçus sur la période du groupe, pour la colonne du conseil du butin. Une entrée par joueur
+ * (ses persos du groupe, qui partagent le compte) ou par perso, selon le réglage du groupe.
+ */
+export interface GroupExportCounts { short: string; label: string; entries: { names: string[]; n: number }[] }
+
+/**
  * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
  * et objets BiS recherchés (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = []): string {
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts): string {
   const lines = [
     ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : "", r.lootMode ?? ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
@@ -116,6 +122,9 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
       ...(r.council?.length ? [["L", r.id, list(r.council)].join(";")] : []),
       ...((r.consumables ?? []).length ? (r.roster ?? []).map(m => ["I", r.id, gameName(m.name), m.role ?? "", m.dps ?? ""].join(";")) : []),
     ]),
+    // Lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 » : les persos d'un même joueur partagent le compte)
+    ...(counts?.entries.length ? [["N", clean(counts.short), clean(counts.label),
+      counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
   ];
   return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, ...extra, `END;${lines.length}`].join("\n");
 }

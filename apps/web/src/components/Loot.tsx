@@ -1,4 +1,4 @@
-import { CLASSES, itemLinks, LOOT_MODE_HINT, LOOT_MODE_LABEL, LOOT_MODES, type ClassName, type LootMode, type LootSettings } from "@forever/game-data";
+import { CLASSES, itemLinks, LOOT_COUNT_DAYS, LOOT_MODE_HINT, LOOT_MODE_LABEL, LOOT_MODES, lootCountLabel, type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, put, type Character } from "../api";
@@ -152,6 +152,9 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
 
 /* ---------- Réglages du butin (Administration) ---------- */
 
+/** Aujourd'hui à Paris (AAAA-MM-JJ) : début d'une nouvelle saison. */
+const todayParis = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
+
 export function LootSettingsPanel({ groupId }: { groupId: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["loot-settings", groupId], queryFn: () => get<{ settings: LootSettings }>(`/groups/${groupId}/loot-settings`) });
@@ -185,6 +188,26 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
           <select id="lt-step" value={s.srPlusStep} onChange={e => setS2({ ...s, srPlusStep: Number(e.target.value) })}>{[5, 10, 15, 20, 25].map(n => <option key={n} value={n}>+{n}</option>)}</select></div>}
         <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS2({ ...s, mainsFirst: e.target.checked })} /> Mains avant alts</label>
       </div>
+      <h4 className="gm-sec" style={{ marginTop: 6 }}>Objets reçus</h4>
+      <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-cm">Période</label>
+          <select id="lt-cm" value={s.countMode} onChange={e => setS2({ ...s, countMode: e.target.value as LootCountMode })}>
+            <option value="season">Saison</option><option value="days">{LOOT_COUNT_DAYS} derniers jours</option><option value="raids">Derniers raids</option>
+          </select></div>
+        {s.countMode === "season" && <>
+          <div className="fld" style={{ flex: "0 1 180px" }}><label htmlFor="lt-ss">Début de la saison</label>
+            <input id="lt-ss" type="date" value={s.seasonStart ?? ""} max={todayParis()} onChange={e => setS2({ ...s, seasonStart: e.target.value || null })} /></div>
+          <button type="button" className="btn sm" onClick={() => setS2({ ...s, seasonStart: todayParis() })} title="Le compte repart de zéro aujourd'hui ; l'historique reste">Nouvelle saison aujourd'hui</button>
+        </>}
+        {s.countMode === "raids" && <div className="fld" style={{ flex: "0 1 160px" }}><label htmlFor="lt-cr">Nombre de raids</label>
+          <select id="lt-cr" value={s.countRaids} onChange={e => setS2({ ...s, countRaids: Number(e.target.value) })}>{[3, 5, 8, 10, 15, 20].map(n => <option key={n} value={n}>{n} derniers</option>)}</select></div>}
+        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-cb">Compter par</label>
+          <select id="lt-cb" value={s.countBy} onChange={e => setS2({ ...s, countBy: e.target.value as LootCountBy })}>
+            <option value="player">Joueur (main et alts)</option><option value="character">Perso</option>
+          </select></div>
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>Compte actuel : objets reçus {lootCountLabel(s)}{s.countBy === "player" ? ", main et alts ensemble" : ", perso par perso"}.</p>
       {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
       <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>
     </section>

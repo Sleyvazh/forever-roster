@@ -160,6 +160,7 @@ function G.RaidData(e)
     entry = e, loot = e.raid.loot or "journal", reserves = (g.reserves or {})[id] or {},
     consumables = (g.consumables or {})[id] or {}, bosses = (g.bosses or {})[id] or {},
     council = ((g.council or {})[id] and #g.council[id] > 0) and g.council[id] or (g.officers or {}), roster = (g.roster or {})[id] or {},
+    counts = g.counts,
   }
 end
 
@@ -203,9 +204,12 @@ for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "BANKFRA
 local function itemIdFrom(link) return link and tonumber(tostring(link):match("item:(%d+)")) end
 G.itemIdFrom = itemIdFrom
 
+-- Noms d'objets déjà vus (raid d'essai, fenêtres du butin) : affichés tant que le jeu n'a pas répondu
+G.names = {}
 local function linkFor(itemId, fallback)
-  local _, link = GetItemInfo and GetItemInfo(itemId)
-  return link or ("[" .. (fallback or ("objet " .. itemId)) .. "]")
+  local _, link = ns.ItemInfo(itemId)
+  if not link then ns.RequestItem(itemId) end
+  return link or ("[" .. (fallback or G.names[itemId] or ("objet " .. itemId)) .. "]")
 end
 G.linkFor = linkFor
 
@@ -213,9 +217,30 @@ G.linkFor = linkFor
 -- construit (couleur de qualité, infobulle au survol) en attendant que le jeu reçoive l'objet (GET_ITEM_INFO_RECEIVED)
 local QCOLOR = { [0] = "ff9d9d9d", [1] = "ffffffff", [2] = "ff1eff00", [3] = "ff0070dd", [4] = "ffa335ee", [5] = "ffff8000" }
 function G.displayLink(itemId, name, quality)
-  local _, link = GetItemInfo and GetItemInfo(itemId)
+  if name then G.names[itemId] = name end
+  local _, link = ns.ItemInfo(itemId)
   if link then return link end
-  return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or ("objet " .. itemId)) .. "]|h|r"
+  ns.RequestItem(itemId)
+  return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or G.names[itemId] or ("objet " .. itemId)) .. "]|h|r"
+end
+
+-- /fr objet <id ou lien> : ce que le jeu répond pour un objet (diagnostic des « [objet 12345] »)
+function G.Diagnose(itemId)
+  local function api(name, fn) return name .. (fn and " présent" or " absent") end
+  ns.print(string.format("objet %d · %s · %s · %s", itemId, api("GetItemInfo", GetItemInfo), api("C_Item.GetItemInfo", C_Item and C_Item.GetItemInfo),
+    api("C_Item.RequestLoadItemDataByID", C_Item and C_Item.RequestLoadItemDataByID)))
+  local missing = {}
+  for _, e in ipairs(ns.missingEvents) do if e == "GET_ITEM_INFO_RECEIVED" or e == "ITEM_DATA_LOAD_RESULT" then missing[#missing + 1] = e end end
+  if #missing > 0 then ns.print("événements absents de ce client : " .. table.concat(missing, ", ")) end
+  local name, link = ns.ItemInfo(itemId)
+  ns.print("réponse du jeu : " .. (link or (name and ("nom " .. name .. ", sans lien")) or "rien pour l'instant (demande envoyée)"))
+  if not link then
+    ns.RequestItem(itemId)
+    C_Timer.After(2, function()
+      local n2, l2 = ns.ItemInfo(itemId)
+      ns.print("2 s plus tard : " .. (l2 or (n2 and ("nom " .. n2 .. ", sans lien")) or "toujours rien : le serveur ne connaît pas cet objet ?"))
+    end)
+  end
 end
 
 -- Objets des sacs : patrons suivis / BiS, et patrons non suivis (pour les marquer « recherché »)
@@ -235,8 +260,8 @@ local function bagItems()
 end
 local RECIPE_CLASS = (Enum and Enum.ItemClass and Enum.ItemClass.Recipe) or 9
 local function isRecipe(id)
-  if not GetItemInfoInstant then return false end
-  local _, _, _, _, _, classID = GetItemInfoInstant(id)
+  local _, _, _, _, _, classID = ns.ItemInfoInstant(id)
+  if not classID then return false end
   return classID == RECIPE_CLASS
 end
 function G.BagPatterns()
@@ -246,7 +271,7 @@ function G.BagPatterns()
     if info and (info.who or info.bis) then tracked[#tracked + 1] = { itemId = id, who = info.who, bis = info.bis }
     elseif isRecipe(id) then others[#others + 1] = { itemId = id } end
   end
-  local name = function(e) return e.who and e.who.recipe or (GetItemInfo and GetItemInfo(e.itemId)) or "" end
+  local name = function(e) return e.who and e.who.recipe or ns.ItemInfo(e.itemId) or "" end
   table.sort(tracked, function(a, b) return name(a) < name(b) end)
   return tracked, others
 end

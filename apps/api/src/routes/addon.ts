@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Db } from "../db/client";
 import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups, softReserves } from "../db/schema";
 import { groupLootSettings, srBonuses } from "../lib/loot";
+import { groupLootCounts } from "../lib/loot-count";
 import { groupNames } from "../lib/prep";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
@@ -94,6 +95,13 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
   const coming = withCons.length ? await db.select({ raidId: raidSignups.raidId, name: characters.name, cls: raidSignups.cls, spec: raidSignups.spec })
     .from(raidSignups).innerJoin(characters, eq(characters.id, raidSignups.characterId))
     .where(and(inArray(raidSignups.raidId, withCons), inArray(raidSignups.status, ["present", "late", "tentative"]))) : [];
+  // Lot I : objets reçus sur la période (colonne du conseil du butin) ; par joueur, ses persos partagent le compte
+  const counts = await groupLootCounts(db, groupId, settings);
+  const byPlayer = new Map<string, typeof counts.rows>();
+  for (const r of counts.rows) byPlayer.set(r.userId, [...(byPlayer.get(r.userId) ?? []), r]);
+  const entries = settings.countBy === "player"
+    ? [...byPlayer.values()].map(rs => ({ names: rs.sort((a, b) => Number(b.isMain) - Number(a.isMain)).map(r => r.name), n: rs[0]!.player }))
+    : counts.rows.map(r => ({ names: [r.name], n: r.own }));
   const text = groupAddonExport(g, Math.floor(now / 1000),
     raidRows.map(r => {
       const m = myByRaid.get(r.id);
@@ -106,7 +114,8 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
     }),
     [...byItem.values()].sort((a, b) => a.recipe.localeCompare(b.recipe)),
     [...bis.values()].sort((a, b) => a.itemId - b.itemId),
-    council);
+    council,
+    { short: counts.summary.short, label: counts.summary.label, entries });
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
 }
 

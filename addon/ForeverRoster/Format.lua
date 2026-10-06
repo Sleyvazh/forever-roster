@@ -60,7 +60,7 @@ end
 -- Lignes : R raid à venir, P patron suivi (recherché par, connu par), B objet BiS recherché (par qui).
 -- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
 -- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
--- I inscrit (rôle et type de DPS, pour les consommables).
+-- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 »).
 local function per(t, raidId) t[raidId] = t[raidId] or {} return t[raidId] end
 local function ids(field)
   local out = {}
@@ -82,7 +82,7 @@ function F.ParseFRG(text)
       if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
       if tonumber(f[2]) ~= 1 then return nil, "Version non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
       cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
-        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {} }, nil, 0
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil }, nil, 0
     elseif cur and f[1] == "R" then
       n = n + 1
       cur.raids[#cur.raids + 1] = { id = txt(f[2], 40), time = tonumber(f[3]) or 0, name = txt(f[4], 60), status = (f[5] or "") ~= "" and txt(f[5], 12) or nil,
@@ -112,6 +112,21 @@ function F.ParseFRG(text)
       local r = per(cur.roster, txt(f[2], 40))
       local name = txt(f[3], 40)
       if name ~= "" then r[name] = { role = txt(f[4], 8), dps = txt(f[5], 8) } end
+    elseif cur and f[1] == "N" then
+      -- Objets reçus : les persos d'un même joueur (séparés par « + ») partagent le compte
+      local c, entries = { short = txt(f[2], 20), label = txt(f[3], 60), byName = {} }, 0
+      for part in tostring(f[4] or ""):gmatch("[^,]+") do
+        local list, n = part:match("^(.-):(%-?%d+)$")
+        if list and entries < 200 then
+          entries = entries + 1
+          local e = { names = {}, n = tonumber(n) or 0 }
+          for name in list:gmatch("[^+]+") do
+            name = txt(name, 40)
+            if name ~= "" and #e.names < 12 then e.names[#e.names + 1] = name c.byName[name] = e end
+          end
+        end
+      end
+      cur.counts = c
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])

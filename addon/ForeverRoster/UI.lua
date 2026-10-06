@@ -114,9 +114,13 @@ local function siteWindow(name, title, w, h, icon)
   close:SetScript("OnLeave", function() x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) end)
   close:SetScript("OnClick", function() f:Hide() end)
   function f:SetWindowTitle(text) self.titleText:SetText(text) end
-  function f:SetIcon(tex) self.icon:SetTexture(tex) end
+  function f:SetIcon(tex)
+    self.icon:SetTexture(tex)
+    -- Icônes du jeu : bord rogné ; logo de l'addon : en entier
+    if tex == ns.LOGO then self.icon:SetTexCoord(0, 1, 0, 1) else self.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+  end
   f:SetWindowTitle(title)
-  f:SetIcon(icon or "Interface\\Icons\\INV_Misc_Book_09")
+  f:SetIcon(icon or ns.LOGO)
   tinsert(UISpecialFrames, name) -- Échap ferme la fenêtre
   f:Hide()
   return f
@@ -150,7 +154,7 @@ local function window(name, title, w, h, icon)
     elseif self.PortraitContainer and self.PortraitContainer.portrait then self.PortraitContainer.portrait:SetTexture(tex) end
   end
   f:SetWindowTitle(title)
-  f:SetIcon(icon or "Interface\\Icons\\INV_Misc_Book_09")
+  f:SetIcon(icon or ns.LOGO)
   tinsert(UISpecialFrames, name) -- Échap ferme la fenêtre
   f:Hide()
   return f
@@ -357,6 +361,146 @@ local function list(parent, top)
   return L
 end
 
+-- Tableau défilant (lot I, conseil du butin) : en-têtes de colonnes, une ligne par entrée, boutons dans la dernière colonne.
+-- cols : { title, w = largeur fixe } ou { title, flex = poids, min = largeur mini } ; small = petite police, lines = lignes max,
+-- tip = infobulle au survol de la cellule (opts.tip(colonne, cadre) à la création de la ligne).
+local PAD = 8
+local function grid(parent, top, bottom, cols)
+  local sf, bar = scrollFrame(parent)
+  sf:SetPoint("TOPLEFT", 4, top - 24) sf:SetPoint("BOTTOMRIGHT", -bar, bottom)
+  local body = CreateFrame("Frame", nil, sf)
+  body:SetSize(400, 10)
+  sf:SetScrollChild(body)
+  local head = CreateFrame("Frame", nil, parent)
+  head:SetPoint("TOPLEFT", 4, top) head:SetPoint("TOPRIGHT", -bar, top) head:SetHeight(22)
+  local rule = head:CreateTexture(nil, "BORDER")
+  rule:SetPoint("BOTTOMLEFT") rule:SetPoint("BOTTOMRIGHT") rule:SetHeight(1)
+  if site() then solid(rule, C.line) else rule:SetColorTexture(0.6, 0.5, 0.3, 0.5) end
+  local G = { body = body, rows = {}, n = 0, x = {}, w = {}, head = {} }
+  for i, c in ipairs(cols) do
+    local fs = head:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetJustifyH(c.justify or "LEFT")
+    if fs.SetWordWrap then fs:SetWordWrap(false) end
+    fs:SetText(c.title or "")
+    G.head[i] = fs
+  end
+  function G.SetTitle(i, text) G.head[i]:SetText(text) end
+  local function place(r)
+    for i = 1, #cols do
+      local cell = r.cells[i]
+      if cell then cell:ClearAllPoints() cell:SetPoint("LEFT", r, "LEFT", G.x[i], 0) cell:SetWidth(G.w[i]) end
+      local hov = r.hover[i]
+      if hov then hov:ClearAllPoints() hov:SetPoint("TOPLEFT", r, "TOPLEFT", G.x[i], 0) hov:SetSize(G.w[i], r:GetHeight() or 30) end
+    end
+    local bx = (G.x[#cols] or 0) + (G.w[#cols] or 0)
+    for k = #r.buttons, 1, -1 do
+      local b = r.buttons[k]
+      if b:IsShown() then b:ClearAllPoints() b:SetPoint("RIGHT", r, "LEFT", bx, 0) bx = bx - (b:GetWidth() or 80) - 6 end
+    end
+  end
+  -- Largeurs : colonnes fixes, puis la place restante partagée entre les colonnes souples
+  function G.Layout()
+    local width = sf:GetWidth()
+    if not width or width < 100 then width = 900 end
+    body:SetWidth(width)
+    local fixed, weight = PAD * (#cols + 1), 0
+    for _, c in ipairs(cols) do if c.flex then weight = weight + c.flex fixed = fixed + (c.min or 40) else fixed = fixed + c.w end end
+    local free = math.max(0, width - fixed)
+    local x = PAD
+    for i, c in ipairs(cols) do
+      local w = c.flex and ((c.min or 40) + math.floor(free * c.flex / weight)) or c.w
+      G.x[i], G.w[i] = x, w
+      x = x + w + PAD
+    end
+    for i, fs in ipairs(G.head) do fs:ClearAllPoints() fs:SetPoint("LEFT", head, "LEFT", G.x[i], 0) fs:SetWidth(G.w[i]) end
+    for k = 1, G.n do place(G.rows[k]) end
+  end
+  local y, odd = 0, false
+  function G.Reset() y, odd, G.n = 0, false, 0 end
+  -- values : texte de chaque colonne ; opts : { buttons = { { libellé, largeur, action }, … }, dim = ligne estompée, tip = function(i, cadre) }
+  function G.Row(values, opts)
+    opts = opts or {}
+    G.n = G.n + 1
+    local r = G.rows[G.n]
+    if not r then
+      r = CreateFrame("Frame", nil, body)
+      r.bg = r:CreateTexture(nil, "BACKGROUND")
+      r.bg:SetAllPoints()
+      r.cells, r.hover, r.buttons = {}, {}, {}
+      for i, c in ipairs(cols) do
+        if not c.buttons then
+          local fs = r:CreateFontString(nil, "OVERLAY", c.small and "GameFontHighlightSmall" or "GameFontHighlight")
+          fs:SetJustifyH(c.justify or "LEFT")
+          if c.lines and c.lines > 1 then if fs.SetMaxLines then fs:SetMaxLines(c.lines) end elseif fs.SetWordWrap then fs:SetWordWrap(false) end
+          r.cells[i] = fs
+          if c.tip then
+            local hov = CreateFrame("Frame", nil, r)
+            hov:EnableMouse(true)
+            hov:SetScript("OnEnter", function(self) if r.tip then r.tip(i, self) end end)
+            hov:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            r.hover[i] = hov
+          end
+        end
+      end
+      G.rows[G.n] = r
+    end
+    r.tip = opts.tip
+    for i in ipairs(cols) do if r.cells[i] then r.cells[i]:SetText(values[i] or "") end end
+    for _, b in ipairs(r.buttons) do b:Hide() end
+    for k, spec in ipairs(opts.buttons or {}) do
+      local b = r.buttons[k] or button(r, spec[1], spec[2], nil)
+      r.buttons[k] = b
+      b:SetText(spec[1]) b:SetSize(spec[2], 22) b:SetScript("OnClick", spec[3]) b:Show()
+    end
+    local h = opts.height or 30
+    odd = not odd
+    r.bg:ClearAllPoints() r.bg:SetAllPoints()
+    if site() then
+      if odd then solid(r.bg, C.panel2, 0.7) r.bg:Show() else r.bg:Hide() end
+    elseif odd and atlas(r.bg, ART.line) then r.bg:Show() else r.bg:Hide() end
+    if r.SetAlpha then r:SetAlpha(opts.dim and 0.55 or 1) end
+    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetPoint("RIGHT", body, "RIGHT", 0, 0) r:SetHeight(h) r:Show()
+    y = y + h
+    if G.x[1] then place(r) end
+  end
+  function G.Done()
+    for k = G.n + 1, #G.rows do G.rows[k]:Hide() end
+    body:SetHeight(y + 6)
+    G.Layout()
+  end
+  function G.Height() return y end
+  -- Largeur connue seulement une fois la fenêtre placée (et à chaque redimensionnement)
+  if sf.HookScript then sf:HookScript("OnSizeChanged", function() G.Layout() end) end
+  return G
+end
+
+-- Fenêtre redimensionnable par le coin en bas à droite, taille mémorisée (ForeverRosterDB.sizes[clé])
+local function resizable(f, key, minW, minH, maxW, maxH, onSize)
+  if f.SetResizable then f:SetResizable(true) end
+  if f.SetResizeBounds then pcall(f.SetResizeBounds, f, minW, minH, maxW, maxH)
+  else
+    if f.SetMinResize then pcall(f.SetMinResize, f, minW, minH) end
+    if f.SetMaxResize then pcall(f.SetMaxResize, f, maxW, maxH) end
+  end
+  local grip = CreateFrame("Button", nil, f)
+  grip:SetSize(16, 16) grip:SetPoint("BOTTOMRIGHT", -4, 4)
+  if grip.SetFrameLevel and f.GetFrameLevel and f:GetFrameLevel() then grip:SetFrameLevel(f:GetFrameLevel() + 20) end
+  grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+  grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+  grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+  grip:SetScript("OnMouseDown", function() if f.StartSizing then f:StartSizing("BOTTOMRIGHT") end end)
+  grip:SetScript("OnMouseUp", function()
+    f:StopMovingOrSizing()
+    ForeverRosterDB.sizes = ForeverRosterDB.sizes or {}
+    ForeverRosterDB.sizes[key] = { math.floor((f:GetWidth() or minW) + 0.5), math.floor((f:GetHeight() or minH) + 0.5) }
+    if onSize then onSize() end
+  end)
+  if f.HookScript then f:HookScript("OnSizeChanged", function() if onSize then onSize() end end) end
+  local saved = ForeverRosterDB and ForeverRosterDB.sizes and ForeverRosterDB.sizes[key]
+  if saved then f:SetSize(math.max(minW, math.min(maxW, saved[1])), math.max(minH, math.min(maxH, saved[2]))) end
+  return saved ~= nil
+end
+
 local function colored(cls, name)
   local c = CLASS_COLOR[cls]
   return c and ("|c" .. (c.colorStr or "ffffffff") .. name .. "|r") or name
@@ -379,7 +523,7 @@ end
 U.roleIcon = roleIcon
 
 -- Outils partagés avec les fenêtres du raid (Raid.lua : butin, conseil, fiche du boss)
-U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea, front = front, roleIcon = roleIcon }
+U.kit = { window = window, button = button, list = list, grid = grid, resizable = resizable, hint = hint, colored = colored, site = site, textArea = textArea, front = front, roleIcon = roleIcon }
 
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
@@ -436,15 +580,18 @@ local function buildCompo(p)
   invite:SetPoint("TOPLEFT", 4, -40)
   local arrange = button(p, "Placer les groupes", 170, function() ns.Compo.Arrange() end)
   arrange:SetPoint("LEFT", invite, "RIGHT", 8, 0)
+  p.clear = button(p, "Effacer la compo", 150, function() ns.Compo.Clear() U.Refresh() end)
+  p.clear:SetPoint("LEFT", arrange, "RIGHT", 8, 0)
   p.list = list(p, -72)
 end
 refreshers.compo = function(p)
   local L = p.list
   L.Reset()
   local raid = ns.Compo.Get()
+  if p.clear then if raid then p.clear:Show() else p.clear:Hide() end end
   if not raid then
     L.Header("Compo")
-    L.Add(GREY .. "Aucune compo chargée.|r")
+    L.Add(GREY .. "Aucune compo chargée. Elle s'efface d'elle-même 12 h après l'heure du raid.|r")
   else
     local when = (raid.time and raid.time > 0) and date("%d/%m %H:%M", raid.time) or "date non fixée"
     local status, ok, total = ns.Compo.Status(), 0, 0

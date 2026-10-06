@@ -1,6 +1,8 @@
 -- Forever Roster : socle (sauvegarde, événements, commandes /fr).
 local ADDON, ns = ...
 ns.name = ADDON
+-- Logo de Forever Roster (infini et épée), dans la liste des addons, les fenêtres et le bouton de la minicarte
+ns.LOGO = "Interface\\AddOns\\" .. (ADDON or "ForeverRoster") .. "\\Media\\Logo"
 
 local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 ns.version = meta and meta(ADDON, "Version") or "?"
@@ -14,6 +16,23 @@ local frame = CreateFrame("Frame")
 local handlers = {}
 -- Un événement que ce client ne connaît pas est ignoré (le jeu refuserait sinon tout le fichier)
 ns.missingEvents = {}
+-- Infos d'objet : fonction globale (Classic) ou C_Item (clients récents, où les globales peuvent avoir disparu)
+function ns.ItemInfo(id)
+  local fn = GetItemInfo or (C_Item and C_Item.GetItemInfo)
+  if fn and id then return fn(id) end
+end
+function ns.ItemInfoInstant(id)
+  local fn = GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
+  if fn and id then return fn(id) end
+end
+-- Objet pas encore connu du client : demandé au serveur (GET_ITEM_INFO_RECEIVED ou ITEM_DATA_LOAD_RESULT ensuite)
+local requested = {}
+function ns.RequestItem(id)
+  if not id or (requested[id] and time() - requested[id] < 10) then return end
+  requested[id] = time()
+  if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, id) else ns.ItemInfo(id) end
+end
+
 function ns.on(event, fn)
   if not handlers[event] then
     if not pcall(frame.RegisterEvent, frame, event) then
@@ -65,6 +84,7 @@ local HELP = {
   "/fr test : raid d'essai (9 joueurs fictifs) pour tout essayer seul : butin, conseil, fiches de boss, consommables",
   "Synchro rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou clic droit sur le bouton de la minicarte",
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
+  "/fr objet <lien> : ce que le jeu répond pour un objet (si un nom reste « objet 12345 »)",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
   "/fr rappels : couper ou remettre le rappel de raid à la connexion",
@@ -106,6 +126,8 @@ local function run(msg)
     ns.Raid.CallConsumables()
   elseif cmd == "test" or cmd == "essai" then
     ns.Raid.ShowTest()
+  elseif cmd == "objet" or cmd == "item" then
+    ns.Group.Diagnose(ns.Group.itemIdFrom(rest) or tonumber(rest) or 16901)
   elseif cmd == "cherche" then
     local id = ns.Group.itemIdFrom(rest) or tonumber(rest)
     if not id then ns.print("tape /fr cherche puis Maj+clic sur le patron (sac, hôtel des ventes, chat) pour mettre son lien, et Entrée.") return end

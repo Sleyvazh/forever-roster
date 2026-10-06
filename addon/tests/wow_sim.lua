@@ -300,6 +300,17 @@ time = realTime
 run("compo")
 assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
 assert(ns.Compo.Status()[1].state == "ok", "le joueur est dans son propre groupe")
+-- Compo d'un raid passé (plus de 12 h) : effacée d'elle-même ; « Effacer la compo » à la main
+assert(ns.Compo.Load("FRR;1;y;" .. (time() - 13 * 3600) .. ";Vroum Vroum\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
+assert(ns.Compo.Get() == nil and ForeverRosterDB.compo == nil, "compo d'un raid passé effacée")
+assert(ns.Compo.Load("FRR;1;z;" .. (time() - 2 * 3600) .. ";Raid en cours\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
+assert(ns.Compo.Get().name == "Raid en cours", "compo gardée pendant le raid")
+ns.UI.Show("compo")
+assert(ns.UI.pages.compo.clear:IsShown(), "bouton Effacer visible avec une compo")
+ns.Compo.Clear()
+ns.UI.Refresh()
+assert(ns.Compo.Get() == nil and not ns.UI.pages.compo.clear:IsShown(), "compo effacée à la main")
+assert(ns.Compo.Load("FRR;1;x;0;Raid\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nEND;1"))
 run("aide")
 -- 6. Lot G : réservations au survol, consommables (comptés, appel en raid), versions, fiche du boss, butin, conseil
 local sent = {}
@@ -412,7 +423,7 @@ RA.session = nil
 -- Conseil du butin : proposé, réponses (la mienne et celle de Gorrak), vote, attribution
 RA.StartCouncil(RA.items[1])
 local sid = RA.session.sid
-assert(sent[#sent].msg == "LO;" .. sid .. ";18814", "objet proposé au conseil")
+assert(sent[#sent].msg == "LO;" .. sid .. ";18814;Choker", "objet proposé au conseil, avec son nom")
 fire("CHAT_MSG_ADDON", "FRoster", sent[#sent].msg, "RAID", "Tournicoti")
 assert(#RA.asks == 1, "fenêtre de réponse")
 RA.Respond(RA.asks[1], "bis", "pour mon set")
@@ -421,6 +432,15 @@ assert(RA.councils[sid].cands.Tournicoti.response == "bis" and RA.councils[sid].
 RA.Vote(sid, "Gorrak")
 assert(RA.Tally(sid).Gorrak == 1, "vote compté")
 RA.ShowCouncil(sid)
+-- Objets reçus (lot I) : compte du site (ligne N, persos d'un même joueur ensemble) + ce soir, spé principale seulement
+local nd = { counts = ns.Format.ParseFRG("FRG;1;g;1;G\nN;saison;depuis le 05/11/2026;Gorrak+Grumalt:2,Tournicoti:0\nEND;0")[1].counts }
+assert(nd.counts.short == "saison" and nd.counts.byName.Grumalt.n == 2 and #nd.counts.byName.Gorrak.names == 2, "ligne N lue")
+assert(RA.LootCounts({ method = "sr" }) and RA.LootCounts({}) and not RA.LootCounts({ method = "roll", detail = "OS 54" })
+  and not RA.LootCounts({ method = "roll", detail = "jet 12" }) and not RA.LootCounts({ method = "council", response = "transmo" }), "règle : spé principale")
+local rs, rt = RA.Received("Grumalt", nd)
+assert(rs == 2 and rt == 0, "compte du site partagé par les persos du joueur")
+local vs, vt = RA.Received("Vesper", nd)
+assert(vs == 0 and vt >= 1, "objet de ce soir compté (soft reserve)")
 RA.AwardCouncil(sid, "Gorrak")
 assert(said[#said]:find("pour Gorrak %(1 voix%)") and RA.Handover()[1].winner == "Gorrak" and RA.Handover()[1].method == "council", "conseil : objet attribué")
 -- Onglet En raid et commandes, sans erreur
@@ -513,6 +533,14 @@ assert(tc.cands.Tournicoti.response == "upgrade" and RA.Tally(tsid).Mirelle == 2
 RA.ShowCouncil(tsid)
 RA.AwardCouncil(tsid, "Mirelle")
 assert(#RA.test.log.loot == 5, "5 objets attribués pendant l'essai")
+local ms, mt = RA.Received("Mirelle", RA.Current())
+local is, it = RA.Received("Ilyra", RA.Current())
+assert(ms == 1 and mt == 1 and is == 1 and it == 0, "essai : reçus de la saison + ce soir (jet OS non compté)")
+-- Objet pas encore renvoyé par le jeu : nom connu (raid d'essai), jamais « objet 16835 »
+GetItemInfo = function() return nil end
+assert(ns.Group.displayLink(16835):find("%[Cenarion Leggings%]"), "nom de l'objet porté connu avant la réponse du jeu")
+GetItemInfo = realGetItemInfo
+run("objet 16901")
 local beforeT = errors()
 run("enraid")
 run("test")

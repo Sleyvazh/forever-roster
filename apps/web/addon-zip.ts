@@ -55,7 +55,13 @@ function addonFiles() {
     fonts = readdirSync(fontsDir).filter(f => /\.(ttf|txt)$/.test(f)).sort()
       .map(f => ({ name: `ForeverRoster/Fonts/${f}`, data: readFileSync(path.join(fontsDir, f)) }));
   } catch { /* pas de polices */ }
-  return [...top, ...fonts];
+  // Logo de l'addon (texture TGA : liste des addons, fenêtres, minicarte)
+  let media: { name: string; data: Buffer }[] = [];
+  try {
+    media = readdirSync(path.join(ADDON_DIR, "Media")).filter(f => /\.(tga|blp)$/.test(f)).sort()
+      .map(f => ({ name: `ForeverRoster/Media/${f}`, data: readFileSync(path.join(ADDON_DIR, "Media", f)) }));
+  } catch { /* pas de textures */ }
+  return [...top, ...fonts, ...media];
 }
 
 /** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */

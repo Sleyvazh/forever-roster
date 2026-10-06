@@ -5,6 +5,10 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 32, date: "2026-10-06", kind: "addon", version: "1.2", title: "Conseil du butin en tableau",
+    text: "La fenêtre des votes montre tout le monde d'un coup : une ligne par joueur avec sa réponse, ce qu'il porte, sa précision, les objets déjà reçus, les voix et qui a voté. Agrandis-la par le coin en bas à droite : la taille est gardée. Aussi : le logo de Forever Roster en jeu, une compo passée qui s'efface toute seule (ou « Effacer la compo »), et /fr objet si un nom d'objet reste « objet 12345 »." },
+  { n: 31, date: "2026-10-06", kind: "site", title: "Compte des objets reçus",
+    text: "Les officiers choisissent sur quelle période compter les objets reçus (Administration → Butin) : depuis le début de la saison, sur les 30 derniers jours ou sur les X derniers raids, par joueur (main et alts ensemble) ou par perso. Seule la spé principale compte : soft reserve, jets MS, conseil BiS et Upgrade. Un officier peut sortir un objet du compte (bilan du raid) ou corriger le total avec un motif (fiche du joueur). Le compte s'affiche dans Présence & butin, sur la fiche de chacun et au conseil en jeu." },
   { n: 30, date: "2026-10-06", kind: "site", title: "Roster, la version pour WoW Retail, se prépare",
     text: "Le site a maintenant une page d'accueil publique, et une deuxième adresse arrive : Roster (roster.sleyvazh.fr), les mêmes outils pour les guildes de WoW Retail. Ton compte y marche déjà : même e-mail, même mot de passe (connexion à faire une fois sur chaque adresse). Persos et groupes restent séparés par jeu. Le bot Discord sert les deux sites, avec /roster-lier pour les groupes Roster." },
   { n: 29, date: "2026-10-06", kind: "addon", version: "1.1", title: "Raid d'essai corrigé",

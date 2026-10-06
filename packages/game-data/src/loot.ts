@@ -33,8 +33,27 @@ export interface LootSettings {
   srCloseMinutes: number;
   /** Les mains passent avant les alts (soft reserve et conseil). */
   mainsFirst: boolean;
+  /**
+   * Compte des objets reçus (montré au conseil et dans Présence) : depuis le début de la saison, sur les 30 derniers
+   * jours ou sur les X derniers raids relevés du groupe ; par joueur (main et alts ensemble) ou par perso.
+   */
+  countMode: LootCountMode;
+  /** Début de la saison (AAAA-MM-JJ, heure de Paris) ; vide : tout l'historique. */
+  seasonStart: string | null;
+  /** Nombre de raids pour « X derniers raids ». */
+  countRaids: number;
+  countBy: LootCountBy;
 }
-export const DEFAULT_LOOT_SETTINGS: LootSettings = { srCount: 2, srPlus: true, srPlusStep: 10, srCloseMinutes: 60, mainsFirst: true };
+export const LOOT_COUNT_MODES = ["season", "days", "raids"] as const;
+export type LootCountMode = (typeof LOOT_COUNT_MODES)[number];
+export const LOOT_COUNT_BY = ["player", "character"] as const;
+export type LootCountBy = (typeof LOOT_COUNT_BY)[number];
+/** Fenêtre glissante du mode « days ». */
+export const LOOT_COUNT_DAYS = 30;
+export const DEFAULT_LOOT_SETTINGS: LootSettings = {
+  srCount: 2, srPlus: true, srPlusStep: 10, srCloseMinutes: 60, mainsFirst: true,
+  countMode: "season", seasonStart: null, countRaids: 5, countBy: "player",
+};
 
 export function lootSettings(raw: Partial<LootSettings> | null | undefined): LootSettings {
   return { ...DEFAULT_LOOT_SETTINGS, ...(raw ?? {}) };
@@ -56,3 +75,35 @@ export function srPlusBonus(history: { reserved: boolean; received: boolean }[],
 
 /** Clé d'une instance pour le catalogue de butin : nom normalisé (« Molten Core », « molten core » → même clé). */
 export const instanceKey = (name: string) => name.toLowerCase().replace(/\u0153/g, "oe").replace(/\u00e6/g, "ae").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * Un objet reçu compte-t-il dans le total (spé principale) ? Oui : soft reserve, jet MS, conseil BiS ou Upgrade,
+ * et tout objet dont on ne sait pas comment il a été donné (journal, maître du butin : les officiers peuvent l'exclure).
+ * Non : jet OS, jet libre, conseil Off-Spec ou Transmo.
+ */
+export function lootCounts(l: { method?: LootMethod | null; response?: LootResponse | null; detail?: string | null }): boolean {
+  return lootSkipReason(l) === null;
+}
+/** Raison pour laquelle un objet ne compte pas d'office (null : il compte). */
+export function lootSkipReason(l: { method?: LootMethod | null; response?: LootResponse | null; detail?: string | null }): string | null {
+  if (l.method === "council" && (l.response === "off" || l.response === "transmo")) return LOOT_RESPONSE_LABEL[l.response];
+  if (l.method === "roll") {
+    const d = (l.detail ?? "").trim();
+    if (/^OS\b/i.test(d)) return "jet OS";
+    if (/^jet\b/i.test(d)) return "jet libre";
+  }
+  return null;
+}
+
+/** Libellé court de la période du compte : « saison », « 30 j », « 5 raids » (en-têtes de colonne, addon). */
+export function lootCountShort(s: Pick<LootSettings, "countMode" | "countRaids">): string {
+  return s.countMode === "days" ? `${LOOT_COUNT_DAYS} j` : s.countMode === "raids" ? `${s.countRaids} raids` : "saison";
+}
+/** Libellé complet : « depuis le 06/10/2026 », « sur les 30 derniers jours », « sur les 5 derniers raids ». */
+export function lootCountLabel(s: Pick<LootSettings, "countMode" | "countRaids" | "seasonStart">): string {
+  if (s.countMode === "days") return `sur les ${LOOT_COUNT_DAYS} derniers jours`;
+  if (s.countMode === "raids") return s.countRaids > 1 ? `sur les ${s.countRaids} derniers raids` : "sur le dernier raid";
+  if (!s.seasonStart) return "depuis le début";
+  const [y, m, d] = s.seasonStart.split("-");
+  return `depuis le ${d}/${m}/${y}`;
+}

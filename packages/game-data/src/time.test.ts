@@ -76,4 +76,13 @@ describe("export addon", () => {
       "END;1",
     ]);
   });
+  it("export d'un groupe : objets reçus sur la période (lot I)", () => {
+    const text = groupAddonExport({ id: "g1", name: "G" }, 1, [], [], [], [],
+      { short: "saison", label: "depuis le 05/11/2026", entries: [{ names: ["Greta Coulé", "Brindille"], n: 3 }, { names: ["Kaelys"], n: 0 }] });
+    expect(text.split("\n")).toEqual([
+      "FRG;1;g1;1;G",
+      "N;saison;depuis le 05/11/2026;Greta+Brindille:3,Kaelys:0",
+      "END;0",
+    ]);
+  });
 });

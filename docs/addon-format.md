@@ -127,6 +127,7 @@ F;<raid>;<n° de fiche>;<rencontre>;<PNJ>,<PNJ>;<nom du boss>
 T;<raid>;<n° de fiche>;<intitulé>;<persos>;<consigne>
 L;<raid>;<persos du conseil>
 I;<raid>;<perso>;<Tank | Heal | DPS>;<melee | ranged | caster>
+N;<période courte>;<période>;<perso>+<perso>:<nombre>,…
 END;<nombre de lignes R, P et B>
 ```
 
@@ -142,8 +143,9 @@ END;<nombre de lignes R, P et B>
 | `L` | Lot G : conseil du butin choisi pour ce raid (persos de ses membres) ; sans `L`, le conseil est celui de la ligne `O`. |
 | `I` | Lot G : inscrits qui viennent (ou hésitent), avec le rôle et le type de DPS de leur spé, pour savoir quels consommables chacun doit avoir. Seulement pour les raids qui demandent des consommables. |
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
+| `N` | Lot I : objets reçus (spé principale, exclusions et corrections des officiers comprises) sur la période du groupe : libellé court (`saison`, `30 j`, `5 raids`), libellé complet (`depuis le 05/11/2026`…), puis une entrée par joueur (ses persos du groupe joints par `+`, main d'abord, qui partagent le compte) ou par perso, selon le réglage du groupe. Colonne « Reçus » du conseil du butin. |
 
-Les lignes `S`, `O`, `C`, `F`, `T`, `L` et `I` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes).
+Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I` et `N` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes).
 
 L'addon s'en sert pour :
 
@@ -192,7 +194,7 @@ Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) s
 |---|---|---|
 | `VQ` / `VR;<version>` | tous | Qui a l'addon : question à l'arrivée dans un raid (ou « Redemander »), chacun répond avec sa version. |
 | `CQ;<objets>` | chef → raid | Appel aux consommables ; chacun répond en privé `CR;<objet>:<quantité>,…` (sacs et banque). Clos après 8 s ; résultat gardé avec le bilan (`Q`, `K`). |
-| `LO;<session>;<objet>` | maître du butin → raid | Objet proposé au conseil : fenêtre de réponse chez chacun. |
+| `LO;<session>;<objet>;<nom>` | maître du butin → raid | Objet proposé au conseil : fenêtre de réponse chez chacun. Le nom (1.2, ignoré avant) s'affiche tant que le jeu ne connaît pas encore l'objet. |
 | `LA;<session>;<réponse>;<objets portés>;<note>` | joueur → conseil (privé) | Réponse : `bis`, `upgrade`, `off`, `transmo` ou `pass`. Sans addon : chuchoter « bis », « up », « os » ou « transmo » au maître du butin. |
 | `LV;<session>;<candidat>` | conseil → conseil (privé) | Vote (vide : vote retiré). |
 | `LC;<session>;<gagnant>` | maître du butin → raid | Conseil terminé : les fenêtres de réponse se ferment. |

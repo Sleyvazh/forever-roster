@@ -11,13 +11,14 @@ export function Logo({ size = 30, className }: { size?: number; className?: stri
   );
 }
 
-/** Logo provisoire de Roster (WoW Retail) : un écu et une liste. À revoir (décision de Flo, 06/10). */
+/**
+ * Logo de Roster (WoW Retail) : la même épée que Forever Roster, pointe en haut, au milieu d'un W au trait
+ * (choix de Flo, 06/10 : dessin A). Dessin original ; le W passe devant la lame, la garde se loge sous le W.
+ */
 export function RosterLogo({ size = 30, className }: { size?: number; className?: string }) {
   return (
     <svg className={`logo ${className ?? ""}`} viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" focusable="false">
-      <path d="M32 4 L54 12 V30 C54 44 44 54 32 60 C20 54 10 44 10 30 V12 Z" fill="none" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
-      <path d="M21 24 H43 M21 33 H43 M21 42 H36" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-      <circle cx="43" cy="42" r="3.2" fill="currentColor" />
+      <path d="M32 2 L34.2 7 L34.2 48 L32 51 L29.8 48 L29.8 7 Z" fill="currentColor"/><path d="M24 48 H40" stroke="var(--logo-gap, var(--bg))" strokeWidth="6" strokeLinecap="round"/><path d="M24 48 H40" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"/><rect x="30.7" y="49.5" width="2.6" height="6.5" fill="currentColor"/><rect x="29.7" y="56" width="4.6" height="4.6" fill="currentColor" transform="rotate(45 32 58.3)"/><path d="M6 10 L18.5 42 L32 16 L45.5 42 L58 10" fill="none" stroke="var(--logo-gap, var(--bg))" strokeWidth="8.0" strokeLinejoin="miter" strokeMiterlimit="5" /><path d="M6 10 L18.5 42 L32 16 L45.5 42 L58 10" fill="none" stroke="currentColor" strokeWidth="4.4" strokeLinejoin="miter" strokeMiterlimit="5" />
     </svg>
   );
 }

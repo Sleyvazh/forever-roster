@@ -83,6 +83,7 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
 .btn.ghost { background: transparent; }
 .btn.danger { color: var(--bad); border-color: var(--bad); background: transparent; }
 .btn.sm { padding: 4px 10px; font-size: 13px; }
+.btn.xs { padding: 2px 8px; font-size: 12px; }
 .btn.bnet { background: #148eff; border-color: #148eff; color: #fff; font-weight: 700; }
 .btn.discord { background: #5865f2; border-color: #5865f2; color: #fff; font-weight: 700; }
 
@@ -798,6 +799,18 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .rl-table td.r, .rl-att td.r, .rl-att th.r { text-align: right; }
 .rl-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .rl-chip.ok { color: var(--ok); border-color: var(--ok); } .rl-chip.warn { color: var(--warn); border-color: var(--warn); } .rl-chip.bad { color: var(--bad); border-color: var(--bad); }
+.rl-chip.muted { border-style: dashed; color: var(--ink-2); font-weight: 500; }
+.rl-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 6px; white-space: normal; }
+/* Lot I : compte des objets reçus (fiche du joueur, réglages) */
+.lc-sum { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin: 6px 0 8px; }
+.lc-sum b { font-size: 18px; }
+.lc-corr { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.lc-corr li { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.lc-corr .d { font-weight: 700; min-width: 2.2em; text-align: right; }
+.lc-corr .d.plus { color: var(--ok); } .lc-corr .d.minus { color: var(--bad); }
+.lc-corr li.out { opacity: .6; }
+.lc-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 8px; }
+.lc-form .fld { margin: 0; }
 .rl-att th.c, .rl-att td.c { text-align: center; width: 44px; }
 .rl-att th.c a { color: var(--ink-2); text-decoration: none; font-weight: 500; }
 .rl-cell { font-weight: 700; }

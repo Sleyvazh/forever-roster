@@ -1,8 +1,9 @@
 import { ATTENDANCE_LABEL, CLASSES, itemLinks, type AttendanceStatus, type ClassName, type GearStats } from "@forever/game-data";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMe } from "../auth";
-import { get, type GroupRole } from "../api";
+import { ApiError, del, get, post, type GroupRole } from "../api";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { absenceLabel } from "./Absences";
@@ -14,7 +15,13 @@ interface Sheet {
   characters: { id: string; name: string; cls: string; spec1: string; spec2: string; level: number; portraitId: string | null; isMain: boolean; gearStats: GearStats }[];
   attendance: { raids: number; attended: number; benched: number; cells: { raidId: string; name: string; scheduledAt: string; status: AttendanceStatus | null }[] };
   absences: { startDate: string | null; endDate: string | null; weekdays: number[]; reason: string }[];
-  loot: { itemId: number; name: string; quality: number; character: string; boss: string; raidName: string; raidId: string; at: number; bis: boolean }[];
+  loot: { itemId: number; name: string; quality: number; character: string; boss: string; raidName: string; raidId: string; at: number; bis: boolean; skip: string | null; excluded: boolean }[];
+  /** Lot I : objets reçus sur la période du groupe, et corrections des officiers. */
+  lootCount: {
+    label: string; short: string; by: "player" | "character"; player: number;
+    characters: { characterId: string; name: string; own: number }[];
+    corrections: { id: string; characterId: string; delta: number; note: string; by: string; at: string; inPeriod: boolean }[];
+  };
 }
 
 const ROLE_NAME: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
@@ -22,7 +29,7 @@ const CELL: Record<AttendanceStatus, string> = { present: "✓", late: "R", left
 const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" });
 const color = (cls: string) => CLASSES[cls as ClassName]?.color ?? "var(--line-2)";
 
-export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; userId: string; onClose: () => void }) {
+export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: string; userId: string; officer: boolean; onClose: () => void }) {
   // Ses persos s'ouvrent dans Mes persos ; ceux d'un autre joueur, en lecture dans l'onglet Personnages du groupe
   const myId = useMe().data?.user?.id;
   const charUrl = (id: string) => (userId === myId ? `/persos/${id}` : `/groups/${groupId}/persos?perso=${id}`);
@@ -45,7 +52,7 @@ export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; use
       <div className="ps-kpis">
         <div><b className="num">{a.raids ? `${a.attended}/${a.raids}` : "—"}</b><span>raids venus</span></div>
         <div><b className="num">{a.benched}</b><span>fois sur le banc</span></div>
-        <div><b className="num">{loot.length}</b><span>objet{loot.length > 1 ? "s" : ""} reçu{loot.length > 1 ? "s" : ""}</span></div>
+        <div title={`Objets de spé principale reçus ${data.lootCount.label}${data.lootCount.by === "player" ? ", main et alts ensemble" : ""}`}><b className="num">{data.lootCount.player}</b><span>objet{data.lootCount.player > 1 ? "s" : ""} · {data.lootCount.short}</span></div>
         <div><b className="num">{bis ? `${bis.got}/${bis.total}` : "—"}</b><span>BiS du main</span></div>
       </div>
       <div className="ps-cols">
@@ -84,13 +91,15 @@ export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; use
             </div>
           )}
           <h4 className="gm-sec" style={{ marginTop: 14 }}>Butin reçu</h4>
+          <LootCount groupId={groupId} userId={userId} count={data.lootCount} officer={officer} />
           {loot.length === 0 ? <p className="muted small" style={{ margin: "6px 0 0" }}>Rien de relevé pour l'instant.</p> : (
             <ul className="ps-loot">
               {loot.map((l, i) => (
                 <li key={`${l.itemId}-${l.at}-${i}`}>
                   <a className={`q${l.quality}`} href={itemLinks(l.itemId).wowhead} target="_blank" rel="noopener noreferrer">[{l.name}]</a>
-                  <span className="muted small"> · {l.character}{l.boss ? ` · ${l.boss}` : ""} · {l.raidName}</span>
+                  <span className="muted small"> · {l.character}{l.boss ? ` · ${l.boss}` : ""} · <Link to={`/groups/${groupId}/raids/${l.raidId}/bilan`}>{l.raidName}</Link></span>
                   {l.bis && <span className="rl-chip ok" style={{ marginLeft: 6 }}>BiS ✓</span>}
+                  {(l.skip || l.excluded) && <span className="rl-chip muted" style={{ marginLeft: 6 }} title="Ne compte pas dans les objets reçus">ne compte pas{l.skip ? ` · ${l.skip}` : ""}</span>}
                 </li>
               ))}
             </ul>
@@ -98,5 +107,52 @@ export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; use
         </div>
       </div>
     </section>
+  );
+}
+
+/** Objets reçus sur la période du groupe (lot I) : total, détail par perso, corrections des officiers (± avec motif). */
+function LootCount({ groupId, userId, count, officer }: { groupId: string; userId: string; count: Sheet["lootCount"]; officer: boolean }) {
+  const qc = useQueryClient();
+  const [charId, setCharId] = useState(count.characters[0]?.characterId ?? "");
+  const [delta, setDelta] = useState(1);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const nameOf = new Map(count.characters.map(c => [c.characterId, c.name]));
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["player-sheet", groupId, userId] }), qc.invalidateQueries({ queryKey: ["attendance", groupId] })]);
+  const run = async (fn: () => Promise<unknown>) => {
+    setError(null);
+    try { await fn(); await refresh(); } catch (e) { setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); }
+  };
+  const add = () => run(async () => { await post(`/groups/${groupId}/loot-corrections`, { characterId: charId, delta, note }); setNote(""); });
+  return (
+    <div>
+      <div className="lc-sum">
+        <span><b className="num">{count.player}</b> objet{count.player > 1 ? "s" : ""} {count.label}</span>
+        {count.characters.length > 1 && <span className="muted small">{count.by === "player" ? "main et alts ensemble : " : "par perso : "}{count.characters.map(c => `${c.name} ${c.own}`).join(" · ")}</span>}
+      </div>
+      {count.corrections.length > 0 && (
+        <ul className="lc-corr" aria-label="Corrections des officiers">
+          {count.corrections.map(c => (
+            <li key={c.id} className={c.inPeriod ? undefined : "out"} title={c.inPeriod ? undefined : "Avant le début de la période : ne compte plus"}>
+              <span className={`d num ${c.delta > 0 ? "plus" : "minus"}`}>{c.delta > 0 ? `+${c.delta}` : c.delta}</span>
+              <span>{nameOf.get(c.characterId) ?? "?"} · {c.note} <span className="muted small">· {c.by}, {day.format(new Date(c.at))}</span></span>
+              {officer && <button type="button" className="btn ghost xs" onClick={() => void run(() => del(`/groups/${groupId}/loot-corrections/${c.id}`))} aria-label={`Retirer la correction ${c.note}`}>Retirer</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {officer && count.characters.length > 0 && (
+        <form className="lc-form" onSubmit={e => { e.preventDefault(); void add(); }}>
+          {count.characters.length > 1 && <div className="fld"><label htmlFor="lc-char">Perso</label>
+            <select id="lc-char" value={charId} onChange={e => setCharId(e.target.value)}>{count.characters.map(c => <option key={c.characterId} value={c.characterId}>{c.name}</option>)}</select></div>}
+          <div className="fld"><label htmlFor="lc-delta">Correction</label>
+            <select id="lc-delta" value={delta} onChange={e => setDelta(Number(e.target.value))}>{[3, 2, 1, -1, -2, -3].map(n => <option key={n} value={n}>{n > 0 ? `+${n}` : n}</option>)}</select></div>
+          <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="lc-note">Motif</label>
+            <input id="lc-note" type="text" maxLength={120} required minLength={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex. objet donné hors addon" /></div>
+          <button type="submit" className="btn sm">Corriger le compte</button>
+        </form>
+      )}
+      {error && <div className="alert error" role="alert">{error}</div>}
+    </div>
   );
 }

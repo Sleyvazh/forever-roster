@@ -27,12 +27,14 @@ export function useSite(): SiteData {
   return q.data ?? guess();
 }
 
-/** Habillage du site : couleur d'accent (classe site-retail), titre de l'onglet et favicon. */
+/** Habillage du site : couleur d'accent (classe site-retail), titre de l'onglet, favicon et icône d'écran d'accueil. */
 export function useApplySite(site: SiteData) {
   useEffect(() => {
     document.documentElement.classList.toggle("site-retail", site.game === "retail");
     if (!document.title || document.title === "Forever Roster" || document.title === "Roster") document.title = site.name;
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (icon) icon.href = site.game === "retail" ? "/favicon-roster.svg" : "/favicon.svg";
+    const touch = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+    if (touch) touch.href = site.game === "retail" ? "/apple-touch-icon-roster.png" : "/apple-touch-icon.png";
   }, [site.game, site.name]);
 }

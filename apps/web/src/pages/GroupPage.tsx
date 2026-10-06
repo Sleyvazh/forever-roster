@@ -237,7 +237,7 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
         );
       })}</tbody>
     </table></div>
-    {sheet && <PlayerSheet key={sheet} groupId={groupId} userId={sheet} onClose={() => setSheet(null)} />}
+    {sheet && <PlayerSheet key={sheet} groupId={groupId} userId={sheet} officer={myRole !== "member"} onClose={() => setSheet(null)} />}
     </div>
   );
 }

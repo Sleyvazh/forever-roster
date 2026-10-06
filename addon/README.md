@@ -11,7 +11,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 | **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul. En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
 | **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
-| **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes** |
+| **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
 | **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), persos à retirer de l'export |
 
@@ -25,6 +25,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 | `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
 | `/fr test` | Raid d'essai : toi et 9 joueurs fictifs, pour tout essayer seul (aussi dans l'onglet En raid, hors groupe) |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
+| `/fr objet <lien>` | Ce que le jeu répond pour un objet (si un nom reste « objet 12345 ») |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
 | `/fr habillage` | Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options) |
@@ -34,7 +35,7 @@ Relevé du raid : pendant un raid prévu sur le site (données du site chargées
 
 Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans réponse ouvre une petite fenêtre « Tu viens ? » (Présent, En retard, Peut-être, Absent) ; un raid déjà répondu s'affiche dans le chat. Il se base sur les dernières données du site collées en jeu.
 
-Habillage : celui de Forever par défaut (cadres, onglets à icône sur le côté, textures du jeu), ou celui du site (fond sombre, liserés dorés, titres en Marcellus SC, onglets en haut, boutons plats). La police est dans `Fonts/` (licence SIL OFL, `Fonts/OFL.txt`). Le changement s'applique au rechargement de l'interface.
+Habillage : celui de Forever par défaut (cadres, onglets à icône sur le côté, textures du jeu), ou celui du site (fond sombre, liserés dorés, titres en Marcellus SC, onglets en haut, boutons plats). La police est dans `Fonts/` (licence SIL OFL, `Fonts/OFL.txt`), le logo (infini et épée, liste des addons, fenêtres, minicarte) dans `Media/Logo.tga`. Le changement s'applique au rechargement de l'interface.
 
 Butin en raid (1.0) : quand tu es maître du butin, ouvrir un corps affiche les objets (épiques par défaut) avec, selon le mode du raid sur le site, **Jets SR** (seuls ceux qui ont réservé lancent `/roll 100`, l'addon ajoute le bonus SR+), **Jets MS / OS** (`/roll 100` puis `/roll 99`), **Jet libre** ou **Conseil** (chacun répond BiS, Upgrade, Off-Spec, Transmo ou Passer ; le conseil vote). Égalité : seuls les ex æquo relancent. **Donner** passe par le butin de maître ; corps fermé, ou **Garder, à remettre** : l'objet va dans les objets à remettre, et **Échanger** ouvre l'échange avec le gagnant et y pose l'objet. Chaque attribution est notée dans le bilan (méthode, réponse, jet).
 
@@ -67,3 +68,5 @@ for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
 lua5.1 addon/tests/format_test.lua   # formats d'échange avec le site
 lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'addon et commandes
 ```
+
+Conseil du butin (1.2) : la fenêtre des votes est un tableau, une ligne par joueur (réponse, objet porté, précision, objets reçus, voix et qui a voté, **Voter** / **Donner**), redimensionnable par le coin en bas à droite (taille gardée d'une session à l'autre). La colonne **Reçus** additionne le compte du site sur la période choisie par les officiers (saison, 30 derniers jours ou X derniers raids ; par joueur ou par perso) et les objets de ce soir pas encore envoyés au site ; ne comptent que la spé principale (soft reserve, jets MS, conseil BiS / Upgrade).

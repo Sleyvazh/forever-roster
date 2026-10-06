@@ -573,3 +573,33 @@ export const lootCatalog = pgTable("loot_catalog", {
   seen: integer("seen").notNull().default(1),
   lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.instance, t.boss, t.itemId] })]);
+
+/**
+ * Compte des objets reçus (lot I) : objet d'un bilan que les officiers sortent du compte (donné par erreur, désenchanté…).
+ * Repéré par l'objet, le prénom en jeu de celui qui l'a reçu et l'heure notée par l'addon : un nouveau collage du bilan le garde.
+ */
+export const lootExclusions = pgTable("loot_exclusions", {
+  raidId: uuid("raid_id").notNull().references(() => raids.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull(),
+  /** Prénom en jeu, en minuscules. */
+  recipient: text("recipient").notNull(),
+  at: integer("at").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.raidId, t.itemId, t.recipient, t.at] })]);
+
+/** Corrections manuelles du compte (± avec motif) sur un perso du groupe ; comptées si elles tombent dans la période. */
+export const lootCorrections = pgTable("loot_corrections", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  delta: smallint("delta").notNull(),
+  note: text("note").notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("loot_corrections_group_idx").on(t.groupId, t.createdAt),
+  check("loot_corrections_delta_chk", sql`${t.delta} between -20 and 20 and ${t.delta} <> 0`),
+]);

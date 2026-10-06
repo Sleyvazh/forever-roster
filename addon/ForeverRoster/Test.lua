@@ -49,7 +49,13 @@ local SR_ITEMS = {
   { id = 17076, name = "Bonereaver's Edge" },          -- jet libre
 }
 local COUNCIL_ITEMS = { { id = 16901, name = "Stormrage Legguards" }, { id = 18817, name = "Crown of Destruction" } }
-local GEAR = { 16847, 16822, 16915, 16866, 16921 } -- objets portés, montrés au conseil
+-- Objets portés, montrés au conseil (nom anglais tant que le jeu ne les a pas renvoyés)
+local GEAR = {
+  { id = 16835, name = "Cenarion Leggings" }, { id = 16847, name = "Giantstalker's Leggings" }, { id = 16822, name = "Nightslayer Pants" },
+  { id = 16915, name = "Netherwind Pants" }, { id = 16867, name = "Legplates of Might" },
+}
+-- Objets reçus sur la saison (comme la ligne N des données du site) : colonne « Reçus » du conseil
+local COUNTS = { Gorrak = 3, Brakka = 1, ["Nyssaël"] = 0, Grumdal = 2, Mirelle = 1, Vesper = 4, ["Sylvaë"] = 2, Ilyra = 1, Thorn = 0 }
 
 -- Jets des joueurs fictifs : { nom, jet, dé lancé (s'il diffère du dé demandé : jet ignoré) }
 local function rollsFor(item, kind, only)
@@ -98,7 +104,7 @@ function T.Council(sid, id)
   for i, r in ipairs(list) do
     after(0.8 + i * 0.6, function()
       -- Sans addon (ou ancienne version) : réponse chuchotée au maître du butin, sans objets portés
-      local gear = r[4] and "" or tostring(GEAR[i % #GEAR + 1])
+      local gear = r[4] and "" or tostring(GEAR[i % #GEAR + 1].id)
       RA.Deliver(r[1], "LA;" .. sid .. ";" .. r[2] .. ";" .. gear .. ";" .. (r[4] and "chuchoté" or (r[3] or "")), "WHISPER")
     end)
   end
@@ -134,9 +140,9 @@ function T.send(msg, dist)
   return true
 end
 -- Objet donné (butin de maître simulé) ; échange simulé
-function T.award(item, winner, method, detail)
+function T.award(item, winner, method, detail, response)
   local log = RA.test.log.loot
-  log[#log + 1] = { who = winner, itemId = item.itemId, method = method, detail = detail }
+  log[#log + 1] = { who = winner, itemId = item.itemId, method = method, detail = detail, response = response }
   say("objet donné à " .. winner .. " par le butin de maître (simulé).")
 end
 function T.trade(entry)
@@ -145,7 +151,7 @@ function T.trade(entry)
     local list = RA.test.handover
     for i = #list, 1, -1 do if list[i] == entry then table.remove(list, i) end end
     local log = RA.test.log.loot
-    log[#log + 1] = { who = entry.winner, itemId = entry.itemId, method = entry.method, detail = entry.detail }
+    log[#log + 1] = { who = entry.winner, itemId = entry.itemId, method = entry.method, detail = entry.detail, response = entry.response }
     ns.print((entry.link or ns.Group.displayLink(entry.itemId, entry.name, entry.quality)) .. " remis à " .. entry.winner .. " (essai).")
     refresh()
   end)
@@ -161,6 +167,9 @@ function RA.StartTest()
   local m = me()
   local members, roster = { m }, { [m] = { role = "DPS", dps = "melee" } }
   for _, p in ipairs(PLAYERS) do members[#members + 1] = p.name roster[p.name] = { role = p.role, dps = p.dps } end
+  local counts = { short = "saison", label = "depuis le début de la saison (essai)", byName = {} }
+  for name, n in pairs(COUNTS) do counts.byName[name] = { names = { name }, n = n } end
+  counts.byName[m] = { names = { m }, n = 2 }
   local raggy = { name = "Ragnaros", encounterId = 672, npcIds = { 11502 }, rows = {
     { label = "Tank principal", names = { "Gorrak" }, text = "" },
     { label = "Fils de la flamme", names = { "Brakka", m }, text = "" },
@@ -178,6 +187,7 @@ function RA.StartTest()
     data = {
       entry = { raid = { id = "essai", name = "Raid d'essai · Molten Core", time = time(), loot = "softres" }, group = { name = "Groupe d'essai" } },
       loot = "softres", consumables = CONSUMABLES, bosses = { raggy, domo }, council = { m, "Gorrak", "Nyssaël" }, roster = roster,
+      counts = counts,
       reserves = {
         [17063] = { { name = m, bonus = 0 }, { name = "Gorrak", bonus = 20 }, { name = "Vesper", bonus = 10 } },
         [18815] = { { name = "Nyssaël", bonus = 10 }, { name = "Ilyra", bonus = 10 } },
@@ -185,9 +195,8 @@ function RA.StartTest()
     },
   }
   -- Objets demandés au jeu dès maintenant : leurs liens seront prêts à l'ouverture du corps
-  if GetItemInfo then
-    for _, list in ipairs({ SR_ITEMS, COUNCIL_ITEMS }) do for _, it in ipairs(list) do GetItemInfo(it.id) end end
-    for _, id in ipairs(GEAR) do GetItemInfo(id) end
+  for _, list in ipairs({ SR_ITEMS, COUNCIL_ITEMS, GEAR }) do
+    for _, it in ipairs(list) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
   end
   ns.print("raid d'essai lancé : 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs.")
   RA.ShowTest()

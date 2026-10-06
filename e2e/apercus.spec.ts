@@ -365,6 +365,64 @@ test("aperçus du lot G", async ({ page }) => {
   await page.screenshot({ path: `${OUT}/apercu-preparation-mobile.png`, fullPage: true });
 });
 
+/** Aperçus du lot I (mêmes données) : compte des objets reçus (réglages, bilan du raid, fiche du joueur, présence). */
+test("aperçus du lot I", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await roleIcons(page);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
+  const group = (await db.query("SELECT group_id FROM group_members WHERE user_id = $1 ORDER BY joined_at LIMIT 1", [me])).rows[0].group_id as string;
+  // Dernier raid relevé : butin attribué de plusieurs façons (conseil, jet OS, soft reserve, journal)
+  const last = (await db.query("SELECT l.raid_id, extract(epoch from l.started_at)::int AS start FROM raid_logs l JOIN raids r ON r.id = l.raid_id WHERE r.group_id = $1 ORDER BY r.scheduled_at DESC LIMIT 1", [group])).rows[0] as { raid_id: string; start: number };
+  const t = last.start;
+  await db.query("UPDATE raid_logs SET loot = $2 WHERE raid_id = $1", [last.raid_id, JSON.stringify([
+    { itemId: 19865, name: "Gorrak", at: t + 1800, boss: "Bloodlord Mandokir", method: "council", response: "bis", detail: "2 voix" },
+    { itemId: 19863, name: "Vesper", at: t + 2400, boss: "High Priestess Jeklik", method: "roll", detail: "OS 45" },
+    { itemId: 19866, name: "Thalwen", at: t + 3000, boss: "Hakkar", method: "sr", detail: "72 +10 = 82" },
+    { itemId: 19867, name: "Sylvaë", at: t + 3300, boss: "Hakkar" },
+  ])]);
+  await db.end();
+
+  await page.goto("/login");
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+
+  // 1. Administration → Butin : période du compte
+  await page.goto(`/groups/${group}/admin`);
+  await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
+  await page.selectOption("#lt-cm", "raids");
+  await page.selectOption("#lt-cr", "5");
+  await expect(page.getByText("Compte actuel : objets reçus sur les 5 derniers raids")).toBeVisible();
+  await page.locator("section[aria-labelledby=lt-set]").screenshot({ path: `${OUT}/apercu-objets-recus-reglages.png` });
+
+  // 2. Bilan du raid : ce qui compte, objet sorti du compte par un officier
+  await page.goto(`/groups/${group}/raids/${last.raid_id}/bilan`);
+  const row = page.locator(".rl-table tr", { hasText: "Sylvaë" }).first();
+  await row.getByRole("button", { name: "Ne pas compter" }).click();
+  await expect(row.getByRole("button", { name: "Compter" })).toBeVisible();
+  await page.locator("section[aria-labelledby=rl-title]").screenshot({ path: `${OUT}/apercu-bilan-compte.png` });
+
+  // 3. Fiche du joueur : compte et correction avec motif
+  await page.goto(`/groups/${group}/membres`);
+  await page.getByRole("button", { name: "Gorrak" }).click();
+  await page.selectOption("#lc-delta", "1");
+  await page.fill("#lc-note", "Objet donné hors addon (échange)");
+  await page.getByRole("button", { name: "Corriger le compte" }).click();
+  await expect(page.locator(".lc-corr")).toContainText("Objet donné hors addon");
+  await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-compte.png` });
+
+  // 4. Présence & butin : colonne des objets reçus sur la période
+  await page.goto(`/groups/${group}/presence`);
+  await expect(page.locator("table.rl-att")).toContainText("Objets · 5 raids");
+  await page.locator("table.rl-att").screenshot({ path: `${OUT}/apercu-presence-objets.png` });
+});
+
 /**
  * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
  * Sortie : test-results/tour/.

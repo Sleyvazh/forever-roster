@@ -17,9 +17,19 @@ function C.Load(text)
   return true
 end
 
+-- Une compo s'efface d'elle-même 12 h après l'heure du raid (comme l'annonce Discord) ; sans date, avec « Effacer »
+C.KEEP = 12 * 3600
 function C.Get()
   local c = ForeverRosterDB and ForeverRosterDB.compo
+  if c and c.raid and (c.raid.time or 0) > 0 and time() > c.raid.time + C.KEEP then
+    ForeverRosterDB.compo = nil
+    return nil, {}
+  end
   return c and c.raid, c and c.members or {}
+end
+
+function C.Clear()
+  if ForeverRosterDB then ForeverRosterDB.compo = nil end
 end
 
 -- Groupe actuel : nom en minuscules → { index, subgroup, online }

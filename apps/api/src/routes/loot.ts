@@ -1,14 +1,15 @@
-import { instanceKey, LOOT_MODES, lootSettings } from "@forever/game-data";
+import { gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings } from "@forever/game-data";
 import { and, asc, count, desc, eq, gte, ilike } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, gameItems, groups, lootCatalog, raids, softReserves } from "../db/schema";
+import { characters, gameItems, groupCharacters, groups, lootCatalog, lootCorrections, lootExclusions, raidLogs, raids, softReserves, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { bus } from "../lib/events";
 import { ensureInGroup } from "../lib/group-characters";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { groupLootSettings, softReserveView, srClosesAt } from "../lib/loot";
+import { groupLootCounts, seasonStartDate } from "../lib/loot-count";
 import { currentUser, requireAuth } from "../lib/session";
 import { likeContains } from "./gamedata";
 
@@ -19,6 +20,9 @@ const rid = gid.extend({ raidId: z.uuid() });
 const settingsInput = z.object({
   srCount: z.int().min(1).max(5), srPlus: z.boolean(), srPlusStep: z.int().min(1).max(50),
   srCloseMinutes: z.int().min(0).max(24 * 60), mainsFirst: z.boolean(),
+  // Lot I : compte des objets reçus
+  countMode: z.enum(LOOT_COUNT_MODES), countRaids: z.int().min(1).max(50), countBy: z.enum(LOOT_COUNT_BY),
+  seasonStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(d => !!seasonStartDate(d), "Date de début de saison invalide.").nullable(),
 }).partial();
 
 export async function lootRoutes(app: FastifyInstance) {
@@ -42,6 +46,74 @@ export async function lootRoutes(app: FastifyInstance) {
     await audit(db, req, "group_loot_settings", { userId: u.id, groupId: id, meta: { ...body } });
     bus.group({ t: "group", g: id });
     return { settings };
+  });
+
+  /* ---------- Compte des objets reçus (lot I) : visible de tout le groupe, corrections par les officiers ---------- */
+
+  app.get("/:id/loot-counts", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await membership(db, id, u.id);
+    const { summary, rows } = await groupLootCounts(db, id);
+    const corrections = await db.select({
+      id: lootCorrections.id, characterId: lootCorrections.characterId, name: characters.name, userId: characters.userId,
+      delta: lootCorrections.delta, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt,
+    }).from(lootCorrections).innerJoin(characters, eq(characters.id, lootCorrections.characterId))
+      .where(and(eq(lootCorrections.groupId, id), ...(summary.since ? [gte(lootCorrections.createdAt, summary.since)] : [])))
+      .orderBy(desc(lootCorrections.createdAt)).limit(200);
+    return { summary, rows, corrections };
+  });
+
+  /** Officiers : +n / −n sur le compte d'un perso du groupe, avec un motif (daté et signé). */
+  app.post("/:id/loot-corrections", async (req, reply) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const body = parse(z.object({
+      characterId: z.uuid(), delta: z.int().min(-20).max(20).refine(n => n !== 0, "La correction ne peut pas être 0."),
+      note: z.string().trim().min(2, "Indique le motif de la correction.").max(120),
+    }), req.body);
+    const [c] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
+      .where(and(eq(groupCharacters.groupId, id), eq(groupCharacters.characterId, body.characterId)));
+    if (!c) throw badRequest("Ce perso ne joue pas dans ce groupe.");
+    const [me] = await db.select({ name: users.displayName }).from(users).where(eq(users.id, u.id));
+    const [row] = await db.insert(lootCorrections).values({ groupId: id, characterId: c.id, delta: body.delta, note: body.note, createdBy: u.id, createdByName: me?.name ?? "?" }).returning({ id: lootCorrections.id });
+    await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: id, meta: { characterId: c.id, delta: body.delta } });
+    bus.group({ t: "group", g: id });
+    return reply.code(201).send({ correction: { id: row!.id } });
+  });
+
+  app.delete("/:id/loot-corrections/:correctionId", async (req) => {
+    const u = currentUser(req);
+    const p = parse(gid.extend({ correctionId: z.uuid() }), req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const gone = await db.delete(lootCorrections).where(and(eq(lootCorrections.id, p.correctionId), eq(lootCorrections.groupId, p.id))).returning({ id: lootCorrections.id });
+    if (!gone.length) throw notFound("Correction introuvable.");
+    await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: p.id, meta: { removed: p.correctionId } });
+    bus.group({ t: "group", g: p.id });
+    return { ok: true };
+  });
+
+  /** Officiers : sortir un objet du bilan du compte (ou l'y remettre). Repéré par objet, receveur et heure. */
+  app.put("/:id/raids/:raidId/loot-exclusions", async (req) => {
+    const u = currentUser(req);
+    const p = parse(rid, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const body = parse(z.object({ itemId: z.int().min(1), name: z.string().trim().min(1).max(40), at: z.int().min(0), excluded: z.boolean() }), req.body);
+    const r = await loadRaid(p.id, p.raidId);
+    const [log] = await db.select({ loot: raidLogs.loot }).from(raidLogs).where(eq(raidLogs.raidId, r.id));
+    const recipient = gameName(body.name).toLowerCase();
+    if (!log?.loot.some(l => l.itemId === body.itemId && l.at === body.at && gameName(l.name).toLowerCase() === recipient)) throw notFound("Objet introuvable dans le bilan de ce raid.");
+    const k = and(eq(lootExclusions.raidId, r.id), eq(lootExclusions.itemId, body.itemId), eq(lootExclusions.recipient, recipient), eq(lootExclusions.at, body.at));
+    if (body.excluded) {
+      const [me] = await db.select({ name: users.displayName }).from(users).where(eq(users.id, u.id));
+      await db.insert(lootExclusions).values({ raidId: r.id, itemId: body.itemId, recipient, at: body.at, createdBy: u.id, createdByName: me?.name ?? "?" }).onConflictDoNothing();
+    } else {
+      await db.delete(lootExclusions).where(k);
+    }
+    await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: p.id, meta: { raidId: r.id, itemId: body.itemId, excluded: body.excluded } });
+    bus.group({ t: "raid", g: p.id, r: r.id });
+    return { excluded: body.excluded };
   });
 
   async function loadRaid(groupId: string, raidId: string) {

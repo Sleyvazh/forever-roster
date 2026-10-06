@@ -439,7 +439,7 @@ function RA.Give(item, winner, method, response, detail)
   local link = sayLink(item)
   local idx = stillThere(item) and candidate(item.slot, winner)
   if RA.test then -- raid d'essai : le corps est « ouvert », l'objet est donné (rien n'est noté pour le site)
-    RA.test.award(item, winner, method, detail)
+    RA.test.award(item, winner, method, detail, response)
   elseif idx and GiveMasterLoot then
     ns.Recorder.Award(item.itemId, winner, method, response, detail)
     GiveMasterLoot(item.slot, idx)
@@ -558,7 +558,9 @@ function RA.StartCouncil(item)
   local sid = tostring(time() % 100000) .. tostring(item.itemId)
   RA.session = { item = item, kind = "council", sid = sid, rolls = {}, at = time() }
   RA.councils[sid] = { itemId = item.itemId, link = item.link, name = item.name, quality = item.quality, ml = me(), cands = {}, votes = {}, at = time() }
-  send("LO;" .. sid .. ";" .. item.itemId)
+  -- Nom de l'objet joint (1.2) : affiché chez les autres tant que leur jeu ne connaît pas encore l'objet
+  local name = item.name or (item.link and item.link:match("|h%[(.-)%]|h")) or ""
+  send("LO;" .. sid .. ";" .. item.itemId .. ";" .. ns.Format.clean(name):sub(1, 80))
   RA.Say(sayLink(item) .. " : conseil du butin · réponds dans la fenêtre de l'addon (ou chuchote bis, up, os au maître du butin)")
   if RA.ShowCouncil then RA.ShowCouncil(sid) end
   refresh()
@@ -566,6 +568,7 @@ end
 handlers.LO = function(sender, f)
   local sid, id = f[2], tonumber(f[3])
   if not sid or not id then return end
+  if (f[4] or "") ~= "" and not ns.Group.names[id] then ns.Group.names[id] = f[4] end
   RA.asks[#RA.asks + 1] = { sid = sid, itemId = id, ml = sender, at = time() }
   if RA.IsCouncil(sender) then
     RA.councils[sid] = RA.councils[sid] or { itemId = id, ml = sender, cands = {}, votes = {}, at = time() }
@@ -581,7 +584,7 @@ local SLOTS = {
   INVTYPE_WEAPONOFFHAND = { 17 }, INVTYPE_HOLDABLE = { 17 }, INVTYPE_RANGED = { 18 }, INVTYPE_THROWN = { 18 }, INVTYPE_RANGEDRIGHT = { 18 }, INVTYPE_RELIC = { 18 },
 }
 function RA.Equipped(id)
-  local loc = GetItemInfoInstant and select(4, GetItemInfoInstant(id))
+  local loc = select(4, ns.ItemInfoInstant(id))
   local out = {}
   for _, slot in ipairs(SLOTS[loc or ""] or {}) do local e = GetInventoryItemID and GetInventoryItemID("player", slot) if e then out[#out + 1] = e end end
   return out

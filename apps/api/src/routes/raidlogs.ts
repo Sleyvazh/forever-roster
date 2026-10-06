@@ -1,12 +1,13 @@
-import { ATTENDED, attendanceStatus, gameName, GEAR_SLOTS, gearStats, LOOT_METHODS, LOOT_RESPONSES, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
+import { ATTENDED, attendanceStatus, gameName, GEAR_SLOTS, gearStats, LOOT_METHODS, LOOT_RESPONSES, lootSkipReason, type AttendanceStatus, type SignupStatus } from "@forever/game-data";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, gameItems, groupCharacters as gc, groupMembers, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
+import { characters, gameItems, groupCharacters as gc, groupMembers, lootCorrections, lootExclusions, raidLogs, raids, raidSignups, users, type Gear } from "../db/schema";
 import { bus } from "../lib/events";
 import { membership } from "../lib/groups";
 import { learnLoot } from "../lib/loot";
+import { exclusionKey, groupLootCounts, raidExclusions } from "../lib/loot-count";
 import { sheetAbsences } from "./absences";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -81,14 +82,17 @@ export async function raidLogView(db: Db, raid: { id: string; groupId: string; s
   const ids = [...new Set(log.loot.map(l => l.itemId))];
   const items = ids.length ? await db.select({ id: gameItems.id, name: gameItems.name, quality: gameItems.quality }).from(gameItems).where(inArray(gameItems.id, ids)) : [];
   const itemOf = new Map(items.map(i => [i.id, i]));
+  const excluded = await raidExclusions(db, raid.id);
   const loot = log.loot.map(l => {
     const c = pick(byName, l.name, signedUp);
     const it = itemOf.get(l.itemId);
     return {
       itemId: l.itemId, itemName: it?.name ?? `Objet ${l.itemId}`, quality: it?.quality ?? 4, boss: l.boss, at: l.at,
       method: l.method ?? null, response: l.response ?? null, detail: l.detail ?? "",
-      name: c?.name ?? l.name, characterId: c?.id ?? null, cls: c?.cls ?? "",
+      name: c?.name ?? l.name, gameName: l.name, characterId: c?.id ?? null, cls: c?.cls ?? "",
       bis: !!c && Object.values(c.gear ?? {}).some(g => g?.bisId === l.itemId),
+      // Lot I : compte des objets reçus (spé principale), sauf exclusion par un officier
+      skip: lootSkipReason(l), excluded: excluded.has(exclusionKey(raid.id, l.itemId, l.name, l.at)),
     };
   });
   return { recorder: log.recorder, startedAt: log.startedAt, endedAt: log.endedAt, updatedAt: log.updatedAt, attendance, loot };
@@ -156,6 +160,8 @@ export async function raidLogRoutes(app: FastifyInstance) {
       .from(raidSignups).where(inArray(raidSignups.raidId, recent.map(l => l.raidId))) : [];
     const signupOf = new Map(signups.filter(s => s.characterId).map(s => [`${s.raidId}:${s.characterId}`, s.status as SignupStatus]));
 
+    const counts = await groupLootCounts(db, id);
+    const countOf = new Map(counts.rows.map(r => [r.characterId, r]));
     const itemIds = [...new Set(logs.flatMap(l => l.loot.map(x => x.itemId)))];
     const items = itemIds.length ? await db.select({ id: gameItems.id, name: gameItems.name, quality: gameItems.quality }).from(gameItems).where(inArray(gameItems.id, itemIds)) : [];
     const itemOf = new Map(items.map(i => [i.id, i]));
@@ -173,12 +179,13 @@ export async function raidLogRoutes(app: FastifyInstance) {
         id: c.id, name: c.name, cls: c.cls, owner: c.owner, userId: c.userId, cells,
         attended: cells.filter(s => s && ATTENDED.includes(s)).length,
         loot: got.length,
+        counted: countOf.get(c.id)?.count ?? 0,
         lastItem: last ? { id: last.itemId, name: itemOf.get(last.itemId)?.name ?? `Objet ${last.itemId}`, quality: itemOf.get(last.itemId)?.quality ?? 4, raidName: last.raidName } : null,
       };
-    }).filter(c => c.cells.some(s => s) || c.loot > 0)
+    }).filter(c => c.cells.some(s => s) || c.loot > 0 || c.counted !== 0)
       .sort((a, b) => b.attended - a.attended || a.name.localeCompare(b.name));
 
-    return { raids: recent.map(l => ({ id: l.raidId, name: l.name, scheduledAt: l.scheduledAt ?? l.startedAt })), characters: out };
+    return { raids: recent.map(l => ({ id: l.raidId, name: l.name, scheduledAt: l.scheduledAt ?? l.startedAt })), characters: out, count: counts.summary };
   });
 
   /**
@@ -218,6 +225,13 @@ export async function raidLogRoutes(app: FastifyInstance) {
       return { raidId: l.raidId, name: l.name, scheduledAt: l.scheduledAt ?? l.startedAt, status };
     });
     const got = logs.flatMap(l => l.loot.filter(x => keys.has(key(x.name))).map(x => ({ ...x, raidName: l.name, raidId: l.raidId }))).sort((a, b) => b.at - a.at).slice(0, 12);
+    const excl = got.length ? new Set((await db.select().from(lootExclusions).where(inArray(lootExclusions.raidId, [...new Set(got.map(g => g.raidId))])))
+      .map(e => exclusionKey(e.raidId, e.itemId, e.recipient, e.at))) : new Set<string>();
+    const counts = await groupLootCounts(db, p.id);
+    const myCounts = counts.rows.filter(r => r.userId === p.userId);
+    const corrections = myCounts.length ? await db.select({ id: lootCorrections.id, characterId: lootCorrections.characterId, delta: lootCorrections.delta, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt })
+      .from(lootCorrections).where(and(eq(lootCorrections.groupId, p.id), inArray(lootCorrections.characterId, myCounts.map(r => r.characterId))))
+      .orderBy(desc(lootCorrections.createdAt)).limit(30) : [];
     const items = got.length ? await db.select({ id: gameItems.id, name: gameItems.name, quality: gameItems.quality }).from(gameItems).where(inArray(gameItems.id, [...new Set(got.map(g => g.itemId))])) : [];
     const itemOf = new Map(items.map(i => [i.id, i]));
     const bisOf = new Set(mine.flatMap(r => Object.values(r.c.gear ?? {}).flatMap(g => (g?.bisId ? [`${key(r.c.name)}:${g.bisId}`] : []))));
@@ -230,7 +244,15 @@ export async function raidLogRoutes(app: FastifyInstance) {
       // Absences déclarées à venir (lot F) : le motif selon le choix du joueur (officiers ou tout le groupe)
       absences: await sheetAbsences(db, p.userId, { id: u.id, officer: myRole !== "member" }),
       loot: got.map(g => ({ itemId: g.itemId, name: itemOf.get(g.itemId)?.name ?? `Objet ${g.itemId}`, quality: itemOf.get(g.itemId)?.quality ?? 4, character: g.name, boss: g.boss,
-        raidName: g.raidName, raidId: g.raidId, at: g.at, bis: bisOf.has(`${key(g.name)}:${g.itemId}`) })),
+        raidName: g.raidName, raidId: g.raidId, at: g.at, bis: bisOf.has(`${key(g.name)}:${g.itemId}`),
+        skip: lootSkipReason(g), excluded: excl.has(exclusionKey(g.raidId, g.itemId, g.name, g.at)) })),
+      // Lot I : objets reçus sur la période du groupe (par joueur ou par perso), corrections des officiers
+      lootCount: {
+        ...counts.summary,
+        player: myCounts[0]?.player ?? 0,
+        characters: myCounts.map(r => ({ characterId: r.characterId, name: r.name, own: r.own })),
+        corrections: corrections.map(c => ({ ...c, inPeriod: !counts.summary.since || c.at >= counts.summary.since })),
+      },
     };
   });
 }

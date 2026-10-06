@@ -183,6 +183,13 @@
       "when": 1791273542241,
       "tag": "0025_sites_game",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791277213663,
+      "tag": "0026_loot_counts",
+      "breakpoints": true
     }
   ]
 }
