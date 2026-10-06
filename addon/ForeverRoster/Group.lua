@@ -209,6 +209,15 @@ local function linkFor(itemId, fallback)
 end
 G.linkFor = linkFor
 
+-- Lien à afficher dans les fenêtres de l'addon (jamais envoyé dans le chat) : celui du jeu s'il est connu, sinon un lien
+-- construit (couleur de qualité, infobulle au survol) en attendant que le jeu reçoive l'objet (GET_ITEM_INFO_RECEIVED)
+local QCOLOR = { [0] = "ff9d9d9d", [1] = "ffffffff", [2] = "ff1eff00", [3] = "ff0070dd", [4] = "ffa335ee", [5] = "ffff8000" }
+function G.displayLink(itemId, name, quality)
+  local _, link = GetItemInfo and GetItemInfo(itemId)
+  if link then return link end
+  return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or ("objet " .. itemId)) .. "]|h|r"
+end
+
 -- Objets des sacs : patrons suivis / BiS, et patrons non suivis (pour les marquer « recherché »)
 local function bagItems()
   local C = C_Container

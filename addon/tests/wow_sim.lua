@@ -388,7 +388,7 @@ local rank, tied = RA.Ranking()
 assert(not tied and rank[1].name == "Vesper" and rank[1].total == 85 and rank[2].total == 81 and RA.session.ignored.Bob == 99, "classement SR (premier jet seul, Bob ignoré)")
 RA.ShowLoot()
 RA.AwardSession()
-assert(said[#said]:find("→ Vesper %(85%)") and #RA.Handover() == 1 and RA.Handover()[1].winner == "Vesper", "objet attribué, à remettre (corps fermé)")
+assert(said[#said]:find("pour Vesper %(85%)") and #RA.Handover() == 1 and RA.Handover()[1].winner == "Vesper", "objet attribué, à remettre (corps fermé)")
 fire("CHAT_MSG_LOOT", "Vous recevez le butin : |cffa335ee|Hitem:19865::::::::60:::::|h[Band of Accuria]|h|r.", "Tournicoti", "", "", "Tournicoti")
 COUNTS[19865] = 1
 assert(RA.Trade(RA.Handover()[1]) and traded == "raid3", "échange avec le gagnant")
@@ -422,7 +422,7 @@ RA.Vote(sid, "Gorrak")
 assert(RA.Tally(sid).Gorrak == 1, "vote compté")
 RA.ShowCouncil(sid)
 RA.AwardCouncil(sid, "Gorrak")
-assert(said[#said]:find("→ Gorrak %(1 voix%)") and RA.Handover()[1].winner == "Gorrak" and RA.Handover()[1].method == "council", "conseil : objet attribué")
+assert(said[#said]:find("pour Gorrak %(1 voix%)") and RA.Handover()[1].winner == "Gorrak" and RA.Handover()[1].method == "council", "conseil : objet attribué")
 -- Onglet En raid et commandes, sans erreur
 local beforeG = errors()
 run("enraid")
@@ -463,11 +463,16 @@ assert(sw:IsShown() and sw.mine:GetText():find("Fils de la flamme"), "fiche d'es
 fire("PLAYER_REGEN_DISABLED")
 assert(not sw:IsShown(), "fiche fermée au combat")
 TARGET = nil
+-- Objet pas encore reçu du serveur : lien construit (nom connu, couleur épique), jamais « [objet N] »
+local realGetItemInfo = GetItemInfo
+GetItemInfo = function() return nil end
+assert(ns.Group.displayLink(17063, "Band of Accuria", 4) == "|cffa335ee|Hitem:17063|h[Band of Accuria]|h|r", "lien d'affichage construit")
+GetItemInfo = realGetItemInfo
 ns.Test.OpenCorpse("softres")
 assert(#RA.items == 4 and RA.Current().loot == "softres", "corps d'essai (soft reserve)")
 -- SR avec bonus : mon vrai jet compte, Sylvaë (sans réservation) est ignorée
 RA.StartRoll(RA.items[1], "sr")
-fire("CHAT_MSG_SYSTEM", "Tournicoti obtient un 90 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Tournicoti Tournicoton obtient un 90 (1-100).") -- nom de famille de Forever dans le message du jet
 local tr = RA.Ranking()
 assert(tr[1].name == "Tournicoti" and tr[2].total == 68 and tr[3].total == 61 and RA.session.ignored["Sylvaë"], "jets SR simulés")
 RA.AwardSession()

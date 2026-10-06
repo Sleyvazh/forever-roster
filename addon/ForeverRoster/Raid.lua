@@ -9,7 +9,8 @@ ns.Raid = RA
 local PREFIX = "FRoster"
 local TRADE_WINDOW = 2 * 3600
 
-local function short(n) return (tostring(n or ""):match("^[^%-]+")) or "" end
+-- Prénom seul : sans royaume (« -Royaume ») ni nom de famille de Forever (« John Poutre » → « John »)
+local function short(n) return (tostring(n or ""):match("^[^%-%s]+")) or "" end
 local function me() return UnitName("player") or "?" end
 local function channel()
   if RA.test then return "RAID" end
@@ -17,6 +18,12 @@ local function channel()
 end
 local function refresh() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end if RA.RefreshWindows then RA.RefreshWindows() end end
 local function linkFor(id) return ns.Group.linkFor(id) end
+-- Lien d'un objet pour une annonce : le vrai lien ; raid d'essai (annonce dans ta fenêtre seulement) : lien d'affichage
+local function sayLink(item)
+  if item.link then return item.link end
+  if RA.test then return ns.Group.displayLink(item.itemId, item.name, item.quality) end
+  return linkFor(item.itemId)
+end
 local function db(key) ForeverRosterDB[key] = ForeverRosterDB[key] or {} return ForeverRosterDB[key] end
 -- Comparaison de noms (boss) : casse, accents et ponctuation ignorés
 local function norm(s)
@@ -378,7 +385,7 @@ function RA.StartRoll(item, kind, only)
     eligible = e
   end
   RA.session = { item = item, kind = kind, max = kind == "os" and 99 or 100, eligible = eligible, rolls = {}, ignored = {}, at = time(), reroll = only ~= nil }
-  local link = item.link or linkFor(item.itemId)
+  local link = sayLink(item)
   if kind == "sr" then
     local names = {}
     for n, b in pairs(eligible) do names[#names + 1] = n .. (b > 0 and (" (+" .. b .. ")") or "") end
@@ -429,7 +436,7 @@ local function stillThere(item)
 end
 -- Donner l'objet : par le butin de maître si le corps est ouvert, sinon il part dans les objets à remettre
 function RA.Give(item, winner, method, response, detail)
-  local link = item.link or linkFor(item.itemId)
+  local link = sayLink(item)
   local idx = stillThere(item) and candidate(item.slot, winner)
   if RA.test then -- raid d'essai : le corps est « ouvert », l'objet est donné (rien n'est noté pour le site)
     RA.test.award(item, winner, method, detail)
@@ -440,7 +447,7 @@ function RA.Give(item, winner, method, response, detail)
     ns.Recorder.Award(item.itemId, winner, method, response, detail)
     if winner ~= me() then RA.AddHandover(item, winner, method, response, detail) end
   end
-  RA.Say(link .. " → " .. winner .. (detail and detail ~= "" and (" (" .. detail .. ")") or ""))
+  RA.Say(link .. " pour " .. winner .. (detail and detail ~= "" and (" (" .. detail .. ")") or ""))
   for i = #RA.items, 1, -1 do if RA.items[i] == item then table.remove(RA.items, i) end end
   if RA.session and RA.session.item == item then RA.session = nil end
   refresh()
@@ -473,7 +480,7 @@ end
 local function handoverList() return RA.test and RA.test.handover or db("handover") end
 function RA.AddHandover(item, winner, method, response, detail)
   local list = handoverList()
-  list[#list + 1] = { itemId = item.itemId, link = item.link, winner = winner, method = method, response = response, detail = detail, at = time() }
+  list[#list + 1] = { itemId = item.itemId, link = item.link, name = item.name, quality = item.quality, winner = winner, method = method, response = response, detail = detail, at = time() }
 end
 function RA.Handover()
   local list, now = handoverList(), time()
@@ -518,7 +525,7 @@ ns.on("TRADE_CLOSED", function()
       local list = db("handover")
       for i = #list, 1, -1 do if list[i] == e then table.remove(list, i) end end
       ns.Recorder.Reassign(e.itemId, me(), e.winner, e.method, e.detail)
-      ns.print((e.link or linkFor(e.itemId)) .. " remis à " .. e.winner .. ".")
+      ns.print((e.link or ns.Group.displayLink(e.itemId)) .. " remis à " .. e.winner .. ".")
     end
     refresh()
   end)
@@ -550,9 +557,9 @@ end
 function RA.StartCouncil(item)
   local sid = tostring(time() % 100000) .. tostring(item.itemId)
   RA.session = { item = item, kind = "council", sid = sid, rolls = {}, at = time() }
-  RA.councils[sid] = { itemId = item.itemId, link = item.link, ml = me(), cands = {}, votes = {}, at = time() }
+  RA.councils[sid] = { itemId = item.itemId, link = item.link, name = item.name, quality = item.quality, ml = me(), cands = {}, votes = {}, at = time() }
   send("LO;" .. sid .. ";" .. item.itemId)
-  RA.Say((item.link or linkFor(item.itemId)) .. " : conseil du butin · réponds dans la fenêtre de l'addon (ou chuchote bis, up, os au maître du butin)")
+  RA.Say(sayLink(item) .. " : conseil du butin · réponds dans la fenêtre de l'addon (ou chuchote bis, up, os au maître du butin)")
   if RA.ShowCouncil then RA.ShowCouncil(sid) end
   refresh()
 end
@@ -617,7 +624,7 @@ end
 function RA.Tally(sid)
   local c = RA.councils[sid]
   local n, by = {}, {}
-  for voter, cand in pairs(c and c.votes or {}) do n[cand] = (n[cand] or 0) + 1 by[#by + 1] = voter .. " → " .. cand end
+  for voter, cand in pairs(c and c.votes or {}) do n[cand] = (n[cand] or 0) + 1 by[#by + 1] = voter .. " pour " .. cand end
   table.sort(by)
   return n, by
 end

@@ -6,7 +6,11 @@ local U = ns.UI
 local K = U.kit
 
 local GOLD, GREY, GREEN, RED, ORANGE, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cffff6b5e", "|cfff0b43c", "|cff6fb7ff"
-local function linkFor(id, link) return link or ns.Group.linkFor(id) end
+-- Gagnant du jet : l'étoile des marqueurs de raid (le caractère étoile n'existe pas dans la police du jeu)
+local STAR = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:0|t "
+-- Lien à afficher : le vrai lien de l'objet, sinon celui construit en attendant que le jeu reçoive l'objet
+local function linkFor(id, link, name, quality) return link or ns.Group.displayLink(id, name, quality) end
+local function itemLink(it) return linkFor(it.itemId, it.link, it.name, it.quality) end
 local function names(list, max)
   if #list == 0 then return nil end
   local shown = {}
@@ -51,7 +55,7 @@ function RA.RefreshLoot()
   if #RA.items == 0 then L.Add(GREY .. (RA.test and "Aucun objet. Raid d'essai : « Ouvrir le corps » dans le panneau d'essai." or "Aucun objet. Ouvre un corps en maître du butin, ou /fr butin puis Maj+clic sur un objet.") .. "|r") end
   for _, it in ipairs(RA.items) do
     local res, list = RA.ReservesOf(it.itemId)
-    local text = linkFor(it.itemId, it.link) .. ((it.slot or it.test) and "" or (GREY .. "  (dans les sacs)|r"))
+    local text = itemLink(it) .. ((it.slot or it.test) and "" or (GREY .. "  (dans les sacs)|r"))
     local buttons = {}
     if mode == "softres" and res then
       local who = {}
@@ -68,16 +72,16 @@ function RA.RefreshLoot()
   end
   if s and s.kind == "council" then
     L.Header("Conseil en cours")
-    L.Add(linkFor(s.item.itemId, s.item.link), { { "Fenêtre du conseil", 170, function() RA.ShowCouncil(s.sid) end }, { "Annuler", 90, function() RA.session = nil RA.RefreshWindows() end } })
+    L.Add(itemLink(s.item), { { "Fenêtre du conseil", 170, function() RA.ShowCouncil(s.sid) end }, { "Annuler", 90, function() RA.session = nil RA.RefreshWindows() end } })
   elseif s then
     L.Header("Jets · " .. (KIND[s.kind] or s.kind))
     local list, tied = RA.Ranking(s)
-    L.Add(linkFor(s.item.itemId, s.item.link) .. GREY .. "  /roll " .. s.max .. (s.kind == "sr" and ", bonus SR+ ajouté" or "") .. "|r")
-    if #list == 0 then L.Add(GREY .. "En attente des jets…|r") end
+    L.Add(itemLink(s.item) .. GREY .. "  /roll " .. s.max .. (s.kind == "sr" and ", bonus SR+ ajouté" or "") .. "|r")
+    if #list == 0 then L.Add(GREY .. "En attente des jets...|r") end
     for i, x in ipairs(list) do
-      L.Add((i == 1 and not tied and (GOLD .. "★ ") or "") .. x.name .. "|r  " .. x.roll .. (s.kind == "sr" and (GREY .. " +" .. x.bonus .. " = |r" .. x.total) or ""))
+      L.Add((i == 1 and not tied and (STAR .. GOLD) or "") .. x.name .. "|r  " .. x.roll .. (s.kind == "sr" and (GREY .. " +" .. x.bonus .. " = |r" .. x.total) or ""))
     end
-    for n, r in pairs(s.ignored) do L.Add(GREY .. n .. "  " .. r .. " — pas de réservation, ignoré|r") end
+    for n, r in pairs(s.ignored) do L.Add(GREY .. n .. "  " .. r .. " : pas de réservation, ignoré|r") end
     local buttons = {}
     if #list > 0 and not tied then
       local w = list[1].name
@@ -148,7 +152,7 @@ function RA.RefreshCouncil()
   end
   local isML = c.ml == UnitName("player")
   local votes, by = RA.Tally(councilWin.sid)
-  councilWin.hintText:SetText(linkFor(c.itemId, c.link) .. GREY .. "  · maître du butin : " .. c.ml .. (isML and " (toi)" or "") .. "|r")
+  councilWin.hintText:SetText(linkFor(c.itemId, c.link, c.name, c.quality) .. GREY .. "  · maître du butin : " .. c.ml .. (isML and " (toi)" or "") .. "|r")
   local log, got = RA.test and RA.test.log or ns.Recorder.Current(), {}
   for _, l in ipairs(log and log.loot or {}) do got[l.who] = (got[l.who] or 0) + 1 end
   local order = { bis = 1, upgrade = 2, off = 3, transmo = 4, pass = 5 }
@@ -156,7 +160,7 @@ function RA.RefreshCouncil()
   for n, x in pairs(c.cands) do list[#list + 1] = { name = n, x = x } end
   table.sort(list, function(a, b) local oa, ob = order[a.x.response] or 9, order[b.x.response] or 9 if oa ~= ob then return oa < ob end return (votes[a.name] or 0) > (votes[b.name] or 0) end)
   L.Header("Réponses · " .. #list)
-  if #list == 0 then L.Add(GREY .. "En attente des réponses…|r") end
+  if #list == 0 then L.Add(GREY .. "En attente des réponses...|r") end
   for _, e in ipairs(list) do
     local gear = {}
     for _, id in ipairs(e.x.gear) do gear[#gear + 1] = linkFor(id) end
@@ -285,7 +289,7 @@ function RA.FillTab(L)
   if #hand == 0 then L.Add(GREY .. "Aucun. « Garder, à remettre » dans la fenêtre du butin les ajoute ici.|r") end
   for _, h in ipairs(hand) do
     local left, secs = remaining(h.at)
-    L.Add(linkFor(h.itemId, h.link) .. " → " .. GOLD .. h.winner .. "|r  " .. (secs < 1800 and ORANGE or GREY) .. left .. " pour l'échanger|r",
+    L.Add(linkFor(h.itemId, h.link, h.name, h.quality) .. " pour " .. GOLD .. h.winner .. "|r  " .. (secs < 1800 and ORANGE or GREY) .. left .. " pour l'échanger|r",
       { { "Échanger", 110, function() RA.Trade(h) end }, { "Retirer", 90, function()
         local all = RA.Handover()
         for i = #all, 1, -1 do if all[i] == h then table.remove(all, i) end end
@@ -303,6 +307,19 @@ function RA.FillTab(L)
       { { "Voir une fiche", 140, function() RA.ShowSheetCommand() end } })
   end
 end
+
+-- Un objet arrive du serveur (premier affichage) : les fenêtres reprennent son vrai nom
+local itemsDue = false
+ns.on("GET_ITEM_INFO_RECEIVED", function()
+  if itemsDue then return end
+  itemsDue = true
+  C_Timer.After(0.3, function()
+    itemsDue = false
+    RA.RefreshWindows()
+    if ask and ask:IsShown() then RA.ShowAsk() end
+    if ns.UI.Refresh then ns.UI.Refresh() end
+  end)
+end)
 
 function RA.RefreshWindows()
   ns.safe("butin", RA.RefreshLoot)

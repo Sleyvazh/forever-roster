@@ -155,7 +155,8 @@ function F.RollParser(fmt)
     if #caps < 4 then return nil end
     local v = {}
     for j, p in ipairs(order) do v[p] = caps[j] end
-    return (tostring(v[1]):match("^[^%-]+")), tonumber(v[2]), tonumber(v[3]), tonumber(v[4])
+    -- Prénom seul : sans royaume ni nom de famille de Forever (« John Poutre obtient un 54 » → John)
+    return (tostring(v[1]):match("^[^%-%s]+")), tonumber(v[2]), tonumber(v[3]), tonumber(v[4])
   end
 end
 

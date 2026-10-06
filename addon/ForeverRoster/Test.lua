@@ -140,13 +140,13 @@ function T.award(item, winner, method, detail)
   say("objet donné à " .. winner .. " par le butin de maître (simulé).")
 end
 function T.trade(entry)
-  say("échange avec " .. entry.winner .. "…")
+  say("échange avec " .. entry.winner .. "...")
   after(1.5, function()
     local list = RA.test.handover
     for i = #list, 1, -1 do if list[i] == entry then table.remove(list, i) end end
     local log = RA.test.log.loot
     log[#log + 1] = { who = entry.winner, itemId = entry.itemId, method = entry.method, detail = entry.detail }
-    ns.print((entry.link or ns.Group.linkFor(entry.itemId)) .. " remis à " .. entry.winner .. " (essai).")
+    ns.print((entry.link or ns.Group.displayLink(entry.itemId, entry.name, entry.quality)) .. " remis à " .. entry.winner .. " (essai).")
     refresh()
   end)
   return true
@@ -213,9 +213,9 @@ function T.OpenCorpse(mode)
   local d = RA.test.data
   d.loot, d.entry.raid.loot = mode, mode
   RA.items, RA.session = {}, nil
+  -- Pas de lien gardé : le nom du jeu (dans sa langue) s'affiche dès qu'il est connu, l'anglais en attendant
   for _, it in ipairs(mode == "council" and COUNCIL_ITEMS or SR_ITEMS) do
-    local _, link = GetItemInfo and GetItemInfo(it.id)
-    RA.items[#RA.items + 1] = { itemId = it.id, link = link or ("[" .. it.name .. "]"), test = true }
+    RA.items[#RA.items + 1] = { itemId = it.id, name = it.name, quality = 4, test = true }
   end
   RA.ShowLoot()
   refresh()
@@ -252,7 +252,7 @@ function T.Refresh()
   L.Add("Jets SR avec bonus SR+ (tu as réservé l'anneau : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre.",
     { { "Ouvrir le corps", 140, function() T.OpenCorpse("softres") end } })
   L.Header("5. Butin au conseil")
-  L.Add("Chacun répond (BiS, Upgrade…), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager.",
+  L.Add("Chacun répond (BiS, Upgrade...), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager.",
     { { "Ouvrir le corps", 140, function() T.OpenCorpse("council") end } })
   L.Header("6. Objets à remettre")
   L.Add("« Garder, à remettre » dans la fenêtre du butin, puis « Échanger » dans l'onglet En raid (échange simulé)." .. GREY .. "\nEn attente : " .. #RA.Handover() .. "|r",

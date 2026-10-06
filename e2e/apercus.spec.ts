@@ -154,6 +154,10 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await expect(page.locator(".ps")).toContainText("raids venus");
   await page.locator(".ps").scrollIntoViewIfNeeded();
   await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-joueur.png` });
+  // Un perso d'un autre joueur s'ouvre en lecture dans l'onglet Personnages du groupe (pas dans Mes persos)
+  await page.locator(".ps .ps-char").first().click();
+  await expect(page).toHaveURL(new RegExp(`/groups/${group}/persos$`));
+  await expect(page.locator(".gm-who")).toContainText("de Gorrak");
 });
 
 /**

@@ -1,7 +1,7 @@
 import { CLASSES, RACES, roleOf, type ClassName, type Role } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, get, put, type Character, type GroupRole, type Member } from "../api";
 import { useViewPref } from "../prefs";
 import { CharacterEditor } from "./CharacterEditor";
@@ -92,7 +92,15 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
 export function GroupCharacters({ groupId, groupName, members, myId, myRole }: { groupId: string; groupName: string; members: Member[]; myId?: string; myRole: GroupRole }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
-  const [open, setOpen] = useState<string | null>(null);
+  // ?perso=<id> : perso ouvert d'emblée (lien depuis la fiche d'un joueur, onglet Membres)
+  const [params, setParams] = useSearchParams();
+  const [open, setOpen] = useState<string | null>(() => params.get("perso"));
+  const openedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!params.get("perso") || !data) return;
+    openedRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setParams(p => { p.delete("perso"); return p; }, { replace: true });
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filter, setFilter] = useState("");
   const [role, setRole] = useState<"" | Role>("");
   const [scope, setScope] = useViewPref<Scope>("group-chars-scope", "all", ["mains", "all", "split"]);
@@ -258,6 +266,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
         </>
       )}
 
+      <div ref={openedRef} />
       {opened && (
         <>
           {canManage(opened) && (

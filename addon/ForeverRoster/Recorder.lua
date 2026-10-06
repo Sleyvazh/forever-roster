@@ -13,7 +13,7 @@ local function db()
   ForeverRosterDB.raidLogs = ForeverRosterDB.raidLogs or {}
   return ForeverRosterDB.raidLogs
 end
-local function short(name) return (tostring(name or ""):match("^[^%-]+")) or "" end
+local function short(name) return (tostring(name or ""):match("^[^%-%s]+")) or "" end -- prénom seul (royaume et nom de famille retirés)
 
 function R.Enabled() return not ForeverRosterDB.noRecord end
 function R.MinQuality() return ForeverRosterDB.lootQuality or 4 end

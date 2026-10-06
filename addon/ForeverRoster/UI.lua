@@ -682,7 +682,7 @@ refreshers.options = function(p)
     local shown = keysOf(b.action)
     local current = #shown > 0 and (GOLD .. table.concat(shown, ", ") .. "|r") or (GREY .. "aucune touche|r")
     if waiting == b.action then
-      L.Add(b.label .. " : " .. GREEN .. "appuie sur la touche voulue (avec Alt, Ctrl ou Maj si tu veux)… Échap : annuler.|r")
+      L.Add(b.label .. " : " .. GREEN .. "appuie sur la touche voulue (avec Alt, Ctrl ou Maj si tu veux)... Échap : annuler.|r")
     else
       local buttons = { { "Choisir une touche", 160, function() U.StartCapture(b.action) end } }
       if #shown > 0 then buttons[2] = { "Retirer", 100, function() U.SetBinding(b.action, nil) U.Refresh() end } end

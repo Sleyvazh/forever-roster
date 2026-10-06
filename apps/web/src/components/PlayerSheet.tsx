@@ -1,6 +1,7 @@
 import { ATTENDANCE_LABEL, CLASSES, itemLinks, type AttendanceStatus, type ClassName, type GearStats } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { useMe } from "../auth";
 import { get, type GroupRole } from "../api";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
@@ -22,6 +23,9 @@ const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" 
 const color = (cls: string) => CLASSES[cls as ClassName]?.color ?? "var(--line-2)";
 
 export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; userId: string; onClose: () => void }) {
+  // Ses persos s'ouvrent dans Mes persos ; ceux d'un autre joueur, en lecture dans l'onglet Personnages du groupe
+  const myId = useMe().data?.user?.id;
+  const charUrl = (id: string) => (userId === myId ? `/persos/${id}` : `/groups/${groupId}/persos?perso=${id}`);
   const { data, isLoading } = useQuery({ queryKey: ["player-sheet", groupId, userId], queryFn: () => get<Sheet>(`/groups/${groupId}/members/${userId}/sheet`) });
   if (isLoading || !data) return <p className="muted">Chargement…</p>;
   const { member: m, characters, attendance: a, loot } = data;
@@ -51,7 +55,7 @@ export function PlayerSheet({ groupId, userId, onClose }: { groupId: string; use
             <ul className="ps-chars">
               {characters.map(c => (
                 <li key={c.id}>
-                  <Link to={`/persos/${c.id}`} className="ps-char">
+                  <Link to={charUrl(c.id)} className="ps-char">
                     <span className="gav" style={{ ["--cc" as string]: color(c.cls), width: 30, height: 30 }}>
                       <Portrait id={c.portraitId} size={30} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={22} /> : <ClassIcon cls={c.cls} size={22} />) : <span className="muted">?</span>} />
                     </span>
