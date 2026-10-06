@@ -1,0 +1,82 @@
+name: Roster Companion
+
+# Appli de bureau (apps/companion) : cœur Rust testé sous Linux (avec l'addon simulé en Lua 5.1),
+# puis installateur Windows construit sur un vrai Windows. L'installateur se télécharge dans
+# l'onglet Actions du dépôt : run « Roster Companion », section Artifacts.
+on:
+  push:
+    branches: [main]
+    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml"]
+  pull_request:
+    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: companion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/companion
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lua 5.1 (aller-retour avec l'addon)
+        run: sudo apt-get install -y -qq lua5.1 > /dev/null
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/companion/target
+          key: companion-core-${{ runner.os }}-${{ hashFiles('apps/companion/Cargo.lock') }}
+          restore-keys: companion-core-${{ runner.os }}-
+      - run: rustup component add clippy rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --locked -p rc-core --all-targets -- -D warnings
+      - run: cargo test --locked -p rc-core
+
+  windows:
+    runs-on: windows-2025
+    needs: core
+    defaults:
+      run:
+        working-directory: apps/companion
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/companion/package-lock.json
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/companion/target
+          key: companion-win-${{ hashFiles('apps/companion/Cargo.lock') }}
+          restore-keys: companion-win-
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - name: Installateur (NSIS)
+        run: npx tauri build --bundles nsis -- --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roster-companion-windows
+          path: apps/companion/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 30
+      # Après l'installateur, pour qu'un avertissement ne bloque pas un essai : le code propre à Windows
+      # (registre, heure locale, Gestionnaire d'identification) n'est compilé qu'ici
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked -p rc-core --lib

@@ -204,9 +204,9 @@ Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) s
 Les jets (soft reserve, MS / OS, jet libre) passent par `/roll` : l'addon du maître du butin lit le message du jeu (`RANDOM_ROLL_RESULT`, dans la langue du client), ne compte que le premier jet de chacun et le bon dé (100, ou 99 en OS), ajoute le bonus SR+ ; en cas d'égalité, seuls les ex æquo relancent.
 
 
-# Roster Companion (lot K1, addon 1.3)
+# Roster Companion (lots K1 à K3, addon 1.3 et 1.4)
 
-L'appli (en option) fait la synchro sans copier-coller, avec les mêmes formats. Le jeu ne lit et n'écrit les fichiers d'addon qu'à la connexion, au `/reload` et à la déconnexion : ce n'est pas du temps réel.
+L'appli (en option, `apps/companion`) fait la synchro sans copier-coller, avec les mêmes formats. Le jeu écrit la sauvegarde de l'addon à la déconnexion et au `/reload` ; il lit les fichiers d'addon à la connexion, au `/reload`, et au chargement d'un addon chargé à la demande (voir « Actualisation sans /reload »).
 
 **Du jeu vers le site.** À `PLAYER_LOGOUT` (aussi déclenché par `/reload`), l'addon écrit dans sa sauvegarde (`WTF\Account\<compte>\SavedVariables\ForeverRoster.lua`) :
 
@@ -217,7 +217,7 @@ ForeverRosterDB.outbox = { v = 1, at = <unix>, addon = "1.3.0", blocks = {
 } }
 ```
 
-Seulement ce qui a changé depuis le dernier envoi (comme l'onglet Synchro). L'appli lit ce fichier sans l'exécuter, envoie les blocs à `POST /api/sync/upload` (`{ text, create, ignore }`) et n'envoie tout seul un bloc `frb` que si `lead` est vrai. Réponse : un résultat par bloc (`updated`, `created`, `unknown` : perso que le site ne connaît pas, à créer ou ignorer ; `ignored`, `kept`, `refused`, `error`).
+Seulement ce qui a changé depuis le dernier envoi (comme l'onglet Synchro). L'appli lit ce fichier sans l'exécuter, envoie les blocs à `POST /api/sync/upload` (`{ text, create, ignore, manual }`) et n'envoie tout seul un bloc `frb` que si `lead` est vrai. Un bilan qui n'est pas celui du chef est proposé dans l'appli (« Bilan à envoyer à la main », bouton « Envoyer ») : envoyé avec `manual: true`, il remplace le bilan du site, comme un Ctrl+V. Réponse : un résultat par bloc (`updated`, `created`, `unknown` : perso que le site ne connaît pas, à créer ou ignorer ; `ignored`, `kept`, `refused`, `error`).
 
 **Du site vers le jeu.** `GET /api/sync/frg` donne le même texte que « Copier pour le jeu » (tous les groupes du jeu de l'adresse appelée), avec un `ETag` qui ne change qu'avec les données. L'appli l'écrit, avec les accusés de réception, dans l'addon séparé `ForeverRoster_Data` (`Data.lua`), que l'addon principal lit à `PLAYER_LOGIN` (`## OptionalDeps: ForeverRoster_Data`) :
 
@@ -232,5 +232,7 @@ ForeverRosterData = { v = 1, at = <unix>, app = "0.1.0",
 - `acks` : le perso est marqué envoyé (`sentSig`), le bilan aussi (`sentAt`) ; le compteur de la minicarte retombe.
 - `report` : affiché dans l'onglet Synchro (« Roster Companion s'en occupe »), textes nettoyés des codes du jeu. L'appli est considérée active si `at` date de moins de 3 jours.
 - Toutes les chaînes sont écrites par l'appli en chaînes Lua échappées octet par octet (`\\`, `\"`, `\ddd`), jamais en crochets longs.
+
+**Actualisation sans /reload (lot K3, addon 1.4).** L'appli écrit le même `Data.lua` dans 9 copies, `ForeverRoster_Data1` à `ForeverRoster_Data9`, avec `## LoadOnDemand: 1`. Le jeu lit les fichiers d'un addon chargé à la demande au moment où on le charge (vérifié sur le client de Forever) : « Charger les nouveautés » (onglet Synchro) ou `/fr actualiser` charge la copie suivante (`C_AddOns.LoadAddOn`), qui remplace `ForeverRosterData`, puis l'addon applique les données comme à la connexion. Chaque copie ne se charge qu'une fois par session : 9 actualisations, puis il faut un `/reload` (qui remet le compte à zéro). La fenêtre de l'addon actualise aussi toute seule à l'ouverture si la dernière actualisation (ou la connexion) date d'au moins 15 minutes ; en combat, l'actualisation attend la fin du combat. Les dossiers sont créés avec `ForeverRoster_Data` : le jeu ne voit un nouveau dossier d'addon qu'après avoir été relancé.
 
 **Fichiers servis par le site** : `/downloads/ForeverRoster.zip` et `/downloads/ForeverRoster.json` (`name`, `file`, `version`, `interface`, `sha256`, `size`), lus par l'appli pour installer ou mettre à jour l'addon.

@@ -1,0 +1,19 @@
+# Roster Companion : l'appli (en option) qui fait la synchro entre l'addon et le site.
+# core : bibliothèque testable sans interface (sauvegarde de l'addon, données pour le jeu, dossiers de WoW, synchro).
+# src-tauri : l'appli de bureau (icône près de l'horloge, fenêtres, tâches de fond).
+[workspace]
+resolver = "3"
+members = ["core", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.88"
+authors = ["Sleyvazh"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -47,9 +47,11 @@ export async function syncRoutes(app: FastifyInstance) {
       text: z.string().max(250_000),
       create: z.array(key).max(60).default([]),
       ignore: z.array(key).max(60).default([]),
+      /** Envoi demandé par le joueur dans l'appli (bilan qui n'est pas celui du chef) : remplace, comme un Ctrl+V. */
+      manual: z.boolean().default(false),
     }), req.body);
     const r = await importAddonText(db, u, body.text, {
-      game: siteOf(cfg, req).game, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: true,
+      game: siteOf(cfg, req).game, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual,
     });
     if (r.results.length) await synced(d.id);
     return r;

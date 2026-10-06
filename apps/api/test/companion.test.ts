@@ -175,6 +175,10 @@ describe("Roster Companion : synchro", () => {
     expect((await leadApp.req("POST", "/api/sync/upload", { text: frb("Chef", true, 9) })).json().results[0]).toMatchObject({ kind: "raidlog", status: "updated" });
     expect((await offApp.req("POST", "/api/sync/upload", { text: frb("Officier", false, 7) })).json().results[0]).toMatchObject({ status: "kept" });
     expect((await lead.c.get(`/api/groups/${g.id}/raids/${raid.id}`)).json().log.recorder).toBe("Chef");
+    // Envoyé à la main depuis l'appli (manual) : remplace, comme un Ctrl+V
+    expect((await offApp.req("POST", "/api/sync/upload", { text: frb("Officier", false, 6), manual: true })).json().results[0].status).toBe("updated");
+    expect((await lead.c.get(`/api/groups/${g.id}/raids/${raid.id}`)).json().log.attendance.length).toBe(6);
+    await leadApp.req("POST", "/api/sync/upload", { text: frb("Chef", true, 9) });
     // Collé à la main sur le site : le dernier remplace, comme avant
     expect((await off.c.post("/api/addon/import", { text: frb("Officier", false, 7) })).json().results[0].status).toBe("updated");
     expect((await lead.c.get(`/api/groups/${g.id}/raids/${raid.id}`)).json().log.recorder).toBe("Officier");

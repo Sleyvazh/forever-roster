@@ -90,6 +90,21 @@ erDiagram
 - `characters.professions`, `gear` et `legacy` sont en JSONB : leur structure est validée par zod à l'entrée et typée côté Drizzle.
 - `raids.slots` est un tableau JSONB `{group, pos, characterId}`. L'API vérifie à chaque écriture que les personnages appartiennent à des membres du groupe.
 
+## Roster Companion (appli de bureau)
+
+Appli Tauri 2 pour Windows (`apps/companion`, hors des espaces de travail npm : elle a son propre `package-lock.json` et un espace de travail Cargo). Le cœur en Rust (`rc-core`) ne dépend pas de la fenêtre et se teste seul ; l'appli (`src-tauri`) ajoute l'icône près de l'horloge, la fenêtre (interface React) et une boucle de fond. Détails : [apps/companion/README.md](../apps/companion/README.md).
+
+```mermaid
+flowchart LR
+  W[WoW<br/>addon ForeverRoster] -- sauvegarde<br/>/reload, déconnexion --> R[Roster Companion]
+  R -- POST /api/sync/upload<br/>Bearer rc_… --> A[API]
+  A -- GET /api/sync/frg<br/>ETag --> R
+  R -- ForeverRoster_Data<br/>+ 9 copies à la demande --> W
+  N[Navigateur, connecté] -- valide le code<br/>/api/devices/pair/approve --> A
+```
+
+Côté serveur, `routes/devices.ts` (appairage, appareils reliés) et `routes/sync.ts` (envoi, relevé, persos ignorés) passent par le même import que le Ctrl+V (`lib/addon-import.ts`).
+
 ## Paquet `@forever/game-data`
 
 Source unique pour les races, classes, spés, métiers, emplacements d'équipement et règles de raid. L'API l'utilise pour valider les données et calculer la couverture d'un raid. Le front l'utilise pour les formulaires et pour recalculer la couverture en direct pendant le glisser-déposer. Il est distribué en TypeScript et embarqué dans le bundle de l'API par tsup.

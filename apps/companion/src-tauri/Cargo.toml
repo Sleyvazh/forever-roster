@@ -1,0 +1,45 @@
+[package]
+name = "roster-companion"
+description = "Roster Companion : la synchro entre l'addon Forever Roster et le site, sans copier-coller."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+name = "rc_app"
+crate-type = ["rlib"]
+
+[[bin]]
+name = "roster-companion"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+rc-core = { path = "../core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync", "macros"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "std"] }
+tracing-appender = "0.2"
+
+# Jeton de l'appareil : Gestionnaire d'identification de Windows (jamais dans un fichier)
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["linux-native"] }
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }

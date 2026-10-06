@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Fenêtre de Roster Companion : barre de titre maison (déplacement, réduction), événements et commandes de l'appli.",
+  "windows": ["main"],
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-minimize"]
+}

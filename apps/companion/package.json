@@ -1,0 +1,27 @@
+{
+  "name": "roster-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Roster Companion : la synchro entre l'addon Forever Roster et le site, sans copier-coller.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "typecheck": "tsc --noEmit -p .",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.1"
+  }
+}
