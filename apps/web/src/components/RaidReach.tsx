@@ -1,5 +1,6 @@
-import { CLASSES, type ClassName, type Role } from "@forever/game-data";
+import { classColor, CLASSES, type ClassName, type Role } from "@forever/game-data";
 import { useState } from "react";
+import { useGameText } from "../gameText";
 import { ApiError, post } from "../api";
 import { RoleIcon } from "./RoleIcon";
 
@@ -27,11 +28,12 @@ export const ASK_LABEL: Record<AskState, string> = { queued: "envoi…", sent: "
 const ASK_TONE: Record<AskState, string> = { queued: "", sent: "", failed: "bad", yes: "ok", no: "warn" };
 export const AskChip = ({ state }: { state: AskState }) => <span className={`rl-chip ${ASK_TONE[state]}`}>{ASK_LABEL[state]}</span>;
 
-const color = (cls: string) => CLASSES[cls as ClassName]?.color;
+const color = (cls: string) => classColor(cls);
 const fmt = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const hm = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
 export function RaidReach({ groupId, raidId, reach, onChanged }: { groupId: string; raidId: string; reach: Reach; onChanged: () => void }) {
+  const gt = useGameText();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const { pending, settings, auto, manual } = reach;
@@ -93,7 +95,7 @@ export function RaidReach({ groupId, raidId, reach, onChanged }: { groupId: stri
               <li key={a.id}>
                 {a.role && <RoleIcon role={a.role} />}
                 <b style={{ color: color(a.cls) }}>{a.name}</b>
-                <span className="small muted">{a.spec} · {a.owner}</span>
+                <span className="small muted">{gt.specOrClass(a.cls, a.spec)} · {a.owner}</span>
                 <AskChip state={a.state} />
               </li>
             ))}

@@ -3,7 +3,7 @@ import type { Choices, RaidView } from "../src/api";
 import { ApiError, InternalApi } from "../src/api";
 import { zonedTime } from "@forever/game-data";
 import { parseRaidDate } from "../src/dates";
-import { confirmation, onCharPicked, onClassPicked, onStatus } from "../src/flow";
+import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus } from "../src/flow";
 import { decodeId, encodeId, splitValue } from "../src/ids";
 import { escapeMd, fitLines, renderAnnouncement, renderReminder } from "../src/render";
 import { emojiName, iconFiles, makeLookup, specEmojiName, syncEmojis } from "../src/emojis";
@@ -142,6 +142,36 @@ describe("parcours d'inscription", () => {
     const c = confirmation(RAID, "present", "Perso0 (Feral Bear)", "https://x.test");
     expect(c.content).toBe("✅ C'est noté : **Présent** avec Perso0 (Feral Bear).");
     expect(confirmation(RAID, "absent", "", "https://x.test").components[0]!.components).toHaveLength(1);
+  });
+});
+
+describe("Roster (WoW Retail)", () => {
+  const opts = (s: ReturnType<typeof onStatus>) => (s.kind === "reply" ? (s.components[0]!.components[0] as { options: { label: string; value: string }[] }).options : []);
+  it("inscription libre : classes et spés de Retail, dans la langue du Discord du joueur", () => {
+    const cls = opts(onStatus(RAID, "present", { mode: "guest", linked: false, current: null, game: "retail" }, false, "fr"));
+    expect(cls).toHaveLength(13);
+    expect(cls).toContainEqual(expect.objectContaining({ label: "Moine", value: "Monk" }));
+    expect(opts(onClassPicked(RAID, "present", "Monk", "retail", "fr"))).toContainEqual(expect.objectContaining({ label: "Tisse-brume", value: "Monk:Mistweaver" }));
+    expect(opts(onClassPicked(RAID, "present", "Monk", "retail", "en"))).toContainEqual(expect.objectContaining({ label: "Mistweaver", value: "Monk:Mistweaver" }));
+    expect(onClassPicked(RAID, "present", "Monk").kind === "reply" && onClassPicked(RAID, "present", "Monk")).toMatchObject({ content: "Classe inconnue." });
+    expect(guestLabel("retail", "fr", "Evoker", "Preservation")).toBe("Préservation Évocateur");
+    expect(guestLabel("forever", "fr", "Priest", "Shadow")).toBe("Shadow Priest");
+  });
+  it("persos : spés traduites, valeur en anglais", () => {
+    const c: Choices = { mode: "member", linked: true, current: null, game: "retail",
+      characters: [{ id: CHAR, name: "Brumelune", cls: "Monk", spec1: "Mistweaver", spec2: "", specs: [{ name: "Mistweaver", role: "Heal" }, { name: "Windwalker", role: "DPS" }] }] };
+    expect(opts(onStatus(RAID, "present", c, false, "fr"))).toContainEqual(expect.objectContaining({ label: "Brumelune — Tisse-brume", value: `${CHAR}:Mistweaver` }));
+  });
+  it("annonce : difficulté, noms en français, 13 classes", () => {
+    const v = view({
+      raid: { ...view().raid, name: "Flèche du Vide", difficulty: "heroic", size: 20 },
+      group: { id: "g", name: "Pasta e Basta", game: "retail" },
+      signups: [{ displayName: "Lia", characterName: "Brumelune", cls: "Monk", spec: "Mistweaver", role: "Heal", status: "present", note: "", guest: false, group: null }],
+    });
+    const e = renderAnnouncement(v).embeds[0]!;
+    expect(e.title).toBe("Flèche du Vide · Héroïque");
+    expect(JSON.stringify(e.fields)).toContain("Tisse-brume");
+    expect(e.footer?.text).toContain("1/13 classes");
   });
 });
 

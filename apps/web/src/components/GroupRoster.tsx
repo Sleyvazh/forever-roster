@@ -1,4 +1,4 @@
-import { CLASSES, RACES, roleOf, type ClassName, type Role } from "@forever/game-data";
+import { classColor, CLASSES, RACES, roleOf, type ClassName, type Role } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -8,6 +8,8 @@ import { CharacterEditor } from "./CharacterEditor";
 import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { RoleIcon } from "./RoleIcon";
+import { RetailCharacterView } from "./RetailCharacter";
+import { useGameText } from "../gameText";
 
 /**
  * Onglet Personnages d'un groupe : les persos que chaque membre y joue (son main marqué ★, ses alts),
@@ -22,7 +24,7 @@ const VIEWS: [View, string][] = [["list", "Liste"], ["tiles", "Tuiles"], ["roles
 const ROLE_NAME: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 const RANK: Record<GroupRole, number> = { member: 0, officer: 1, owner: 2 };
 
-const color = (c: Character) => CLASSES[c.cls as ClassName]?.color ?? "var(--line-2)";
+const color = (c: Character) => classColor(c.cls) ?? "var(--line-2)";
 
 function Face({ c, size }: { c: Character; size: number }) {
   return (
@@ -107,6 +109,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
   const [view, setView] = useViewPref<View>("group-chars", "list", ["list", "tiles", "roles", "players"]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const gt = useGameText();
   if (!data) return <p className="muted">Chargement…</p>;
 
   const all = data.characters;
@@ -115,7 +118,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
   const memberOf = new Map(members.map(m => [m.userId, m]));
   const shown = all
     .filter(c => (scope !== "mains" || c.isMain)
-      && (!needle || `${c.name} ${c.owner} ${c.cls} ${c.race} ${c.spec1} ${c.spec2}`.toLowerCase().includes(needle))
+      && (!needle || `${c.name} ${c.owner} ${c.cls} ${c.race} ${c.spec1} ${c.spec2} ${gt.cls(c.cls)} ${gt.spec(c.cls, c.spec1)} ${gt.spec(c.cls, c.spec2)}`.toLowerCase().includes(needle))
       && (!role || roleOf(c.spec1) === role || roleOf(c.spec2) === role))
     // Par joueur (ordre des membres), main en tête, persos à configurer (sans classe) à la fin
     .sort((x, y) => (order.get(x.userId) ?? 99) - (order.get(y.userId) ?? 99) || Number(!x.isMain) - Number(!y.isMain) || Number(!x.cls) - Number(!y.cls));
@@ -140,7 +143,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
 
   const spec = (c: Character, sp: string, off?: boolean) => sp ? (
     <span key={sp} className={`gsp${off ? " off" : ""}`}>
-      {c.cls && <SpecIcon cls={c.cls} spec={sp} size={16} />}{sp}{roleOf(sp) && <RoleIcon role={roleOf(sp)} size={14} />}
+      {c.cls && <SpecIcon cls={c.cls} spec={sp} size={16} />}{gt.spec(c.cls, sp)}{roleOf(sp) && <RoleIcon role={roleOf(sp)} size={14} />}
     </span>
   ) : null;
   const avatarOf = (userId: string) => memberOf.get(userId)?.avatarId ?? null;
@@ -157,7 +160,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
         <button key={c.id} type="button" role="listitem" className="grow" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
           <Face c={c} size={30} />
           <span className="gname"><Mark c={c} /><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
-          <span className="gcls">{c.cls ? [c.cls, c.race].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
+          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
           <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
           {owner(c)}
         </button>
@@ -170,11 +173,11 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
         const r = roleOf(c.spec1);
         return (
           <button key={c.id} type="button" className="gtile" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
-            title={[c.spec1, c.spec2].filter(Boolean).join(" / ")}>
+            title={[gt.spec(c.cls, c.spec1), gt.spec(c.cls, c.spec2)].filter(Boolean).join(" / ")}>
             <Face c={c} size={34} />
             <span className="n">{c.isMain && <span className="gm-star" aria-label="Main">★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
             <span className="r">{r && <RoleIcon role={r} />}</span>
-            <span className="s">{c.spec1 || c.cls || "À configurer"} · {c.owner}{c.isMain ? "" : " · alt"}</span>
+            <span className="s">{(c.cls && gt.specOrClass(c.cls, c.spec1)) || "À configurer"} · {c.owner}{c.isMain ? "" : " · alt"}</span>
           </button>
         );
       })}
@@ -191,7 +194,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
               <Face c={c} size={26} />
               <span className="gr-txt">
                 <span className="n" style={{ color: color(c) }}>{c.isMain && "★ "}{c.name}</span>
-                <span className="s">{isOff ? c.spec2 : c.spec1} · {c.owner}{c.isMain ? "" : " · alt"}{isOff ? " · off-spec" : ""}</span>
+                <span className="s">{gt.spec(c.cls, isOff ? c.spec2 : c.spec1)} · {c.owner}{c.isMain ? "" : " · alt"}{isOff ? " · off-spec" : ""}</span>
               </span>
               <span className="lvl-pill num">{c.level}</span>
             </button>
@@ -280,7 +283,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
               {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>Tu es officier : la modification est notée au journal du groupe. Le joueur garde la main sur ses persos.</span>}
             </div>
           )}
-          <CharacterEditor character={opened} editable={false} onChange={() => {}} />
+          {gt.game === "retail" ? <RetailCharacterView c={opened} /> : <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
         </>
       )}
     </div>

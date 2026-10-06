@@ -45,12 +45,14 @@ export const imageUrl = (id: string) => `/api/images/${id}`;
 export interface User {
   id: string; email: string | null; emailVerified: boolean; displayName: string; battletag: string | null;
   hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; discordReminders: boolean; createdAt: string;
+  /** Roster : langue des noms du jeu (auto = navigateur) et accès anticipé tant que Roster est fermé. */
+  gameLang: import("@forever/game-data").GameLangPref; rosterPreview: boolean;
 }
 export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean; discordEnabled: boolean }
 
 export interface Prof { name: string; skill: number }
 export interface Character {
-  id: string; userId: string; name: string; race: string; cls: string; spec1: string; spec2: string; level: number;
+  id: string; userId: string; name: string; realm: string; race: string; cls: string; spec1: string; spec2: string; level: number;
   talents: string; talentLink: string; talents2: string; talentLink2: string;
   professions: { prof1: Prof; prof2: Prof; cooking: number; fishing: number; firstAid: number };
   gear: Record<string, GearEntry>;

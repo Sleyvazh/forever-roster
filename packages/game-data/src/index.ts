@@ -11,3 +11,5 @@ export * from "./assist";
 export * from "./prep";
 export * from "./site";
 export * from "./sync";
+export * from "./retail";
+export * from "./games";

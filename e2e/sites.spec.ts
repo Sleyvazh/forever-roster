@@ -1,4 +1,5 @@
 import { expect, test as base, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -24,6 +25,7 @@ const test = base.extend<{ page: Page }>({
 const FOREVER = "http://localhost:4173";
 const RETAIL = "http://127.0.0.1:4173";
 const LOG = path.resolve("test-results/api.log");
+const E2E_DB = process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e";
 
 /** Dernier e-mail de confirmation journalisé pour cette adresse : lien et texte. */
 function lastVerifyMail(email: string) {
@@ -106,5 +108,91 @@ test("même compte sur les deux adresses, Roster pas encore ouvert", async ({ pa
     await page.getByRole("button", { name: /se connecter/i }).click();
     await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
     await expect(page.locator(".brand")).toHaveAccessibleName(/^Forever Roster/);
+  });
+});
+
+test.describe("Roster en accès anticipé", () => {
+  test.use({ locale: "fr-FR" });
+
+  test("persos et raid de WoW Retail, noms en français ou en anglais", async ({ page }) => {
+    const email = `e2e-retail-${Date.now()}@example.test`;
+    const password = "une phrase de passe pour Roster";
+
+    await test.step("compte créé sur Roster, puis accès anticipé donné sur le serveur", async () => {
+      await page.goto(`${RETAIL}/register`);
+      await page.fill("#dn", "Officière");
+      await page.fill("#em", email);
+      await page.fill("#pw", password);
+      await page.fill("#pw2", password);
+      await page.getByRole("button", { name: /créer/i }).click();
+      await expect.poll(() => { try { return lastVerifyMail(email).token; } catch { return ""; } }).not.toBe("");
+      await page.goto(`${RETAIL}/verify-email#${lastVerifyMail(email).token}`);
+      await expect(page.getByText("Adresse confirmée")).toBeVisible();
+      await page.goto(`${RETAIL}/login`);
+      await page.fill("#email", email);
+      await page.fill("#password", password);
+      await page.getByRole("button", { name: /se connecter/i }).click();
+      await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toBeVisible();
+      // Commande du serveur (docs/operations.md) : node dist/roster-preview.js add <e-mail>
+      const out = execFileSync("node", ["apps/api/dist/roster-preview.js", "add", email], { env: { ...process.env, DATABASE_URL: E2E_DB }, encoding: "utf8" });
+      expect(out).toContain("accès anticipé à Roster donné");
+      await page.reload();
+      await expect(page.getByText("Accès anticipé")).toBeVisible();
+      await expect(page.getByRole("link", { name: "Addon" })).toHaveCount(0);
+    });
+
+    await test.step("perso créé à la main : classe et spé en français (navigateur en français)", async () => {
+      await page.goto(`${RETAIL}/persos`);
+      await page.fill("#rcn-name", "Brumelune");
+      await page.fill("#rcn-realm", "Hyjal");
+      await page.selectOption("#rcn-cls", "Monk");
+      await expect(page.locator("#rcn-cls option:checked")).toHaveText("Moine");
+      await page.selectOption("#rcn-spec", "Mistweaver");
+      await expect(page.locator("#rcn-spec option:checked")).toHaveText("Tisse-brume");
+      await page.getByRole("button", { name: "Créer le perso" }).click();
+      const sheet = page.getByRole("region", { name: "Fiche de Brumelune" });
+      await expect(sheet).toContainText("Moine");
+      await expect(sheet.getByRole("link", { name: "Raider.IO" })).toHaveAttribute("href", "https://raider.io/characters/eu/hyjal/brumelune");
+      if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/roster-perso.png", fullPage: true });
+    });
+
+    await test.step("groupe et raid Héroïque : effectif, inscription, buffs de Midnight", async () => {
+      await page.getByRole("link", { name: "Groupes" }).first().click();
+      await page.fill("#g-name", "Pasta e Basta");
+      await page.getByRole("button", { name: "Créer" }).click();
+      await expect(page.getByRole("tab", { name: "Personnages" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Artisans" })).toHaveCount(0);
+      await page.getByRole("button", { name: "+ Nouveau raid" }).click();
+      await page.getByRole("button", { name: "Flèche du Vide" }).click();
+      await page.getByRole("group", { name: "Difficulté" }).getByRole("button", { name: "Héroïque" }).click();
+      await expect(page.locator("#gr-size")).toHaveValue("20");
+      await page.fill("#gr-size", "25");
+      await page.getByRole("button", { name: "Créer le raid" }).click();
+      await expect(page.getByRole("heading", { name: "Flèche du Vide" })).toBeVisible();
+      await expect(page.locator(".rp-meta")).toContainText("Héroïque · 25 joueurs");
+      await expect(page.getByRole("tab", { name: "Butin" })).toHaveCount(0);
+      await page.getByRole("tab", { name: /Inscriptions/ }).click();
+      await page.selectOption("#su-spec", "Mistweaver");
+      await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
+      await expect(page.getByText("Tu es inscrit : Présent avec Brumelune (Tisse-brume)")).toBeVisible();
+      await page.getByRole("tab", { name: "Compo" }).click();
+      await page.getByRole("button", { name: "Ajouter Brumelune au raid" }).click();
+      await expect(page.getByText("1 effet couvert sur 14")).toBeVisible();
+      await page.getByText("Détail des 14 effets").click();
+      await expect(page.getByText("Toucher mystique")).toBeVisible();
+      await expect(page.locator(".rgroup")).toHaveCount(5);
+      if (process.env.SHOTS) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: "test-results/shots/roster-raid.png", fullPage: true }); }
+    });
+
+    await test.step("noms en anglais au choix du compte", async () => {
+      const raid = page.url();
+      await page.goto(`${RETAIL}/account`);
+      await page.selectOption("#gl", "en");
+      await expect(page.getByText("Enregistré.")).toBeVisible();
+      await page.goto(raid);
+      await page.getByText("Détail des 14 effets").click();
+      await expect(page.getByText("Mystic Touch")).toBeVisible();
+      await expect(page.locator(".rp-meta")).toContainText("Heroic · 25 joueurs");
+    });
   });
 });

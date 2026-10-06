@@ -1,4 +1,4 @@
-import { ATTENDANCE_LABEL, CLASSES, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, type AttendanceStatus, type ClassName, type LootMethod, type LootResponse } from "@forever/game-data";
+import { classColor, ATTENDANCE_LABEL, CLASSES, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, type AttendanceStatus, type ClassName, type LootMethod, type LootResponse } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -15,7 +15,7 @@ export interface RaidLogView {
     gameName: string; skip: string | null; excluded: boolean }[];
 }
 
-const clsColor = (cls: string) => CLASSES[cls as ClassName]?.color;
+const clsColor = (cls: string) => classColor(cls);
 const hm = (unix: number | null) => (unix ? new Date(unix * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—");
 const TONE: Record<AttendanceStatus, string> = { present: "ok", late: "warn", left: "warn", bench: "", absent: "bad" };
 

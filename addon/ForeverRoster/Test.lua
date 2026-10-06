@@ -42,18 +42,39 @@ local BAGS = {
   ["Nyssaël"] = { [13457] = 5, [13444] = 12 }, Grumdal = { [13457] = 5, [13444] = 4 },
   Vesper = { [13457] = 3, [13452] = 5 }, ["Sylvaë"] = { [13457] = 5 }, Ilyra = { [13457] = 8 },
 }
-local SR_ITEMS = {
-  { id = 17063, name = "Band of Accuria" },            -- réservé avec bonus SR+ (et par toi)
-  { id = 18815, name = "Essence of the Pure Flame" },  -- égalité, puis relance
-  { id = 18814, name = "Choker of the Fire Lord" },    -- personne ne l'a réservé : personne en MS, puis jets OS
-  { id = 17076, name = "Bonereaver's Edge" },          -- jet libre
+-- Objets du corps : ceux que tu portes, connus du serveur de Forever (leurs infobulles s'affichent) ; à défaut,
+-- des objets de Molten Core (nom anglais affiché si le serveur ne les connaît pas). Chaque objet a son scénario.
+local SR_ROLES = { "ring", "tie", "nobody", "free" }   -- bonus SR+ (et ta réservation), égalité, personne en MS, jet libre
+local COUNCIL_ROLES = { "set", "other" }               -- réponses et votes écrits pour le premier, au hasard pour l'autre
+local FALLBACK = {
+  ring = { id = 17063, name = "Band of Accuria" }, tie = { id = 18815, name = "Essence of the Pure Flame" },
+  nobody = { id = 18814, name = "Choker of the Fire Lord" }, free = { id = 17076, name = "Bonereaver's Edge" },
+  set = { id = 16901, name = "Stormrage Legguards" }, other = { id = 18817, name = "Crown of Destruction" },
 }
-local COUNCIL_ITEMS = { { id = 16901, name = "Stormrage Legguards" }, { id = 18817, name = "Crown of Destruction" } }
--- Objets portés, montrés au conseil (nom anglais tant que le jeu ne les a pas renvoyés)
-local GEAR = {
+-- Objets portés par les joueurs fictifs, montrés au conseil : les tiens aussi, sinon ceux-ci
+local GEAR_FALLBACK = {
   { id = 16835, name = "Cenarion Leggings" }, { id = 16847, name = "Giantstalker's Leggings" }, { id = 16822, name = "Nightslayer Pants" },
   { id = 16915, name = "Netherwind Pants" }, { id = 16867, name = "Legplates of Might" },
 }
+local ITEM, ROLE, GEAR = {}, {}, GEAR_FALLBACK
+local function pickItems()
+  local worn, seen = {}, {}
+  for slot = 1, 18 do
+    local id = slot ~= 4 and GetInventoryItemID and GetInventoryItemID("player", slot) -- 4 : chemise
+    if id and not seen[id] then
+      seen[id] = true
+      local name, _, quality = ns.ItemInfo(id)
+      worn[#worn + 1] = { id = id, name = name or ns.Group.names[id] or ("objet " .. id), quality = quality }
+    end
+  end
+  ITEM, ROLE = {}, {}
+  for i, role in ipairs({ "ring", "tie", "nobody", "free", "set", "other" }) do
+    local it = worn[i] or FALLBACK[role]
+    ITEM[role], ROLE[it.id] = it, role
+  end
+  GEAR = #worn > 0 and worn or GEAR_FALLBACK
+  return #worn
+end
 -- Objets reçus sur la saison (comme la ligne N des données du site) : colonne « Reçus » du conseil
 local COUNTS = { Gorrak = 3, Brakka = 1, ["Nyssaël"] = 0, Grumdal = 2, Mirelle = 1, Vesper = 4, ["Sylvaë"] = 2, Ilyra = 1, Thorn = 0 }
 
@@ -64,12 +85,12 @@ local function rollsFor(item, kind, only)
     for i, n in ipairs(only) do if n ~= me() then out[#out + 1] = { n, 20 + i * 27 } end end
     return out
   end
-  local id = item.itemId
-  if kind == "sr" and id == 17063 then return { { "Gorrak", 41 }, { "Vesper", 58 }, { "Sylvaë", 96 } } end -- Sylvaë n'a rien réservé
-  if kind == "sr" and id == 18815 then return { { "Nyssaël", 67 }, { "Ilyra", 67 } } end
-  if kind == "ms" and id == 18814 then return {} end
-  if kind == "os" and id == 18814 then return { { "Sylvaë", 45 }, { "Ilyra", 81 }, { "Thorn", 72, 100 } } end
-  if kind == "free" and id == 17076 then return { { "Vesper", 23 }, { "Gorrak", 88 }, { "Brakka", 54, 99 } } end
+  local role = ROLE[item.itemId]
+  if kind == "sr" and role == "ring" then return { { "Gorrak", 41 }, { "Vesper", 58 }, { "Sylvaë", 96 } } end -- Sylvaë n'a rien réservé
+  if kind == "sr" and role == "tie" then return { { "Nyssaël", 67 }, { "Ilyra", 67 } } end
+  if kind == "ms" and role == "nobody" then return {} end
+  if kind == "os" and role == "nobody" then return { { "Sylvaë", 45 }, { "Ilyra", 81 }, { "Thorn", 72, 100 } } end
+  if kind == "free" and role == "free" then return { { "Vesper", 23 }, { "Gorrak", 88 }, { "Brakka", 54, 99 } } end
   local out, pool = {}, {}
   if kind == "sr" then
     for n in pairs((RA.session and RA.session.eligible) or {}) do if n ~= me() then pool[#pool + 1] = n end end
@@ -95,12 +116,12 @@ end
 
 -- Conseil : réponses (addon ou chuchotées), puis votes de Gorrak et Nyssaël
 local RESPONSES = {
-  [16901] = { { "Mirelle", "bis", nil, true }, { "Nyssaël", "upgrade", "2e pièce du set" }, { "Ilyra", "upgrade" }, { "Vesper", "transmo" }, { "Grumdal", "off" }, { "Gorrak", "pass" } },
+  set = { { "Mirelle", "bis", nil, true }, { "Nyssaël", "upgrade", "2e pièce du set" }, { "Ilyra", "upgrade" }, { "Vesper", "transmo" }, { "Grumdal", "off" }, { "Gorrak", "pass" } },
   default = { { "Sylvaë", "bis" }, { "Gorrak", "upgrade", "petit gain" }, { "Thorn", "off", nil, true }, { "Brakka", "pass" } },
 }
-local VOTES = { [16901] = { { "Gorrak", "Mirelle" }, { "Nyssaël", "Ilyra" } }, default = { { "Gorrak", "Sylvaë" }, { "Nyssaël", "Gorrak" } } }
+local VOTES = { set = { { "Gorrak", "Mirelle" }, { "Nyssaël", "Ilyra" } }, default = { { "Gorrak", "Sylvaë" }, { "Nyssaël", "Gorrak" } } }
 function T.Council(sid, id)
-  local list = RESPONSES[id] or RESPONSES.default
+  local list = RESPONSES[ROLE[id]] or RESPONSES.default
   for i, r in ipairs(list) do
     after(0.8 + i * 0.6, function()
       -- Sans addon (ou ancienne version) : réponse chuchotée au maître du butin, sans objets portés
@@ -108,7 +129,7 @@ function T.Council(sid, id)
       RA.Deliver(r[1], "LA;" .. sid .. ";" .. r[2] .. ";" .. gear .. ";" .. (r[4] and "chuchoté" or (r[3] or "")), "WHISPER")
     end)
   end
-  for i, v in ipairs(VOTES[id] or VOTES.default) do
+  for i, v in ipairs(VOTES[ROLE[id]] or VOTES.default) do
     after(1.2 + #list * 0.6 + i * 0.8, function() RA.Deliver(v[1], "LV;" .. sid .. ";" .. v[2], "WHISPER") end)
   end
   after(0.5, function() say("réponds dans la fenêtre « ta réponse », puis vote : Gorrak et Nyssaël votent aussi, à toi de départager et de donner.") end)
@@ -164,6 +185,7 @@ end
 function RA.StartTest()
   if IsInGroup and IsInGroup() then ns.print("le raid d'essai se lance hors groupe : quitte le groupe d'abord.") return false end
   reset()
+  local worn = pickItems()
   local m = me()
   local members, roster = { m }, { [m] = { role = "DPS", dps = "melee" } }
   for _, p in ipairs(PLAYERS) do members[#members + 1] = p.name roster[p.name] = { role = p.role, dps = p.dps } end
@@ -189,16 +211,16 @@ function RA.StartTest()
       loot = "softres", consumables = CONSUMABLES, bosses = { raggy, domo }, council = { m, "Gorrak", "Nyssaël" }, roster = roster,
       counts = counts,
       reserves = {
-        [17063] = { { name = m, bonus = 0 }, { name = "Gorrak", bonus = 20 }, { name = "Vesper", bonus = 10 } },
-        [18815] = { { name = "Nyssaël", bonus = 10 }, { name = "Ilyra", bonus = 10 } },
+        [ITEM.ring.id] = { { name = m, bonus = 0 }, { name = "Gorrak", bonus = 20 }, { name = "Vesper", bonus = 10 } },
+        [ITEM.tie.id] = { { name = "Nyssaël", bonus = 10 }, { name = "Ilyra", bonus = 10 } },
       },
     },
   }
   -- Objets demandés au jeu dès maintenant : leurs liens seront prêts à l'ouverture du corps
-  for _, list in ipairs({ SR_ITEMS, COUNCIL_ITEMS, GEAR }) do
-    for _, it in ipairs(list) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
-  end
+  for _, it in pairs(ITEM) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
+  for _, it in ipairs(GEAR) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
   ns.print("raid d'essai lancé : 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs.")
+  if worn < 6 then say("le corps d'essai montre les objets que tu portes ; il en manque, il est complété par des objets de Molten Core (infobulle absente si le serveur ne les connaît pas).") end
   RA.ShowTest()
   refresh()
   return true
@@ -223,8 +245,9 @@ function T.OpenCorpse(mode)
   d.loot, d.entry.raid.loot = mode, mode
   RA.items, RA.session = {}, nil
   -- Pas de lien gardé : le nom du jeu (dans sa langue) s'affiche dès qu'il est connu, l'anglais en attendant
-  for _, it in ipairs(mode == "council" and COUNCIL_ITEMS or SR_ITEMS) do
-    RA.items[#RA.items + 1] = { itemId = it.id, name = it.name, quality = 4, test = true }
+  for _, role in ipairs(mode == "council" and COUNCIL_ROLES or SR_ROLES) do
+    local it = ITEM[role]
+    RA.items[#RA.items + 1] = { itemId = it.id, name = it.name, quality = it.quality or 4, test = true }
   end
   RA.ShowLoot()
   refresh()
@@ -258,7 +281,7 @@ function T.Refresh()
   L.Add("Hors combat, cible n'importe quel PNJ : la fiche de Ragnaros s'ouvre, comme en ciblant le boss. Attaque-le : elle se ferme." .. GREY .. "\nTu as une tâche sur Ragnaros (Fils de la flamme).|r",
     { { "Afficher la fiche", 140, function() T.ShowBoss() end }, { "Début du combat", 140, function() RA.HideSheet() end } })
   L.Header("4. Butin en soft reserve")
-  L.Add("Jets SR avec bonus SR+ (tu as réservé l'anneau : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre.",
+  L.Add("Les objets du corps sont ceux que tu portes. Jets SR avec bonus SR+ (tu as réservé le premier : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre.",
     { { "Ouvrir le corps", 140, function() T.OpenCorpse("softres") end } })
   L.Header("5. Butin au conseil")
   L.Add("Chacun répond (BiS, Upgrade...), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager.",

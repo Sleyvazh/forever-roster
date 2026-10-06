@@ -197,6 +197,13 @@
       "when": 1791281615053,
       "tag": "0027_companion_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791284235300,
+      "tag": "0028_retail_r2a",
+      "breakpoints": true
     }
   ]
 }

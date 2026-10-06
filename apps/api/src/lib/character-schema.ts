@@ -1,5 +1,6 @@
 import {
-  CLASS_NAMES, CLASSES, GEAR_SLOTS, isValidCombo, isValidSpec, LEGACY_TREES, PRIMARY_PROFESSIONS, RACE_NAMES,
+  CLASS_NAMES, CLASSES, GEAR_SLOTS, isClassOf, isValidCombo, isValidSpecFor, LEGACY_TREES, maxLevelOf, PRIMARY_PROFESSIONS, RACE_NAMES, RETAIL_CLASS_NAMES,
+  type Game,
 } from "@forever/game-data";
 import { z } from "zod";
 
@@ -25,11 +26,14 @@ const perk = z.object({ name: shortText(60), rank: z.int().min(0).max(10), max: 
 
 export const characterFields = z.object({
   name: shortText(40).min(1),
+  /** Royaume (Roster, WoW Retail). */
+  realm: shortText(40),
   race: z.union([z.literal(""), z.enum(RACE_NAMES as [string, ...string[]])]),
-  cls: z.union([z.literal(""), z.enum(CLASS_NAMES as [string, ...string[]])]),
+  // Classes des deux jeux ; crossCheck vérifie que la classe est bien celle du jeu de l'adresse
+  cls: z.union([z.literal(""), z.enum([...new Set([...CLASS_NAMES, ...RETAIL_CLASS_NAMES])] as [string, ...string[]])]),
   spec1: shortText(20),
   spec2: shortText(20),
-  level: z.int().min(1).max(60),
+  level: z.int().min(1).max(90),
   talents: talentSplit,
   talentLink: httpsUrl,
   talents2: talentSplit,
@@ -47,11 +51,19 @@ export const characterFields = z.object({
 
 export type CharacterInput = z.infer<typeof characterFields>;
 
-/** Règles qui dépendent de plusieurs champs (combinaisons race/classe de Forever, spés de la classe, total de talents). */
-export function crossCheck(c: Partial<CharacterInput> & { race: string; cls: string; spec1: string; spec2: string; talents: string; talents2?: string }): string | null {
-  if (c.race && c.cls && !isValidCombo(c.race, c.cls)) return `${c.race} ne peut pas être ${c.cls} dans WoW Forever.`;
+/**
+ * Règles qui dépendent de plusieurs champs et du jeu : combinaisons race/classe et talents de Forever ;
+ * sur Roster (WoW Retail), classe de Retail, royaume obligatoire, pas de race (fiche légère).
+ */
+export function crossCheck(c: Partial<CharacterInput> & { race: string; cls: string; spec1: string; spec2: string; talents: string; talents2?: string }, game: Game = "forever"): string | null {
+  if (c.cls && !isClassOf(game, c.cls)) return `${c.cls} n'est pas une classe de ${game === "retail" ? "WoW Retail" : "WoW Forever"}.`;
+  if (c.level !== undefined && c.level > maxLevelOf(game)) return `Niveau ${maxLevelOf(game)} au plus.`;
+  if (game === "retail") {
+    if (!c.realm?.trim()) return "Indique le royaume du perso.";
+    if (c.race) return "Pas de race sur les persos de Roster.";
+  } else if (c.race && c.cls && !isValidCombo(c.race, c.cls)) return `${c.race} ne peut pas être ${c.cls} dans WoW Forever.`;
   for (const s of [c.spec1, c.spec2]) {
-    if (s && (!c.cls || !isValidSpec(c.cls, s))) return `La spé « ${s} » n'existe pas pour ${c.cls || "cette classe"}.`;
+    if (s && (!c.cls || !isValidSpecFor(game, c.cls, s))) return `La spé « ${s} » n'existe pas pour ${c.cls || "cette classe"}.`;
   }
   for (const t of [c.talents, c.talents2]) {
     if (t && t.split("/").reduce((a, n) => a + Number(n), 0) > 51) return "Un build ne peut pas dépasser 51 points de talents.";

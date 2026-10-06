@@ -1,11 +1,11 @@
-import { CLASSES, itemLinks, LOOT_COUNT_DAYS, LOOT_MODE_HINT, LOOT_MODE_LABEL, LOOT_MODES, lootCountLabel, type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings } from "@forever/game-data";
+import { classColor, CLASSES, itemLinks, LOOT_COUNT_DAYS, LOOT_MODE_HINT, LOOT_MODE_LABEL, LOOT_MODES, lootCountLabel, type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, put, type Character } from "../api";
 
 /** Butin des raids (lot C2) : choix du mode, soft reserve d'un raid, réglages du groupe. Classes CSS « lt- ». */
 
-const clsColor = (cls: string) => CLASSES[cls as ClassName]?.color;
+const clsColor = (cls: string) => classColor(cls);
 const hm = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /* ---------- Choix du mode (création du raid, raids récurrents, page du raid) ---------- */

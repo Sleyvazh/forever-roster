@@ -1,4 +1,4 @@
-import { CLASSES, RACES, type ClassName } from "@forever/game-data";
+import { classColor, CLASSES, RACES, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -9,6 +9,9 @@ import { Portrait } from "../components/ImageUpload";
 import { StartSteps, WeekBand } from "../components/Week";
 import { MyAbsences } from "../components/Absences";
 import { registerAutosave } from "../autosave";
+import { RetailCharacterSheet, RetailCreateForm } from "../components/RetailCharacter";
+import { useSite } from "../site";
+import { useGameText } from "../gameText";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -73,6 +76,9 @@ export function CharactersPage() {
   const setSel = (id: string) => nav(urlFor(id));
   const [confirmDel, setConfirmDel] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Roster (WoW Retail) : création à la main par un petit formulaire (royaume obligatoire), fiche légère
+  const retail = useSite().game === "retail";
+  const [creating, setCreating] = useState(false);
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
   // Le groupe (et main / alt) vient toujours du serveur : il change hors de la fiche (glisser, page du groupe, inscription)
@@ -96,8 +102,15 @@ export function CharactersPage() {
     saver.queue(p);
   };
 
+  const created = (c: Character) => {
+    qc.setQueryData<{ characters: Character[] }>(["characters"], d => ({ characters: [...(d?.characters ?? []), c] }));
+    void qc.invalidateQueries({ queryKey: ["week"] });
+    setCreating(false);
+    nav(urlFor(c.id, "profil"));
+  };
   const add = async () => {
     setError(null);
+    if (retail) { setCreating(true); return; }
     try {
       const r = await post<{ character: Character }>("/characters", { name: "Nouveau perso" });
       qc.setQueryData<{ characters: Character[] }>(["characters"], d => ({ characters: [...(d?.characters ?? []), r.character] }));
@@ -134,10 +147,11 @@ export function CharactersPage() {
         {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>}
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
+      {retail && (creating || local.length === 0) && <RetailCreateForm onCreated={created} onCancel={local.length ? () => setCreating(false) : undefined} />}
       {local.length === 0 ? (
-        <StartSteps onCreate={() => void add()} />
+        retail ? null : <StartSteps onCreate={() => void add()} />
       ) : (<>
-        <StartSteps compact onCreate={() => void add()} />
+        {!retail && <StartSteps compact onCreate={() => void add()} />}
         <WeekBand />
         <MyAbsences />
         <div className="split">
@@ -146,7 +160,19 @@ export function CharactersPage() {
             <SortableList items={local} sections={myGroups.length ? sections : [{ key: "", name: "Mes persos" }]} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }}
               onReorder={ids => void saveOrder(ids)} onMove={(id, to) => { const c = local.find(x => x.id === id); if (c) void moveTo(c, to); }} />
           </aside>
-          {current && (
+          {current && retail && (
+            <RetailCharacterSheet key={current.id} c={current} onChange={edit}
+              subhead={<GroupBar c={current} groups={myGroups} onMove={to => void moveTo(current, to)} onMain={() => current.group && void moveTo(current, current.group.id, true)} />}
+              footer={<>
+                <span className={`small ${saver.status.kind === "error" || saver.status.kind === "held" ? "warnmsg" : "muted"}`} role="status">
+                  {{ idle: "Les modifications sont enregistrées automatiquement.", saving: "Enregistrement…", saved: "Enregistré.", error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}
+                </span>
+                {confirmDel
+                  ? <span className="row small">Supprimer {current.name} définitivement ? <button className="btn danger sm" type="button" onClick={() => void remove()}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
+                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le perso</button>}
+              </>} />
+          )}
+          {current && !retail && (
             <CharacterEditor
               key={current.id}
               character={current}
@@ -176,9 +202,10 @@ export function CharactersPage() {
 }
 
 export function CharacterCard({ c, current, onClick }: { c: Character; current?: boolean; onClick?: () => void }) {
-  const cl = CLASSES[c.cls as ClassName];
+  const t = useGameText();
+  const cl = { color: t.color(c.cls) };
   const race = RACES[c.race];
-  const specs = [c.spec1, c.spec2].filter(Boolean).join(" / ");
+  const specs = [c.spec1, c.spec2].filter(Boolean).map(s => t.spec(c.cls, s)).join(" / ");
   return (
     <button type="button" className="card" aria-current={current ? "true" : "false"} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={onClick}>
       <span className="cav" aria-hidden="true">
@@ -187,7 +214,7 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
       </span>
       <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans ce groupe">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
       {race ? <FactionBadge faction={race.faction} /> : <span />}
-      <span className="sub">{[c.cls, c.race].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}</span>
+      <span className="sub">{[t.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}</span>
     </button>
   );
 }

@@ -1,19 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { get, post, setCsrf, type Me } from "./api";
+import { post, setCsrf } from "./api";
+import { meQuery } from "./me";
 import { useSite } from "./site";
 
 export function useMe() {
-  return useQuery({
-    queryKey: ["me"],
-    queryFn: async () => {
-      const me = await get<Me>("/auth/me");
-      setCsrf(me.csrfToken);
-      return me;
-    },
-    staleTime: 60_000,
-  });
+  return useQuery(meQuery);
 }
 
 export function useLogout() {

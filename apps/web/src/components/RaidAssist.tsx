@@ -1,5 +1,6 @@
-import { benchSuggestion, CLASSES, roleGaps, roleOf, SIGNUP_LABEL, targetOf, type ClassName, type Role, type RoleTargets, type SignupStatus } from "@forever/game-data";
+import { classColor, benchSuggestion, CLASSES, roleGaps, roleOf, SIGNUP_LABEL, targetOf, type ClassName, type Role, type RoleTargets, type SignupStatus } from "@forever/game-data";
 import { useState } from "react";
+import { useGameText } from "../gameText";
 import type { Character, RaidSignup } from "../api";
 import { AskChip, type Reach } from "./RaidReach";
 import { RoleIcon, RoleTag } from "./RoleIcon";
@@ -15,7 +16,7 @@ export interface BenchHistory { raids: number; stats: Record<string, { bench: nu
 
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 const COMING: SignupStatus[] = ["present", "late"];
-const color = (cls: string) => CLASSES[cls as ClassName]?.color;
+const color = (cls: string) => classColor(cls);
 
 export function RaidAssist({ size, targets, entries, groupChars, signups, history, reach, onPlace, onSpec, onBench, onAsk }: {
   size: number; targets: RoleTargets; entries: AssistEntry[]; groupChars: Character[]; signups: RaidSignup[]; history: BenchHistory | undefined;
@@ -24,6 +25,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
   onPlace: (key: string) => void; onSpec: (signupId: string, spec: string) => void; onBench: (signupIds: string[]) => void;
   onAsk?: (characterId: string, spec: string) => void;
 }) {
+  const gt = useGameText();
   const placed = entries.filter(e => e.placed);
   const counts: Partial<Record<Role, number>> = {};
   for (const e of placed) { const r = roleOf(e.spec); if (r) counts[r] = (counts[r] ?? 0) + 1; }
@@ -39,7 +41,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
     if (gaps[r] <= 0) continue;
     // 1. Inscrits pas encore placés, dans ce rôle
     for (const e of entries.filter(x => !x.placed && x.signup && x.signup.status !== "absent" && x.signup.status !== "bench" && roleOf(x.spec) === r)) {
-      sugg.push({ key: `p-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${e.spec} · ${e.owner}`, why: `inscrit « ${SIGNUP_LABEL[e.signup!.status]} », pas placé`, action: { label: "Placer", run: () => onPlace(e.key) } });
+      sugg.push({ key: `p-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.specOrClass(e.cls, e.spec)} · ${e.owner}`, why: `inscrit « ${SIGNUP_LABEL[e.signup!.status]} », pas placé`, action: { label: "Placer", run: () => onPlace(e.key) } });
     }
     // 2. Inscrits qui ont ce rôle en off-spec (non placés, ou placés dans un rôle en trop)
     for (const e of entries.filter(x => x.signup && x.characterId && x.signup.status !== "absent" && roleOf(x.spec) !== r)) {
@@ -47,7 +49,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
       const off = [c?.spec1, c?.spec2].find(sp => sp && sp !== e.spec && roleOf(sp) === r);
       const cur = roleOf(e.spec);
       if (!off || (e.placed && cur && gaps[cur] >= 0)) continue;
-      sugg.push({ key: `o-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${off} (off-spec) · ${e.owner}`, why: `inscrit en ${e.spec}${e.placed ? ", déjà placé" : ""}`, action: { label: `Passer en ${off}`, run: () => onSpec(e.signup!.id, off) } });
+      sugg.push({ key: `o-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.spec(e.cls, off)} (off-spec) · ${e.owner}`, why: `inscrit en ${gt.specOrClass(e.cls, e.spec)}${e.placed ? ", déjà placé" : ""}`, action: { label: `Passer en ${gt.spec(e.cls, off)}`, run: () => onSpec(e.signup!.id, off) } });
     }
     // 3. Alts des joueurs inscrits : le bot peut leur demander (lot D2)
     for (const c of groupChars.filter(x => !signedChars.has(x.id) && signedUsers.has(x.userId) && (roleOf(x.spec1) === r || roleOf(x.spec2) === r))) {
@@ -57,7 +59,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
     }
     // 4. Mains des membres qui n'ont pas répondu
     for (const c of groupChars.filter(x => x.isMain && !answered.has(x.userId) && roleOf(x.spec1) === r)) {
-      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${c.spec1} · main de ${c.owner}`, why: "pas encore répondu", ask: { characterId: c.id, spec: c.spec1, userId: c.userId } });
+      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${gt.specOrClass(c.cls, c.spec1)} · main de ${c.owner}`, why: "pas encore répondu", ask: { characterId: c.id, spec: c.spec1, userId: c.userId } });
     }
   }
 

@@ -1,8 +1,11 @@
-import { computeCoverage, DEFAULT_TARGETS, zonedParts, GROUP_SIZE, groupsFor, isRaidSize, isValidSpec, LOOT_MODES, RAID_GROUPS, type RaidSize } from "@forever/game-data";
+import {
+  computeCoverage, DEFAULT_TARGETS, DIFFICULTY_LABEL, effectsOf, zonedParts, GROUP_SIZE, groupsFor, isRaidSize, isValidSpecFor, LOOT_MODES, RAID_GROUPS, RETAIL_DIFFICULTIES,
+  retailDefaultSize, retailSizeRange, retailTargets, type Game, type RaidSize, type RetailDifficulty,
+} from "@forever/game-data";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, groupCharacters, groupMembers, raids, raidSignups, raidTemplates, users, type RaidSlot } from "../db/schema";
+import { characters, groupCharacters, groupMembers, groups, raids, raidSignups, raidTemplates, users, type RaidSlot } from "../db/schema";
 import { listSignups, signupInput, signupSummary, signUpSiteUser, touchRaid } from "../lib/signups";
 import { discordDeletions } from "../db/schema";
 import { SIGNUP_STATUSES } from "@forever/game-data";
@@ -25,13 +28,33 @@ const raidFields = z.object({
   /** Mode de butin (choisi à la création, modifiable ensuite) et réservations cachées jusqu'à la fermeture. */
   lootMode: z.enum(LOOT_MODES).optional(),
   srHidden: z.boolean().optional(),
-  /** Format du raid : 10, 20 ou 40 joueurs. */
-  size: z.union([z.literal(10), z.literal(20), z.literal(40)]).optional(),
+  /** Format du raid : 10, 20 ou 40 joueurs sur Forever ; sur Roster, effectif selon la difficulté (formatFor). */
+  size: z.int().min(5).max(40).optional(),
+  /** Roster (WoW Retail) : Normal, Héroïque ou Mythique. */
+  difficulty: z.enum(RETAIL_DIFFICULTIES).nullable().optional(),
 });
 const targetsInput = z.object({ tank: z.int().min(0).max(40), heal: z.int().min(0).max(40), dps: z.int().min(0).max(40) });
-/** Rôles visés d'un raid : les siens, sinon ceux de son format. */
-const targetsOf = (r: { size: number; targets: { tank: number; heal: number; dps: number } | null }) =>
-  r.targets ?? DEFAULT_TARGETS[(isRaidSize(r.size) ? r.size : 40) as RaidSize];
+/** Rôles visés d'un raid : les siens, sinon ceux de son format (Forever) ou de son effectif (Roster). */
+export const targetsOf = (r: { size: number; targets: { tank: number; heal: number; dps: number } | null }, game: Game = "forever") =>
+  r.targets ?? (game === "retail" ? retailTargets(r.size) : DEFAULT_TARGETS[(isRaidSize(r.size) ? r.size : 40) as RaidSize]);
+
+/**
+ * Format d'un raid selon le jeu : Forever 10, 20 ou 40 joueurs, sans difficulté ; Roster, difficulté (Normal par défaut)
+ * et effectif dans la plage de la difficulté (10 à 30, Mythique 20 ou flexible selon le raid).
+ */
+export function formatFor(game: Game, name: string, size?: number, difficulty?: RetailDifficulty | null): { size: number; difficulty: RetailDifficulty | null } {
+  if (game !== "retail") {
+    if (difficulty) throw badRequest("Pas de difficulté pour les raids de WoW Forever.");
+    const s = size ?? 40;
+    if (!isRaidSize(s)) throw badRequest("Un raid de WoW Forever se joue à 10, 20 ou 40.");
+    return { size: s, difficulty: null };
+  }
+  const d = difficulty ?? "normal";
+  const { min, max } = retailSizeRange(d, name);
+  const s = size ?? retailDefaultSize(d, name);
+  if (s < min || s > max) throw badRequest(min === max ? `En ${DIFFICULTY_LABEL[d].fr}, ce raid se joue à ${min}.` : `En ${DIFFICULTY_LABEL[d].fr}, de ${min} à ${max} joueurs.`);
+  return { size: s, difficulty: d };
+}
 const slot = z.object({
   group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
   characterId: z.uuid().optional(), signupId: z.uuid().optional(),
@@ -43,9 +66,14 @@ export async function raidRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
   async function loadRaid(groupId: string, raidId: string) {
-    const [r] = await db.select().from(raids).where(and(eq(raids.id, raidId), eq(raids.groupId, groupId)));
-    if (!r) throw notFound("Raid introuvable.");
-    return r;
+    const [row] = await db.select({ r: raids, game: groups.game }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+      .where(and(eq(raids.id, raidId), eq(raids.groupId, groupId)));
+    if (!row) throw notFound("Raid introuvable.");
+    return { ...row.r, game: row.game };
+  }
+  async function groupGame(groupId: string): Promise<Game> {
+    const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, groupId));
+    return g?.game ?? "forever";
   }
 
   async function slotCharacters(groupId: string, slots: RaidSlot[]) {
@@ -72,7 +100,7 @@ export async function raidRoutes(app: FastifyInstance) {
       .where(and(eq(raidSignups.raidId, raidId), inArray(raidSignups.id, ids), isNull(raidSignups.userId)));
   }
 
-  function withCoverage(slots: RaidSlot[], chars: Awaited<ReturnType<typeof slotCharacters>>, guests: Awaited<ReturnType<typeof slotGuests>>, specs = new Map<string, string>()) {
+  function withCoverage(game: Game, slots: RaidSlot[], chars: Awaited<ReturnType<typeof slotCharacters>>, guests: Awaited<ReturnType<typeof slotGuests>>, specs = new Map<string, string>()) {
     const byId = new Map(chars.map(c => [c.id, c]));
     const guestById = new Map(guests.map(g => [g.id, g]));
     // Un perso dont le joueur a quitté le groupe, ou un inscrit sans compte désinscrit, disparaît de la composition.
@@ -81,7 +109,7 @@ export async function raidRoutes(app: FastifyInstance) {
       if (s.signupId) { const g = guestById.get(s.signupId)!; return { characterId: `s:${g.id}`, cls: g.cls, spec: g.spec || null, group: s.group }; }
       const c = byId.get(s.characterId!)!;
       return { characterId: c.id, cls: c.cls, spec: specs.get(c.id) || c.spec1 || null, group: s.group };
-    }));
+    }), effectsOf(game));
     return { slots: live, characters: chars, coverage: coverage.map(c => ({ id: c.effect.id, covered: c.covered, sources: c.sources, missingGroups: c.missingGroups })) };
   }
 
@@ -89,11 +117,11 @@ export async function raidRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await membership(db, id, u.id);
-    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size, lootMode: raids.lootMode })
+    const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size, difficulty: raids.difficulty, lootMode: raids.lootMode })
       .from(raids).where(eq(raids.groupId, id)).orderBy(desc(raids.scheduledAt), asc(raids.name));
     const summary = await signupSummary(db, rows.map(r => r.id), u.id);
     return { raids: rows.map(r => ({
-      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, updatedAt: r.updatedAt, recurring: !!r.templateId, lootMode: r.lootMode,
+      id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, difficulty: r.difficulty, updatedAt: r.updatedAt, recurring: !!r.templateId, lootMode: r.lootMode,
       signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null, roles: summary.get(r.id)?.roles ?? { Tank: 0, Heal: 0, DPS: 0 },
     })) };
   });
@@ -110,9 +138,10 @@ export async function raidRoutes(app: FastifyInstance) {
       if (!body.scheduledAt) throw badRequest("Choisis la date du premier raid.");
       if (await db.$count(raidTemplates, eq(raidTemplates.groupId, id)) >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
     }
+    const format = formatFor(await groupGame(id), body.name, body.size, body.difficulty);
     const [r] = await db.insert(raids).values({
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
-      lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, size: body.size ?? 40,
+      lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, ...format,
     }).returning();
     await audit(db, req, "raid_created", { userId: u.id, groupId: id, meta: { raidId: r!.id, name: body.name } });
     // Consommables, fiches de boss et conseil repris du dernier raid du même nom (lot G)
@@ -123,7 +152,7 @@ export async function raidRoutes(app: FastifyInstance) {
       const time = `${String(z.hour).padStart(2, "0")}:${String(z.minute).padStart(2, "0")}`;
       const [t] = await db.insert(raidTemplates).values({
         groupId: id, name: r!.name, description: r!.description, weekday: z.weekday, time, leadDays: body.weekly.leadDays,
-        size: r!.size, lootMode: r!.lootMode, srHidden: r!.srHidden, createdBy: u.id, generatedUntil: r!.scheduledAt,
+        size: r!.size, difficulty: r!.difficulty, lootMode: r!.lootMode, srHidden: r!.srHidden, createdBy: u.id, generatedUntil: r!.scheduledAt,
       }).returning();
       await db.update(raids).set({ templateId: t!.id }).where(eq(raids.id, r!.id));
       await ensureRecurringRaids(db, new Date(), t!.id);
@@ -144,9 +173,9 @@ export async function raidRoutes(app: FastifyInstance) {
     const signups = await listSignups(db, r.id);
     return {
       raid: { id: r.id, name: r.name, scheduledAt: r.scheduledAt, description: r.description, updatedAt: r.updatedAt, rosterPublished: !!r.rosterPublishedAt, lootMode: r.lootMode, srHidden: r.srHidden,
-        size: r.size, targets: targetsOf(r), customTargets: !!r.targets },
+        size: r.size, difficulty: r.difficulty, targets: targetsOf(r, r.game), customTargets: !!r.targets },
       version: r.updatedAt.toISOString(),
-      canEdit: role !== "member", ...withCoverage(r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
+      canEdit: role !== "member", ...withCoverage(r.game, r.slots, chars, await slotGuests(r.id, r.slots), await signupSpecs(r.id)),
       signups: signups.map(x => ({ ...x, mine: x.userId === u.id })),
       log: await raidLogView(db, r),
     };
@@ -213,7 +242,7 @@ export async function raidRoutes(app: FastifyInstance) {
     if (name !== current.name && !current.prep.consumables.length && !current.prep.bosses.length) await inheritPrep(db, [p.raidId]);
     bus.group({ t: "raid", g: p.id, r: p.raidId, by: u.id, byName: u.displayName });
     return {
-      ...withCoverage(slots, chars, guests, await signupSpecs(p.raidId)),
+      ...withCoverage(current.game, slots, chars, guests, await signupSpecs(p.raidId)),
       version: updatedAt.toISOString(), merged,
       raid: { name, scheduledAt: scheduledAt?.toISOString() ?? null, description: description ?? current.description, lootMode: body.lootMode ?? current.lootMode, srHidden: body.srHidden ?? current.srHidden },
     };
@@ -264,20 +293,22 @@ export async function raidRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Officiers : format du raid (10, 20, 40) et rôles visés (null : ceux du format). */
+  /** Officiers : format du raid (10, 20, 40 ; Roster : difficulté et effectif) et rôles visés (null : ceux du format). */
   app.patch("/:id/raids/:raidId/format", async (req) => {
     const u = currentUser(req);
     const p = parse(raidParams, req.params);
     await requireRole(db, p.id, u.id, "officer");
     const r = await loadRaid(p.id, p.raidId);
-    const body = parse(z.object({ size: raidFields.shape.size, targets: targetsInput.nullable().optional() }), req.body);
-    const size = body.size ?? r.size;
+    const body = parse(z.object({ size: raidFields.shape.size, difficulty: raidFields.shape.difficulty, targets: targetsInput.nullable().optional() }), req.body);
+    // Nouvelle difficulté sans effectif : celui proposé pour cette difficulté
+    const changedDifficulty = body.difficulty !== undefined && body.difficulty !== r.difficulty;
+    const { size, difficulty } = formatFor(r.game, r.name, body.size ?? (changedDifficulty ? undefined : r.size), body.difficulty === undefined ? r.difficulty : body.difficulty);
     const beyond = [...new Set(r.slots.filter(s => s.group > groupsFor(size)).map(s => s.group))];
     if (beyond.length) throw badRequest(`Des persos sont placés dans le${beyond.length > 1 ? "s groupes" : " groupe"} ${beyond.join(", ")} : retire-les avant de passer à ${size}.`);
     const targets = body.targets === undefined ? r.targets : body.targets;
-    await db.update(raids).set({ size, targets, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
+    await db.update(raids).set({ size, difficulty, targets, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
     bus.group({ t: "raid", g: p.id, r: r.id });
-    return { size, targets: targetsOf({ size, targets }), customTargets: !!targets };
+    return { size, difficulty, targets: targetsOf({ size, targets }, r.game), customTargets: !!targets };
   });
 
   /**
@@ -315,7 +346,7 @@ export async function raidRoutes(app: FastifyInstance) {
       .refine(b => b.status || b.spec, "Rien à changer."), req.body);
     const [cur] = await db.select({ cls: raidSignups.cls }).from(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId)));
     if (!cur) throw notFound("Inscription introuvable.");
-    if (body.spec && !isValidSpec(cur.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${cur.cls}.`);
+    if (body.spec && !isValidSpecFor(await groupGame(p.id), cur.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${cur.cls}.`);
     const [row] = await db.update(raidSignups).set({ ...(body.status && { status: body.status }), ...(body.spec && { spec: body.spec }), updatedAt: new Date() })
       .where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId))).returning({ id: raidSignups.id });
     if (!row) throw notFound("Inscription introuvable.");

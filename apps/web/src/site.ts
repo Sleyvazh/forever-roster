@@ -2,6 +2,7 @@ import type { Game } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { get } from "./api";
+import { meQuery } from "./me";
 
 /**
  * Un site, deux adresses : Forever Roster et Roster (WoW Retail). L'API dit à quelle adresse on est (/api/site) :
@@ -13,6 +14,8 @@ export interface SiteData {
   open: boolean;
   origin: string;
   other: { game: Game; name: string; origin: string } | null;
+  /** Roster encore fermé mais ouvert pour ce compte (accès anticipé). */
+  preview?: boolean;
 }
 
 const guess = (): SiteData => {
@@ -24,7 +27,11 @@ const guess = (): SiteData => {
 
 export function useSite(): SiteData {
   const q = useQuery({ queryKey: ["site"], queryFn: () => get<SiteData>("/site"), staleTime: Infinity, retry: 1 });
-  return q.data ?? guess();
+  const me = useQuery(meQuery);
+  const site = q.data ?? guess();
+  // Accès anticipé (Flo et les officiers) : Roster s'ouvre pour ce compte avant tout le monde
+  if (!site.open && site.game === "retail" && me.data?.user?.rosterPreview) return { ...site, open: true, preview: true };
+  return site;
 }
 
 /** Habillage du site : couleur d'accent (classe site-retail), titre de l'onglet, favicon et icône d'écran d'accueil. */

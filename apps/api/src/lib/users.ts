@@ -12,6 +12,9 @@ export function publicUser(u: UserRow) {
     hasBattlenet: !!u.battlenetId,
     discordUsername: u.discordUsername,
     discordReminders: u.discordReminders,
+    // Roster (R2) : langue des noms du jeu, accès anticipé tant que Roster est fermé
+    gameLang: u.gameLang,
+    rosterPreview: u.rosterPreview,
     avatarId: u.avatarId,
     createdAt: u.createdAt,
   };

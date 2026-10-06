@@ -23,6 +23,8 @@ Forever Roster (`APP_ORIGIN`, jeu `forever`) et Roster (`RETAIL_ORIGIN`, jeu `re
 - persos et groupes ont une colonne `game` : chaque adresse ne liste et ne crée que ceux de son jeu, et un perso ne rejoint qu'un groupe du même jeu ;
 - le cookie de session (`__Host-`) reste propre à chaque adresse : on se connecte une fois sur chacune.
 
+Données par jeu (`packages/game-data/src/games.ts`) : classes, spés, niveau maximum et buffs de raid de chaque jeu (`classesOf`, `specsOf`, `effectsOf`…). Roster a les 13 classes et 40 spés de Retail (`retail.ts`, clés anglaises, noms français), les raids de Midnight et leurs difficultés : `formatFor(game, nom, effectif, difficulté)` (`routes/raids.ts`) vérifie l'effectif (Normal et Héroïque 10 à 30, Mythique 20, flexible 15 à 25 pour Kith'ix et Chute-des-Spores). Les clés stockées restent en anglais ; l'affichage passe par `useGameText()` (site) : noms traduits sur Roster selon `users.game_lang` (`auto` : langue du navigateur). Roster fermé (`SITE_INFO.retail.open = false`) s'ouvre pour les comptes `users.roster_preview` (commande `roster-preview`).
+
 Le front lit `GET /api/site` (nom, jeu, ouvert ou non, autre adresse) pour son nom, son logo et sa couleur. Caddy sert à la racine `/` une page d'accueil statique propre à chaque adresse (`apps/web/public/landing/`), lisible par les moteurs de recherche ; un visiteur déjà connecté y est renvoyé vers ses persos. Un seul bot Discord sert les deux sites (`/forever-lier` et `/roster-lier`).
 
 ## Connexion par mot de passe

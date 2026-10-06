@@ -73,4 +73,6 @@ lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'add
 
 Conseil du butin (1.2) : la fenêtre des votes est un tableau, une ligne par joueur (réponse, objet porté, précision, objets reçus, voix et qui a voté, **Voter** / **Donner**), redimensionnable par le coin en bas à droite (taille gardée d'une session à l'autre). La colonne **Reçus** additionne le compte du site sur la période choisie par les officiers (saison, 30 derniers jours ou X derniers raids ; par joueur ou par perso) et les objets de ce soir pas encore envoyés au site ; ne comptent que la spé principale (soft reserve, jets MS, conseil BiS / Upgrade).
 
-Client de Forever (1.2.1) : il n'a plus les fonctions globales d'objets de Classic (`GetItemInfo`, `GetItemCount`…) ; l'addon passe par `C_Item` quand elles manquent (noms, objets portés, consommables dans les sacs, fin d'un échange).
+Client de Forever (1.2.1) : il n'a plus la fonction globale `GetItemInfo` de Classic (`GetItemCount` est toujours là) ; l'addon passe par `C_Item` quand une fonction d'objet manque (noms, objets portés, consommables dans les sacs, fin d'un échange).
+
+Raid d'essai (1.3.1) : le corps d'essai montre les objets que le joueur porte, connus du serveur de Forever (infobulles) ; s'il en manque, des objets de Molten Core complètent.

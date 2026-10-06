@@ -1,4 +1,4 @@
-import type { Role, SignupStatus } from "@forever/game-data";
+import type { Game, Role, SignupStatus } from "@forever/game-data";
 
 /** Client de l'API interne du site (réseau Docker uniquement, secret partagé). */
 
@@ -10,8 +10,9 @@ export interface ViewSignup {
 }
 export interface RosterMember { name: string; cls: string; spec: string; role: Role | null }
 export interface RaidView {
-  raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string; size?: number };
-  group: { id: string; name: string };
+  raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string; size?: number; difficulty?: string | null };
+  /** Jeu du groupe (Roster : WoW Retail) ; absent : Forever. */
+  group: { id: string; name: string; game?: Game };
   channelId: string;
   messageId: string | null;
   signups: ViewSignup[];
@@ -31,7 +32,7 @@ export interface Nudge {
 export interface Ask {
   id: string; discordUserId: string; character: { name: string; cls: string }; spec: string; role: Role | null; askedBy: string;
   current: { status: SignupStatus; characterName: string | null } | null;
-  raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string };
+  raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string; game?: Game };
 }
 export interface AskAnswer { answer: "yes" | "no"; character: string; spec: string; url: string; view: RaidView | null; already: boolean }
 /** Commande d'artisanat dans son salon Discord (lot F). */
@@ -43,8 +44,8 @@ export interface OrderView {
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
-  | { mode: "member"; linked: true; current: Current | null; characters: ChoiceChar[] }
-  | { mode: "guest"; linked: boolean; current: Current | null };
+  | { mode: "member"; linked: true; current: Current | null; characters: ChoiceChar[]; game?: Game }
+  | { mode: "guest"; linked: boolean; current: Current | null; game?: Game };
 export interface SignupBody { status: SignupStatus; characterId?: string | null; cls?: string; spec?: string }
 export interface Deletion { id: number; channelId: string; messageId: string }
 export interface FeedbackConfig { guildId: string; inboxChannelId: string; panelChannelId: string | null; panelMessageId: string | null; allowAnonymous: boolean }

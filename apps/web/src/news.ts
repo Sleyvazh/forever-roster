@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 35, date: "2026-10-06", kind: "addon", version: "1.3", title: "Raid d'essai avec tes objets",
+    text: "Dans /fr test, le corps d'essai montre les objets que tu portes : le serveur de Forever les connaît, leurs infobulles s'affichent. S'il en manque, des objets de Molten Core complètent." },
   { n: 34, date: "2026-10-06", kind: "site", title: "Le Ctrl+V se souvient de tes fiches partout",
     text: "Quand tu colles l'export de l'addon, le site retient quelle fiche va avec quel perso du jeu, sur ton compte et plus seulement dans ce navigateur : sur un autre ordinateur ou après avoir renommé une fiche, tout est retrouvé sans rien choisir. La mise à jour se fait aussi d'un seul coup, plus vite. Et ça prépare Roster Companion, l'appli (en option) qui fera la synchro entre le jeu et le site sans copier-coller." },
   { n: 33, date: "2026-10-06", kind: "addon", version: "1.2", title: "Noms d'objets et /fr objet",

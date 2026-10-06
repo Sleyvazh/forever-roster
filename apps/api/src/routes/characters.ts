@@ -17,7 +17,7 @@ const idParam = z.object({ id: z.uuid() });
 
 export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
-  id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
+  id: c.id, userId: c.userId, name: c.name, realm: c.realm, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
   portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null, addonKey: c.addonKey ?? null,
 });
@@ -45,9 +45,9 @@ export async function characterRoutes(app: FastifyInstance) {
   app.post("/", async (req, reply) => {
     const u = currentUser(req);
     const body = parse(characterFields.partial().extend({ name: characterFields.shape.name }), req.body);
-    const merged = { race: "", cls: "", spec1: "", spec2: "", talents: "", ...body };
-    const err = crossCheck(merged); if (err) throw badRequest(err);
+    const merged = { race: "", cls: "", spec1: "", spec2: "", talents: "", realm: "", ...body };
     const game = siteOf(app.ctx.cfg, req).game;
+    const err = crossCheck(merged, game); if (err) throw badRequest(err);
     const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
       .where(and(eq(characters.userId, u.id), eq(characters.game, game))) as [{ n: number; top: number | null }];
     if (n >= MAX_CHARACTERS) throw badRequest(`Limite de ${MAX_CHARACTERS} personnages atteinte.`);
@@ -90,7 +90,7 @@ export async function characterRoutes(app: FastifyInstance) {
     const [existing] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
     if (!existing) throw notFound("Personnage introuvable.");
     const next = { ...existing, ...patch };
-    const err = crossCheck(next); if (err) throw badRequest(err);
+    const err = crossCheck(next, existing.game); if (err) throw badRequest(err);
     const [row] = await db.update(characters).set({
       ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }), ...(consumables && { consumables, consumablesAt: new Date() }),
     }).where(eq(characters.id, id)).returning();

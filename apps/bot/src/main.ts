@@ -8,12 +8,16 @@ import { loadConfig } from "./config";
 import { parseRaidDate } from "./dates";
 import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
 import { createFeedback, isFeedbackId } from "./feedback";
-import { confirmation, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
+import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
+import { resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
+
+/** Langue des noms du jeu dans les menus : celle du Discord du joueur (français ou anglais). */
+const langOf = (i: { locale: string }) => resolveGameLang(null, i.locale);
 
 const log = {
   info: (msg: string, extra?: unknown) => console.log(new Date().toISOString(), msg, extra ?? ""),
@@ -241,11 +245,11 @@ async function start() {
     }
     if (id.a === "st") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id)));
+      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id), false, langOf(i)));
     }
     if (id.a === "chg") {
       await i.deferUpdate();
-      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id), true));
+      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id), true, langOf(i)));
     }
     if (id.a === "off") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
@@ -260,8 +264,9 @@ async function start() {
     const value = i.values[0];
     if (!id || !value || !("status" in id)) return;
     await i.deferUpdate();
-    if (id.a === "char") return apply(i, id.raidId, onCharPicked(id.raidId, id.status, await api.choices(id.raidId, i.user.id), value));
-    if (id.a === "cls") return apply(i, id.raidId, onClassPicked(id.raidId, id.status, value));
+    if (id.a === "char") return apply(i, id.raidId, onCharPicked(id.raidId, id.status, await api.choices(id.raidId, i.user.id), value, langOf(i)));
+    // Classes et spés du jeu du groupe (Roster : WoW Retail)
+    if (id.a === "cls") return apply(i, id.raidId, onClassPicked(id.raidId, id.status, value, (await api.choices(id.raidId, i.user.id)).game, langOf(i)));
     const pair = splitValue(value);
     if (!pair) return;
     if (id.a === "pick") {
@@ -270,7 +275,10 @@ async function start() {
       const [name, spec] = opt.includes(" — ") ? opt.split(" — ") : [null, pair[1]];
       return apply(i, id.raidId, { kind: "signup", body: { status: id.status, characterId: pair[0], spec: pair[1] }, label: name ? `${name} (${spec})` : pair[1] });
     }
-    if (id.a === "gspec") return apply(i, id.raidId, { kind: "signup", body: { status: id.status, cls: pair[0], spec: pair[1] }, label: `${pair[1]} ${pair[0]}` });
+    if (id.a === "gspec") {
+      const game = (await api.choices(id.raidId, i.user.id)).game ?? "forever";
+      return apply(i, id.raidId, { kind: "signup", body: { status: id.status, cls: pair[0], spec: pair[1] }, label: guestLabel(game, langOf(i), pair[0], pair[1]) });
+    }
   }
 
   const stop = () => { client.destroy().finally(() => process.exit(0)); };

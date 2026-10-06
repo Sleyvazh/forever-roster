@@ -490,6 +490,8 @@ assert(ns.Group.displayLink(17063, "Band of Accuria", 4) == "|cffa335ee|Hitem:17
 GetItemInfo = realGetItemInfo
 ns.Test.OpenCorpse("softres")
 assert(#RA.items == 4 and RA.Current().loot == "softres", "corps d'essai (soft reserve)")
+assert(RA.items[1].itemId == 16866 and RA.items[2].itemId == 18815, "corps d'essai : l'objet porté d'abord, puis ceux de Molten Core")
+assert(RA.Current().reserves[16866], "réservations sur l'objet porté")
 -- SR avec bonus : mon vrai jet compte, Sylvaë (sans réservation) est ignorée
 RA.StartRoll(RA.items[1], "sr")
 fire("CHAT_MSG_SYSTEM", "Tournicoti Tournicoton obtient un 90 (1-100).") -- nom de famille de Forever dans le message du jet
@@ -536,9 +538,9 @@ assert(#RA.test.log.loot == 5, "5 objets attribués pendant l'essai")
 local ms, mt = RA.Received("Mirelle", RA.Current())
 local is, it = RA.Received("Ilyra", RA.Current())
 assert(ms == 1 and mt == 1 and is == 1 and it == 0, "essai : reçus de la saison + ce soir (jet OS non compté)")
--- Objet pas encore renvoyé par le jeu : nom connu (raid d'essai), jamais « objet 16835 »
+-- Objet pas encore renvoyé par le jeu : nom connu (raid d'essai), jamais « objet 16866 »
 GetItemInfo = function() return nil end
-assert(ns.Group.displayLink(16835):find("%[Cenarion Leggings%]"), "nom de l'objet porté connu avant la réponse du jeu")
+assert(ns.Group.displayLink(16866):find("%[Objet 16866%]"), "nom de l'objet porté connu avant la réponse du jeu")
 GetItemInfo = realGetItemInfo
 run("objet 16901")
 local beforeT = errors()
@@ -570,7 +572,7 @@ assert(ForeverRosterDB.skin == "site" and reloaded, "/fr habillage : site, inter
 run("habillage")
 assert(ForeverRosterDB.skin == nil, "/fr habillage : retour à Forever")
 
--- Client de Forever (1.2.1) : plus de fonctions globales d'objets (GetItemInfo, GetItemInfoInstant, GetItemCount), seulement C_Item
+-- Client sans fonctions globales d'objets (GetItemInfo, GetItemInfoInstant, GetItemCount), seulement C_Item : le pire cas (Forever n'a plus GetItemInfo)
 do
   local gi, gii, gic = GetItemInfo, GetItemInfoInstant, GetItemCount
   local asked = {}

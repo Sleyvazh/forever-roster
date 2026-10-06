@@ -193,7 +193,7 @@ sudo docker compose up -d api
 
 Un seul site, deux adresses : même serveur, même code, même base. L'adresse de la requête choisit le jeu (`forever` ou `retail`), le nom, le logo, la couleur, la page d'accueil publique, l'adresse des liens dans les e-mails et les invitations, et le retour de la connexion Discord. Les comptes sont communs (même e-mail, même mot de passe, même liaison Discord) ; la connexion se fait une fois par adresse (cookie propre à chaque sous-domaine). Persos et groupes appartiennent à un jeu : chaque adresse ne montre que les siens.
 
-Tant que `RETAIL_ORIGIN` et `RETAIL_DOMAIN` sont vides, seul Forever Roster existe. Avant l'arrivée des données Retail (lot R2), Roster n'ouvre que l'accueil et le compte : une fois connecté, « Roster arrive bientôt ».
+Tant que `RETAIL_ORIGIN` et `RETAIL_DOMAIN` sont vides, seul Forever Roster existe. Roster reste fermé jusqu'à l'addon Retail (lot R3) : une fois connecté, on n'y voit que le compte et « Roster arrive bientôt », sauf avec l'accès anticipé ci-dessous.
 
 Mise en service, **dans cet ordre** (Caddy ne peut obtenir le certificat que si le DNS pointe déjà vers le serveur) :
 
@@ -217,6 +217,21 @@ Mise en service, **dans cet ordre** (Caddy ne peut obtenir le certificat que si 
 Bot Discord : `/roster-lier` fait la même chose que `/forever-lier` (un code de groupe Roster ou Forever Roster, peu importe la commande). Le bot enregistre ses commandes à chaque démarrage : rien à faire après le déploiement (relancer Discord avec Ctrl+R si la commande n'apparaît pas tout de suite).
 
 Battle.net (quand il sera activé) : déclarer aussi `https://roster.sleyvazh.fr/api/auth/battlenet/callback` chez Blizzard.
+
+### Accès anticipé à Roster
+
+Avant l'ouverture, quelques comptes (Flo et les officiers) utilisent Roster en entier. Le compte doit exister (inscription sur l'une des deux adresses) ; sur le serveur :
+
+```bash
+cd ~/forever-roster
+sudo docker compose exec api node dist/roster-preview.js add flo@example.com     # donner l'accès
+sudo docker compose exec api node dist/roster-preview.js list                    # qui l'a
+sudo docker compose exec api node dist/roster-preview.js remove flo@example.com  # le retirer
+```
+
+La personne recharge la page de Roster : un badge « Accès anticipé » s'affiche en haut. Ce qui est déjà là (lot R2a) : persos créés à la main (nom, royaume, classe, spés, liens Armurerie / Raider.IO / Warcraft Logs, notes), groupes, raids Normal / Héroïque / Mythique avec l'effectif de chaque difficulté (10 à 30 ; Mythique 20, ou 15 à 25 pour les raids flexibles), inscriptions, compo et buffs de raid de Midnight, annonces Discord. Pas encore : import Battle.net (R2b), butin, préparation, bilan et addon (R3).
+
+Langue des noms du jeu (classes, spés, raids, buffs) : chaque compte choisit dans *Compte et sécurité → Noms du jeu* (français, anglais, ou comme le navigateur). Sur Discord, les menus d'inscription suivent la langue de Discord du joueur ; l'annonce publique est en français. Forever Roster garde les noms anglais de WoW Forever.
 
 Référencement : chaque adresse sert sa propre page d'accueil statique (titre, description, aperçu pour les réseaux) et `robots.txt` (tout sauf `/api/`). Pour suivre l'indexation, ajouter les deux adresses dans Google Search Console (facultatif).
 

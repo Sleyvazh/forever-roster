@@ -10,7 +10,7 @@ export type EffectKind = "buff" | "aura" | "debuff" | "utility";
 /** raid = une seule source suffit pour tout le raid ; party = il faut une source dans chaque groupe de 5. */
 export type EffectScope = "raid" | "party";
 
-export interface Provider { cls: ClassName; specs?: string[] }
+export interface Provider { cls: string; specs?: string[] }
 export interface RaidEffect {
   id: string;
   name: string;
@@ -94,10 +94,10 @@ function provides(effect: RaidEffect, m: RaidMember): boolean {
   return effect.providers.some(p => p.cls === m.cls && (!p.specs || (m.spec !== null && p.specs.includes(m.spec))));
 }
 
-/** Calcule la couverture des buffs/debuffs pour une composition de raid. */
-export function computeCoverage(members: RaidMember[]): EffectCoverage[] {
+/** Calcule la couverture des buffs/debuffs pour une composition de raid (Forever par défaut, RETAIL_EFFECTS pour Roster). */
+export function computeCoverage(members: RaidMember[], effects: RaidEffect[] = RAID_EFFECTS): EffectCoverage[] {
   const occupied = [...new Set(members.map(m => m.group))].sort((a, b) => a - b);
-  return RAID_EFFECTS.map(effect => {
+  return effects.map(effect => {
     const sources = members.filter(m => provides(effect, m));
     if (effect.scope === "raid") {
       return { effect, sources: sources.length, missingGroups: [], covered: sources.length > 0 };
@@ -112,12 +112,12 @@ export function computeCoverage(members: RaidMember[]): EffectCoverage[] {
  * Pour les effets exclusifs (bénédictions, malédictions, jugements…), une source n'en fournit qu'un.
  * Renvoie, par groupe d'exclusivité, le nombre de sources disponibles et le nombre d'effets demandés.
  */
-export function exclusiveBudget(members: RaidMember[]): { group: string; available: number; wanted: number }[] {
+export function exclusiveBudget(members: RaidMember[], effects: RaidEffect[] = RAID_EFFECTS): { group: string; available: number; wanted: number }[] {
   const groups = new Map<string, RaidEffect[]>();
-  for (const e of RAID_EFFECTS) if (e.exclusiveGroup) groups.set(e.exclusiveGroup, [...(groups.get(e.exclusiveGroup) ?? []), e]);
+  for (const e of effects) if (e.exclusiveGroup) groups.set(e.exclusiveGroup, [...(groups.get(e.exclusiveGroup) ?? []), e]);
   return [...groups.entries()].map(([group, effects]) => {
     const providerClasses = new Set(effects.flatMap(e => e.providers.map(p => p.cls)));
-    const available = members.filter(m => providerClasses.has(m.cls as ClassName)).length;
+    const available = members.filter(m => providerClasses.has(m.cls)).length;
     return { group, available, wanted: effects.length };
   });
 }

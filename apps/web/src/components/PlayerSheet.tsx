@@ -1,8 +1,9 @@
-import { ATTENDANCE_LABEL, CLASSES, itemLinks, type AttendanceStatus, type ClassName, type GearStats } from "@forever/game-data";
+import { classColor, ATTENDANCE_LABEL, CLASSES, itemLinks, type AttendanceStatus, type ClassName, type GearStats } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useMe } from "../auth";
+import { useGameText } from "../gameText";
 import { ApiError, del, get, post, type GroupRole } from "../api";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
@@ -27,11 +28,12 @@ interface Sheet {
 const ROLE_NAME: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 const CELL: Record<AttendanceStatus, string> = { present: "✓", late: "R", left: "P", bench: "B", absent: "✗" };
 const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" });
-const color = (cls: string) => CLASSES[cls as ClassName]?.color ?? "var(--line-2)";
+const color = (cls: string) => classColor(cls) ?? "var(--line-2)";
 
 export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: string; userId: string; officer: boolean; onClose: () => void }) {
   // Ses persos s'ouvrent dans Mes persos ; ceux d'un autre joueur, en lecture dans l'onglet Personnages du groupe
   const myId = useMe().data?.user?.id;
+  const gt = useGameText();
   const charUrl = (id: string) => (userId === myId ? `/persos/${id}` : `/groups/${groupId}/persos?perso=${id}`);
   const { data, isLoading } = useQuery({ queryKey: ["player-sheet", groupId, userId], queryFn: () => get<Sheet>(`/groups/${groupId}/members/${userId}/sheet`) });
   if (isLoading || !data) return <p className="muted">Chargement…</p>;
@@ -53,7 +55,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
         <div><b className="num">{a.raids ? `${a.attended}/${a.raids}` : "—"}</b><span>raids venus</span></div>
         <div><b className="num">{a.benched}</b><span>fois sur le banc</span></div>
         <div title={`Objets de spé principale reçus ${data.lootCount.label}${data.lootCount.by === "player" ? ", main et alts ensemble" : ""}`}><b className="num">{data.lootCount.player}</b><span>objet{data.lootCount.player > 1 ? "s" : ""} · {data.lootCount.short}</span></div>
-        <div><b className="num">{bis ? `${bis.got}/${bis.total}` : "—"}</b><span>BiS du main</span></div>
+        {gt.game !== "retail" && <div><b className="num">{bis ? `${bis.got}/${bis.total}` : "—"}</b><span>BiS du main</span></div>}
       </div>
       <div className="ps-cols">
         <div>
@@ -68,7 +70,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
                     </span>
                     <span className="ps-cn">
                       <span>{c.isMain ? <span className="gm-star">★</span> : <span className="gm-alt">alt</span>}<b style={{ color: color(c.cls) }}>{c.name}</b></span>
-                      <small>{[c.spec1, c.spec2].filter(Boolean).join(" · ") || c.cls || "À configurer"} · niv. {c.level}</small>
+                      <small>{[gt.spec(c.cls, c.spec1), gt.spec(c.cls, c.spec2)].filter(Boolean).join(" · ") || gt.cls(c.cls) || "À configurer"} · niv. {c.level}</small>
                     </span>
                     <span className="num small muted">{c.gearStats.ilvl != null ? `ilvl ${String(c.gearStats.ilvl).replace(".", ",")}` : ""}</span>
                     <span className="ps-prog"><span className="rl-bar" aria-hidden="true"><i style={{ width: `${Math.round(c.gearStats.got / c.gearStats.total * 100)}%` }} className={c.gearStats.got / c.gearStats.total < .5 ? "low" : ""} /></span>

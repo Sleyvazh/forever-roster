@@ -1,5 +1,5 @@
 import { AttendanceTab } from "../components/RaidLog";
-import { ATTENDED, CLASSES, SKILL_LINE_NAMES, type AttendanceStatus, type ClassName } from "@forever/game-data";
+import { classColor, ATTENDED, CLASSES, SKILL_LINE_NAMES, type AttendanceStatus, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -68,7 +68,9 @@ export function GroupPage() {
     </div>
   );
 
-  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"], ["crafters", "Artisans"], ["presence", "Présence & butin"], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
+  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"],
+    // Roster (WoW Retail) : métiers et relevés de l'addon viendront avec l'addon Retail (R3)
+    ...(site.game === "retail" ? [] : [["crafters", "Artisans"], ["presence", "Présence & butin"]] as [GroupTab, string][]), ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
   // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
   const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
   const tab: GroupTab = tabs.some(([k]) => k === wanted) ? wanted : "raids";
@@ -130,7 +132,8 @@ const ADMIN_NAV: [AdminKey, string][] = [["invites", "Invitations"], ["loot", "B
 /** Administration (lot E) : une petite navigation à gauche, une section à la fois. */
 function Admin({ sections, isOwner }: { sections: Record<AdminKey, React.ReactNode>; isOwner: boolean }) {
   const [cur, setCur] = useState<AdminKey>("invites");
-  const nav = ADMIN_NAV.filter(([k]) => k !== "danger" || isOwner);
+  const retail = useSite().game === "retail";
+  const nav = ADMIN_NAV.filter(([k]) => (k !== "danger" || isOwner) && !(retail && (k === "loot" || k === "addon")));
   return (
     <div className="adm">
       <nav className="adm-nav" aria-label="Sections de l'administration">
@@ -214,7 +217,7 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
         <tr key={m.userId} className={sheet === m.userId ? "ps-sel" : undefined}>
           <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>
             <button type="button" className="ps-link" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
-          <td>{main ? <b style={{ color: CLASSES[main.cls as ClassName]?.color }}>{main.name}</b> : <span className="muted">—</span>}</td>
+          <td>{main ? <b style={{ color: classColor(main.cls) }}>{main.name}</b> : <span className="muted">—</span>}</td>
           <td>{m.role === "member" ? <span className="muted">{ROLE_LABEL[m.role]}</span> : <span className={`tag ${m.role === "owner" ? "gold" : ""}`}>{ROLE_LABEL[m.role]}</span>}</td>
           <td className="nowrap">{nRaids ? (() => { const n = presence(m.userId), pct = Math.round(n / nRaids * 100); return <><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{n}/{nRaids}</span></>; })() : <span className="muted">—</span>}</td>
           <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>

@@ -1,7 +1,9 @@
 import { RaidLogPanel, type RaidLogView } from "../components/RaidLog";
-import {
-  CLASSES, computeCoverage, exclusiveBudget, GROUP_SIZE, RAID_EFFECTS, RAID_GROUPS, roleCounts, roleOf, type ClassName, type EffectKind,
+import { DIFFICULTY_LABEL, effectsOf, type RetailDifficulty,
+  computeCoverage, exclusiveBudget, GROUP_SIZE, RAID_EFFECTS, RAID_GROUPS, roleCounts, roleOf, type EffectKind,
 } from "@forever/game-data";
+import { useGameText } from "../gameText";
+import { RetailFormat } from "../components/RetailFormat";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -24,17 +26,19 @@ import { RoleIcon, RoleTag, type RoleName } from "../components/RoleIcon";
 
 /** Carte d'un joueur au survol : spé, inscription, métiers, niveau d'objet moyen et BiS obtenus. */
 function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
-  const cl = CLASSES[e.cls as ClassName];
-  const st = c?.gearStats;
+  const gt = useGameText();
+  const cl = { color: gt.color(e.cls) };
+  const retail = gt.game === "retail";
+  const st = retail ? null : c?.gearStats;
   const profs = c ? [c.professions.prof1, c.professions.prof2].filter(p => p.name) : [];
   return (
     <>
       <div className="t-name" style={{ color: cl?.color }}>{e.name}</div>
-      <div className="t-row">{[e.level ? `Niveau ${e.level}` : null, e.spec || e.cls].filter(Boolean).join(" · ")}</div>
+      <div className="t-row">{[e.level ? `Niveau ${e.level}` : null, gt.specOrClass(e.cls, e.spec), c?.realm || null].filter(Boolean).join(" · ")}</div>
       <div className="t-dim">{e.guest ? "Inscrit depuis Discord, sans compte sur le site" : `Joueur : ${e.owner}`}</div>
       {e.signup && <div className="t-row">Inscription : {SIGNUP_LABEL[e.signup.status]}{e.signup.note ? ` — « ${e.signup.note} »` : ""}</div>}
       {profs.length > 0 && <div className="t-row">Métiers : {profs.map(p => `${p.name} ${p.skill}`).join(", ")}</div>}
-      {c && !e.guest && <div className={c.addonSyncedAt ? "t-dim" : "t-warn"}>Addon : {syncAge(c.addonSyncedAt).text}{!c.addonSyncedAt && " (équipement et talents saisis à la main)"}</div>}
+      {c && !e.guest && !retail && <div className={c.addonSyncedAt ? "t-dim" : "t-warn"}>Addon : {syncAge(c.addonSyncedAt).text}{!c.addonSyncedAt && " (équipement et talents saisis à la main)"}</div>}
       {st && (
         <div className="t-where">
           <div className="t-row t-split"><span>Niveau d'objet moyen</span><b className="t-ilvl">{st.ilvl != null ? String(st.ilvl).replace(".", ",") : "—"}</b></div>
@@ -48,7 +52,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
   );
 }
 
-interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean; lootMode: LootMode; srHidden: boolean; size: RaidSize; targets: RoleTargets; customTargets: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
+interface RaidResponse { raid: { id: string; name: string; scheduledAt: string | null; description: string; rosterPublished: boolean; lootMode: LootMode; srHidden: boolean; size: RaidSize; difficulty: RetailDifficulty | null; targets: RoleTargets; customTargets: boolean }; version: string; canEdit: boolean; slots: RaidSlot[]; characters: RaidChar[]; signups: RaidSignup[]; log: RaidLogView | null }
 interface SaveResponse { slots: RaidSlot[]; version: string; merged: boolean; raid: { name: string; scheduledAt: string | null; description: string } }
 /** Dernier état connu du serveur : base de la fusion quand deux officiers modifient la compo en même temps. */
 interface ServerState { version: string; slots: RaidSlot[]; name: string; scheduledAt: string | null; description: string }
@@ -71,6 +75,7 @@ export function RaidPage() {
   const { groupId = "", raidId = "", tab: tabParam } = useParams();
   const qc = useQueryClient();
   const nav = useNavigate();
+  const gt = useGameText();
   const raidQ = useQuery({ queryKey: ["raid", raidId], queryFn: () => get<RaidResponse>(`/groups/${groupId}/raids/${raidId}`) });
   const charsQ = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
 
@@ -147,7 +152,7 @@ export function RaidPage() {
   });
   const hovered = hover ? entries.get(hover.key) : undefined;
   const placed = new Set(slots.map(slotKey));
-  const matches = (e: Entry) => !filter || `${e.name} ${e.owner} ${e.cls} ${e.spec}`.toLowerCase().includes(filter.toLowerCase());
+  const matches = (e: Entry) => !filter || `${e.name} ${e.owner} ${e.cls} ${e.spec} ${gt.cls(e.cls)} ${gt.spec(e.cls, e.spec)}`.toLowerCase().includes(filter.toLowerCase());
   const allChars = charsQ.data?.characters ?? [];
   const available = (e: Entry) => !!e.signup && SIGNUP_AVAILABLE.includes(e.signup.status);
   const order = (e: Entry) => SIGNUP_AVAILABLE.indexOf(e.signup!.status);
@@ -156,8 +161,8 @@ export function RaidPage() {
   const benchOthers = free.filter(e => !e.guest && !e.signup);
   const bench = [...benchSigned, ...benchOthers];
   const members = slots.flatMap(s => { const e = entryAt(s); return e ? [{ characterId: e.key, cls: e.cls, spec: e.spec || null, group: s.group }] : []; });
-  const coverage = computeCoverage(members);
-  const budget = exclusiveBudget(members).filter(b => b.available > 0 || members.length);
+  const coverage = computeCoverage(members, effectsOf(gt.game));
+  const budget = exclusiveBudget(members, effectsOf(gt.game)).filter(b => b.available > 0 || members.length);
   const roles = roleCounts(members);
 
   const persist = (next: RaidSlot[], meta = { name, when, desc }) => {
@@ -233,7 +238,8 @@ export function RaidPage() {
   const tabs: [RaidTab, string][] = [
     ...(canEdit ? [["compo", "Compo"] as [RaidTab, string], ["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string]]
       : [["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string], ["compo", "Compo"] as [RaidTab, string]]),
-    ["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
+    // Roster (WoW Retail) : préparation, butin et bilan passent par l'addon, prévu avec l'addon Retail (R3)
+    ...(gt.game === "retail" ? [] : [["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"]] as [RaidTab, string][]), ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
   ];
   const tab: RaidTab = tabs.some(([k]) => k === tabParam) ? tabParam as RaidTab : tabs[0]![0];
   const setTab = (k: RaidTab) => nav(`/groups/${groupId}/raids/${raidId}${k === tabs[0]![0] ? "" : `/${k}`}`, { replace: true });
@@ -256,8 +262,8 @@ export function RaidPage() {
           <h1>{name || "Raid"}</h1>
           <div className="rp-meta">
             <span>{longDate(partsOf(when))}</span>
-            <span className="tag">{size} joueurs</span>
-            <LootModeTag mode={r.lootMode} />
+            <span className="tag">{r.difficulty ? `${DIFFICULTY_LABEL[r.difficulty][gt.lang]} · ` : ""}{size} joueurs</span>
+            {gt.game !== "retail" && <LootModeTag mode={r.lootMode} />}
             {r.rosterPublished && <span className="tag ok" title="L'annonce Discord affiche la compo">Compo publiée</span>}
           </div>
         </div>
@@ -313,7 +319,7 @@ export function RaidPage() {
                 {Array.from({ length: GROUP_SIZE }, (_, pi) => pi + 1).map(p => {
                   const s = at(g, p);
                   const c = s ? entryAt(s) : undefined;
-                  const cl = c ? CLASSES[c.cls as ClassName] : undefined;
+                  const cl = c ? { color: gt.color(c.cls) } : undefined;
                   const sel = pick?.kind === "slot" && pick.group === g && pick.pos === p;
                   return (
                     <div key={p} className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
@@ -321,7 +327,7 @@ export function RaidPage() {
                         style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => clickSlot(g, p)} disabled={!canEdit && !c}
                         {...(c ? hoverProps(c) : {})}
                         aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
-                        {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{c.spec || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
+                        {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{gt.specOrClass(c.cls, c.spec)} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
                         {c && <RoleIcon role={roleOf(c.spec)} size={14} pill={{ padding: "3px 5px", fontSize: 9 }} />}
                       </button>
                       {c && canEdit && <button type="button" className="x" aria-label={`Retirer ${c.name}`} onClick={() => removeFrom(g, p)}>×</button>}
@@ -340,7 +346,7 @@ export function RaidPage() {
               <input type="text" aria-label="Filtrer le banc" placeholder="Filtrer (nom, joueur, classe, Discord)…" value={filter} onChange={e => setFilter(e.target.value)} />
               <div className="bench">
                 {bench.length === 0 ? <p className="muted small">Tous les persos du groupe sont placés.</p> : bench.map((c, i) => {
-                  const cl = CLASSES[c.cls as ClassName];
+                  const cl = { color: gt.color(c.cls) };
                   const on = pick?.kind === "bench" && pick.key === c.key;
                   const su = c.signup;
                   return (
@@ -349,7 +355,7 @@ export function RaidPage() {
                     {i === benchSigned.length && benchOthers.length > 0 && <div className="lbl">Autres persos du groupe (non inscrits)</div>}
                     <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })} {...hoverProps(c)}>
-                        <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, c.spec || c.cls || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
+                        <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, (c.cls && gt.specOrClass(c.cls, c.spec)) || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
                         {su && su.status !== "present" && <span className="tag">{SIGNUP_LABEL[su.status]}</span>}
                         {!c.guest && "characterId" in c.ref && chars.get(c.ref.characterId) && !chars.get(c.ref.characterId)!.addonSyncedAt && <span className="rp-nosync" title="Jamais synchronisé avec l'addon">⚠</span>}
                       </button>
@@ -366,19 +372,19 @@ export function RaidPage() {
             <h3>Couverture</h3>
             <div className="rp-covsum">
               <span><span className="rp-dot ok" />{covOn} effet{covOn > 1 ? "s" : ""} couvert{covOn > 1 ? "s" : ""} sur {coverage.length}</span>
-              {covPart.length > 0 && <span><span className="rp-dot warn" />Partiels : {covPart.map(c => `${c.effect.name} (G${c.missingGroups.join(", G")})`).join(", ")}</span>}
+              {covPart.length > 0 && <span><span className="rp-dot warn" />Partiels : {covPart.map(c => `${gt.effect(c.effect)} (G${c.missingGroups.join(", G")})`).join(", ")}</span>}
             </div>
             <details className="rp-covd"><summary>Détail des {coverage.length} effets</summary>
             <div className="cov">
               {(["buff", "aura", "debuff", "utility"] as EffectKind[]).map(k => (
                 <div key={k} className="stack" style={{ gap: 4 }}>
-                  <h4>{KIND_LABEL[k]}</h4>
+                  <h4>{gt.game === "retail" && k === "aura" ? "Auras" : KIND_LABEL[k]}</h4>
                   {byKind(k).map(c => {
                     const partial = c.effect.scope === "party" && c.sources > 0 && !c.covered;
                     return (
                       <div key={c.effect.id} className={`it ${c.covered ? "on" : partial ? "part" : "off"}`} title={c.effect.note ?? ""}>
                         <span className="dot" aria-hidden="true" />
-                        <span>{c.effect.name}{partial && <span className="small muted"> · manque G{c.missingGroups.join(", G")}</span>}</span>
+                        <span title={"effect" in c.effect ? (c.effect as { effect: Record<string, string> }).effect[gt.lang] : undefined}>{gt.effect(c.effect)}{partial && <span className="small muted"> · manque G{c.missingGroups.join(", G")}</span>}</span>
                         <span className="num small">{c.sources || ""}</span>
                       </div>
                     );
@@ -393,13 +399,15 @@ export function RaidPage() {
                   ))}
                 </div>
               )}
-              <p className="hint" style={{ margin: "8px 0 0" }}>Règles de WoW Classic ({RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé choisie à l'inscription, sinon spé principale.</p>
+              <p className="hint" style={{ margin: "8px 0 0" }}>{gt.game === "retail"
+                ? `Buffs et affaiblissements de raid de Midnight (${coverage.length}), une source suffit pour tout le raid. Spé choisie à l'inscription, sinon spé principale.`
+                : `Règles de WoW Classic (${RAID_EFFECTS.length} effets), à ajuster selon les changements de Forever. Spé choisie à l'inscription, sinon spé principale.`}</p>
             </div>
             </details>
           </div>
         </aside>
       </div>
-            <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when }} slots={slots} chars={chars} signups={raidQ.data.signups} />
+            {gt.game !== "retail" && <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when }} slots={slots} chars={chars} signups={raidQ.data.signups} />}
           </>}
 
           {tab === "inscriptions" && <>
@@ -432,7 +440,7 @@ export function RaidPage() {
                 <textarea id="rd" maxLength={1000} style={{ minHeight: 70 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
               </div>
               <div className="rp-wide">
-                <RaidFormat size={size} targets={r.targets} custom={r.customTargets}
+                <RaidFormat size={size} targets={r.targets} custom={r.customTargets} retail={r.difficulty ? { name: r.name, difficulty: r.difficulty } : null}
                   onChange={body => void patch(`/groups/${groupId}/raids/${raidId}/format`, body).then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] }))
                     .catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
               </div>
@@ -451,7 +459,10 @@ export function RaidPage() {
 }
 
 /** Format du raid (10, 20, 40) et rôles visés ; « par défaut » reprend ceux du format. */
-function RaidFormat({ size, targets, custom, onChange }: { size: RaidSize; targets: RoleTargets; custom: boolean; onChange: (b: { size?: RaidSize; targets?: RoleTargets | null }) => void }) {
+function RaidFormat({ size, targets, custom, retail, onChange }: {
+  size: number; targets: RoleTargets; custom: boolean; retail: { name: string; difficulty: RetailDifficulty } | null;
+  onChange: (b: { size?: number; difficulty?: RetailDifficulty; targets?: RoleTargets | null }) => void;
+}) {
   const [t, setT] = useState(targets);
   useEffect(() => setT(targets), [targets.tank, targets.heal, targets.dps]); // eslint-disable-line react-hooks/exhaustive-deps
   const field = (k: keyof RoleTargets, role: RoleName, label: string) => (
@@ -461,14 +472,16 @@ function RaidFormat({ size, targets, custom, onChange }: { size: RaidSize; targe
   );
   return (
     <div className="fld ra-format" style={{ flex: "1 1 100%" }}>
-      <span className="lbl">Format et rôles visés</span>
+      <span className="lbl">{retail ? "Difficulté, effectif et rôles visés" : "Format et rôles visés"}</span>
+      {retail && <RetailFormat name={retail.name} difficulty={retail.difficulty} size={size} idPrefix="rf" hideTargets
+        onChange={f => onChange(f.difficulty !== retail.difficulty ? { difficulty: f.difficulty } : { size: f.size })} />}
       <div className="row" style={{ alignItems: "center" }}>
-        <div className="seg" role="group" aria-label="Format du raid">
+        {!retail && <div className="seg" role="group" aria-label="Format du raid">
           {RAID_SIZES.map(n => <button key={n} type="button" className={size === n ? "on" : ""} aria-pressed={size === n} onClick={() => size !== n && onChange({ size: n })}>{n}</button>)}
-        </div>
+        </div>}
         {field("tank", "Tank", "Tanks")}{field("heal", "Heal", "Heals")}{field("dps", "DPS", "DPS")}
         {custom
-          ? <button type="button" className="btn ghost sm" onClick={() => onChange({ targets: null })}>Par défaut ({DEFAULT_TARGETS[size].tank}/{DEFAULT_TARGETS[size].heal}/{DEFAULT_TARGETS[size].dps})</button>
+          ? <button type="button" className="btn ghost sm" onClick={() => onChange({ targets: null })}>Par défaut</button>
           : <span className="hint">par défaut pour un raid à {size}</span>}
       </div>
     </div>

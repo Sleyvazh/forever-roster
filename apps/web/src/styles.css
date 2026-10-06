@@ -401,7 +401,7 @@ table.gear { min-width: 720px; }
   .acct-btn .who, .acct-btn .chev { display: none; }
   .acct-btn { padding: 3px; }
   .pill .t { display: none; }
-  .tabbar { display: grid; grid-template-columns: repeat(3, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  .tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; padding: 6px 8px calc(8px + env(safe-area-inset-bottom, 0px));
     background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-top: 1px solid var(--frame); }
   .tabbar a { display: grid; justify-items: center; gap: 2px; padding: 4px; color: var(--ink-3); text-decoration: none; font-size: 11.5px; font-weight: 500; }
   .tabbar a svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -1176,3 +1176,12 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 @media (max-width: 560px) { .cp-two { grid-template-columns: 1fr; } }
 .cp-warn { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, transparent); }
 input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
+/* Roster (R2a) : fiche légère d'un perso de WoW Retail, création à la main */
+.rc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; }
+.rc-av { width: 52px; height: 52px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: var(--f-disp, inherit); font-size: 24px;
+  border: 2px solid var(--cc); color: var(--cc); background: var(--panel-2); flex: none; }
+.rc-realm { color: var(--ink-2); font-size: .6em; }
+.rc-links { gap: 8px; }
+.rc-links .chip { display: inline-block; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
+.rc-links .chip:hover { border-color: var(--gold); color: var(--gold); }
+.rc-create { max-width: 860px; }

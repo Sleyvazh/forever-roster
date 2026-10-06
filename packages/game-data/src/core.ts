@@ -3,6 +3,8 @@
  * Source : https://foreverchanges.pro (races, raciaux, métiers). Niveau max 60.
  */
 
+import { RETAIL_CLASSES } from "./retail";
+
 export type Faction = "Alliance" | "Horde";
 
 export type Role = "Tank" | "Heal" | "DPS";
@@ -59,7 +61,9 @@ export const RACES: Record<string, { faction: Faction; classes: ClassName[]; rac
 export const RACE_NAMES = Object.keys(RACES);
 
 const ROLE_BY_SPEC = new Map(Object.values(CLASS_SPECS).flat().map(d => [d.name, d.role]));
-/** Rôle d'une spé d'après son intitulé (les intitulés ont le même rôle quelle que soit la classe). */
+// Spés de WoW Retail (Roster) : mêmes intitulés que Forever pour un même rôle (Protection, Holy, Restoration…)
+for (const c of Object.values(RETAIL_CLASSES)) for (const sp of c.specs) if (!ROLE_BY_SPEC.has(sp.name)) ROLE_BY_SPEC.set(sp.name, sp.role);
+/** Rôle d'une spé d'après son intitulé (les intitulés ont le même rôle quelle que soit la classe, et quel que soit le jeu). */
 export function roleOf(spec: string | null | undefined): Role | null {
   if (!spec) return null;
   return ROLE_BY_SPEC.get(spec) ?? "DPS";

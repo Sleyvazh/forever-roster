@@ -1,8 +1,9 @@
 import { and, asc, count, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { LOOT_MODES } from "@forever/game-data";
-import { raidTemplates } from "../db/schema";
+import { LOOT_MODES, RETAIL_DIFFICULTIES, type Game } from "@forever/game-data";
+import { groups, raidTemplates } from "../db/schema";
+import { formatFor } from "./raids";
 import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
@@ -17,7 +18,8 @@ const fields = z.object({
   weekday: z.int().min(1).max(7),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure au format HH:MM"),
   leadDays: z.int().min(1).max(28).default(7),
-  size: z.union([z.literal(10), z.literal(20), z.literal(40)]).default(40),
+  size: z.int().min(5).max(40).optional(),
+  difficulty: z.enum(RETAIL_DIFFICULTIES).nullable().optional(),
   lootMode: z.enum(LOOT_MODES).default("journal"),
   srHidden: z.boolean().default(false),
   active: z.boolean().default(true),
@@ -26,12 +28,13 @@ const gid = z.object({ id: z.uuid() });
 const tid = gid.extend({ templateId: z.uuid() });
 const view = (t: typeof raidTemplates.$inferSelect) => ({
   id: t.id, name: t.name, description: t.description, weekday: t.weekday, time: t.time, leadDays: t.leadDays, active: t.active, generatedUntil: t.generatedUntil,
-  lootMode: t.lootMode, srHidden: t.srHidden, size: t.size,
+  lootMode: t.lootMode, srHidden: t.srHidden, size: t.size, difficulty: t.difficulty,
 });
 
 export async function templateRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
   app.addHook("preHandler", requireAuth);
+  const groupGame = async (id: string): Promise<Game> => (await db.select({ game: groups.game }).from(groups).where(eq(groups.id, id)))[0]?.game ?? "forever";
 
   app.get("/:id/raid-templates", async (req) => {
     const u = currentUser(req);
@@ -45,7 +48,8 @@ export async function templateRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
-    const body = parse(fields, req.body);
+    const raw = parse(fields, req.body);
+    const body = { ...raw, ...formatFor(await groupGame(id), raw.name, raw.size, raw.difficulty) };
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raidTemplates).where(eq(raidTemplates.groupId, id));
     if (n >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
     const [t] = await db.insert(raidTemplates).values({ ...body, groupId: id, createdBy: u.id }).returning();
@@ -59,7 +63,11 @@ export async function templateRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const p = parse(tid, req.params);
     await requireRole(db, p.id, u.id, "officer");
-    const body = parse(fields.partial(), req.body);
+    const raw = parse(fields.partial(), req.body);
+    const [cur] = await db.select().from(raidTemplates).where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id)));
+    if (!cur) throw notFound("Raid récurrent introuvable.");
+    const changedDifficulty = raw.difficulty !== undefined && raw.difficulty !== cur.difficulty;
+    const body = { ...raw, ...formatFor(await groupGame(p.id), raw.name ?? cur.name, raw.size ?? (changedDifficulty ? undefined : cur.size), raw.difficulty === undefined ? cur.difficulty : raw.difficulty) };
     const [t] = await db.update(raidTemplates).set({ ...body, updatedAt: new Date() })
       .where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
     if (!t) throw notFound("Raid récurrent introuvable.");

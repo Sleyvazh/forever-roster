@@ -1,8 +1,8 @@
-import { CLASS_NAMES, isValidSpec, roleOf, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
+import { classesOf, isValidSpecFor, roleOf, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
 import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, discordDeletions, groupCharacters, raids, raidSignups } from "../db/schema";
+import { characters, discordDeletions, groupCharacters, groups, raids, raidSignups } from "../db/schema";
 import { ensureInGroup } from "./group-characters";
 import { badRequest } from "./http";
 import { bus } from "./events";
@@ -31,13 +31,13 @@ export type SignupInput = z.infer<typeof signupInput>;
 export async function signUpSiteUser(db: Db, raidId: string, user: { id: string; displayName: string }, input: SignupInput) {
   let cls = "", spec = "", characterId: string | null = null;
   if (input.characterId) {
-    const [ch] = await db.select({ id: characters.id, cls: characters.cls, spec1: characters.spec1 }).from(characters)
+    const [ch] = await db.select({ id: characters.id, cls: characters.cls, spec1: characters.spec1, game: characters.game }).from(characters)
       .where(and(eq(characters.id, input.characterId), eq(characters.userId, user.id)));
     if (!ch) throw badRequest("Ce personnage n'est pas à toi.");
     if (!ch.cls) throw badRequest("Choisis d'abord la classe de ce personnage.");
     cls = ch.cls; characterId = ch.id;
     spec = input.spec ?? ch.spec1;
-    if (spec && !isValidSpec(cls, spec)) throw badRequest(`La spé « ${spec} » n'existe pas pour ${cls}.`);
+    if (spec && !isValidSpecFor(ch.game, cls, spec)) throw badRequest(`La spé « ${spec} » n'existe pas pour ${cls}.`);
   } else if (input.status !== "absent") {
     throw badRequest("Choisis le personnage avec lequel tu t'inscris.");
   }
@@ -62,8 +62,10 @@ export async function signUpDiscordGuest(db: Db, raidId: string, who: { discordU
   input: { status: SignupStatus; cls?: string; spec?: string }) {
   const cls = input.cls ?? "", spec = input.spec ?? "";
   if (input.status !== "absent") {
-    if (!(CLASS_NAMES as string[]).includes(cls)) throw badRequest("Choisis ta classe.");
-    if (!spec || !isValidSpec(cls, spec)) throw badRequest("Choisis une spé de ta classe.");
+    const [g] = await db.select({ game: groups.game }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).where(eq(raids.id, raidId));
+    const game = g?.game ?? "forever";
+    if (!classesOf(game).includes(cls)) throw badRequest("Choisis ta classe.");
+    if (!spec || !isValidSpecFor(game, cls, spec)) throw badRequest("Choisis une spé de ta classe.");
   }
   const values = {
     raidId, userId: null, discordUserId: who.discordUserId, displayName: who.displayName.slice(0, 64) || "Joueur Discord",

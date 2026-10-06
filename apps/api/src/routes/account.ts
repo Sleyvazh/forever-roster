@@ -2,6 +2,7 @@ import { bus, groupsOf } from "../lib/events";
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { GAME_LANGS } from "@forever/game-data";
 import { auditEvents, groupMembers, sessions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
@@ -43,6 +44,14 @@ export async function accountRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { reminders } = parse(z.object({ reminders: z.boolean() }), req.body);
     const [row] = await db.update(users).set({ discordReminders: reminders, updatedAt: new Date() }).where(eq(users.id, u.id)).returning();
+    return { user: publicUser(row!) };
+  });
+
+  /** Préférences d'affichage : langue des noms du jeu sur Roster (auto = celle du navigateur). */
+  app.patch("/preferences", async (req) => {
+    const u = currentUser(req);
+    const { gameLang } = parse(z.object({ gameLang: z.enum(GAME_LANGS) }), req.body);
+    const [row] = await db.update(users).set({ gameLang, updatedAt: new Date() }).where(eq(users.id, u.id)).returning();
     return { user: publicUser(row!) };
   });
 

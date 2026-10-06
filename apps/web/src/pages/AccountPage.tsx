@@ -4,6 +4,8 @@ import { useSearchParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, setCsrf, uploadImage } from "../api";
 import { ImageUpload } from "../components/ImageUpload";
 import { useMe } from "../auth";
+import { useSite } from "../site";
+import type { GameLangPref } from "@forever/game-data";
 
 interface SessionRow { id: string; ip: string | null; userAgent: string | null; createdAt: string; lastSeenAt: string; current: boolean }
 interface EventRow { id: number; type: string; ip: string | null; userAgent: string | null; meta: Record<string, unknown>; createdAt: string }
@@ -54,6 +56,7 @@ export function AccountPage() {
   const qc = useQueryClient();
   const [params] = useSearchParams();
   const refreshMe = () => qc.invalidateQueries({ queryKey: ["me"] });
+  const site = useSite();
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -71,6 +74,7 @@ export function AccountPage() {
         <Identity email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet} bnetEnabled={!!me.data?.battlenetEnabled} onDone={refreshMe} />
         <DiscordLink username={user.discordUsername} reminders={user.discordReminders} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
+        {site.game === "retail" && <GameLanguage pref={user.gameLang} onDone={refreshMe} />}
       </div>
       <Sessions />
       <Devices />
@@ -278,6 +282,24 @@ function DeleteAccount({ hasPassword }: { hasPassword: boolean }) {
           <button className="btn ghost" type="button" onClick={() => setOpen(false)}>Annuler</button>
         </form>
       )}
+      {a.view}
+    </Section>
+  );
+}
+
+/** Roster : langue des noms du jeu (classes, spés, raids). Par défaut, celle du navigateur. */
+function GameLanguage({ pref, onDone }: { pref: GameLangPref; onDone: () => void }) {
+  const a = useAction();
+  const nav = typeof navigator !== "undefined" && navigator.language.toLowerCase().startsWith("fr") ? "français" : "anglais";
+  const set = (gameLang: GameLangPref) => void a.run(async () => { await patch("/account/preferences", { gameLang }); onDone(); return "Enregistré."; });
+  return (
+    <Section title="Noms du jeu" hint="Classes, spés et raids de Roster : en français ou en anglais.">
+      <div className="fld"><label htmlFor="gl">Langue</label>
+        <select id="gl" value={pref} onChange={e => set(e.target.value as GameLangPref)}>
+          <option value="auto">Comme mon navigateur ({nav})</option>
+          <option value="fr">Français (Guerrier, Fureur)</option>
+          <option value="en">English (Warrior, Fury)</option>
+        </select></div>
       {a.view}
     </Section>
   );

@@ -1,4 +1,4 @@
-import { SIGNUP_LABEL, type SignupStatus } from "@forever/game-data";
+import { SIGNUP_LABEL, specLabel, type SignupStatus } from "@forever/game-data";
 import { ButtonStyle, ComponentType } from "discord.js";
 import type { Ask, AskAnswer, Nudge, RaidView } from "./api";
 import { noEmoji, type EmojiLookup } from "./emojis";
@@ -84,7 +84,7 @@ export function renderAsk(a: Ask, emoji: EmojiLookup = noEmoji): MessagePayload 
       url: a.raid.url,
       description: [
         when(a.raid.scheduledAt),
-        `**${escapeMd(a.askedBy)}** (${escapeMd(a.group.name)}) te demande si tu peux venir avec ${who} en **${escapeMd(a.spec)}**${a.role ? ` : il manque un ${a.role}` : ""}.`,
+        `**${escapeMd(a.askedBy)}** (${escapeMd(a.group.name)}) te demande si tu peux venir avec ${who} en **${escapeMd(specLabel(a.group.game ?? "forever", a.character.cls, a.spec, "fr"))}**${a.role ? ` : il manque un ${a.role}` : ""}.`,
         now,
       ].filter(Boolean).join("\n"),
       color: GOLD,

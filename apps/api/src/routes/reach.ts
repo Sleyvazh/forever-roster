@@ -1,4 +1,4 @@
-import { isValidSpec } from "@forever/game-data";
+import { isValidSpecFor } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -110,14 +110,14 @@ export async function reachRoutes(app: FastifyInstance) {
     const r = await loadRaid(p.id, p.raidId);
     if (!r.discordLinked) throw badRequest("Lie d'abord un salon Discord au groupe (Administration) : c'est le bot qui envoie la demande.");
     if (!upcoming(r)) throw badRequest("Ce raid est déjà passé.");
-    const [c] = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, userId: characters.userId, discordId: users.discordId, reminders: users.discordReminders })
+    const [c] = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, game: characters.game, userId: characters.userId, discordId: users.discordId, reminders: users.discordReminders })
       .from(groupCharacters)
       .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
       .innerJoin(users, eq(users.id, characters.userId))
       .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, characters.userId)))
       .where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.characterId, body.characterId)));
     if (!c) throw notFound("Ce perso n'est pas joué dans le groupe.");
-    if (!isValidSpec(c.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${c.cls}.`);
+    if (!isValidSpecFor(c.game, c.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${c.cls}.`);
     if (!canDm(c)) throw badRequest(c.discordId ? "Ce joueur a désactivé les messages du bot." : "Ce joueur n'a pas lié son Discord : préviens-le autrement.");
     const [signed] = await db.select({ characterId: raidSignups.characterId, status: raidSignups.status }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, r.id), eq(raidSignups.userId, c.userId)));

@@ -250,7 +250,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
 
     return {
       member: { userId: m.userId, displayName: m.displayName, avatarId: m.avatarId, role: m.role, joinedAt: m.joinedAt, discordLinked: !!m.discordId },
-      characters: mine.map(r => ({ id: r.c.id, name: r.c.name, cls: r.c.cls, spec1: r.c.spec1, spec2: r.c.spec2, level: r.c.level, portraitId: r.c.portraitId, isMain: r.isMain,
+      characters: mine.map(r => ({ id: r.c.id, name: r.c.name, realm: r.c.realm, cls: r.c.cls, spec1: r.c.spec1, spec2: r.c.spec2, level: r.c.level, portraitId: r.c.portraitId, isMain: r.isMain,
         gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })),
       attendance: { raids: recent.length, cells, attended: cells.filter(c => c.status && ATTENDED.includes(c.status)).length, benched: cells.filter(c => c.status === "bench").length },
       // Absences déclarées à venir (lot F) : le motif selon le choix du joueur (officiers ou tout le groupe)

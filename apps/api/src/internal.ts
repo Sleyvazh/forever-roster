@@ -1,4 +1,4 @@
-import { CLASS_SPECS, RAID_GROUPS, roleOf, SIGNUP_STATUSES, type SpecDef } from "@forever/game-data";
+import { RAID_GROUPS, roleOf, SIGNUP_STATUSES, specLabel, specsOf } from "@forever/game-data";
 import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -16,6 +16,7 @@ import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
+import { formatFor } from "./routes/raids";
 
 /**
  * API interne utilisée par le bot Discord.
@@ -109,8 +110,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       raid: {
         id: raid.id, name: raid.name, description: raid.description, scheduledAt: raid.scheduledAt,
         url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt, size: raid.size,
+        difficulty: raid.difficulty,
       },
-      group: { id: group.id, name: group.name },
+      group: { id: group.id, name: group.name, game: group.game },
       channelId: group.discordChannelId!,
       // Message déjà publié dans le salon actuel du groupe (sinon : à publier)
       messageId: raid.discordChannelId === group.discordChannelId ? raid.discordMessageId : null,
@@ -176,6 +178,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     if (n >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     const [r] = await db.insert(raids).values({
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
+      // Format par défaut du jeu du groupe (Roster : Normal, 20 joueurs ; Forever : 40)
+      ...formatFor(g.game, body.name),
     }).returning({ id: raids.id });
     await audit(db, req, "raid_created", { userId: user.id, groupId: g.id, meta: { raidId: r!.id, name: body.name, via: "discord" } });
     await inheritPrep(db, [r!.id]);
@@ -347,20 +351,20 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   app.post("/internal/discord/asks/:id/answer", async (req: FastifyRequest) => {
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     const body = parse(z.object({ discordUserId: snowflake, yes: z.boolean() }), req.body);
-    const [a] = await db.select({ ask: raidAsks, discordId: users.discordId, displayName: users.displayName, name: characters.name })
+    const [a] = await db.select({ ask: raidAsks, discordId: users.discordId, displayName: users.displayName, name: characters.name, cls: characters.cls })
       .from(raidAsks).innerJoin(users, eq(users.id, raidAsks.userId)).innerJoin(characters, eq(characters.id, raidAsks.characterId))
       .where(eq(raidAsks.id, id));
     // Demande annulée, ou bouton cliqué par quelqu'un d'autre (custom_id forgé) : même réponse, rien n'est révélé
     if (!a || a.discordId !== body.discordUserId) throw notFound("Cette demande n'existe plus : l'officier l'a peut-être annulée.");
     const { raid, group } = await loadRaid(a.ask.raidId);
-    if (a.ask.answer) return { answer: a.ask.answer, character: a.name, spec: a.ask.spec, url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: null, already: true };
+    if (a.ask.answer) return { answer: a.ask.answer, character: a.name, spec: specLabel(group.game, a.cls, a.ask.spec, "fr"), url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: null, already: true };
     if (!raid.scheduledAt || raid.scheduledAt.getTime() < Date.now()) throw badRequest("Ce raid est déjà passé.");
     const [m] = await db.select({ role: groupMembers.role }).from(groupMembers).where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, a.ask.userId)));
     if (!m) throw forbidden("Tu ne fais plus partie de ce groupe.");
     if (body.yes) await signUpSiteUser(db, raid.id, { id: a.ask.userId, displayName: a.displayName }, { status: "present", characterId: a.ask.characterId, spec: a.ask.spec });
     await db.update(raidAsks).set({ answer: body.yes ? "yes" : "no", answeredAt: new Date() }).where(eq(raidAsks.id, id));
     await notifyRaid(raid.id);
-    return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: a.ask.spec, url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
+    return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: specLabel(group.game, a.cls, a.ask.spec, "fr"), url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
   });
 
   /* ----- Commandes d'artisanat dans leur salon (lot F) ----- */
@@ -414,18 +418,19 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { user, role } = await linkedMember(discordUserId, group.id);
     const [current] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, cls: raidSignups.cls, spec: raidSignups.spec }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raidId), user && role ? eq(raidSignups.userId, user.id) : eq(raidSignups.discordUserId, discordUserId)));
-    if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null };
+    if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null, game: group.game };
     // Persos rangés dans ce groupe (main en tête), puis ceux sans groupe (s'inscrire les y range) ; pas ceux d'un autre groupe
+    // Persos du jeu du groupe seulement (un compte peut avoir des persos de Forever et de Retail)
     const all = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2, isMain: groupCharacters.isMain, groupId: groupCharacters.groupId })
       .from(characters)
       .leftJoin(groupCharacters, eq(groupCharacters.characterId, characters.id))
-      .where(eq(characters.userId, user.id)).orderBy(asc(characters.sortOrder));
+      .where(and(eq(characters.userId, user.id), eq(characters.game, group.game))).orderBy(asc(characters.sortOrder));
     const here = all.filter(c => c.groupId === group.id).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
     const chars = [...here, ...all.filter(c => !c.groupId)].map(({ isMain: _, groupId: __, ...c }) => c);
     return {
-      mode: "member" as const, linked: true, current: current ?? null,
+      mode: "member" as const, linked: true, current: current ?? null, game: group.game,
       characters: chars.filter(c => c.cls).map(c => ({
-        ...c, specs: ((CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? []).map(d => ({ name: d.name, role: d.role })),
+        ...c, specs: specsOf(group.game, c.cls).map(name => ({ name, role: roleOf(name) ?? "DPS" })),
       })),
     };
   });

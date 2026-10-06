@@ -162,7 +162,7 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       // Mêmes règles qu'une modification faite sur le site (longueurs, formats, combinaisons race / classe)
       const checked = characterFields.partial().safeParse(patch);
       if (!checked.success) { out.push({ ...base, status: "error", message: "export illisible pour cette fiche" }); continue; }
-      const err = crossCheck({ ...fiche, ...patch });
+      const err = crossCheck({ ...fiche, ...patch }, opts.game);
       if (err) { out.push({ ...base, status: "error", message: err }); continue; }
 
       // 3. Lien perso du jeu → fiche (retiré d'une autre fiche si le joueur a changé de cible)

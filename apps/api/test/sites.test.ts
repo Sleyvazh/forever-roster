@@ -39,7 +39,7 @@ describe("un site, deux adresses", () => {
     expect((await r.get("/api/characters")).json().characters).toEqual([]);
     expect((await r.get("/api/groups")).json().groups).toEqual([]);
     const rGroup = (await r.post("/api/groups", { name: "Pasta e Basta" })).json().group;
-    const rChar = (await r.post("/api/characters", { name: "Sleyvazh" })).json().character;
+    const rChar = (await r.post("/api/characters", { name: "Sleyvazh", realm: "Hyjal" })).json().character;
     expect((await r.get("/api/groups")).json().groups.map((g: { name: string }) => g.name)).toEqual(["Pasta e Basta"]);
     expect((await c.get("/api/groups")).json().groups.map((g: { name: string }) => g.name)).toEqual(["Forever"]);
     expect((await c.get("/api/characters")).json().characters.map((x: { name: string }) => x.name)).toEqual(["Tournicoti"]);

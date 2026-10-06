@@ -29,7 +29,7 @@ export async function ensureRecurringRaids(db: Db, now = new Date(), onlyTemplat
     if (!todo.length) continue;
     const rows = await db.insert(raids).values(todo.map(scheduledAt => ({
       groupId: t.groupId, name: t.name, description: t.description, scheduledAt, templateId: t.id, createdBy: t.createdBy,
-      lootMode: t.lootMode, srHidden: t.srHidden, size: t.size,
+      lootMode: t.lootMode, srHidden: t.srHidden, size: t.size, difficulty: t.difficulty,
     }))).onConflictDoNothing().returning({ id: raids.id });
     created += rows.length;
     await inheritPrep(db, rows.map(r => r.id));

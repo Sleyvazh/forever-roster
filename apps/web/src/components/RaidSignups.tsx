@@ -1,8 +1,9 @@
-import { CLASS_SPECS, SIGNUP_HINT, SIGNUP_LABEL, SIGNUP_STATUSES, type SignupStatus, type SpecDef } from "@forever/game-data";
+import { roleOf, SIGNUP_HINT, SIGNUP_LABEL, SIGNUP_STATUSES, specsOf, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, patch, put, type Character, type RaidSignup } from "../api";
 import { useMe } from "../auth";
+import { useGameText } from "../gameText";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { RoleIcon, RoleTag } from "./RoleIcon";
 
@@ -14,6 +15,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   groupId: string; raidId: string; signups: RaidSignup[]; groupChars: Character[]; canEdit: boolean;
 }) {
   const qc = useQueryClient();
+  const gt = useGameText();
   const me = useMe();
   const myId = me.data?.user?.id;
   const mine = signups.find(s => s.mine);
@@ -37,7 +39,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   }, [mine?.id, myChars.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const char = myChars.find(c => c.id === charId);
-  const specs: SpecDef[] = char ? (CLASS_SPECS as Record<string, SpecDef[]>)[char.cls] ?? [] : [];
+  const specs = char ? specsOf(gt.game, char.cls).map(name => ({ name, role: roleOf(name) })) : [];
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raid", raidId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -77,7 +79,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
             <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="su-spec">Spé pour ce raid</label>
               <select id="su-spec" value={spec} onChange={e => setSpec(e.target.value)}>
                 <option value="">—</option>
-                {specs.map(d => <option key={d.name} value={d.name}>{d.name} ({d.role})</option>)}
+                {specs.map(d => <option key={d.name} value={d.name}>{gt.spec(char!.cls, d.name)} ({d.role})</option>)}
               </select>
             </div>
             <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="su-note">Note (facultatif)</label>
@@ -94,7 +96,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
           ))}
           {mine && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))}>Me désinscrire</button>}
         </div>
-        {mine && <p className="small muted" style={{ margin: 0 }}>Tu es inscrit : <b>{SIGNUP_LABEL[mine.status]}</b>{mine.characterName ? ` avec ${mine.characterName}${mine.spec ? ` (${mine.spec})` : ""}` : ""}. Clique un autre statut pour changer.</p>}
+        {mine && <p className="small muted" style={{ margin: 0 }}>Tu es inscrit : <b>{SIGNUP_LABEL[mine.status]}</b>{mine.characterName ? ` avec ${mine.characterName}${mine.spec ? ` (${gt.spec(mine.cls, mine.spec)})` : ""}` : ""}. Clique un autre statut pour changer.</p>}
         {error && <div className="alert error" role="alert">{error}</div>}
       </div>
 
@@ -124,13 +126,14 @@ function Group({ title, list, compact, ...rest }: { title: string; list: RaidSig
 }
 
 function Row({ s, canEdit, groupId, raidId, onDone, compact }: { s: RaidSignup; canEdit: boolean; groupId: string; raidId: string; onDone: () => Promise<unknown>; compact?: boolean }) {
+  const gt = useGameText();
   const base = `/groups/${groupId}/raids/${raidId}/signups/${s.id}`;
   return (
     <div className={`su-row${s.mine ? " mine" : ""}`} title={s.note || undefined}>
       {s.cls ? (s.spec ? <SpecIcon cls={s.cls} spec={s.spec} size={20} /> : <ClassIcon cls={s.cls} size={20} />) : <span className="su-dot" aria-hidden="true" />}
       <span className="su-who">
         <b>{s.characterName ?? s.displayName}{!s.userId && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site" aria-label=" (sans compte)"> ✱</span>}</b>
-        {!compact && <small>{[s.spec, s.characterName ? s.displayName : null, !s.userId ? "Discord" : null].filter(Boolean).join(" · ")}</small>}
+        {!compact && <small>{[s.spec && gt.spec(s.cls, s.spec), s.characterName ? s.displayName : null, !s.userId ? "Discord" : null].filter(Boolean).join(" · ")}</small>}
       </span>
       {s.status === "late" && <span className="tag warn">Retard</span>}
       {s.note && !compact && <span className="su-note" aria-label={`Note : ${s.note}`}>✎</span>}

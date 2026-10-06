@@ -1,4 +1,4 @@
-import { CLASSES, SIGNUP_LABEL, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
+import { classesOf, classLabel, DIFFICULTY_LABEL, isRetailDifficulty, SIGNUP_LABEL, SIGNUP_STATUSES, specLabel, type Game, type SignupStatus } from "@forever/game-data";
 import { ButtonStyle, ComponentType, type APIActionRowComponent, type APIComponentInMessageActionRow, type APIEmbed, type APIEmbedField } from "discord.js";
 import type { RaidView, Recipient, RosterMember, ViewSignup } from "./api";
 import { noEmoji, type EmojiLookup } from "./emojis";
@@ -45,11 +45,16 @@ export function fitLines(lines: string[], max = 1024, sep = "\n") {
 
 const who = (s: ViewSignup) => escapeMd(s.characterName ?? s.displayName);
 
-function line(s: ViewSignup, emoji: EmojiLookup) {
+/** Jeu du groupe : Roster (WoW Retail) affiche les noms de classes et de spés en français, comme le reste du bot. */
+const gameOf = (v: RaidView): Game => v.group.game ?? "forever";
+const specName = (g: Game, cls: string, spec: string) => specLabel(g, cls, spec, "fr");
+const clsName = (g: Game, cls: string) => classLabel(g, cls, "fr");
+
+function line(s: ViewSignup, emoji: EmojiLookup, g: Game) {
   const icon = s.cls ? emoji(s.cls, s.spec) : "";
   const bits = [`${icon ? `${icon} ` : ""}**${who(s)}**`];
-  if (s.spec) bits.push(s.spec);
-  else if (s.cls) bits.push(s.cls);
+  if (s.spec) bits.push(specName(g, s.cls, s.spec));
+  else if (s.cls) bits.push(clsName(g, s.cls));
   let out = bits.join(" · ");
   if (s.status === "late") out += " ⏰";
   if (s.guest) out += " ✱";
@@ -58,13 +63,14 @@ function line(s: ViewSignup, emoji: EmojiLookup) {
 
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
-function rosterLine(m: RosterMember, emoji: EmojiLookup) {
+function rosterLine(m: RosterMember, emoji: EmojiLookup, g: Game) {
   const icon = emoji(m.cls, m.spec);
-  return `${icon ? `${icon} ` : ""}**${escapeMd(m.name)}**${m.spec ? ` · ${m.spec}` : ""}`;
+  return `${icon ? `${icon} ` : ""}**${escapeMd(m.name)}**${m.spec ? ` · ${specName(g, m.cls, m.spec)}` : ""}`;
 }
 
 /** Compo validée : un champ par groupe (3 par ligne), puis les inscrits non retenus. */
 function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): APIEmbedField[] {
+  const g0 = gameOf(v);
   const groups = v.roster!.groups;
   const all = groups.flatMap(g => g.members);
   const count = (r: string) => all.filter(m => m.role === r).length;
@@ -76,25 +82,26 @@ function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): AP
     }).join(" · "),
     inline: false,
   }];
-  for (const g of groups) fields.push({ name: `Groupe ${g.group}`, value: fitLines(g.members.map(m => rosterLine(m, emoji))), inline: true });
+  for (const g of groups) fields.push({ name: `Groupe ${g.group}`, value: fitLines(g.members.map(m => rosterLine(m, emoji, g0))), inline: true });
   const out = coming.filter(s => !s.group);
-  if (out.length) fields.push({ name: `Inscrits non placés — ${out.length}`, value: fitLines(out.map(s => line(s, emoji))), inline: false });
+  if (out.length) fields.push({ name: `Inscrits non placés — ${out.length}`, value: fitLines(out.map(s => line(s, emoji, g0))), inline: false });
   return fields;
 }
 
 export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed {
+  const g = gameOf(v);
   const coming = v.signups.filter(s => COMING.includes(s.status));
   const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : ROLES.map(({ role, icon }) => {
     const list = coming.filter(s => s.role === role);
     const e = emoji.role?.(role);
-    return { name: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji))), inline: true };
+    return { name: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji, g))), inline: true };
   });
   const noRole = coming.filter(s => !s.role);
-  if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji))), inline: false });
+  if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji, g))), inline: false });
   for (const st of OTHERS) {
     const list = v.signups.filter(s => s.status === st);
     if (!list.length) continue;
-    const text = st === "absent" ? list.map(who) : list.map(s => line(s, emoji));
+    const text = st === "absent" ? list.map(who) : list.map(s => line(s, emoji, g));
     fields.push({ name: `${SIGNUP_LABEL[st]} — ${list.length}`, value: fitLines(text, 1024, st === "absent" ? ", " : "\n"), inline: false });
   }
 
@@ -105,7 +112,7 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
   const classes = new Set(coming.map(s => s.cls).filter(Boolean));
 
   return {
-    title: v.raid.name.slice(0, 256),
+    title: (isRetailDifficulty(v.raid.difficulty) ? `${v.raid.name} · ${DIFFICULTY_LABEL[v.raid.difficulty].fr}` : v.raid.name).slice(0, 256),
     url: v.raid.url,
     description: desc.join("\n\n") || undefined,
     color: GOLD,
@@ -114,7 +121,7 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
       text: [
         v.group.name,
         `${coming.length} inscrit${coming.length > 1 ? "s" : ""}`,
-        classes.size ? `${classes.size}/${Object.keys(CLASSES).length} classes` : null,
+        classes.size ? `${classes.size}/${classesOf(g).length} classes` : null,
         guests ? "✱ inscrit sans compte" : null,
       ].filter(Boolean).join(" · ").slice(0, 2048),
     },
@@ -148,7 +155,7 @@ export function renderReminder(v: RaidView, r: Recipient, emoji: EmojiLookup = n
   const icon = r.cls ? emoji(r.cls, r.spec) : "";
   const lines = [
     t ? `📅 <t:${t}:F> · <t:${t}:R>` : null,
-    `Tu es inscrit : **${SIGNUP_LABEL[r.status]}**${r.name ? ` avec ${icon ? `${icon} ` : ""}**${escapeMd(r.name)}**` : ""}${r.spec ? ` (${r.spec})` : ""}.`,
+    `Tu es inscrit : **${SIGNUP_LABEL[r.status]}**${r.name ? ` avec ${icon ? `${icon} ` : ""}**${escapeMd(r.name)}**` : ""}${r.spec ? ` (${specName(gameOf(v), r.cls, r.spec)})` : ""}.`,
     r.group ? `Tu es dans le **groupe ${r.group}** de la compo.` : v.roster && ["present", "late"].includes(r.status) ? "Tu n'es pas placé dans la compo pour l'instant." : null,
     "Un changement ? Clique sur un statut ci-dessous.",
   ].filter(Boolean);

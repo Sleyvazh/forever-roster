@@ -1,4 +1,4 @@
-import type { Game, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RoleTargets } from "@forever/game-data";
+import type { Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -24,6 +24,10 @@ export const users = pgTable("users", {
   discordUsername: text("discord_username"),
   /** Rappel en message privé Discord la veille des raids auxquels le joueur est inscrit. */
   discordReminders: boolean("discord_reminders").notNull().default(true),
+  /** Roster (R2) : langue des noms du jeu (classes, spés, raids) ; auto = celle du navigateur. */
+  gameLang: text("game_lang").$type<GameLangPref>().notNull().default("auto"),
+  /** Roster encore fermé : accès anticipé (Flo et les officiers de la guilde), donné par roster-preview-cli. */
+  rosterPreview: boolean("roster_preview").notNull().default(false),
   /** Image du compte (200×200, WebP ré-encodé par le serveur). */
   avatarId: uuid("avatar_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   failedLogins: integer("failed_logins").notNull().default(0),
@@ -35,6 +39,7 @@ export const users = pgTable("users", {
   uniqueIndex("users_battlenet_uq").on(t.battlenetId),
   uniqueIndex("users_discord_uq").on(t.discordId),
   check("users_login_method", sql`${t.passwordHash} IS NOT NULL OR ${t.battlenetId} IS NOT NULL`),
+  check("users_game_lang", sql`${t.gameLang} IN ('auto', 'fr', 'en')`),
 ]);
 
 export const sessions = pgTable("sessions", {
@@ -106,6 +111,8 @@ export const characters = pgTable("characters", {
   /** Jeu du perso (un site, deux adresses) : forever (Forever Roster) ou retail (Roster). */
   game: text("game").$type<Game>().notNull().default("forever"),
   name: text("name").notNull(),
+  /** Royaume (Roster, WoW Retail : deux persos peuvent porter le même nom sur deux royaumes) ; vide sur Forever. */
+  realm: text("realm").notNull().default(""),
   race: text("race").notNull().default(""),
   cls: text("cls").notNull().default(""),
   spec1: text("spec1").notNull().default(""),
@@ -138,7 +145,7 @@ export const characters = pgTable("characters", {
 }, t => [
   index("characters_user_idx").on(t.userId, t.sortOrder),
   uniqueIndex("characters_addon_key_uq").on(t.userId, t.game, t.addonKey),
-  check("characters_level", sql`${t.level} BETWEEN 1 AND 60`),
+  check("characters_level", sql`${t.level} BETWEEN 1 AND 90`),
   check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
 
@@ -254,6 +261,8 @@ export const raids = pgTable("raids", {
   /** Format (10, 20 ou 40 joueurs) et rôles visés pour la compo (null : ceux du format). */
   size: smallint("size").notNull().default(40),
   targets: jsonb("targets").$type<RoleTargets | null>(),
+  /** Roster (WoW Retail) : difficulté (normal, heroic, mythic) ; la taille suit la difficulté. Null sur Forever. */
+  difficulty: text("difficulty").$type<RetailDifficulty | null>(),
   /** Raid créé automatiquement à partir d'un modèle récurrent. */
   templateId: uuid("template_id").references((): AnyPgColumn => raidTemplates.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -261,7 +270,8 @@ export const raids = pgTable("raids", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [
   index("raids_group_idx").on(t.groupId),
-  check("raids_size_chk", sql`${t.size} in (10, 20, 40)`),
+  check("raids_size_chk", sql`${t.size} between 5 and 40`),
+  check("raids_difficulty_chk", sql`${t.difficulty} is null or ${t.difficulty} in ('normal', 'heroic', 'mythic')`),
   uniqueIndex("raids_template_occurrence_uq").on(t.templateId, t.scheduledAt),
 ]);
 
@@ -281,6 +291,7 @@ export const raidTemplates = pgTable("raid_templates", {
   time: text("time").notNull(),
   leadDays: smallint("lead_days").notNull().default(7),
   size: smallint("size").notNull().default(40),
+  difficulty: text("difficulty").$type<RetailDifficulty | null>(),
   lootMode: text("loot_mode").$type<LootMode>().notNull().default("journal"),
   srHidden: boolean("sr_hidden").notNull().default(false),
   active: boolean("active").notNull().default(true),

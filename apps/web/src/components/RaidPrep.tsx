@@ -1,4 +1,4 @@
-import {
+import { classColor,
   bossKey, CLASSES, concerns, CONSUMABLE_TARGET_LABEL, CONSUMABLE_TARGETS, type BossSheet, type ClassName, type ConsumableLine, type ConsumableTarget, type RaidPrep, type Role,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ export interface PrepData {
   council: string[] | null; members: { userId: string; name: string; officer: boolean }[];
 }
 
-const clsColor = (cls: string) => CLASSES[cls as ClassName]?.color;
+const clsColor = (cls: string) => classColor(cls);
 const hm = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
 const day = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" });
 
