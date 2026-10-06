@@ -272,8 +272,8 @@ async function start() {
     if (id.a === "pick") {
       // Libellé de l'option choisie : « Perso — Spé » (menu unique) ou « Spé » (menu en deux temps)
       const opt = i.component.options.find(o => o.value === value)?.label ?? pair[1];
-      const [name, spec] = opt.includes(" — ") ? opt.split(" — ") : [null, pair[1]];
-      return apply(i, id.raidId, { kind: "signup", body: { status: id.status, characterId: pair[0], spec: pair[1] }, label: name ? `${name} (${spec})` : pair[1] });
+      const [name, spec] = opt.includes(" — ") ? opt.split(" — ") : [null, opt];
+      return apply(i, id.raidId, { kind: "signup", body: { status: id.status, characterId: pair[0], spec: pair[1] }, label: name ? `${name} (${spec})` : spec! });
     }
     if (id.a === "gspec") {
       const game = (await api.choices(id.raidId, i.user.id)).game ?? "forever";

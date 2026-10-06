@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 36, date: "2026-10-06", kind: "bot", title: "Discord : garder sa spé d'un clic",
+    text: "Dans les menus d'inscription du bot, ta spé et ton perso actuels ne sont plus présélectionnés : Discord empêchait de les choisir à nouveau. Ils sont simplement marqués « actuel » ; un clic suffit pour les garder ou en changer." },
   { n: 35, date: "2026-10-06", kind: "addon", version: "1.3", title: "Raid d'essai avec tes objets",
     text: "Dans /fr test, le corps d'essai montre les objets que tu portes : le serveur de Forever les connaît, leurs infobulles s'affichent. S'il en manque, des objets de Molten Core complètent." },
   { n: 34, date: "2026-10-06", kind: "site", title: "Le Ctrl+V se souvient de tes fiches partout",

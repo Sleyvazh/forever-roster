@@ -18,6 +18,8 @@ export type Step =
   | { kind: "reply"; content: string; components: Row[] };
 
 const MAX_OPTIONS = 25;
+// Jamais d'option présélectionnée (« default ») : Discord ne renvoie rien quand on choisit l'option déjà sélectionnée,
+// le joueur ne pourrait pas garder sa spé ou son perso actuel. Le choix actuel est indiqué dans la description.
 const specsOf = (game: Game, cls: string): { name: string; role: Role }[] => gameSpecs(game, cls).map(name => ({ name, role: roleOf(name) ?? "DPS" }));
 
 /** Libellé « Spé Classe » d'une inscription libre (message de confirmation). */
@@ -49,7 +51,7 @@ export function onStatus(raidId: string, status: SignupStatus, c: Choices, force
     kind: "reply",
     content: `${intro(status)}\n${why}\nChoisis ta classe :`,
     components: [select(encodeId({ a: "cls", raidId, status }), "Ta classe", [...classesOf(game)].sort((a, b) => classLabel(game, a, lang).localeCompare(classLabel(game, b, lang), lang))
-      .map(cls => ({ label: classLabel(game, cls, lang), value: cls, default: cur?.cls === cls })))],
+      .map(cls => ({ label: classLabel(game, cls, lang), value: cls, ...(cur?.cls === cls && { description: "classe actuelle" }) })))],
   };
 }
 
@@ -67,9 +69,8 @@ function memberMenu(raidId: string, status: SignupStatus, chars: ChoiceChar[], c
       content: `${intro(status)}\nAvec quel perso, et dans quelle spé ?`,
       components: [select(encodeId({ a: "pick", raidId, status }), "Perso et spé", combos.map(({ ch, sp }) => ({
         label: `${ch.name} — ${specLabel(game, ch.cls, sp.name, lang)}`.slice(0, 100),
-        description: `${classLabel(game, ch.cls, lang)} · ${sp.role}${sp.name === ch.spec1 ? " · spé principale" : sp.name === ch.spec2 ? " · off-spec" : ""}`.slice(0, 100),
+        description: `${classLabel(game, ch.cls, lang)} · ${sp.role}${sp.name === ch.spec1 ? " · spé principale" : sp.name === ch.spec2 ? " · off-spec" : ""}${ch.id === curChar && sp.name === curSpec ? " · actuel" : ""}`.slice(0, 100),
         value: `${ch.id}:${sp.name}`,
-        default: ch.id === curChar && sp.name === curSpec,
       })))],
     };
   }
@@ -77,7 +78,8 @@ function memberMenu(raidId: string, status: SignupStatus, chars: ChoiceChar[], c
     kind: "reply",
     content: `${intro(status)}\nAvec quel perso ?`,
     components: [select(encodeId({ a: "char", raidId, status }), "Ton perso", chars.map(ch => ({
-      label: ch.name.slice(0, 100), description: [classLabel(game, ch.cls, lang), ch.spec1 && specLabel(game, ch.cls, ch.spec1, lang)].filter(Boolean).join(" · ").slice(0, 100), value: ch.id, default: ch.id === curChar,
+      label: ch.name.slice(0, 100), value: ch.id,
+      description: [classLabel(game, ch.cls, lang), ch.spec1 && specLabel(game, ch.cls, ch.spec1, lang), ch.id === curChar && "actuel"].filter(Boolean).join(" · ").slice(0, 100),
     })))],
   };
 }
@@ -92,7 +94,9 @@ export function onCharPicked(raidId: string, status: SignupStatus, c: Choices, c
     kind: "reply",
     content: `${intro(status)}\n**${ch.name}** : dans quelle spé ?`,
     components: [select(encodeId({ a: "pick", raidId, status }), "Spé pour ce raid", ch.specs.map(sp => ({
-      label: specLabel(game, ch.cls, sp.name, lang), description: sp.role, value: `${ch.id}:${sp.name}`, default: sp.name === (c.current?.characterId === ch.id ? c.current.spec : ch.spec1),
+      label: specLabel(game, ch.cls, sp.name, lang), value: `${ch.id}:${sp.name}`,
+      description: [sp.role, sp.name === ch.spec1 ? "spé principale" : sp.name === ch.spec2 ? "off-spec" : null,
+        c.current?.characterId === ch.id && c.current.spec === sp.name ? "actuelle" : null].filter(Boolean).join(" · "),
     })))],
   };
 }

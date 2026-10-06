@@ -138,6 +138,23 @@ describe("parcours d'inscription", () => {
       .toEqual({ kind: "signup", body: { status: "bench", cls: "Priest", spec: "Shadow" }, label: "Shadow Priest" });
     expect(onClassPicked(RAID, "present", "Chevalier de la mort").kind).toBe("reply");
   });
+  it("aucune option présélectionnée : la spé ou le perso actuel reste choisissable", () => {
+    const cur = { status: "present" as const, characterId: CHAR, cls: "Druid", spec: "Feral Bear" };
+    const steps = [
+      onStatus(RAID, "present", member(cur), true), onStatus(RAID, "present", member(cur, 7), true),
+      onCharPicked(RAID, "present", member(cur, 7), CHAR),
+      onStatus(RAID, "present", { mode: "guest", linked: false, current: cur }, true),
+    ];
+    for (const s of steps) {
+      const opts = s.kind === "reply" ? (s.components[0]!.components[0] as { options: { default?: boolean; description?: string; value: string }[] }).options : [];
+      expect(opts.length).toBeGreaterThan(0);
+      expect(opts.some(o => o.default)).toBe(false);
+    }
+    const spec = onCharPicked(RAID, "present", member(cur, 7), CHAR);
+    const opts = spec.kind === "reply" ? (spec.components[0]!.components[0] as { options: { description?: string; value: string }[] }).options : [];
+    expect(opts.find(o => o.value === `${CHAR}:Feral Bear`)?.description).toBe("Tank · off-spec · actuelle");
+    expect(opts.find(o => o.value === `${CHAR}:Feral Cat`)?.description).toBe("DPS · spé principale");
+  });
   it("confirmation", () => {
     const c = confirmation(RAID, "present", "Perso0 (Feral Bear)", "https://x.test");
     expect(c.content).toBe("✅ C'est noté : **Présent** avec Perso0 (Feral Bear).");
