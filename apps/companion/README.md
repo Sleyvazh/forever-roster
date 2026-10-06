@@ -3,7 +3,7 @@
 Appli de bureau (en option) qui fait la synchro entre l'addon Forever Roster et le site, sans copier-coller. Windows d'abord ; une seule appli pour Forever Roster et Roster (Retail, quand son addon existera). Le copier-coller reste la voie par défaut.
 
 - **Du jeu vers le site** : dès que le jeu écrit la sauvegarde de l'addon (`/reload`, déconnexion), l'appli la lit (sans l'exécuter) et envoie les persos et le bilan du chef de raid à `POST /api/sync/upload`. Un perso que le site ne connaît pas attend la réponse du joueur (« Créer la fiche » ou « Ignorer »).
-- **Du site vers le jeu** : toutes les 5 minutes (1, 5 ou 15 au choix), `GET /api/sync/frg` avec ETag ; les données sont écrites dans l'addon `ForeverRoster_Data` (lu à la connexion) et dans 9 copies chargées à la demande (`ForeverRoster_Data1` à `9`) : le bouton « Charger les nouveautés » de l'addon 1.4 (ou `/fr actualiser`) en charge une à chaque fois, sans `/reload`.
+- **Du site vers le jeu** : toutes les minutes pendant que le jeu tourne, sinon toutes les 5 minutes (1, 5 ou 15 au choix), `GET /api/sync/frg` avec ETag ; les données sont écrites dans l'addon `ForeverRoster_Data` (lu à la connexion) et dans 20 copies chargées à la demande (`ForeverRoster_Data1` à `20`) : l'addon 1.5 en charge une aux moments utiles (fenêtre, avant un raid, appel, entrée en raid) ou à la demande, sans `/reload`. Notification « nouveautés prêtes » en option (ce qui a changé : `core/src/frg.rs`).
 - **Appairage** par code validé sur le site (aucun mot de passe dans l'appli) ; jeton de l'appareil dans le Gestionnaire d'identification de Windows, jamais dans un fichier ni dans le journal.
 
 Formats : [docs/addon-format.md](../../docs/addon-format.md), section Roster Companion. Sécurité : [SECURITY.md](../../SECURITY.md).
@@ -16,6 +16,7 @@ apps/companion/
     src/lua.rs       lecteur de SavedVariables (données seulement, profondeur bornée, jamais exécutées)
     src/outbox.rs    blocs à envoyer rangés par l'addon (ForeverRosterDB.outbox)
     src/datafile.rs  ForeverRoster_Data et ses copies (chaînes Lua échappées octet par octet, écriture atomique)
+    src/frg.rs       ce qui a changé entre deux relevés (notification « nouveautés prêtes »)
     src/wow.rs       dossiers du jeu (.build.info, registre de Blizzard, disques), comptes, addon installé
     src/api.rs       client HTTP du site (TLS du système, proxy de Windows, HTTPS obligatoire hors tests)
     src/sync.rs      moteur : file d'envoi, accusés, persos inconnus, nouvel essai progressif, relevé avec ETag

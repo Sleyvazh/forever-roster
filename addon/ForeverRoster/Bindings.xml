@@ -5,4 +5,10 @@
 	<Binding name="FOREVERROSTER_TOGGLE" category="ADDONS">
 		ForeverRoster_Toggle()
 	</Binding>
+	<Binding name="FOREVERROSTER_REFRESH" category="ADDONS">
+		ForeverRoster_Refresh()
+	</Binding>
+	<Binding name="FOREVERROSTER_RELOAD" category="ADDONS">
+		ForeverRoster_Reload()
+	</Binding>
 </Bindings>

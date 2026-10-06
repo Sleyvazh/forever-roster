@@ -99,7 +99,7 @@ flowchart LR
   W[WoW<br/>addon ForeverRoster] -- sauvegarde<br/>/reload, déconnexion --> R[Roster Companion]
   R -- POST /api/sync/upload<br/>Bearer rc_… --> A[API]
   A -- GET /api/sync/frg<br/>ETag --> R
-  R -- ForeverRoster_Data<br/>+ 9 copies à la demande --> W
+  R -- ForeverRoster_Data<br/>+ 20 copies à la demande --> W
   N[Navigateur, connecté] -- valide le code<br/>/api/devices/pair/approve --> A
 ```
 

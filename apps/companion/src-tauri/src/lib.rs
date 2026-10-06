@@ -84,6 +84,12 @@ pub fn run() {
             let client = Client::new(sites(), &version).map_err(|e| e.to_string())?;
             let ctx = Arc::new(Ctx::new(version, state_file(&data_dir), log_dir, client));
             app.manage(ctx.clone());
+            // Appareil relié mais jeton absent du coffre (coffre vidé, autre session Windows…) : retour à l'appairage
+            // plutôt qu'une appli qui ne synchronise plus sans rien dire
+            if ctx.state().device.is_some() && ctx.token().is_none() {
+                tracing::warn!("jeton introuvable dans le coffre du système : nouvel appairage nécessaire");
+                forget_device(&ctx);
+            }
             tray::create(&handle)?;
             runner::spawn(handle.clone());
             // Fenêtre : lancée à la main, ou appairage pas terminé

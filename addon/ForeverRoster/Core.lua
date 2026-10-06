@@ -93,7 +93,8 @@ local HELP = {
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr objet <lien> : ce que le jeu répond pour un objet (si un nom reste « objet 12345 »)",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
-  "/fr actualiser : charger les nouveautés déposées par Roster Companion, sans /reload",
+  "/fr actualiser : charger les nouveautés déposées par Roster Companion, sans /reload (aussi tout seul aux moments utiles)",
+  "/fr synchroniser : recharger l'interface pour envoyer au site et charger les nouveautés d'un coup (Roster Companion)",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
   "/fr rappels : couper ou remettre le rappel de raid à la connexion",
   "/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)",
@@ -114,8 +115,12 @@ local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids 
 BINDING_HEADER_FOREVERROSTER = "Forever Roster"
 BINDING_NAME_FOREVERROSTER_SYNC = "Synchro rapide avec le site (copier / coller)"
 BINDING_NAME_FOREVERROSTER_TOGGLE = "Ouvrir ou fermer la fenêtre"
+BINDING_NAME_FOREVERROSTER_REFRESH = "Charger les nouveautés (Roster Companion)"
+BINDING_NAME_FOREVERROSTER_RELOAD = "Synchroniser (Roster Companion, recharge l'interface)"
 function ForeverRoster_Sync() ns.safe("raccourci", ns.UI.Quick) end
 function ForeverRoster_Toggle() ns.safe("raccourci", ns.UI.Toggle) end
+function ForeverRoster_Refresh() ns.safe("raccourci", ns.Companion.RefreshCommand) end
+function ForeverRoster_Reload() ns.safe("raccourci", ns.Companion.Reload) end
 
 local function run(msg)
   local raw = strtrim(msg or "")
@@ -151,6 +156,8 @@ local function run(msg)
     ns.print(key .. " retiré de l'export.")
   elseif cmd == "actualiser" or cmd == "maj" then
     ns.Companion.RefreshCommand()
+  elseif cmd == "synchroniser" then
+    ns.Companion.Reload()
   elseif cmd == "rappels" then
     ForeverRosterDB.noReminder = not ForeverRosterDB.noReminder or nil
     ns.print(ForeverRosterDB.noReminder and "rappels de raid coupés." or "rappels de raid remis : à la connexion, raids des prochaines 24 h.")

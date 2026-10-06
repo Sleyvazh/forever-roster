@@ -39,6 +39,8 @@ pub struct Live {
     pub restart_needed: Vec<Game>,
     /// Relevé des données du site demandé tout de suite.
     pub force_pull: bool,
+    /// Demande de code en cours (deux demandes en même temps donneraient deux codes différents).
+    pub pairing_busy: bool,
 }
 
 #[derive(Clone)]

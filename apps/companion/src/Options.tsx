@@ -35,11 +35,11 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
       </div>
       <div className="opt">
         <div className="lbl">Synchro</div>
-        <div className="sw"><span>Données du site relevées toutes les</span>
+        <div className="sw"><span>Jeu fermé : site relevé toutes les</span>
           <select aria-label="Délai entre deux relevés" value={s.settings.syncMinutes} onChange={e => void set({ syncMinutes: Number(e.target.value) as Settings["syncMinutes"] })}>
             <option value={1}>1 minute</option><option value={5}>5 minutes</option><option value={15}>15 minutes</option>
           </select></div>
-        <p className="hint">Tes persos et bilans partent dès que le jeu écrit la sauvegarde de l'addon (déconnexion ou <code>/reload</code>).</p>
+        <p className="hint">Jeu lancé : toutes les minutes. Tes persos et bilans partent dès que le jeu écrit la sauvegarde de l'addon (déconnexion, <code>/reload</code> ou « Synchroniser » dans l'addon).</p>
       </div>
       <div className="opt">
         <div className="lbl">Bouton ✕</div>
@@ -48,7 +48,7 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
       </div>
       <div className="opt">
         <div className="sw"><span className="lbl">Notifications Windows</span><Toggle label="Notifications Windows" checked={n.enabled} onChange={v => void set({ notifications: { ...n, enabled: v } })} /></div>
-        {([["errors", "Synchro en attente (site injoignable…)"], ["unknown", "Nouveau perso à créer ou ignorer"], ["sent", "Envois au site (persos, bilans)"]] as const).map(([k, label]) => (
+        {([["errors", "Synchro en attente (site injoignable…)"], ["unknown", "Nouveau perso à créer ou ignorer"], ["fresh", "Nouveautés du site prêtes pour le jeu"], ["sent", "Envois au site (persos, bilans)"]] as const).map(([k, label]) => (
           <label key={k} className={`check${n.enabled ? "" : " dis"}`}><input type="checkbox" disabled={!n.enabled} checked={n[k]} onChange={e => void set({ notifications: { ...n, [k]: e.target.checked } })} /><span>{label}</span></label>
         ))}
       </div>

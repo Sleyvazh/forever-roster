@@ -105,7 +105,7 @@ export function Folders({ s, onDone }: { s: Status; onDone: () => void }) {
         <button className="btn ghost sm" type="button" onClick={() => void pick("forever")}>+ Ajouter un autre dossier</button>
         <button className="btn ghost sm" type="button" onClick={() => void call("rescan")}>Chercher de nouveau</button>
       </div>
-      <div className="alert info">ForeverRoster_Data est un petit addon séparé où l'appli dépose les données du site (avec 9 copies pour les charger sans <code>/reload</code>). <b>Relance le jeu une fois</b> après l'installation : le jeu ne voit les nouveaux addons qu'à son lancement.</div>
+      <div className="alert info">ForeverRoster_Data est un petit addon séparé où l'appli dépose les données du site (avec 20 copies pour les charger sans <code>/reload</code>). <b>Relance le jeu une fois</b> après l'installation : le jeu ne voit les nouveaux addons qu'à son lancement.</div>
       {error && <div className="alert bad">{error}</div>}
       <button className="btn primary block" type="button" disabled={busy || candidates.length === 0} onClick={() => void finish()}>{busy ? "Installation…" : "Installer et terminer"}</button>
     </>
@@ -122,7 +122,7 @@ export function Ready({ s, onClose }: { s: Status; onClose: () => void }) {
         <p className="hint" style={{ marginTop: 4 }}>La synchro est automatique : tu n'as plus rien à copier-coller.</p></div>
       <ul className="lines">
         <li><span className="ck">✓</span><span>Persos et bilans envoyés à chaque <code>/reload</code> ou déconnexion</span></li>
-        <li><span className="ck">✓</span><span>Données du site relevées toutes les {s.settings.syncMinutes} min, chargées par l'addon à la connexion, puis sans <code>/reload</code> avec « Charger les nouveautés »</span></li>
+        <li><span className="ck">✓</span><span>Données du site relevées chaque minute pendant que tu joues (toutes les {s.settings.syncMinutes} min sinon), chargées par l'addon sans <code>/reload</code> aux moments utiles</span></li>
         <li><span className="ck">✓</span><span>{s.settings.startup === "manual" ? "Démarrage à la main" : "Démarre avec Windows"}, icône près de l'horloge (réglable dans les options)</span></li>
       </ul>
       {running && <div className="alert warn">Le jeu est lancé : <b>relance-le une fois</b> pour que l'addon voie ForeverRoster_Data.</div>}

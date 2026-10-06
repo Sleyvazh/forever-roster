@@ -53,6 +53,8 @@ pub struct Notifications {
     pub errors: bool,
     pub sent: bool,
     pub unknown: bool,
+    /// Nouveautés du site prêtes pour le jeu (jeu lancé).
+    pub fresh: bool,
 }
 
 impl Default for Notifications {
@@ -62,6 +64,7 @@ impl Default for Notifications {
             errors: true,
             sent: false,
             unknown: true,
+            fresh: true,
         }
     }
 }
@@ -103,6 +106,11 @@ impl Settings {
             15 => 900,
             _ => 300,
         }
+    }
+
+    /// Délai de relevé effectif : toutes les minutes pendant que le jeu tourne (choix de Flo), le réglage sinon.
+    pub fn pull_interval_s(&self, game_running: bool) -> i64 {
+        if game_running { 60 } else { self.sync_interval_s() }
     }
 }
 
@@ -177,6 +185,9 @@ mod tests {
         assert_eq!(s.version, STATE_VERSION);
         assert!(!s.settings.notifications.enabled, "notifications coupées par défaut");
         assert_eq!(s.settings.sync_interval_s(), 300, "synchro toutes les 5 minutes par défaut");
+        assert_eq!(s.settings.pull_interval_s(true), 60, "toutes les minutes pendant que le jeu tourne");
+        assert_eq!(s.settings.pull_interval_s(false), 300);
+        assert!(s.settings.notifications.fresh, "nouveautés prêtes : actif dès que les notifications le sont");
         s.settings.startup = Startup::Game;
         s.settings
             .folders

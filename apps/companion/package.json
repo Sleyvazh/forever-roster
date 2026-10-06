@@ -1,6 +1,6 @@
 {
   "name": "roster-companion",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Roster Companion : la synchro entre l'addon Forever Roster et le site, sans copier-coller.",

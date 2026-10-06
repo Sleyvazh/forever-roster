@@ -13,7 +13,7 @@ export interface Settings {
   startup: "windows" | "game" | "manual";
   close: "hide" | "quit";
   theme: "auto" | "light" | "dark";
-  notifications: { enabled: boolean; errors: boolean; sent: boolean; unknown: boolean };
+  notifications: { enabled: boolean; errors: boolean; sent: boolean; unknown: boolean; fresh: boolean };
   syncMinutes: 1 | 5 | 15;
   folders: Partial<Record<Game, string>>;
   extraRoots: string[];

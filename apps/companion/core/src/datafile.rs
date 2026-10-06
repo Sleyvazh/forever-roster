@@ -1,7 +1,7 @@
 //! L'addon `ForeverRoster_Data`, écrit par l'appli : données des groupes (FRG), accusés de réception et compte rendu,
 //! lus par l'addon Forever Roster à la connexion et au `/reload` (variable `ForeverRosterData`, format 1).
 //!
-//! Actualisation sans `/reload` (addon 1.4) : les mêmes données sont copiées dans `ForeverRoster_Data1` à `9`,
+//! Actualisation sans `/reload` (addon 1.4) : les mêmes données sont copiées dans `ForeverRoster_Data1` à `20`,
 //! chargés à la demande (`## LoadOnDemand: 1`). Le jeu lit leurs fichiers au moment où l'addon les charge (vérifié sur
 //! le client de Forever) : chaque copie donne une actualisation, une seule fois par session ; le `/reload` remet à zéro.
 //!
@@ -15,8 +15,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub const DATA_ADDON: &str = "ForeverRoster_Data";
-/// Copies chargées à la demande (`ForeverRoster_Data1` à `ForeverRoster_Data9`) : une actualisation chacune.
-pub const SLOTS: u32 = 9;
+/// Copies chargées à la demande (`ForeverRoster_Data1` à `ForeverRoster_Data20`) : une actualisation chacune.
+/// 9 dans l'appli 0.1.0, 20 ensuite (choix de Flo) : les copies manquantes sont ajoutées à la synchro suivante.
+pub const SLOTS: u32 = 20;
 pub const MAIN_ADDON: &str = "ForeverRoster";
 /// Interface du client de Forever si le .toc de l'addon principal est introuvable.
 pub const DEFAULT_INTERFACE: &str = "16001";
@@ -112,7 +113,7 @@ pub fn data_addon_dirs() -> Vec<String> {
         .collect()
 }
 
-/// .toc de l'addon de données (`slot` 0) ou d'une copie chargée à la demande (`slot` 1 à 9).
+/// .toc de l'addon de données (`slot` 0) ou d'une copie chargée à la demande (`slot` 1 à 20).
 pub fn data_toc(interface: &str, app_version: &str, slot: u32) -> String {
     if slot == 0 {
         return format!(
@@ -277,8 +278,8 @@ mod tests {
         let data = fs::read_to_string(addons.join(DATA_ADDON).join("Data.lua")).unwrap();
         assert!(data.contains("at = 2,"));
         assert!(!addons.join(DATA_ADDON).join(".Data.lua.tmp").exists());
-        // Les 9 copies chargées à la demande, avec les mêmes données
-        assert_eq!(data_addon_dirs().len(), 10);
+        // Les 20 copies chargées à la demande, avec les mêmes données
+        assert_eq!(data_addon_dirs().len(), 21);
         for i in 1..=SLOTS {
             let name = format!("ForeverRoster_Data{i}");
             let toc = fs::read_to_string(addons.join(&name).join(format!("{name}.toc"))).unwrap();

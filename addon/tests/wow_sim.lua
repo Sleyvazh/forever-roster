@@ -72,7 +72,7 @@ function GetNumSubgroupMembers() return 0 end
 function UnitIsGroupLeader() return true end
 function UnitIsGroupAssistant() return false end
 function InCombatLockdown() return false end
--- Addons chargés à la demande (ForeverRoster_Data1 à 9) : lus dans ADDONS_DIR quand il est donné (section 9)
+-- Addons chargés à la demande (ForeverRoster_Data1 à 20) : lus dans ADDONS_DIR quand il est donné (section 9)
 local ADDONS_DIR, LOADED = nil, {}
 function IsAddOnLoaded(name) return LOADED[name] == true end
 function GetAddOnInfo(name)
@@ -714,12 +714,13 @@ if helper and helper ~= "" then
 
   -- Actualisation sans /reload : l'appli dépose de nouvelles données, l'addon charge la copie suivante
   ADDONS_DIR = dir
-  assert(ns.Companion.SlotsLeft() == 9, "9 copies chargeables")
+  local function left() return ns.Companion.SlotsLeft() end
+  assert(left() == 20, "20 copies chargeables")
   local ok, msg, changed = ns.Companion.Refresh()
-  assert(ok and not changed and msg:find("rien de nouveau", 1, true) and msg:find("Encore 8 actualisations possibles", 1, true), msg)
+  assert(ok and not changed and msg:find("rien de nouveau", 1, true) and msg:find("Encore 19 actualisations possibles", 1, true), msg)
   app(2)
   ok, msg, changed = ns.Companion.Refresh()
-  assert(ok and changed and msg:find("actualisées", 1, true) and msg:find("Encore 7", 1, true), msg)
+  assert(ok and changed and msg:find("actualisées", 1, true) and msg:find("Encore 18", 1, true), msg)
   assert(groupNames():find("Les Retardataires", 1, true), "nouvelles données chargées sans /reload")
   -- En combat : remis à la fin du combat
   InCombatLockdown = function() return true end
@@ -727,21 +728,65 @@ if helper and helper ~= "" then
   assert(not ok and msg:find("fin du combat", 1, true), msg)
   InCombatLockdown = function() return false end
   fire("PLAYER_REGEN_ENABLED")
-  assert(ns.Companion.SlotsLeft() == 6, "chargée après le combat")
-  -- Fenêtre ouverte : toute seule si la dernière actualisation date de 15 min
-  ns.Companion.AutoRefresh()
-  assert(ns.Companion.SlotsLeft() == 6, "pas d'actualisation trop rapprochée")
-  local realTime = time
-  time = function() return realTime() + 16 * 60 end
-  ns.Companion.AutoRefresh()
-  time = realTime
-  assert(ns.Companion.SlotsLeft() == 5, "actualisation toute seule à l'ouverture")
-  run("actualiser")
-  for _ = 1, 4 do ok, msg = ns.Companion.Refresh() end
+  assert(left() == 17, "chargée après le combat")
+  -- Toute seule aux moments utiles, jamais deux fois en moins de 2 min
+  local realTime, clock = time, time()
+  time = function() return clock end
+  assert(not ns.Companion.AutoRefresh("window") and left() == 17, "pas d'actualisation trop rapprochée")
+  clock = clock + 3 * 60
+  assert(ns.Companion.AutoRefresh("window") and left() == 16, "fenêtre ouverte : chargée toute seule")
+  clock = clock + 3 * 60
+  fire("READY_CHECK")
+  assert(left() == 15, "appel : chargée toute seule")
+  clock = clock + 3 * 60
+  IsInRaid = function() return true end
+  fire("GROUP_ROSTER_UPDATE")
+  assert(left() == 14, "entrée dans un groupe de raid : chargée toute seule")
+  clock = clock + 3 * 60
+  fire("GROUP_ROSTER_UPDATE")
+  assert(left() == 14, "déjà en raid : rien")
+  IsInRaid = function() return false end
+  fire("GROUP_ROSTER_UPDATE")
+  local realInstance = IsInInstance
+  IsInInstance = function() return true, "raid" end
+  fire("PLAYER_ENTERING_WORLD")
+  assert(left() == 13, "entrée dans une instance de raid : chargée toute seule")
+  IsInInstance = realInstance
+  -- 30 et 5 min avant un raid (vérifié toutes les 30 s), une fois chacun
+  clock = clock + 3 * 60
+  assert(ns.Group.Load("FRG;1;g9;" .. clock .. ";Soirée\nR;r9;" .. (clock + 29 * 60) .. ";Onyxia;;;journal\nEND;1", true, true))
+  ns.Companion.Tick()
+  assert(left() == 12, "30 min avant le raid : chargée toute seule")
+  ns.Companion.Tick()
+  assert(left() == 12, "une seule fois par moment")
+  clock = clock + 25 * 60
+  ns.Companion.Tick()
+  assert(left() == 11, "5 min avant le raid : chargée toute seule")
+  -- Synchroniser : recharge l'interface (bouton, commande, touche), jamais en combat
+  local reloads, realReload = 0, ReloadUI
+  ReloadUI = function() reloads = reloads + 1 end
+  InCombatLockdown = function() return true end
+  assert(not ns.Companion.Reload() and reloads == 0, "pas de rechargement en combat")
+  InCombatLockdown = function() return false end
+  run("synchroniser")
+  ForeverRoster_Reload()
+  assert(reloads == 2, "commande et touche rechargent l'interface")
+  ReloadUI = realReload
+  ForeverRoster_Refresh()
+  assert(left() == 10, "touche « Charger les nouveautés »")
+  for _ = 1, 10 do ok, msg = ns.Companion.Refresh() end
   assert(ok and msg:find("dernière actualisation", 1, true), msg)
   ok, msg = ns.Companion.Refresh()
   assert(not ok and msg:find("/reload", 1, true), msg)
+  clock = clock + 3 * 60
+  local before = #printed
+  fire("READY_CHECK")
+  fire("READY_CHECK")
+  local said = 0
+  for k = before + 1, #printed do if printed[k]:find("plus d'actualisation automatique", 1, true) then said = said + 1 end end
+  assert(said == 1, "copies épuisées : dit une seule fois")
   run("actualiser")
+  time = realTime
   ADDONS_DIR = nil
   os.remove(sv)
   assert(os.execute("rm -rf '" .. dir .. "'") == 0)

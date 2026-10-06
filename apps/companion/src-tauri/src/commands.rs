@@ -46,12 +46,27 @@ fn os_label() -> String {
 #[tauri::command]
 pub async fn pair_start(app: AppHandle, ctx: Ctxs<'_>) -> Result<(), String> {
     let ctx = ctx.inner().clone();
+    // Un seul code à la fois : une demande déjà en cours, ou un code encore valable en attente, est gardé
+    {
+        let mut live = ctx.live();
+        let now = rc_core::now();
+        let pending = live
+            .pairing
+            .as_ref()
+            .is_some_and(|p| p.status == "pending" && now < p.started_at + p.start.expires_in as i64 - 30);
+        if live.pairing_busy || pending {
+            return Ok(());
+        }
+        live.pairing_busy = true;
+    }
     let info = DeviceDescription {
         name: device_name(),
         platform: os_label(),
         app_version: ctx.version.clone(),
     };
-    let start = ctx.client.pair_start(&info).await.map_err(|e| e.to_string())?;
+    let started = ctx.client.pair_start(&info).await;
+    ctx.live().pairing_busy = false;
+    let start = started.map_err(|e| e.to_string())?;
     let now = rc_core::now();
     ctx.live().pairing = Some(Pairing {
         start: start.clone(),

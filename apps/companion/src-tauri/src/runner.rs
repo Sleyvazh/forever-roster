@@ -157,9 +157,10 @@ async fn tick(app: &AppHandle, ctx: &Arc<Ctx>, sys: &mut System, watch: &mut Wat
 pub async fn sync_game(app: &AppHandle, ctx: &Arc<Ctx>, game: Game, token: &str, now: i64, force: bool) -> Result<(), ApiError> {
     let Some(inst) = ctx.install_for(game) else { return Ok(()) };
     let _guard = ctx.sync_lock.lock().await;
+    let running = ctx.live().running.contains(&game);
     let (mut gs, interval) = {
         let mut st = ctx.state();
-        let interval = st.settings.sync_interval_s();
+        let interval = st.settings.pull_interval_s(running);
         (st.game(game).clone(), interval)
     };
     let before = gs.clone();
@@ -187,9 +188,20 @@ pub async fn sync_game(app: &AppHandle, ctx: &Arc<Ctx>, game: Game, token: &str,
     }
     let due = gs.last_pull.is_none_or(|t| now - t >= interval);
     if force_pull || due {
+        let previous = gs.frg.clone();
         match engine.pull(&mut gs, now).await {
             Err(ApiError::Unauthorized) => return Err(ApiError::Unauthorized),
             Err(e) => result = Err(e),
+            // Nouveautés pendant que le jeu tourne (pas au premier relevé, ni juste après un envoi : ce serait l'écho
+            // de ce que le joueur vient de faire en jeu)
+            Ok(true) if running && gs.last_push.is_none_or(|t| now - t > 90) => {
+                if let (Some(old), Some(new)) = (previous.as_deref(), gs.frg.as_deref()) {
+                    let what = rc_core::frg::changes(old, new, 3);
+                    if !what.is_empty() {
+                        crate::notify::fresh(app, ctx, &what);
+                    }
+                }
+            }
             Ok(_) => {}
         }
     }

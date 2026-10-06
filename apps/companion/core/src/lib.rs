@@ -3,6 +3,7 @@
 //! - [`lua`] : lecture sûre (sans exécution) de la sauvegarde de l'addon.
 //! - [`outbox`] : blocs à envoyer rangés par l'addon à la déconnexion.
 //! - [`datafile`] : l'addon `ForeverRoster_Data` écrit pour le jeu (chaînes échappées octet par octet).
+//! - [`frg`] : ce qui a changé entre deux relevés des données des groupes (notification « nouveautés prêtes »).
 //! - [`wow`] : dossiers du jeu, comptes, addons installés, jeu lancé.
 //! - [`api`] : client du site (appairage, synchro).
 //! - [`sync`] : moteur de synchro (file d'attente, accusés, persos inconnus, reprise après erreur).
@@ -10,6 +11,7 @@
 
 pub mod api;
 pub mod datafile;
+pub mod frg;
 pub mod lua;
 pub mod outbox;
 pub mod state;

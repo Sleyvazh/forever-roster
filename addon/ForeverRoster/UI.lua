@@ -708,6 +708,13 @@ local function buildSynchro(p)
   -- Roster Companion (1.4) : nouveautés déposées par l'appli, sans /reload
   p.pull = button(p, "Charger les nouveautés", 180, function() ns.Companion.RefreshCommand() end)
   p.pull:SetPoint("TOPRIGHT", p, "TOPRIGHT", -4, -112)
+  p.pull:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine("Charger les nouveautés de Roster Companion")
+    GameTooltip:AddLine("Sans /reload. Aussi tout seul à l'ouverture de cette fenêtre, avant un raid, à l'appel et en entrant en raid. Encore " .. ns.Companion.SlotsLeft() .. " cette session.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  p.pull:SetScript("OnLeave", function() GameTooltip:Hide() end)
   p.pull:Hide()
   headerBar(p, -140, "2 · Du jeu vers le site")
   p.text = textArea(p, 6, -182, 526, 180)
@@ -728,6 +735,17 @@ local function buildSynchro(p)
   p.toggleAll:SetPoint("TOPLEFT", 4, -400)
   local again = button(p, "Actualiser", 120, function() p.sent = false U.Refresh() end)
   again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
+  -- Roster Companion (1.5) : les deux sens d'un coup, en rechargeant l'interface
+  p.reload = button(p, "Synchroniser", 130, function() ns.Companion.Reload() end)
+  p.reload:SetPoint("LEFT", again, "RIGHT", 8, 0)
+  p.reload:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOP")
+    GameTooltip:AddLine("Synchroniser avec Roster Companion")
+    GameTooltip:AddLine("Recharge l'interface (quelques secondes) : tes persos et inscriptions partent au site, et les nouveautés du site arrivent.", 1, 1, 1, true)
+    GameTooltip:Show()
+  end)
+  p.reload:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  p.reload:Hide()
   p.chars = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.chars:SetPoint("TOPLEFT", 6, -434) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
 end
@@ -737,6 +755,7 @@ refreshers.synchro = function(p)
   p.hint:SetText(companion and ns.Companion.StatusText(GREEN) or SYNC_HINT)
   local pull = companion and ns.Companion.SlotsLeft() > 0
   if pull then p.pull:Show() else p.pull:Hide() end
+  if companion then p.reload:Show() else p.reload:Hide() end
   p.loadStatus:SetWidth(pull and 336 or 526)
   local last = ForeverRosterDB.lastLoad
   p.loadStatus:SetText(last and (GREEN .. "Chargé le " .. date("%d/%m %H:%M", last.at) .. " : " .. last.text .. "|r")
@@ -769,6 +788,8 @@ end
 local BINDINGS = {
   { action = "FOREVERROSTER_SYNC", label = "Synchro rapide avec le site" },
   { action = "FOREVERROSTER_TOGGLE", label = "Ouvrir ou fermer la fenêtre" },
+  { action = "FOREVERROSTER_REFRESH", label = "Charger les nouveautés (Roster Companion)" },
+  { action = "FOREVERROSTER_RELOAD", label = "Synchroniser (Roster Companion, recharge l'interface)" },
 }
 local function keyText(key)
   return (GetBindingText and GetBindingText(key)) or key
@@ -995,7 +1016,7 @@ local function buildMain()
     builders[t.key](p)
     pages[t.key] = p
   end
-  main:SetScript("OnShow", function() ns.safe("Roster Companion", ns.Companion.AutoRefresh) U.Refresh() end)
+  main:SetScript("OnShow", function() ns.safe("Roster Companion", ns.Companion.AutoRefresh, "window") U.Refresh() end)
 end
 
 function U.Refresh()
