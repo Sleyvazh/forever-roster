@@ -9,6 +9,7 @@ import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { RoleIcon } from "./RoleIcon";
 import { RetailCharacterView } from "./RetailCharacter";
+import { BnetGroupRefresh } from "./BnetImport";
 import { useGameText } from "../gameText";
 
 /**
@@ -160,7 +161,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
         <button key={c.id} type="button" role="listitem" className="grow" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
           <Face c={c} size={30} />
           <span className="gname"><Mark c={c} /><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
-          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
+          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
           <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
           {owner(c)}
         </button>
@@ -258,6 +259,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
               {VIEWS.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>)}
             </div>
           </div>
+          {gt.game === "retail" && RANK[myRole] >= 1 && <BnetGroupRefresh groupId={groupId} onDone={() => void qc.invalidateQueries({ queryKey: ["group-chars", groupId] })} />}
           {!shown.length && <p className="muted">Aucun perso ne correspond.</p>}
           {sections.map(([title, chars]) => chars.length > 0 && (
             <div key={title ?? "all"} className="stack" style={{ gap: 8 }}>

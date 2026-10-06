@@ -1185,3 +1185,16 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .rc-links .chip { display: inline-block; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
 .rc-links .chip:hover { border-color: var(--gold); color: var(--gold); }
 .rc-create { max-width: 860px; }
+
+/* Roster (R2b) : import Battle.net, lecture chez Blizzard */
+.bi { max-width: 860px; }
+.bi-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 420px; overflow: auto; }
+.bi-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--line); border-left: 3px solid var(--cc); border-radius: 6px; background: var(--panel-2); cursor: pointer; }
+.bi-row:hover { border-color: var(--line-2); border-left-color: var(--cc); }
+.bi-row.here { opacity: .78; }
+.bi-row input { flex: none; }
+.bi-name { font-weight: 600; color: var(--cc); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bi-sub { color: var(--ink-2); font-size: 13px; flex: 1 1 auto; }
+.bi-group { gap: 10px; }
+.rc-bnet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel-2); font-size: 14px; }
+.rc-bnet-k { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: #148eff; }

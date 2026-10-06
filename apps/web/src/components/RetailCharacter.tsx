@@ -2,6 +2,7 @@ import { FRENCH_REALMS, RETAIL_CLASS_NAMES, RETAIL_MAX_LEVEL, retailLinks, roleO
 import { useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, post, type Character } from "../api";
 import { useGameText } from "../gameText";
+import { bnetAge, BnetImportButton, useBnetEnabled, useBnetRefresh } from "./BnetImport";
 import { RoleIcon } from "./RoleIcon";
 
 /**
@@ -13,24 +14,47 @@ import { RoleIcon } from "./RoleIcon";
 const REALMS_ID = "rc-realms";
 export const RealmList = () => <datalist id={REALMS_ID}>{FRENCH_REALMS.map(r => <option key={r} value={r} />)}</datalist>;
 
-export function RetailCharacterSheet({ c, onChange, subhead, footer }: {
+export function RetailCharacterSheet({ c, onChange, onRefreshed, subhead, footer }: {
   c: Character; onChange: (p: Partial<Character>) => void; subhead?: ReactNode; footer?: ReactNode;
+  /** Fiche relue chez Blizzard (« Mettre à jour ») : la version du serveur remplace la copie locale. */
+  onRefreshed?: (c: Character) => void;
 }) {
   const t = useGameText();
+  const bnetOn = useBnetEnabled();
+  const refresh = useBnetRefresh(ch => onRefreshed?.(ch));
   const specs = c.cls ? specsOf("retail", c.cls) : [];
   const roles = [...new Set([roleOf(c.spec1), roleOf(c.spec2)].filter(Boolean))];
-  const links = c.name.trim() && c.realm.trim() ? retailLinks(c.name, c.realm) : null;
+  const links = c.name.trim() && c.realm.trim() ? retailLinks(c.name, c.realm, c.realmSlug) : null;
   const setClass = (cls: string) => onChange({ cls, spec1: "", spec2: "" });
   return (
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: t.color(c.cls) ?? "var(--line-2)" }}>
         <div>
           <h2 className="with-icon"><span className="rc-av" aria-hidden="true">{(c.name || "?")[0]}</span><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
-          <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.spec1 && ` · ${t.spec(c.cls, c.spec1)}`}</div>
+          <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.spec1 && ` · ${t.spec(c.cls, c.spec1)}`}{c.ilvl ? <> · ilvl <span className="num">{c.ilvl}</span></> : null}</div>
         </div>
         <div className="row">{roles.map(r => <RoleIcon key={r} role={r} />)}</div>
       </div>
       {subhead}
+      {bnetOn && (
+        <div className="rc-bnet">
+          <span className="rc-bnet-k">Battle.net</span>
+          {c.bnetSyncedAt ? (
+            <span>Niveau d'objet <b className="num">{c.ilvl ?? "?"}</b>{c.activeSpec && <> · spé active <b>{t.spec(c.cls, c.activeSpec)}</b></>} <span className="muted small">· {bnetAge(c.bnetSyncedAt)}</span></span>
+          ) : <span className="muted small">Pas encore lu chez Blizzard (profil public du perso, avec son nom et son royaume).</span>}
+          <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
+            {c.activeSpec && c.activeSpec !== c.spec1 && (
+              <button type="button" className="btn ghost sm" onClick={() => onChange({ spec1: c.activeSpec, ...(c.spec2 === c.activeSpec && { spec2: "" }) })}>
+                Prendre {t.spec(c.cls, c.activeSpec)} comme spé principale
+              </button>
+            )}
+            <button type="button" className="btn sm" disabled={refresh.busy || !c.name.trim() || !c.realm.trim()} onClick={() => void refresh.run(c.id)}>
+              {refresh.busy ? "Lecture…" : "Mettre à jour"}
+            </button>
+          </span>
+          {refresh.msg && <span className={`small ${refresh.msg.ok ? "muted" : "warnmsg"}`} role="status" style={{ flexBasis: "100%" }}>{refresh.msg.text}</span>}
+        </div>
+      )}
       <div className="pane">
         <div className="rc-grid">
           <div className="fld"><label htmlFor="rc-name">Nom</label>
@@ -67,7 +91,6 @@ export function RetailCharacterSheet({ c, onChange, subhead, footer }: {
         </div>
         <div className="fld"><label htmlFor="rc-notes">Notes</label>
           <textarea id="rc-notes" rows={3} maxLength={5000} value={c.notes} onChange={e => onChange({ notes: e.target.value })} placeholder="Ex. dispo mercredi et dimanche" /></div>
-        <p className="hint" style={{ margin: 0 }}>Niveau d'objet, spé active et mise à jour : avec l'import Battle.net, bientôt.</p>
       </div>
       {footer && <div className="foot">{footer}</div>}
     </section>
@@ -77,14 +100,14 @@ export function RetailCharacterSheet({ c, onChange, subhead, footer }: {
 /** Fiche en lecture (persos des autres membres du groupe). */
 export function RetailCharacterView({ c }: { c: Character }) {
   const t = useGameText();
-  const links = c.name.trim() && c.realm.trim() ? retailLinks(c.name, c.realm) : null;
+  const links = c.name.trim() && c.realm.trim() ? retailLinks(c.name, c.realm, c.realmSlug) : null;
   const specs = [c.spec1, c.spec2].filter(Boolean);
   return (
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: t.color(c.cls) ?? "var(--line-2)" }}>
         <div>
           <h2 className="with-icon"><span className="rc-av" aria-hidden="true">{(c.name || "?")[0]}</span><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
-          <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.owner && ` · ${c.owner}`}</div>
+          <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.ilvl ? <> · ilvl <span className="num">{c.ilvl}</span></> : null}{c.owner && ` · ${c.owner}`}</div>
         </div>
       </div>
       <div className="pane">
@@ -94,6 +117,7 @@ export function RetailCharacterView({ c }: { c: Character }) {
               <span key={sp} className="tag">{roleOf(sp) && <RoleIcon role={roleOf(sp)!} size={14} />} {t.spec(c.cls, sp)}{i ? " (secondaire)" : ""}</span>
             ))}</div>
           ) : <span className="hint">Aucune spé choisie.</span>}
+          {c.activeSpec && <span className="hint">Spé active en jeu : {t.spec(c.cls, c.activeSpec)} ({bnetAge(c.bnetSyncedAt)})</span>}
         </div>
         {links && (
           <div className="fld"><span className="lbl">Liens</span>
@@ -146,7 +170,7 @@ export function RetailCreateForm({ onCreated, onCancel }: { onCreated: (c: Chara
       <div className="row">
         <button type="submit" className="btn primary" disabled={busy}>Créer le perso</button>
         {onCancel && <button type="button" className="btn ghost" onClick={onCancel}>Annuler</button>}
-        <span className="hint">Bientôt : import des persos depuis Battle.net.</span>
+        <span className="row" style={{ gap: 8, marginLeft: "auto" }}><BnetImportButton small /></span>
       </div>
     </form>
   );

@@ -12,7 +12,8 @@ export type AuditType =
   | "raid_template_created" | "raid_template_updated" | "raid_template_deleted" | "raid_roster_published" | "raid_roster_unpublished"
   | "group_character_changed" | "group_loot_settings" | "group_nudge_settings" | "raid_nudged" | "raid_ask_sent" | "group_orders_linked" | "group_orders_unlinked" | "raid_council"
   | "loot_count_corrected"
-  | "device_linked" | "device_pair_denied" | "device_unlinked";
+  | "device_linked" | "device_pair_denied" | "device_unlinked"
+  | "battlenet_import_list" | "battlenet_import";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

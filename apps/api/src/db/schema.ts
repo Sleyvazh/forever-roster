@@ -1,7 +1,7 @@
-import type { Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
+import type { BnetCharacter, Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
+  type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true });
@@ -73,8 +73,15 @@ export const emailTokens = pgTable("email_tokens", {
 /** États OAuth en attente (protection CSRF du flux Battle.net). */
 export const oauthStates = pgTable("oauth_states", {
   stateHash: text("state_hash").primaryKey(),
-  mode: text("mode", { enum: ["login", "link", "discord_link"] }).notNull(),
+  mode: text("mode", { enum: ["login", "link", "discord_link", "bnet_import"] }).notNull(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: ts("expires_at").notNull(),
+});
+
+/** R2b : persos lus sur le compte Battle.net, le temps de choisir ceux à importer (30 min). Le jeton de Blizzard n'est pas gardé. */
+export const bnetImports = pgTable("bnet_imports", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  characters: jsonb("characters").$type<BnetCharacter[]>().notNull(),
   expiresAt: ts("expires_at").notNull(),
 });
 
@@ -135,6 +142,13 @@ export const characters = pgTable("characters", {
   /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
   consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
   consumablesAt: ts("consumables_at"),
+  /** R2b (Roster) : perso Battle.net (identifiant de Blizzard), royaume tel que Blizzard l'écrit dans ses adresses,
+   *  niveau d'objet équipé, spé active en jeu et dernière lecture chez Blizzard (import ou « Mettre à jour »). */
+  bnetId: bigint("bnet_id", { mode: "number" }),
+  realmSlug: text("realm_slug").notNull().default(""),
+  ilvl: integer("ilvl"),
+  activeSpec: text("active_spec").notNull().default(""),
+  bnetSyncedAt: ts("bnet_synced_at"),
   legacy: jsonb("legacy").$type<Legacy>().notNull().default({}),
   notes: text("notes").notNull().default(""),
   /** Portrait du perso (capture de la tête en jeu, 200×200). */
@@ -145,6 +159,7 @@ export const characters = pgTable("characters", {
 }, t => [
   index("characters_user_idx").on(t.userId, t.sortOrder),
   uniqueIndex("characters_addon_key_uq").on(t.userId, t.game, t.addonKey),
+  uniqueIndex("characters_bnet_uq").on(t.userId, t.bnetId),
   check("characters_level", sql`${t.level} BETWEEN 1 AND 90`),
   check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);

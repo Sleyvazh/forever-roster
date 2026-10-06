@@ -2,14 +2,17 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { battlenetEnabled } from "../config";
-import { oauthStates, users } from "../db/schema";
+import { bnetImports, oauthStates, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { accountCharacters, exchangeCode } from "../lib/blizzard";
 import { randomToken, safeEqual, sha256 } from "../lib/crypto";
-import { HttpError, conflict, noStore, parse } from "../lib/http";
+import { HttpError, badRequest, conflict, noStore, parse } from "../lib/http";
 import { createSession, requireAuth } from "../lib/session";
 import { siteOf } from "../lib/site";
 
 const STATE_TTL_MS = 10 * 60 * 1000;
+/** Liste des persos Battle.net gardée le temps de choisir ceux à importer. */
+export const IMPORT_TTL_MS = 30 * 60 * 1000;
 const STATE_COOKIE = "fr_oauth";
 const COOKIE_PATH = "/api/auth/battlenet";
 
@@ -24,7 +27,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
   };
 
   /** Crée un state aléatoire, stocké haché en base ET lié au navigateur par un cookie (double vérification). */
-  async function authorizeUrl(req: FastifyRequest, reply: FastifyReply, mode: "login" | "link", userId: string | null) {
+  async function authorizeUrl(req: FastifyRequest, reply: FastifyReply, mode: "login" | "link" | "bnet_import", userId: string | null) {
     await db.delete(oauthStates).where(lt(oauthStates.expiresAt, new Date()));
     const state = randomToken();
     await db.insert(oauthStates).values({ stateHash: sha256(state), mode, userId, expiresAt: new Date(Date.now() + STATE_TTL_MS) });
@@ -33,7 +36,8 @@ export async function battlenetRoutes(app: FastifyInstance) {
     });
     const url = new URL("/authorize", cfg.BNET_OAUTH_HOST);
     url.search = new URLSearchParams({
-      client_id: cfg.BNET_CLIENT_ID, redirect_uri: redirectUri(req), response_type: "code", scope: "openid", state,
+      // Import (Roster) : en plus, la liste des persos WoW du compte (wow.profile) ; jamais demandé pour la connexion
+      client_id: cfg.BNET_CLIENT_ID, redirect_uri: redirectUri(req), response_type: "code", scope: mode === "bnet_import" ? "openid wow.profile" : "openid", state,
     }).toString();
     return url.toString();
   }
@@ -52,6 +56,14 @@ export async function battlenetRoutes(app: FastifyInstance) {
     return { url: await authorizeUrl(req, reply, "link", req.user!.id) };
   });
 
+  // Import des persos (Roster, WoW Retail) : Battle.net demande l'accord pour la liste des persos, le site la garde 30 min.
+  app.post("/import", { preHandler: requireAuth }, async (req, reply) => {
+    ensureEnabled();
+    if (siteOf(cfg, req).game !== "retail") throw badRequest("L'import Battle.net sert aux persos de WoW Retail, sur Roster.");
+    noStore(reply);
+    return { url: await authorizeUrl(req, reply, "bnet_import", req.user!.id) };
+  });
+
   app.get("/callback", async (req, reply) => {
     const fail = (code: string) => {
       reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH });
@@ -68,6 +80,20 @@ export async function battlenetRoutes(app: FastifyInstance) {
       .returning();
     if (!st) return fail("bnet_state");
     reply.clearCookie(STATE_COOKIE, { path: COOKIE_PATH });
+
+    if (st.mode === "bnet_import") {
+      const back = (code: string) => reply.redirect(`${siteOf(cfg, req).origin}/persos?bnet=${code}`);
+      if (!req.user || req.user.id !== st.userId) return back("session");
+      try {
+        const token = await exchangeCode(app.ctx, q.data.code, redirectUri(req));
+        const list = await accountCharacters(app.ctx, token);
+        const expiresAt = new Date(Date.now() + IMPORT_TTL_MS);
+        await db.insert(bnetImports).values({ userId: req.user.id, characters: list, expiresAt })
+          .onConflictDoUpdate({ target: bnetImports.userId, set: { characters: list, expiresAt } });
+        await audit(db, req, "battlenet_import_list", { userId: req.user.id, meta: { count: list.length } });
+        return back("import");
+      } catch (err) { req.log.warn({ err }, "Import Battle.net : liste des persos illisible"); return back("error"); }
+    }
 
     let bnet: BnetUser;
     try { bnet = await fetchBnetUser(app, q.data.code, redirectUri(req)); }
@@ -112,15 +138,7 @@ export async function battlenetRoutes(app: FastifyInstance) {
 /** Échange le code contre un jeton puis lit l'identité Battle.net (endpoint OpenID userinfo). */
 async function fetchBnetUser(app: FastifyInstance, code: string, redirectUri: string): Promise<BnetUser> {
   const { cfg, fetch: f } = app.ctx;
-  const basic = Buffer.from(`${encodeURIComponent(cfg.BNET_CLIENT_ID)}:${encodeURIComponent(cfg.BNET_CLIENT_SECRET)}`).toString("base64");
-  const tokenRes = await f(new URL("/token", cfg.BNET_OAUTH_HOST), {
-    method: "POST",
-    headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri }),
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!tokenRes.ok) throw new Error(`token ${tokenRes.status}`);
-  const { access_token } = parse(z.object({ access_token: z.string().min(1) }), await tokenRes.json());
+  const access_token = await exchangeCode(app.ctx, code, redirectUri);
 
   const infoRes = await f(new URL("/userinfo", cfg.BNET_OAUTH_HOST), {
     headers: { Authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(8000),

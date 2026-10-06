@@ -36,6 +36,13 @@ export const RETAIL_CLASS_NAMES = Object.keys(RETAIL_CLASSES);
 export const RETAIL_MAX_LEVEL = 90;
 
 export const isRetailClass = (cls: string) => Object.hasOwn(RETAIL_CLASSES, cls);
+/** R2b : perso lu sur le compte Battle.net (liste d'import). `cls` : clé de classe du site ; `existing` : fiche déjà sur Roster. */
+export interface BnetCharacter { id: number; name: string; realm: string; realmSlug: string; cls: string; level: number; faction: string; existing?: string | null }
+/** Identifiants des classes dans l'API de Blizzard (playable_class.id). */
+export const RETAIL_CLASS_IDS: Record<number, string> = {
+  1: "Warrior", 2: "Paladin", 3: "Hunter", 4: "Rogue", 5: "Priest", 6: "Death Knight", 7: "Shaman",
+  8: "Mage", 9: "Warlock", 10: "Monk", 11: "Druid", 12: "Demon Hunter", 13: "Evoker",
+};
 export const retailSpec = (cls: string, spec: string) => RETAIL_CLASSES[cls]?.specs.find(s => s.name === spec) ?? null;
 
 /* ---------- Raids : difficultés, tailles, raids de Midnight ---------- */
@@ -96,7 +103,7 @@ export const RETAIL_EFFECTS: (RaidEffect & { fr: string; effect: Record<GameLang
   { id: "fort", name: "Power Word: Fortitude", fr: "Mot de pouvoir : Robustesse", kind: "buff", scope: "raid", providers: [any("Priest")], effect: { fr: "+5 % Endurance", en: "+5% Stamina" } },
   { id: "bshout", name: "Battle Shout", fr: "Cri de guerre", kind: "buff", scope: "raid", providers: [any("Warrior")], effect: { fr: "+5 % puissance d'attaque", en: "+5% attack power" } },
   { id: "motw", name: "Mark of the Wild", fr: "Marque du fauve", kind: "buff", scope: "raid", providers: [any("Druid")], effect: { fr: "+3 % Polyvalence", en: "+3% Versatility" } },
-  { id: "skyfury", name: "Skyfury", fr: "Skyfury", kind: "buff", scope: "raid", providers: [any("Shaman")], effect: { fr: "+2 % Maîtrise", en: "+2% Mastery" } },
+  { id: "skyfury", name: "Skyfury", fr: "Fureur-du-ciel", kind: "buff", scope: "raid", providers: [any("Shaman")], effect: { fr: "+2 % Maîtrise", en: "+2% Mastery" } },
   { id: "bronze", name: "Blessing of the Bronze", fr: "Bénédiction du bronze", kind: "buff", scope: "raid", providers: [any("Evoker")], effect: { fr: "recharge des déplacements −15 %", en: "movement cooldowns −15%" } },
   { id: "devo", name: "Devotion Aura", fr: "Aura de dévotion", kind: "aura", scope: "raid", providers: [any("Paladin")], effect: { fr: "−3 % dégâts subis", en: "−3% damage taken" } },
   { id: "chaos", name: "Chaos Brand", fr: "Marque du chaos", kind: "debuff", scope: "raid", providers: [any("Demon Hunter")], effect: { fr: "+3 % dégâts magiques subis", en: "+3% magic damage taken" } },
@@ -120,9 +127,9 @@ export const FRENCH_REALMS = [
 /** Identifiant d'un royaume dans les adresses de Blizzard et des sites de référence (« Kael'thas » → « kaelthas »). */
 export const realmSlug = (realm: string) => realm.trim().toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
   .replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-/** Liens vers l'Armurerie, Raider.IO et Warcraft Logs (région Europe). */
-export function retailLinks(name: string, realm: string) {
-  const r = realmSlug(realm), n = encodeURIComponent(name.trim().split(/\s+/)[0]!.toLowerCase());
+/** Liens vers l'Armurerie, Raider.IO et Warcraft Logs (région Europe) ; `slug` : celui donné par Battle.net, s'il est connu. */
+export function retailLinks(name: string, realm: string, slug?: string) {
+  const r = slug || realmSlug(realm), n = encodeURIComponent(name.trim().split(/\s+/)[0]!.toLowerCase());
   return {
     armory: `https://worldofwarcraft.blizzard.com/fr-fr/character/eu/${r}/${n}`,
     raiderio: `https://raider.io/characters/eu/${r}/${n}`,

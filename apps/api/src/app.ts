@@ -10,6 +10,7 @@ import { registerSession } from "./lib/session";
 import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { battlenetRoutes } from "./routes/battlenet";
+import { battlenetImportRoutes } from "./routes/battlenet-import";
 import { discordRoutes } from "./routes/discord";
 import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
@@ -88,6 +89,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(siteRoutes, { prefix: "/api/site" });
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(battlenetRoutes, { prefix: "/api/auth/battlenet" });
+  await app.register(battlenetImportRoutes, { prefix: "/api/battlenet" });
   await app.register(discordRoutes, { prefix: "/api/auth/discord" });
   await app.register(accountRoutes, { prefix: "/api/account" });
   await app.register(characterRoutes, { prefix: "/api/characters" });

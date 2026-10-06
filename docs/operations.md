@@ -229,7 +229,16 @@ sudo docker compose exec api node dist/roster-preview.js list                   
 sudo docker compose exec api node dist/roster-preview.js remove flo@example.com  # le retirer
 ```
 
-La personne recharge la page de Roster : un badge « Accès anticipé » s'affiche en haut. Ce qui est déjà là (lot R2a) : persos créés à la main (nom, royaume, classe, spés, liens Armurerie / Raider.IO / Warcraft Logs, notes), groupes, raids Normal / Héroïque / Mythique avec l'effectif de chaque difficulté (10 à 30 ; Mythique 20, ou 15 à 25 pour les raids flexibles), inscriptions, compo et buffs de raid de Midnight, annonces Discord. Pas encore : import Battle.net (R2b), butin, préparation, bilan et addon (R3).
+La personne recharge la page de Roster : un badge « Accès anticipé » s'affiche en haut. Ce qui est déjà là (lot R2a) : persos créés à la main (nom, royaume, classe, spés, liens Armurerie / Raider.IO / Warcraft Logs, notes), groupes, raids Normal / Héroïque / Mythique avec l'effectif de chaque difficulté (10 à 30 ; Mythique 20, ou 15 à 25 pour les raids flexibles), inscriptions, compo et buffs de raid de Midnight, annonces Discord. Depuis R2b : import des persos depuis Battle.net et « Mettre à jour » (niveau, niveau d'objet, spé active), voir plus bas. Pas encore : butin, préparation, bilan et addon (R3).
+
+### Import Battle.net (Roster)
+
+Même application Blizzard que la connexion Battle.net (`BNET_CLIENT_ID`, `BNET_CLIENT_SECRET`), rien de plus à déclarer : l'adresse de retour de Roster (`https://roster.sleyvazh.fr/api/auth/battlenet/callback`) suffit. Région Europe (`BNET_API_HOST`, par défaut `https://eu.api.blizzard.com`).
+
+- « Importer depuis Battle.net » (Mes persos, sur Roster) : Battle.net demande au joueur l'accord pour la liste de ses persos WoW (`wow.profile`). Le jeton du joueur sert une fois, n'est pas gardé ; la liste reste 30 minutes (table `bnet_imports`). Les persos au niveau 90 sont cochés, le reste au choix ; une fiche déjà faite à la main (même nom, même royaume) est reliée, pas doublée.
+- « Mettre à jour » (fiche) et, pour les officiers, « Mettre à jour le groupe » (onglet Personnages) : profil public du perso avec le jeton de l'application (niveau, niveau d'objet équipé, spé active). Rien d'automatique : chaque lecture part d'un clic. La spé principale choisie sur le site ne change pas ; « Prendre … comme spé principale » la remplace sur demande.
+- Profil masqué ou perso renommé : « introuvable chez Blizzard ». Changer le nom ou le royaume d'une fiche la détache de Battle.net.
+- Journal du compte : « Liste des persos lue sur Battle.net », « Persos importés de Battle.net ».
 
 Langue des noms du jeu (classes, spés, raids, buffs) : chaque compte choisit dans *Compte et sécurité → Noms du jeu* (français, anglais, ou comme le navigateur). Sur Discord, les menus d'inscription suivent la langue de Discord du joueur ; l'annonce publique est en français. Forever Roster garde les noms anglais de WoW Forever.
 

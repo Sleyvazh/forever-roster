@@ -34,7 +34,7 @@ function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
   return (
     <>
       <div className="t-name" style={{ color: cl?.color }}>{e.name}</div>
-      <div className="t-row">{[e.level ? `Niveau ${e.level}` : null, gt.specOrClass(e.cls, e.spec), c?.realm || null].filter(Boolean).join(" · ")}</div>
+      <div className="t-row">{[e.level ? `Niveau ${e.level}` : null, gt.specOrClass(e.cls, e.spec), c?.realm || null, c?.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ")}</div>
       <div className="t-dim">{e.guest ? "Inscrit depuis Discord, sans compte sur le site" : `Joueur : ${e.owner}`}</div>
       {e.signup && <div className="t-row">Inscription : {SIGNUP_LABEL[e.signup.status]}{e.signup.note ? ` — « ${e.signup.note} »` : ""}</div>}
       {profs.length > 0 && <div className="t-row">Métiers : {profs.map(p => `${p.name} ${p.skill}`).join(", ")}</div>}

@@ -156,6 +156,29 @@ test.describe("Roster en accès anticipé", () => {
       if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/roster-perso.png", fullPage: true });
     });
 
+    await test.step("import Battle.net (simulé) : persos niveau 90 cochés, fiche déjà là reconnue, mise à jour", async () => {
+      await page.getByRole("button", { name: "Importer depuis Battle.net" }).first().click();
+      const panel = page.getByRole("region", { name: "Persos de ton compte Battle.net" });
+      await expect(panel).toBeVisible();
+      await expect(panel.locator(".bi-row", { hasText: "Brumelune" })).toContainText("déjà sur Roster");
+      await expect(panel.locator(".bi-row", { hasText: "Brumelune" }).getByRole("checkbox")).not.toBeChecked();
+      await expect(panel.locator(".bi-row", { hasText: "Vaelis" }).getByRole("checkbox")).toBeChecked();
+      await expect(panel.locator(".bi-row", { hasText: "Petit" }).getByRole("checkbox")).not.toBeChecked();
+      if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/roster-import.png", fullPage: true });
+      await panel.getByRole("button", { name: "Importer 1 perso" }).click();
+      await expect(panel.getByRole("status")).toContainText("1 perso importé");
+      const sheet = page.getByRole("region", { name: "Fiche de Vaelis" });
+      await expect(sheet).toContainText("Paladin");
+      await expect(sheet).toContainText("ilvl 708");
+      await expect(sheet.locator("#rc-s1")).toHaveValue("Protection");
+      await page.locator(".card", { hasText: "Brumelune" }).click();
+      const brume = page.getByRole("region", { name: "Fiche de Brumelune" });
+      await brume.getByRole("button", { name: "Mettre à jour" }).click();
+      await expect(brume.locator(".rc-bnet")).toContainText("Niveau d'objet 712");
+      await expect(brume.locator(".rc-bnet")).toContainText("Tisse-brume");
+      if (process.env.SHOTS) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: "test-results/shots/roster-fiche-bnet.png", fullPage: true }); }
+    });
+
     await test.step("groupe et raid Héroïque : effectif, inscription, buffs de Midnight", async () => {
       await page.getByRole("link", { name: "Groupes" }).first().click();
       await page.fill("#g-name", "Pasta e Basta");

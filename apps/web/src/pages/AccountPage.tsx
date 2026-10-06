@@ -18,6 +18,7 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   session_revoked: ["Session fermée", ""], sessions_revoked_all: ["Autres sessions fermées", "warn"],
   battlenet_login: ["Connexion Battle.net", "ok"], battlenet_linked: ["Battle.net lié", "warn"], battlenet_unlinked: ["Battle.net délié", "warn"],
   account_created_battlenet: ["Compte créé via Battle.net", ""],
+  battlenet_import_list: ["Liste des persos lue sur Battle.net", ""], battlenet_import: ["Persos importés de Battle.net", ""],
   discord_linked: ["Discord lié", "warn"], discord_unlinked: ["Discord délié", "warn"],
   group_discord_linked: ["Salon Discord lié à un groupe", ""], group_discord_unlinked: ["Salon Discord délié d'un groupe", ""],
   group_created: ["Groupe créé", ""], group_joined: ["Groupe rejoint", ""], group_left: ["Groupe quitté", ""],

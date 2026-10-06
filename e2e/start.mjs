@@ -25,6 +25,9 @@ const env = {
   MAIL_FROM: "Forever Roster <no-reply@e2e.test>",
   PORT: "3000",
   HOST: "127.0.0.1",
+  // Battle.net simulé (e2e/blizzard-mock.mjs) : import des persos de Roster
+  BNET_CLIENT_ID: "e2e", BNET_CLIENT_SECRET: "e2e",
+  BNET_OAUTH_HOST: "http://127.0.0.1:4199", BNET_API_HOST: "http://127.0.0.1:4199",
 };
 
 const run = (args) => {
@@ -39,7 +42,8 @@ const log = createWriteStream(path.join(root, "test-results/api.log"));
 const apiProc = spawn(process.execPath, ["dist/server.js"], { cwd: api, env });
 apiProc.stdout.pipe(log); apiProc.stderr.pipe(log);
 const web = spawn(process.execPath, [path.join(root, "e2e/serve.mjs")], { env, stdio: "inherit" });
+const bnet = spawn(process.execPath, [path.join(root, "e2e/blizzard-mock.mjs")], { env, stdio: "inherit" });
 
-const stop = () => { apiProc.kill(); web.kill(); process.exit(0); };
+const stop = () => { apiProc.kill(); web.kill(); bnet.kill(); process.exit(0); };
 process.on("SIGTERM", stop); process.on("SIGINT", stop);
 apiProc.on("exit", code => { console.error(`API arrêtée (code ${code}) : voir test-results/api.log`); web.kill(); process.exit(1); });

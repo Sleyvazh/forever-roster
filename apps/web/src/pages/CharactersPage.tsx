@@ -10,6 +10,7 @@ import { StartSteps, WeekBand } from "../components/Week";
 import { MyAbsences } from "../components/Absences";
 import { registerAutosave } from "../autosave";
 import { RetailCharacterSheet, RetailCreateForm } from "../components/RetailCharacter";
+import { BnetImportButton, BnetImportPanel } from "../components/BnetImport";
 import { useSite } from "../site";
 import { useGameText } from "../gameText";
 
@@ -79,6 +80,8 @@ export function CharactersPage() {
   // Roster (WoW Retail) : création à la main par un petit formulaire (royaume obligatoire), fiche légère
   const retail = useSite().game === "retail";
   const [creating, setCreating] = useState(false);
+  // R2b : retour de Battle.net (?bnet=import, error ou session), gardé quand l'adresse passe sur un perso
+  const [bnet, setBnet] = useState<string | null>(() => (retail ? new URLSearchParams(window.location.search).get("bnet") : null));
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
   // Le groupe (et main / alt) vient toujours du serveur : il change hors de la fiche (glisser, page du groupe, inscription)
@@ -144,9 +147,13 @@ export function CharactersPage() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
         <div><div className="eyebrow">Roster personnel</div><h1>Mes personnages</h1></div>
-        {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>}
+        <div className="row">
+          {retail && local.length > 0 && !bnet && <BnetImportButton />}
+          {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>}
+        </div>
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
+      {retail && bnet && <BnetImportPanel mode={bnet} onClose={() => setBnet(null)} onImported={chars => { if (chars[0]) nav(urlFor(chars[0].id, "profil")); }} />}
       {retail && (creating || local.length === 0) && <RetailCreateForm onCreated={created} onCancel={local.length ? () => setCreating(false) : undefined} />}
       {local.length === 0 ? (
         retail ? null : <StartSteps onCreate={() => void add()} />
@@ -162,6 +169,7 @@ export function CharactersPage() {
           </aside>
           {current && retail && (
             <RetailCharacterSheet key={current.id} c={current} onChange={edit}
+              onRefreshed={ch => qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(x => x.id === ch.id ? { ...ch, group: x.group } : x) })}
               subhead={<GroupBar c={current} groups={myGroups} onMove={to => void moveTo(current, to)} onMain={() => current.group && void moveTo(current, current.group.id, true)} />}
               footer={<>
                 <span className={`small ${saver.status.kind === "error" || saver.status.kind === "held" ? "warnmsg" : "muted"}`} role="status">
@@ -214,7 +222,7 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
       </span>
       <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans ce groupe">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
       {race ? <FactionBadge faction={race.faction} /> : <span />}
-      <span className="sub">{[t.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}</span>
+      <span className="sub">{[t.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}{c.ilvl ? ` · ilvl ${c.ilvl}` : ""}</span>
     </button>
   );
 }

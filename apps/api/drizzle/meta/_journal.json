@@ -204,6 +204,13 @@
       "when": 1791284235300,
       "tag": "0028_retail_r2a",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791289056889,
+      "tag": "0029_battlenet_import",
+      "breakpoints": true
     }
   ]
 }

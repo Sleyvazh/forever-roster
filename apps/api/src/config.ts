@@ -17,6 +17,8 @@ const schema = z.object({
   BNET_CLIENT_ID: z.string().default(""),
   BNET_CLIENT_SECRET: z.string().default(""),
   BNET_OAUTH_HOST: z.url().default("https://oauth.battle.net"),
+  /** API de jeu de Blizzard, région Europe (Roster : import des persos, niveau d'objet). */
+  BNET_API_HOST: z.url().default("https://eu.api.blizzard.com"),
   TRUST_PROXY: bool.default(false),
   /** Requêtes par minute et par adresse IP, toutes routes confondues. Relevé seulement pour les tests de bout en bout (tout vient de 127.0.0.1). */
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),

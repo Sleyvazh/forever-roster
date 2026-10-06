@@ -20,6 +20,8 @@ export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, realm: c.realm, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
   portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null, addonKey: c.addonKey ?? null,
+  // R2b (Roster) : lu chez Blizzard (import ou « Mettre à jour »)
+  realmSlug: c.realmSlug, ilvl: c.ilvl ?? null, activeSpec: c.activeSpec, bnet: c.bnetId !== null, bnetSyncedAt: c.bnetSyncedAt ?? null,
 });
 
 
@@ -91,8 +93,11 @@ export async function characterRoutes(app: FastifyInstance) {
     if (!existing) throw notFound("Personnage introuvable.");
     const next = { ...existing, ...patch };
     const err = crossCheck(next, existing.game); if (err) throw badRequest(err);
+    // Nom ou royaume changé à la main : ce n'est plus le perso lu chez Battle.net
+    const moved = (patch.name !== undefined && patch.name !== existing.name) || (patch.realm !== undefined && patch.realm !== existing.realm);
     const [row] = await db.update(characters).set({
-      ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }), ...(consumables && { consumables, consumablesAt: new Date() }),
+      ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }),
+      ...(moved && existing.game === "retail" && { bnetId: null, realmSlug: "", ilvl: null, activeSpec: "", bnetSyncedAt: null }), ...(consumables && { consumables, consumablesAt: new Date() }),
     }).where(eq(characters.id, id)).returning();
     return { character: toApi(row!) };
   });
