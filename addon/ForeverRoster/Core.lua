@@ -25,6 +25,13 @@ function ns.ItemInfoInstant(id)
   local fn = GetItemInfoInstant or (C_Item and C_Item.GetItemInfoInstant)
   if fn and id then return fn(id) end
 end
+-- Nombre d'exemplaires dans les sacs (et la banque) : le client de Forever n'a plus la fonction globale (1.2.1)
+function ns.ItemCount(id, bank)
+  local fn = GetItemCount or (C_Item and C_Item.GetItemCount)
+  if fn and id then return fn(id, bank) or 0 end
+  return 0
+end
+function ns.HasItemCount() return (GetItemCount or (C_Item and C_Item.GetItemCount)) ~= nil end
 -- Objet pas encore connu du client : demandé au serveur (GET_ITEM_INFO_RECEIVED ou ITEM_DATA_LOAD_RESULT ensuite)
 local requested = {}
 function ns.RequestItem(id)

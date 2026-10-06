@@ -570,6 +570,21 @@ assert(ForeverRosterDB.skin == "site" and reloaded, "/fr habillage : site, inter
 run("habillage")
 assert(ForeverRosterDB.skin == nil, "/fr habillage : retour à Forever")
 
+-- Client de Forever (1.2.1) : plus de fonctions globales d'objets (GetItemInfo, GetItemInfoInstant, GetItemCount), seulement C_Item
+do
+  local gi, gii, gic = GetItemInfo, GetItemInfoInstant, GetItemCount
+  local asked = {}
+  GetItemInfo, GetItemInfoInstant, GetItemCount = nil, nil, nil
+  C_Item = { GetItemInfo = gi, GetItemInfoInstant = gii, GetItemCount = function() return 4 end, RequestLoadItemDataByID = function(id) asked[#asked + 1] = id end }
+  assert(ns.Group.displayLink(16833):find("|Hitem:16833:", 1, true) and ns.ItemCount(13457, true) == 4, "C_Item à la place des fonctions globales")
+  assert(#ns.Group.ConsumableIds() == 0 or ns.Group.CountConsumables()[ns.Group.ConsumableIds()[1]] == 4, "consommables comptés par C_Item")
+  C_Item.GetItemInfo = function() return nil end
+  local before = #printed
+  ns.Group.Diagnose(16901)
+  assert(#printed > before and asked[#asked] == 16901, "/fr objet : objet demandé au serveur")
+  GetItemInfo, GetItemInfoInstant, GetItemCount, C_Item = gi, gii, gic, nil
+end
+
 if failures > 0 then os.exit(1) end
 local export = ns.Export.Build()
 assert(export:find("\nP;Leatherworking;150;225\n"), "compétence lue dans la fenêtre de métier")

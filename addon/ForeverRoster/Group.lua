@@ -177,9 +177,9 @@ function G.ConsumableIds()
 end
 function G.CountConsumables()
   local ids = G.ConsumableIds()
-  if #ids == 0 or not GetItemCount then return nil end
+  if #ids == 0 or not ns.HasItemCount() then return nil end
   local counts = {}
-  for _, id in ipairs(ids) do counts[id] = GetItemCount(id, true) or 0 end
+  for _, id in ipairs(ids) do counts[id] = ns.ItemCount(id, true) end
   local c = ns.charDB()
   c.consumables, c.consumablesAt = counts, time()
   return counts
@@ -224,21 +224,34 @@ function G.displayLink(itemId, name, quality)
   return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or G.names[itemId] or ("objet " .. itemId)) .. "]|h|r"
 end
 
+-- Réponse du serveur aux objets demandés (ITEM_DATA_LOAD_RESULT : l'objet existe ou non)
+G.loadResult = {}
+ns.on("ITEM_DATA_LOAD_RESULT", function(id, ok) if id then G.loadResult[id] = ok and true or false end end)
+
 -- /fr objet <id ou lien> : ce que le jeu répond pour un objet (diagnostic des « [objet 12345] »)
+-- Fichiers du client (infos immédiates) d'un côté, serveur (nom, lien) de l'autre.
 function G.Diagnose(itemId)
   local function api(name, fn) return name .. (fn and " présent" or " absent") end
   ns.print(string.format("objet %d · %s · %s · %s", itemId, api("GetItemInfo", GetItemInfo), api("C_Item.GetItemInfo", C_Item and C_Item.GetItemInfo),
-    api("C_Item.RequestLoadItemDataByID", C_Item and C_Item.RequestLoadItemDataByID)))
+    api("GetItemCount", GetItemCount or (C_Item and C_Item.GetItemCount))))
+  local _, itemType, subType, equipLoc = ns.ItemInfoInstant(itemId)
+  ns.print("fichiers du jeu : " .. (itemType and (itemType .. (subType and subType ~= "" and (" / " .. subType) or "") .. (equipLoc and equipLoc ~= "" and (" · " .. equipLoc) or "")) or "objet inconnu de ce client"))
   local missing = {}
   for _, e in ipairs(ns.missingEvents) do if e == "GET_ITEM_INFO_RECEIVED" or e == "ITEM_DATA_LOAD_RESULT" then missing[#missing + 1] = e end end
   if #missing > 0 then ns.print("événements absents de ce client : " .. table.concat(missing, ", ")) end
   local name, link = ns.ItemInfo(itemId)
-  ns.print("réponse du jeu : " .. (link or (name and ("nom " .. name .. ", sans lien")) or "rien pour l'instant (demande envoyée)"))
+  ns.print("serveur : " .. (link or (name and ("nom " .. name .. ", sans lien")) or "rien pour l'instant (demande envoyée)"))
   if not link then
-    ns.RequestItem(itemId)
-    C_Timer.After(2, function()
+    G.loadResult[itemId] = nil
+    if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemId) else ns.ItemInfo(itemId) end
+    C_Timer.After(3, function()
       local n2, l2 = ns.ItemInfo(itemId)
-      ns.print("2 s plus tard : " .. (l2 or (n2 and ("nom " .. n2 .. ", sans lien")) or "toujours rien : le serveur ne connaît pas cet objet ?"))
+      local res = G.loadResult[itemId]
+      ns.print("3 s plus tard : " .. (l2 or (n2 and ("nom " .. n2 .. ", sans lien"))
+        or (res == false and "le serveur répond que cet objet n'existe pas (ou pas encore : phase, contenu de Forever)")
+        or (itemType and "toujours rien : connu des fichiers du jeu, mais le serveur ne l'envoie pas")
+        or "toujours rien, et inconnu des fichiers du jeu : cet objet n'existe pas dans Forever"))
+      ns.print("pour comparer : /fr objet puis Maj+clic sur un objet de tes sacs.")
     end)
   end
 end

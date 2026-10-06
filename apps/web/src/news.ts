@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 33, date: "2026-10-06", kind: "addon", version: "1.2", title: "Objets lus comme le veut le client de Forever",
+    text: "Le jeu de Forever range autrement ses fonctions d'objets : l'addon 1.2.1 les utilise maintenant pour les noms d'objets, le nombre de consommables dans tes sacs (appel aux consommables) et la fin d'un échange (objet remis). /fr objet dit aussi si un objet est connu du jeu et du serveur." },
   { n: 32, date: "2026-10-06", kind: "addon", version: "1.2", title: "Conseil du butin en tableau",
     text: "La fenêtre des votes montre tout le monde d'un coup : une ligne par joueur avec sa réponse, ce qu'il porte, sa précision, les objets déjà reçus, les voix et qui a voté. Agrandis-la par le coin en bas à droite : la taille est gardée. Aussi : le logo de Forever Roster en jeu, une compo passée qui s'efface toute seule (ou « Effacer la compo »), et /fr objet si un nom d'objet reste « objet 12345 »." },
   { n: 31, date: "2026-10-06", kind: "site", title: "Compte des objets reçus",

@@ -187,7 +187,7 @@ end
 handlers.CQ = function(sender, f)
   local parts = {}
   for id in tostring(f[2] or ""):gmatch("%d+") do
-    if #parts < 30 then parts[#parts + 1] = id .. ":" .. ((GetItemCount and GetItemCount(tonumber(id), true)) or 0) end
+    if #parts < 30 then parts[#parts + 1] = id .. ":" .. ns.ItemCount(tonumber(id), true) end
   end
   send("CR;" .. table.concat(parts, ","), "WHISPER", sender)
 end
@@ -510,7 +510,7 @@ end
 ns.on("TRADE_SHOW", function()
   local e = RA.trading
   if not e then return end
-  e.before = GetItemCount and GetItemCount(e.itemId) or 0
+  e.before = ns.ItemCount(e.itemId)
   local bag, slot = bagSlotOf(e.itemId)
   local pick = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
   if bag and pick and ClickTradeButton then pick(bag, slot) ClickTradeButton(1) end
@@ -520,7 +520,7 @@ ns.on("TRADE_CLOSED", function()
   if not e then return end
   C_Timer.After(1, function()
     RA.trading = nil
-    local now = GetItemCount and GetItemCount(e.itemId) or 0
+    local now = ns.ItemCount(e.itemId)
     if e.before and now < e.before then
       local list = db("handover")
       for i = #list, 1, -1 do if list[i] == e then table.remove(list, i) end end

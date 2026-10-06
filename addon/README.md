@@ -25,7 +25,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 | `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
 | `/fr test` | Raid d'essai : toi et 9 joueurs fictifs, pour tout essayer seul (aussi dans l'onglet En raid, hors groupe) |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
-| `/fr objet <lien>` | Ce que le jeu répond pour un objet (si un nom reste « objet 12345 ») |
+| `/fr objet <lien>` | Ce que le jeu répond pour un objet (si un nom reste « objet 12345 ») : connu des fichiers du jeu, du serveur, ou pas |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
 | `/fr habillage` | Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options) |
@@ -70,3 +70,5 @@ lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'add
 ```
 
 Conseil du butin (1.2) : la fenêtre des votes est un tableau, une ligne par joueur (réponse, objet porté, précision, objets reçus, voix et qui a voté, **Voter** / **Donner**), redimensionnable par le coin en bas à droite (taille gardée d'une session à l'autre). La colonne **Reçus** additionne le compte du site sur la période choisie par les officiers (saison, 30 derniers jours ou X derniers raids ; par joueur ou par perso) et les objets de ce soir pas encore envoyés au site ; ne comptent que la spé principale (soft reserve, jets MS, conseil BiS / Upgrade).
+
+Client de Forever (1.2.1) : il n'a plus les fonctions globales d'objets de Classic (`GetItemInfo`, `GetItemCount`…) ; l'addon passe par `C_Item` quand elles manquent (noms, objets portés, consommables dans les sacs, fin d'un échange).
