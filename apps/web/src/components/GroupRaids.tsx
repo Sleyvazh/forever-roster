@@ -6,6 +6,7 @@ import { del, get, patch, post } from "../api";
 import { DAY_SHORT, DayStrip, habits, hhmm, isoOf, longDate, partsOf, TimeChips, TimeSelect, type Parts } from "./DateTime";
 import { LootModePicker } from "./Loot";
 import { NumberField } from "./NumberField";
+import { RoleTag } from "./RoleIcon";
 
 /**
  * Onglet Raids d'un groupe (lot E) : la liste d'abord (À venir / Passés), « + Nouveau raid » ouvre un formulaire
@@ -80,9 +81,9 @@ function RaidCard({ groupId, r, past }: { groupId: string; r: RaidSummary; past:
           {r.recurring && <span className="tag" title="Créé par un raid récurrent">↻ chaque semaine</span>}
         </span>
         <span className="gr-roles">
-          <span className="role Tank">{r.roles.Tank} tank{r.roles.Tank > 1 ? "s" : ""}</span>
-          <span className="role Heal">{r.roles.Heal} heal{r.roles.Heal > 1 ? "s" : ""}</span>
-          <span className="role DPS">{r.roles.DPS} DPS</span>
+          <RoleTag role="Tank" text={`${r.roles.Tank} tank${r.roles.Tank > 1 ? "s" : ""}`}>{r.roles.Tank}</RoleTag>
+          <RoleTag role="Heal" text={`${r.roles.Heal} heal${r.roles.Heal > 1 ? "s" : ""}`}>{r.roles.Heal}</RoleTag>
+          <RoleTag role="DPS" text={`${r.roles.DPS} DPS`}>{r.roles.DPS}</RoleTag>
           <span className="muted small">{coming} viennent{r.signups.tentative ? ` · ${r.signups.tentative} peut-être` : ""}</span>
         </span>
       </span>

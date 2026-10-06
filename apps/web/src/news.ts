@@ -5,6 +5,10 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 28, date: "2026-10-06", kind: "addon", version: "1.1", title: "Raid d'essai : tout essayer seul",
+    text: "/fr test (ou « Raid d'essai » dans l'onglet En raid, hors groupe) lance un raid fictif avec 9 joueurs simulés : versions de l'addon, appel aux consommables, fiche du boss en ciblant n'importe quel PNJ, butin en soft reserve (bonus SR+, égalité, MS puis OS, jet libre) et au conseil (réponses, votes). Ton propre /roll compte. Rien ne part au site ni au chat du raid. Les rôles s'affichent aussi avec les icônes du jeu." },
+  { n: 27, date: "2026-10-06", kind: "site", title: "Icônes de rôle du jeu",
+    text: "Tank, Heal et DPS s'affichent avec les icônes du jeu dans les inscriptions, la compo, les besoins, les cartes de raid et les groupes ; le nom du rôle reste au survol. L'annonce Discord les utilise aussi." },
   { n: 26, date: "2026-10-05", kind: "addon", version: "1.0", title: "Fiches de boss et consommables en jeu",
     text: "En ciblant un boss avant le pull, l'addon affiche ta tâche et le reste de la fiche ; le chef peut l'annoncer en /raid. Onglet « En raid » : « Appel aux consommables » demande à l'addon de chacun ce qu'il a dans ses sacs, puis « Annoncer les manques ». Tu y vois aussi qui a l'addon dans le raid." },
   { n: 25, date: "2026-10-05", kind: "addon", version: "1.0", title: "Le butin se distribue en jeu",

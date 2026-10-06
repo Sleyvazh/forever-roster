@@ -2,6 +2,7 @@ import { benchSuggestion, CLASSES, roleGaps, roleOf, SIGNUP_LABEL, targetOf, typ
 import { useState } from "react";
 import type { Character, RaidSignup } from "../api";
 import { AskChip, type Reach } from "./RaidReach";
+import { RoleIcon, RoleTag } from "./RoleIcon";
 
 /**
  * Compo assistée (lot D1) : rôles visés selon le format du raid, ce qui manque, qui peut combler (inscrits non placés,
@@ -109,7 +110,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
             const n = sugg.filter(x => x.role === r).length;
             return (
               <button key={r} type="button" className={`ra-sumr ${gaps[r] > 0 ? "low" : gaps[r] < 0 ? "over" : "ok"}`} onClick={() => setOpen(true)}>
-                <span className={`role ${r}`}>{r}</span><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
+                <RoleIcon role={r} /><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
                 <small>{gaps[r] > 0 ? `il en manque ${gaps[r]}${n ? ` · ${n} proposition${n > 1 ? "s" : ""}` : ""}` : gaps[r] < 0 ? `${-gaps[r]} de trop` : "complet"}</small>
               </button>
             );
@@ -124,7 +125,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
           const shown = more === r ? list : list.slice(0, 4);
           return (
             <div key={r} className={`ra-col ${gaps[r] > 0 ? "low" : gaps[r] < 0 ? "over" : "ok"}`}>
-              <div className="ra-gap"><span className={`role ${r}`}>{r}</span><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
+              <div className="ra-gap"><RoleIcon role={r} /><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
                 <small>{gaps[r] > 0 ? `il en manque ${gaps[r]}` : gaps[r] < 0 ? `${-gaps[r]} de trop` : "complet"}</small></div>
               {gaps[r] > 0 && (list.length ? <ul className="ra-list">{shown.map(item)}</ul> : <p className="hint" style={{ margin: 0 }}>Personne d'autre pour ce rôle.</p>)}
               {list.length > 4 && <button type="button" className="btn ghost sm" onClick={() => setMore(m => (m === r ? null : r))}>{more === r ? "Moins" : `${list.length - 4} autre${list.length - 4 > 1 ? "s" : ""}`}</button>}
@@ -143,7 +144,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
               const st = e.characterId ? history?.stats[e.characterId] : undefined;
               return (
                 <li key={k}>
-                  <span className={`role ${roleOf(e.spec) ?? ""}`}>{roleOf(e.spec) ?? "?"}</span>
+                  <RoleIcon role={roleOf(e.spec)} />
                   <span className="ra-txt"><b style={{ color: color(e.cls) }}>{e.name}</b><small>{e.owner} · banc {st?.bench ?? 0} fois{st?.lastBenched ? " · au dernier banc" : ""}</small></span>
                 </li>
               );

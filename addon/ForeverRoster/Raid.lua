@@ -1,6 +1,7 @@
 -- En raid (lot G) : messages entre addons, qui a l'addon, appel aux consommables, fiches de boss (en ciblant le boss,
 -- avant le pull), butin du maître du butin (soft reserve avec bonus SR+, jets MS / OS ou libre, conseil du butin),
 -- objets à remettre par échange. Tout ce qui dépend du client de Forever est protégé : sans l'API, la fonction se tait.
+-- Raid d'essai (Test.lua) : RA.test remplace le raid, ses membres et les messages ; rien ne part au site ni au chat.
 local _, ns = ...
 local RA = {}
 ns.Raid = RA
@@ -10,7 +11,10 @@ local TRADE_WINDOW = 2 * 3600
 
 local function short(n) return (tostring(n or ""):match("^[^%-]+")) or "" end
 local function me() return UnitName("player") or "?" end
-local function channel() return (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil end
+local function channel()
+  if RA.test then return "RAID" end
+  return (IsInRaid and IsInRaid() and "RAID") or (IsInGroup and IsInGroup() and "PARTY") or nil
+end
 local function refresh() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end if RA.RefreshWindows then RA.RefreshWindows() end end
 local function linkFor(id) return ns.Group.linkFor(id) end
 local function db(key) ForeverRosterDB[key] = ForeverRosterDB[key] or {} return ForeverRosterDB[key] end
@@ -33,12 +37,17 @@ function RA.Chunks(text, max)
   return out
 end
 function RA.Say(text)
+  if RA.test then -- raid d'essai : dans ta fenêtre de chat seulement
+    for _, line in ipairs(RA.Chunks(text)) do ns.print("|cff9aa3b6[essai]|r " .. line) end
+    return
+  end
   local ch = channel()
   for _, line in ipairs(RA.Chunks(text)) do
     if ch and SendChatMessage then SendChatMessage(line, ch) else ns.print(line) end
   end
 end
 local function isLeader()
+  if RA.test then return true end
   if not (IsInGroup and IsInGroup()) then return true end
   return (UnitIsGroupLeader and UnitIsGroupLeader("player")) or (UnitIsGroupAssistant and UnitIsGroupAssistant("player")) or false
 end
@@ -46,6 +55,7 @@ RA.isLeader = isLeader
 
 -- Membres du groupe de raid (ou du groupe), prénoms seuls
 function RA.Members()
+  if RA.test then return { unpack(RA.test.members) } end
   local out = {}
   if IsInRaid and IsInRaid() then
     for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do
@@ -77,6 +87,7 @@ end
 
 -- Raid du site en cours (le relevé, sinon le raid chargé le plus proche dans le temps) et ses données
 function RA.Current()
+  if RA.test then return RA.test.data end
   local e
   local log = ns.Recorder.Current()
   if log then for _, x in ipairs(ns.Group.Raids()) do if x.raid.id == log.raidId then e = x end end end
@@ -97,7 +108,13 @@ local function send(msg, dist, target)
     if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER") end
     return true
   end
+  if RA.test then return RA.test.send(msg, dist, target) end
   return (pcall(api, PREFIX, msg, dist, target))
+end
+-- Message reçu d'un joueur (raid d'essai : réponses simulées des autres addons)
+function RA.Deliver(sender, msg, dist)
+  local f = ns.Format.split(msg)
+  if handlers[f[1]] then ns.safe("message", handlers[f[1]], sender, f, dist or "RAID") end
 end
 ns.on("PLAYER_LOGIN", function()
   local reg = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
@@ -172,13 +189,13 @@ handlers.CR = function(sender, f)
   local c = {}
   for id, n in tostring(f[2] or ""):gmatch("(%d+):(%d+)") do c[tonumber(id)] = tonumber(n) end
   RA.call.counts[sender] = c
-  if not RA.call.open then ns.Recorder.SetCall({ at = RA.call.at, by = RA.call.by, counts = RA.call.counts }) end
+  if not RA.call.open and not RA.test then ns.Recorder.SetCall({ at = RA.call.at, by = RA.call.by, counts = RA.call.counts }) end
   refresh()
 end
 function RA.CloseCall()
   if not RA.call then return end
   RA.call.open = false
-  ns.Recorder.SetCall({ at = RA.call.at, by = RA.call.by, counts = RA.call.counts })
+  if not RA.test then ns.Recorder.SetCall({ at = RA.call.at, by = RA.call.by, counts = RA.call.counts }) end
   refresh()
 end
 -- Résumé de l'appel : prêts, incomplets (ce qui manque), sans réponse
@@ -232,6 +249,7 @@ function RA.Sheets()
 end
 function RA.SheetFor(unit)
   local npc, name = npcOf(unit), UnitName and UnitName(unit)
+  if RA.test then return npc and RA.test.sheet or nil end -- raid d'essai : n'importe quel PNJ joue Ragnaros
   if not npc and not name then return nil end
   local learned, names = db("bossNpcs"), db("bossNames")
   for _, s in ipairs(RA.Sheets()) do
@@ -277,7 +295,7 @@ end)
 -- Début du combat : la fiche se ferme ; le boss (PNJ, nom dans la langue du client) est retenu pour la suite
 ns.on("ENCOUNTER_START", function(encounterId, name)
   if RA.HideSheet then RA.HideSheet() end
-  if not encounterId then return end
+  if not encounterId or RA.test then return end
   local learned = db("bossNpcs")
   for i = 1, 5 do local id = npcOf("boss" .. i) if id then learned[id] = encounterId end end
   local t = npcOf("target")
@@ -294,6 +312,7 @@ local function qualityOf(link) return QUALITY[(tostring(link or ""):match("|cff(
 local function itemId(link) return tonumber(tostring(link or ""):match("item:(%d+)")) end
 
 function RA.IsMasterLooter()
+  if RA.test then return true end
   if IsMasterLooter then local ok, r = pcall(IsMasterLooter) if ok and r ~= nil then return r and true or false end end
   if not GetLootMethod then return false end
   local method, partyIdx, raidIdx = GetLootMethod()
@@ -314,7 +333,7 @@ function RA.ReadLoot()
   return items
 end
 ns.on("LOOT_OPENED", function()
-  if not RA.IsMasterLooter() then return end
+  if RA.test or not RA.IsMasterLooter() then return end
   local items = RA.ReadLoot()
   if #items == 0 then return end
   -- Les objets déjà dans la liste (corps rouvert) gardent leur place ; ceux d'un autre corps remplacent la liste
@@ -412,11 +431,14 @@ end
 function RA.Give(item, winner, method, response, detail)
   local link = item.link or linkFor(item.itemId)
   local idx = stillThere(item) and candidate(item.slot, winner)
-  ns.Recorder.Award(item.itemId, winner, method, response, detail)
-  if idx and GiveMasterLoot then
+  if RA.test then -- raid d'essai : le corps est « ouvert », l'objet est donné (rien n'est noté pour le site)
+    RA.test.award(item, winner, method, detail)
+  elseif idx and GiveMasterLoot then
+    ns.Recorder.Award(item.itemId, winner, method, response, detail)
     GiveMasterLoot(item.slot, idx)
-  elseif winner ~= me() then
-    RA.AddHandover(item, winner, method, response, detail)
+  else
+    ns.Recorder.Award(item.itemId, winner, method, response, detail)
+    if winner ~= me() then RA.AddHandover(item, winner, method, response, detail) end
   end
   RA.Say(link .. " → " .. winner .. (detail and detail ~= "" and (" (" .. detail .. ")") or ""))
   for i = #RA.items, 1, -1 do if RA.items[i] == item then table.remove(RA.items, i) end end
@@ -425,7 +447,7 @@ function RA.Give(item, winner, method, response, detail)
 end
 -- Garder l'objet (le maître du butin le prend) pour le remettre plus tard par échange
 function RA.Keep(item, winner, method, response, detail)
-  local idx = stillThere(item) and candidate(item.slot, me())
+  local idx = not RA.test and stillThere(item) and candidate(item.slot, me())
   if idx and GiveMasterLoot then GiveMasterLoot(item.slot, idx) end
   if winner then RA.AddHandover(item, winner, method, response, detail) end
   for i = #RA.items, 1, -1 do if RA.items[i] == item then table.remove(RA.items, i) end end
@@ -448,12 +470,13 @@ function RA.RollDetail(s, w)
 end
 
 -- Objets à remettre (gardés par le maître du butin) : échange possible pendant 2 h après le ramassage
+local function handoverList() return RA.test and RA.test.handover or db("handover") end
 function RA.AddHandover(item, winner, method, response, detail)
-  local list = db("handover")
+  local list = handoverList()
   list[#list + 1] = { itemId = item.itemId, link = item.link, winner = winner, method = method, response = response, detail = detail, at = time() }
 end
 function RA.Handover()
-  local list, now = db("handover"), time()
+  local list, now = handoverList(), time()
   for i = #list, 1, -1 do if now - list[i].at > TRADE_WINDOW then table.remove(list, i) end end
   return list
 end
@@ -468,6 +491,7 @@ local function bagSlotOf(id)
   return nil
 end
 function RA.Trade(entry)
+  if RA.test then return RA.test.trade(entry) end
   local unit = unitFor(entry.winner)
   if not unit then ns.print(entry.winner .. " n'est pas dans le groupe.") return false end
   if CheckInteractDistance and not CheckInteractDistance(unit, 2) then ns.print(entry.winner .. " est trop loin pour échanger.") return false end

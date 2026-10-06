@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { ApiError, get, put, type Character } from "../api";
 import { useMe } from "../auth";
 import { useViewPref } from "../prefs";
+import { RoleTag } from "./RoleIcon";
 
 /* ---------- Données (GET /api/week) ---------- */
 
@@ -109,7 +110,7 @@ function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
 
 const Counts = ({ r }: { r: WeekRaid }) => (
   <span className="wk-counts">
-    <b>{r.counts.coming}</b> {r.counts.coming > 1 ? "viennent" : "vient"} · <b>{r.counts.tank}</b> tank{r.counts.tank > 1 ? "s" : ""} · <b>{r.counts.heal}</b> heal{r.counts.heal > 1 ? "s" : ""} · <b>{r.counts.dps}</b> DPS
+    <b>{r.counts.coming}</b> {r.counts.coming > 1 ? "viennent" : "vient"} · <RoleTag plain role="Tank" text={`${r.counts.tank} tank${r.counts.tank > 1 ? "s" : ""}`}><b>{r.counts.tank}</b></RoleTag> · <RoleTag plain role="Heal" text={`${r.counts.heal} heal${r.counts.heal > 1 ? "s" : ""}`}><b>{r.counts.heal}</b></RoleTag> · <RoleTag plain role="DPS" text={`${r.counts.dps} DPS`}><b>{r.counts.dps}</b></RoleTag>
     {r.counts.tentative > 0 && <> · <b>{r.counts.tentative}</b> peut-être</>}
   </span>
 );

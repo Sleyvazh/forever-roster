@@ -70,6 +70,11 @@ async function download(url: string, fetchImpl: typeof fetch, tries = 4): Promis
   }
 }
 
+/** Une table du client (CSV de wago.tools) pour une version. */
+export async function downloadDb2(name: string, build: string, fetchImpl: typeof fetch = fetch) {
+  return parseCsv(await download(`${WAGO}/db2/${name}/csv?build=${encodeURIComponent(build)}`, fetchImpl));
+}
+
 /** Télécharge les tables nécessaires pour une version, une par une (on reste poli avec wago.tools). */
 export async function downloadTables(build: string, fetchImpl: typeof fetch = fetch, log: (m: string) => void = () => {}): Promise<Tables> {
   const out = {} as Tables;

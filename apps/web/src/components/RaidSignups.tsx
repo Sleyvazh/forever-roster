@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiError, del, get, patch, put, type Character, type RaidSignup } from "../api";
 import { useMe } from "../auth";
 import { ClassIcon, SpecIcon } from "./Icons";
+import { RoleIcon, RoleTag } from "./RoleIcon";
 
 const ROLES = ["Tank", "Heal", "DPS"] as const;
 const COMING: SignupStatus[] = ["present", "late"];
@@ -58,7 +59,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
         <h3 id="su-title" style={{ margin: 0 }}>Inscriptions</h3>
         <div className="counts">
           <span className="tag ok num">{coming.length} viennent</span>
-          {ROLES.map(r => <span key={r} className={`role ${r}`}>{byRole(r).length} {r}</span>)}
+          {ROLES.map(r => <RoleTag key={r} role={r} text={`${byRole(r).length} ${r}`}>{byRole(r).length}</RoleTag>)}
           {others("tentative").length > 0 && <span className="tag num">{others("tentative").length} peut-être</span>}
         </div>
       </div>
@@ -100,7 +101,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
       <div className="su-roles">
         {ROLES.map(r => (
           <div key={r} className="su-col">
-            <h4><span className={`role ${r}`}>{r}</span> <span className="num muted">{byRole(r).length}</span></h4>
+            <h4><RoleIcon role={r} size={18} /> <span className="num muted">{byRole(r).length}</span></h4>
             {byRole(r).length ? byRole(r).map(s => <Row key={s.id} s={s} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} />) : <p className="small muted" style={{ margin: 0 }}>Personne</p>}
           </div>
         ))}

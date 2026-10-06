@@ -23,6 +23,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 | `/fr butin` | Fenêtre du maître du butin (s'ouvre seule en ouvrant un corps en butin de maître) ; `/fr butin <lien>` pour un objet déjà dans tes sacs |
 | `/fr boss` | Fiche du boss ciblé, sinon la première du raid |
 | `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
+| `/fr test` | Raid d'essai : toi et 9 joueurs fictifs, pour tout essayer seul (aussi dans l'onglet En raid, hors groupe) |
 | `/fr cherche <lien>` | Marquer un patron vu ailleurs comme recherché (Maj+clic pour mettre le lien), ou l'en retirer |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
@@ -40,6 +41,8 @@ Butin en raid (1.0) : quand tu es maître du butin, ouvrir un corps affiche les 
 Fiches de boss (1.0) : remplies sur le site (onglet Préparation du raid). En ciblant le boss avant le pull, chacun voit sa tâche et le reste de la fiche ; le chef de raid peut l'annoncer en /raid. La fiche se ferme au début du combat. Le boss est reconnu par son PNJ ; pour un nouveau raid de Forever, l'addon l'apprend au premier combat.
 
 Consommables (1.0) : les consommables demandés par les raids sont comptés dans tes sacs (et ta banque) et partent avec la synchro. En raid, **Appel aux consommables** : l'addon de chacun répond tout de suite ; **Annoncer les manques** l'écrit dans le raid.
+
+Raid d'essai (1.1) : `/fr test`, hors groupe. Un panneau propose chaque étape avec 9 joueurs fictifs qui répondent comme de vrais addons : versions (une ancienne, un joueur sans addon), appel aux consommables (tes vraies potions comptent), fiche de Ragnaros en ciblant n'importe quel PNJ (fermée en attaquant), corps en soft reserve (bonus SR+, égalité à relancer, personne en MS puis jets OS, jet libre ; ton propre `/roll` compte) et corps au conseil (réponses, dont deux chuchotées, votes de deux membres du conseil, ta réponse et ton vote). « Donner » simule le butin de maître, « Garder, à remettre » puis « Échanger » simulent l'échange. Rien ne part au site, au chat du raid ni aux autres joueurs ; le vrai butin de maître et l'échange restent à vérifier dans un vrai raid.
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis, et « SR (raid) : … » sur les objets réservés. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 

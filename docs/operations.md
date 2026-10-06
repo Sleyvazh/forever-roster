@@ -251,6 +251,8 @@ En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui
 
 `scripts/fetch-item-icons.sh` télécharge aussi les étendards de la Horde et de l'Alliance (icônes `inv_bannerpvp_01` et `inv_bannerpvp_02`) dans `icons/faction/`. Tant qu'ils manquent, le site affiche l'étiquette texte « HORDE » ou « ALLI ».
 
+Il extrait aussi les **icônes de rôle** du jeu (Tank, Heal, DPS) dans `icons/roles/` (`tank.png`, `heal.png`, `dps.png`) : ce sont des morceaux d'une texture de l'interface (atlas `UI-LFG-RoleIcon-*`), retrouvés dans les tables `UiTextureAtlasMember` et `UiTextureAtlas` du client, téléchargés en BLP depuis wago.tools puis découpés en PNG 64×64 transparents (`dist/role-icons.js`). Le bot en fait les émojis `fr_role_tank`, `fr_role_heal` et `fr_role_dps` (au plus 6 h après, ou en redémarrant le bot). Tant qu'elles manquent, le site et le bot écrivent le rôle en toutes lettres.
+
 ### Icônes des objets
 
 L'import retrouve le nom de l'icône de chaque objet (liste de fichiers communautaire), puis `scripts/import-gamedata.sh` appelle `scripts/fetch-item-icons.sh`. Ce script télécharge les icônes manquantes depuis le serveur d'images officiel de Blizzard (`render.worldofwarcraft.com`) dans `icons/items/`, une seule fois chacune (≈ 3 000 fichiers, ≈ 10 Mo). Les visiteurs ne contactent toujours que notre serveur. Seuls les noms simples (`a-z`, `0-9`, `_`, `-`) sont acceptés, et un fichier n'est gardé que s'il s'agit bien d'un JPEG.

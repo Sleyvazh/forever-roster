@@ -8,6 +8,7 @@ import { ClassIcon, FactionBadge, SpecIcon } from "../components/Icons";
 import { Portrait } from "../components/ImageUpload";
 import { StartSteps, WeekBand } from "../components/Week";
 import { MyAbsences } from "../components/Absences";
+import { registerAutosave } from "../autosave";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -45,6 +46,14 @@ function useAutosave(id: string | null, onSaved: (c: Character) => void) {
     setStatus({ kind: "saving" });
   };
   useEffect(() => () => { window.clearTimeout(timer.current); void flush(); /* enregistre avant de changer de perso */ }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Import de l'addon (Ctrl+V) : ce qui attend part tout de suite, avant l'import
+  const latest = useRef(flush);
+  latest.current = flush;
+  useEffect(() => registerAutosave(async () => {
+    if (!Object.keys(pending.current).length) return;
+    window.clearTimeout(timer.current);
+    await latest.current();
+  }), []);
   return { queue, status };
 }
 

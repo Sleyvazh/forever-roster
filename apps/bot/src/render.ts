@@ -70,7 +70,10 @@ function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): AP
   const count = (r: string) => all.filter(m => m.role === r).length;
   const fields: APIEmbedField[] = [{
     name: `✅ Compo validée — ${all.length}/${v.raid.size ?? 40}`,
-    value: ROLES.map(({ role, icon }) => `${icon} ${count(role)} ${role}`).join(" · "),
+    value: ROLES.map(({ role, icon }) => {
+      const e = emoji.role?.(role);
+      return e ? `${e} ${count(role)}` : `${icon} ${count(role)} ${role}`;
+    }).join(" · "),
     inline: false,
   }];
   for (const g of groups) fields.push({ name: `Groupe ${g.group}`, value: fitLines(g.members.map(m => rosterLine(m, emoji))), inline: true });
@@ -83,7 +86,8 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
   const coming = v.signups.filter(s => COMING.includes(s.status));
   const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : ROLES.map(({ role, icon }) => {
     const list = coming.filter(s => s.role === role);
-    return { name: `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji))), inline: true };
+    const e = emoji.role?.(role);
+    return { name: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji))), inline: true };
   });
   const noRole = coming.filter(s => !s.role);
   if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji))), inline: false });

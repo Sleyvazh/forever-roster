@@ -1,6 +1,7 @@
 import { CLASSES, type ClassName, type Role } from "@forever/game-data";
 import { useState } from "react";
 import { ApiError, post } from "../api";
+import { RoleIcon } from "./RoleIcon";
 
 /**
  * Joindre les joueurs (lot D2), vue officiers : qui n'a pas répondu, relance automatique et « Relancer maintenant »,
@@ -90,7 +91,7 @@ export function RaidReach({ groupId, raidId, reach, onChanged }: { groupId: stri
           <ul className="rr-asklist">
             {reach.asks.map(a => (
               <li key={a.id}>
-                {a.role && <span className={`role ${a.role}`}>{a.role}</span>}
+                {a.role && <RoleIcon role={a.role} />}
                 <b style={{ color: color(a.cls) }}>{a.name}</b>
                 <span className="small muted">{a.spec} · {a.owner}</span>
                 <AskChip state={a.state} />

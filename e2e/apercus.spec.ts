@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
@@ -39,9 +39,22 @@ function lastVerifyToken() {
   return lines.at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
 }
 
+/** ICONES_ROLES=1 : dessins provisoires à la place des icônes de rôle du jeu (absentes ici), pour voir leur place. */
+async function roleIcons(page: Page) {
+  if (!process.env.ICONES_ROLES) return;
+  const svg = (body: string, c: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="#1b2340" stroke="${c}" stroke-width="4"/>${body}</svg>`;
+  const files: Record<string, string> = {
+    tank: svg('<path d="M32 14l14 6v10c0 10-6 17-14 20-8-3-14-10-14-20V20z" fill="#5f95ff"/>', "#5f95ff"),
+    heal: svg('<path d="M27 16h10v11h11v10H37v11H27V37H16V27h11z" fill="#4fd35f"/>', "#4fd35f"),
+    dps: svg('<path d="M17 43l19-19 4 4-19 19zM38 16h10v10l-5 5-10-10z" fill="#ff5a4d"/>', "#ff5a4d"),
+  };
+  await page.route("**/icons/roles/*.png", r => r.fulfill({ status: 200, contentType: "image/svg+xml", body: files[/roles\/(\w+)\.png/.exec(r.request().url())?.[1] ?? ""] ?? "" }));
+}
+
 test("aperçus des lots D1 et D2", async ({ page }) => {
   test.setTimeout(120_000);
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await roleIcons(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 1360, height: 900 });
   await page.goto("/register");
@@ -150,6 +163,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
 test("aperçus du lot F", async ({ page }) => {
   test.setTimeout(120_000);
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await roleIcons(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 1360, height: 900 });
   const db = new pg.Client({ connectionString: DB });
@@ -277,6 +291,7 @@ test("aperçus du lot F", async ({ page }) => {
 test("aperçus du lot G", async ({ page }) => {
   test.setTimeout(120_000);
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await roleIcons(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 1360, height: 900 });
   const db = new pg.Client({ connectionString: DB });
@@ -354,6 +369,7 @@ test("tour des pages", async ({ page }) => {
   test.skip(!process.env.TOUR, "tour seulement sur demande (TOUR=1)");
   test.setTimeout(180_000);
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await roleIcons(page);
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/login");
   await page.fill("#email", EMAIL);

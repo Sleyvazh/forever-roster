@@ -20,6 +20,7 @@ import { ClassIcon } from "../components/Icons";
 import { DateTimeField, longDate, partsOf } from "../components/DateTime";
 import { syncAge } from "../addonImport";
 import { FloatingTip } from "../components/ItemTooltip";
+import { RoleIcon, RoleTag, type RoleName } from "../components/RoleIcon";
 
 /** Carte d'un joueur au survol : spé, inscription, métiers, niveau d'objet moyen et BiS obtenus. */
 function PlayerCard({ e, c }: { e: Entry; c?: Character }) {
@@ -244,7 +245,7 @@ export function RaidPage() {
     } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
   })();
   const roleTag = (role: "Tank" | "Heal" | "DPS", n: number, want: number) => (
-    <span className={`role ${role}`} title={`${n} placé${n > 1 ? "s" : ""} pour ${want} visé${want > 1 ? "s" : ""}`}>{n}/{want} {role === "DPS" ? "DPS" : `${role.toLowerCase()}${want > 1 ? "s" : ""}`}</span>
+    <RoleTag role={role} text={`${n}/${want} ${role === "DPS" ? "DPS" : `${role.toLowerCase()}${want > 1 ? "s" : ""}`}`} title={`${role} : ${n} placé${n > 1 ? "s" : ""} pour ${want} visé${want > 1 ? "s" : ""}`}>{n}/{want}</RoleTag>
   );
 
   return (
@@ -321,7 +322,7 @@ export function RaidPage() {
                         {...(c ? hoverProps(c) : {})}
                         aria-label={c ? `Groupe ${g}, place ${p} : ${c.name}` : `Groupe ${g}, place ${p} : libre`}>
                         {c ? <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{c.spec || c.cls} · {c.owner}</small></span> : <span className="who muted small">Libre</span>}
-                        {c && <span className={`role ${roleOf(c.spec) ?? ""}`} style={{ padding: "3px 5px", fontSize: 9 }}>{roleOf(c.spec) ?? "?"}</span>}
+                        {c && <RoleIcon role={roleOf(c.spec)} size={14} pill={{ padding: "3px 5px", fontSize: 9 }} />}
                       </button>
                       {c && canEdit && <button type="button" className="x" aria-label={`Retirer ${c.name}`} onClick={() => removeFrom(g, p)}>×</button>}
                     </div>
@@ -453,8 +454,8 @@ export function RaidPage() {
 function RaidFormat({ size, targets, custom, onChange }: { size: RaidSize; targets: RoleTargets; custom: boolean; onChange: (b: { size?: RaidSize; targets?: RoleTargets | null }) => void }) {
   const [t, setT] = useState(targets);
   useEffect(() => setT(targets), [targets.tank, targets.heal, targets.dps]); // eslint-disable-line react-hooks/exhaustive-deps
-  const field = (k: keyof RoleTargets, label: string) => (
-    <label className="ra-t"><span>{label}</span>
+  const field = (k: keyof RoleTargets, role: RoleName, label: string) => (
+    <label className="ra-t"><span title={label}><RoleTag plain role={role} text={label} /></span>
       <input type="number" min={0} max={40} value={t[k]} onChange={e => setT({ ...t, [k]: Math.max(0, Math.min(40, Number(e.target.value) || 0)) })}
         onBlur={() => { if (t[k] !== targets[k]) onChange({ targets: t }); }} /></label>
   );
@@ -465,7 +466,7 @@ function RaidFormat({ size, targets, custom, onChange }: { size: RaidSize; targe
         <div className="seg" role="group" aria-label="Format du raid">
           {RAID_SIZES.map(n => <button key={n} type="button" className={size === n ? "on" : ""} aria-pressed={size === n} onClick={() => size !== n && onChange({ size: n })}>{n}</button>)}
         </div>
-        {field("tank", "Tanks")}{field("heal", "Heals")}{field("dps", "DPS")}
+        {field("tank", "Tank", "Tanks")}{field("heal", "Heal", "Heals")}{field("dps", "DPS", "DPS")}
         {custom
           ? <button type="button" className="btn ghost sm" onClick={() => onChange({ targets: null })}>Par défaut ({DEFAULT_TARGETS[size].tank}/{DEFAULT_TARGETS[size].heal}/{DEFAULT_TARGETS[size].dps})</button>
           : <span className="hint">par défaut pour un raid à {size}</span>}

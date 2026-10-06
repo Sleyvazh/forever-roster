@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiError, get, post, type Character } from "../api";
 import { ALL_PARTS, applyBlocks, blockKey, blockSummary, guessTarget, PARTS, type ApplyResult, type Part, type Target } from "../addonImport";
 import { ClassIcon } from "./Icons";
+import { flushAutosaves } from "../autosave";
 
 /** Collage dans un champ de saisie : on laisse faire (c'est du texte tapé ou collé exprès). */
 const typing = (el: Element | null) => !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable);
@@ -61,6 +62,7 @@ export function PasteImport() {
   const close = () => { setBlocks(null); setLogs([]); setResults(null); };
   const apply = async () => {
     setBusy(true);
+    await flushAutosaves(); // une modification de la fiche encore en attente part avant l'import, pas après
     const out: ApplyResult[] = [];
     out.push(...await applyBlocks(blocks, targetOf, parts, mine));
     // Bilans après les persos : le BiS reçu est coché sur la fiche à jour (sinon l'équipement des persos l'écraserait)

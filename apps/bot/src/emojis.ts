@@ -7,10 +7,17 @@ import path from "node:path";
  * Les fichiers viennent du dossier icons/ du serveur (monté en lecture seule) ; ils ne sont
  * jamais dans le dépôt. Émoji « fr_<classe> » pour la classe, « fr_<classe>_<spé> » pour une spé
  * (ex. fr_druid_feral_bear) ; « fr_<classe>_<n> » (arbre n, ancien rangement) reste reconnu en repli.
+ * Rôles : roles/tank.png, heal.png, dps.png → « fr_role_tank », « fr_role_heal », « fr_role_dps ».
  */
 
-export type EmojiLookup = (cls: string, spec?: string | null) => string;
+export type EmojiLookup = ((cls: string, spec?: string | null) => string) & {
+  /** Émoji d'un rôle (Tank, Heal, DPS) : « fr_role_tank »… tirés de icons/roles/ ; "" sinon. */
+  role?: (role: string) => string;
+};
 export const noEmoji: EmojiLookup = () => "";
+
+const ROLE_FILES: Record<string, string> = { tank: "Tank", heal: "Heal", dps: "DPS" };
+export const roleEmojiName = (role: string) => `fr_role_${role.toLowerCase()}`;
 
 const MAX_BYTES = 256 * 1024; // limite de Discord pour un émoji
 const EXT = new Set([".png", ".jpg", ".jpeg", ".gif"]);
@@ -29,7 +36,7 @@ export function specEmojiName(cls: string, spec: string) {
 
 /** Émoji de la spé si on l'a, sinon celui de son arbre, sinon celui de la classe, sinon rien. */
 export function makeLookup(ids: Map<string, string>): EmojiLookup {
-  return (cls, spec) => {
+  const lookup: EmojiLookup = (cls, spec) => {
     const def = spec ? specDef(cls, spec) : null;
     for (const name of [def ? specEmojiName(cls, spec!) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
       const id = name && ids.get(name);
@@ -37,13 +44,19 @@ export function makeLookup(ids: Map<string, string>): EmojiLookup {
     }
     return "";
   };
+  lookup.role = role => {
+    const name = roleEmojiName(role);
+    const id = ids.get(name);
+    return id ? `<:${name}:${id}>` : "";
+  };
+  return lookup;
 }
 
 /** Fichiers d'icônes disponibles → nom d'émoji attendu. */
 export async function iconFiles(dir: string): Promise<{ name: string; file: string }[]> {
   const out: { name: string; file: string }[] = [];
   const slugToClass = new Map<string, string>(Object.entries(CLASSES).map(([k, v]) => [v.slug, k]));
-  for (const sub of ["class", "spec", "tree"]) {
+  for (const sub of ["class", "spec", "tree", "roles"]) {
     let entries: string[];
     try { entries = await readdir(path.join(dir, sub)); } catch { continue; }
     for (const f of entries.sort()) {
@@ -51,7 +64,9 @@ export async function iconFiles(dir: string): Promise<{ name: string; file: stri
       if (!EXT.has(ext)) continue;
       const stem = path.basename(f, ext);
       let name: string | null = null;
-      if (sub === "class") {
+      if (sub === "roles") {
+        name = ROLE_FILES[stem] ? roleEmojiName(ROLE_FILES[stem]!) : null;
+      } else if (sub === "class") {
         const cls = slugToClass.get(stem);
         name = cls ? emojiName(cls) : null;
       } else if (sub === "tree") {

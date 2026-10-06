@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Télécharge les icônes d'objets et de talents manquantes dans icons/items/ (fichiers de Blizzard, jamais dans Git).
+# Télécharge les icônes d'objets et de talents manquantes dans icons/items/, et les icônes de rôle dans icons/roles/
+# (fichiers de Blizzard, jamais dans Git).
 # Les noms viennent de la base (details.icon et details.iconId, remplis par l'import) ; chaque icône n'est
 # téléchargée qu'une fois : d'abord depuis le serveur d'images officiel de Blizzard, puis, pour les icônes
 # qu'il ne sert pas (récentes, propres à Forever), depuis les fichiers du jeu (wago.tools, format BLP
@@ -16,6 +17,14 @@ for pair in "horde inv_bannerpvp_01" "alliance inv_bannerpvp_02"; do
   set -- $pair
   [ -s "icons/faction/$1.jpg" ] || curl -fsS --retry 2 --max-time 20 -o "icons/faction/$1.jpg" "$CDN/$2.jpg" || rm -f "icons/faction/$1.jpg"
 done
+
+# Icônes de rôle (Tank, Heal, DPS) : atlas de l'interface du jeu découpés en PNG, icons/roles/tank.png, heal.png, dps.png.
+# Sans elles, le site et le bot écrivent le rôle en toutes lettres.
+mkdir -p icons/roles
+if [ ! -s icons/roles/tank.png ] || [ ! -s icons/roles/heal.png ] || [ ! -s icons/roles/dps.png ]; then
+  sudo docker compose run --rm --no-deps -T --user "$(id -u):$(id -g)" -v "$PWD/icons/roles:/out" api node dist/role-icons.js /out \
+    || echo "Icônes de rôle : non récupérées (le site affiche le texte à la place)."
+fi
 
 all=$(mktemp); pairs=$(mktemp); todo=$(mktemp); fails=$(mktemp); blp=$(mktemp)
 trap 'rm -f "$all" "$pairs" "$todo" "$fails" "$blp"' EXIT

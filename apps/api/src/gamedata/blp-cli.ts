@@ -9,21 +9,13 @@
  */
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { blpToJpeg } from "./blp";
+import { blpToJpeg, fetchBlp as fetchFrom } from "./blp";
 
 const BRANCHES = (process.env.WAGO_BRANCHES ?? "wow_classic_beta,wow_classic,wow_classic_era").split(",");
 const out = process.argv[2];
 if (!out) throw new Error("dossier de destination manquant");
 
-async function fetchBlp(fid: number) {
-  for (const branch of BRANCHES) {
-    const res = await fetch(`https://wago.tools/api/casc/${fid}?download&branch=${encodeURIComponent(branch)}`, { signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) continue;
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.toString("latin1", 0, 4) === "BLP2") return buf;
-  }
-  return null;
-}
+const fetchBlp = (fid: number) => fetchFrom(fid, BRANCHES);
 
 const input: Buffer[] = [];
 for await (const c of process.stdin) input.push(c as Buffer);

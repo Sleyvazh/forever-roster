@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ApiError, get, post, type GroupSummary } from "../api";
 import { whenText } from "../components/Week";
+import { RoleTag } from "../components/RoleIcon";
 
 export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member: "Membre" } as const;
 
@@ -60,7 +61,7 @@ function GroupCard({ g }: { g: GroupSummary }) {
       ) : (
         <div className="gc-next none">Aucun raid prévu.{officer && <> <Link to={base}>Créer un raid</Link></>}</div>
       )}
-      <div className="gc-roles">Roster : <span className="role Tank">{plural(g.roles.tank, "tank")}</span><span className="role Heal">{plural(g.roles.heal, "heal")}</span><span className="role DPS">{g.roles.dps} DPS</span></div>
+      <div className="gc-roles">Roster : <RoleTag role="Tank" text={plural(g.roles.tank, "tank")}>{g.roles.tank}</RoleTag><RoleTag role="Heal" text={plural(g.roles.heal, "heal")}>{g.roles.heal}</RoleTag><RoleTag role="DPS" text={`${g.roles.dps} DPS`}>{g.roles.dps}</RoleTag></div>
       <nav className="gc-links" aria-label={`Onglets de ${g.name}`}>{links.map(([l, to]) => <Link key={l} to={to}>{l}</Link>)}</nav>
     </article>
   );

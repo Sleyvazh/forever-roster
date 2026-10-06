@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { blpToJpeg, decodeBlp } from "../src/gamedata/blp";
+import { cropBox, findRoleAtlases } from "../src/gamedata/roles";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,5 +54,28 @@ describe("textures BLP du jeu", () => {
     const jpg = await blpToJpeg(readFileSync(path.join(here, "fixtures/icon-palette.blp")));
     expect([...jpg.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
     expect(await sharp(jpg).metadata()).toMatchObject({ width: 56, height: 56, format: "jpeg" });
+  });
+});
+
+describe("icônes de rôle du jeu", () => {
+  const members = [
+    { ID: "1", CommittedName: "UI-LFG-RoleIcon-Tank", UiTextureAtlasID: "7", CommittedLeft: "0", CommittedRight: "64", CommittedTop: "64", CommittedBottom: "128" },
+    { ID: "2", CommittedName: "ui-lfg-roleicon-healer", UiTextureAtlasID: "7", CommittedLeft: "64", CommittedRight: "128", CommittedTop: "0", CommittedBottom: "64" },
+    { ID: "3", CommittedName: "UI-LFG-RoleIcon-DPS-Disabled", UiTextureAtlasID: "7", CommittedLeft: "0", CommittedRight: "64", CommittedTop: "0", CommittedBottom: "64" },
+  ];
+  const atlases = [{ ID: "7", FileDataID: "1234567", AtlasWidth: "256", AtlasHeight: "256" }];
+
+  it("trouve les atlas des rôles (casse ignorée), sans confondre les variantes", () => {
+    const crops = findRoleAtlases(members, atlases);
+    expect(crops.tank).toEqual({ fileDataId: 1234567, atlasWidth: 256, atlasHeight: 256, left: 0, right: 64, top: 64, bottom: 128 });
+    expect(crops.heal?.left).toBe(64);
+    expect(crops.dps).toBeUndefined();
+  });
+
+  it("découpe à l'échelle de la texture réelle, sans sortir de l'image", () => {
+    const tank = findRoleAtlases(members, atlases).tank!;
+    expect(cropBox(tank, 256, 256)).toEqual({ left: 0, top: 64, width: 64, height: 64 });
+    expect(cropBox(tank, 128, 128)).toEqual({ left: 0, top: 32, width: 32, height: 32 });
+    expect(cropBox({ ...tank, right: 300 }, 256, 256).width).toBe(256);
   });
 });

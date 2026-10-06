@@ -7,6 +7,7 @@ import { useViewPref } from "../prefs";
 import { CharacterEditor } from "./CharacterEditor";
 import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
+import { RoleIcon } from "./RoleIcon";
 
 /**
  * Onglet Personnages d'un groupe : les persos que chaque membre y joue (son main marqué ★, ses alts),
@@ -131,7 +132,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
 
   const spec = (c: Character, sp: string, off?: boolean) => sp ? (
     <span key={sp} className={`gsp${off ? " off" : ""}`}>
-      {c.cls && <SpecIcon cls={c.cls} spec={sp} size={16} />}{sp}{roleOf(sp) && <span className={`role ${roleOf(sp)}`}>{roleOf(sp)}</span>}
+      {c.cls && <SpecIcon cls={c.cls} spec={sp} size={16} />}{sp}{roleOf(sp) && <RoleIcon role={roleOf(sp)} size={14} />}
     </span>
   ) : null;
   const avatarOf = (userId: string) => memberOf.get(userId)?.avatarId ?? null;
@@ -164,7 +165,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
             title={[c.spec1, c.spec2].filter(Boolean).join(" / ")}>
             <Face c={c} size={34} />
             <span className="n">{c.isMain && <span className="gm-star" aria-label="Main">★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
-            <span className="r">{r && <span className={`role ${r}`}>{r}</span>}</span>
+            <span className="r">{r && <RoleIcon role={r} />}</span>
             <span className="s">{c.spec1 || c.cls || "À configurer"} · {c.owner}{c.isMain ? "" : " · alt"}</span>
           </button>
         );
@@ -190,7 +191,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
         );
         return (
           <section key={r} className="gcol" aria-label={r}>
-            <h4 className={r}><span>{r}</span><span className="num">{mains}{alts > 0 && ` +${alts} alt`}{off.length > 0 && ` · ${off.length} off`}</span></h4>
+            <h4 className={r}><RoleIcon role={r} size={18} /><span className="num">{mains}{alts > 0 && ` +${alts} alt`}{off.length > 0 && ` · ${off.length} off`}</span></h4>
             {main.length + off.length ? <ul>{main.map(c => item(c, false))}{off.map(c => item(c, true))}</ul> : <p className="muted small" style={{ padding: "8px 12px", margin: 0 }}>Personne</p>}
           </section>
         );

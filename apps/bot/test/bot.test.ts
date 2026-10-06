@@ -230,6 +230,20 @@ describe("compo publiée, rappels et émojis", () => {
     expect(g.embeds[0]!.footer!.text).toContain("Me désinscrire");
   });
 
+  it("icônes de rôle du jeu en émojis, sinon les émojis habituels", async () => {
+    const withRoles = makeLookup(new Map([["fr_druid_2", "22"], ["fr_role_tank", "61"], ["fr_role_heal", "62"], ["fr_role_dps", "63"]]));
+    expect(withRoles.role?.("Tank")).toBe("<:fr_role_tank:61>");
+    expect(emoji.role?.("Tank")).toBe("");
+    const f = renderAnnouncement(view(), withRoles).embeds[0]!.fields!;
+    expect(f.slice(0, 3).map(x => x.name)).toEqual(["<:fr_role_tank:61> 1", "<:fr_role_heal:62> 1", "<:fr_role_dps:63> 0"]);
+    const v = view({ roster: { groups: [{ group: 1, members: [{ name: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank" }] }] } });
+    expect(renderAnnouncement(v, withRoles).embeds[0]!.fields![0]!.value).toBe("<:fr_role_tank:61> 1 · <:fr_role_heal:62> 0 · <:fr_role_dps:63> 0");
+    const dir = await mkdtemp(path.join(tmpdir(), "roles-"));
+    await mkdir(path.join(dir, "roles"));
+    for (const f of ["dps.png", "heal.png", "tank.png", "autre.png"]) await writeFile(path.join(dir, "roles", f), "png");
+    expect((await iconFiles(dir)).map(x => x.name)).toEqual(["fr_role_dps", "fr_role_heal", "fr_role_tank"]);
+  });
+
   it("envoie à Discord les icônes manquantes, une seule fois", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "icons-"));
     await mkdir(path.join(dir, "class")); await mkdir(path.join(dir, "tree")); await mkdir(path.join(dir, "spec"));

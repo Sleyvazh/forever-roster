@@ -14,6 +14,7 @@ import { Paperdoll } from "./Paperdoll";
 import { ranksFrom, TalentTrees, useTalentData, type Talent, type TreeView } from "./TalentTrees";
 import { useViewPref } from "../prefs";
 import { syncAge } from "../addonImport";
+import { RoleIcon } from "./RoleIcon";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
 export type EditorTab = Tab;
@@ -76,7 +77,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
         </div>
         <div className="row">
           {!editable && <span className="tag warn">Lecture seule</span>}
-          {roles.map(r => <span key={r} className={`role ${r}`}>{r}</span>)}
+          {roles.map(r => <RoleIcon key={r} role={r} />)}
         </div>
       </div>
       {canPortrait && portraitOpen && (
@@ -212,7 +213,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
     <div className="build">
       <div className="build-head">
         <h4 className="with-icon">{def && <SpecIcon cls={cls} spec={spec} size={26} />}<span>{title}</span></h4>
-        {def && <span className={`role ${def.role}`}>{def.role}</span>}
+        {def && <RoleIcon role={def.role} />}
       </div>
       <div className="grid">
         <div className="fld"><label htmlFor={`f-spec-${id}`}>Intitulé de la spé</label>

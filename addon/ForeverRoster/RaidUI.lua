@@ -27,6 +27,7 @@ local function listWindow(name, title, h)
   w.list = K.list(p, -40)
   return w
 end
+RA.listWindow = listWindow
 
 --------------------------------------------------------------------------------------------------------------------
 -- Butin (maître du butin)
@@ -47,10 +48,10 @@ function RA.RefreshLoot()
     or (GREY .. "Pas de raid du site en cours : jets libres ou MS / OS seulement.|r"))
   L.Reset()
   L.Header("Objets")
-  if #RA.items == 0 then L.Add(GREY .. "Aucun objet. Ouvre un corps en maître du butin, ou /fr butin puis Maj+clic sur un objet.|r") end
+  if #RA.items == 0 then L.Add(GREY .. (RA.test and "Aucun objet. Raid d'essai : « Ouvrir le corps » dans le panneau d'essai." or "Aucun objet. Ouvre un corps en maître du butin, ou /fr butin puis Maj+clic sur un objet.") .. "|r") end
   for _, it in ipairs(RA.items) do
     local res, list = RA.ReservesOf(it.itemId)
-    local text = linkFor(it.itemId, it.link) .. (it.slot and "" or (GREY .. "  (dans les sacs)|r"))
+    local text = linkFor(it.itemId, it.link) .. ((it.slot or it.test) and "" or (GREY .. "  (dans les sacs)|r"))
     local buttons = {}
     if mode == "softres" and res then
       local who = {}
@@ -138,7 +139,7 @@ function RA.ShowCouncil(sid)
 end
 function RA.RefreshCouncil()
   if not councilWin or not councilWin:IsShown() then return end
-  local c, L = RA.councils[councilWin.sid], councilWin.list
+  local c, L, d = RA.councils[councilWin.sid], councilWin.list, RA.Current()
   L.Reset()
   if not c then
     councilWin.hintText:SetText(GREY .. "Ce conseil est terminé.|r")
@@ -148,7 +149,7 @@ function RA.RefreshCouncil()
   local isML = c.ml == UnitName("player")
   local votes, by = RA.Tally(councilWin.sid)
   councilWin.hintText:SetText(linkFor(c.itemId, c.link) .. GREY .. "  · maître du butin : " .. c.ml .. (isML and " (toi)" or "") .. "|r")
-  local log, got = ns.Recorder.Current(), {}
+  local log, got = RA.test and RA.test.log or ns.Recorder.Current(), {}
   for _, l in ipairs(log and log.loot or {}) do got[l.who] = (got[l.who] or 0) + 1 end
   local order = { bis = 1, upgrade = 2, off = 3, transmo = 4, pass = 5 }
   local list = {}
@@ -160,7 +161,8 @@ function RA.RefreshCouncil()
     local gear = {}
     for _, id in ipairs(e.x.gear) do gear[#gear + 1] = linkFor(id) end
     local mine = c.votes[UnitName("player")] == e.name
-    local text = GOLD .. e.name .. "|r  " .. (e.x.response == "bis" and GREEN or e.x.response == "upgrade" and BLUE or GREY) .. (RA.RESPONSES[e.x.response] or e.x.response) .. "|r"
+    local who = d and d.roster[e.name]
+    local text = (who and who.role and (K.roleIcon(who.role) .. " ") or "") .. GOLD .. e.name .. "|r  " .. (e.x.response == "bis" and GREEN or e.x.response == "upgrade" and BLUE or GREY) .. (RA.RESPONSES[e.x.response] or e.x.response) .. "|r"
       .. GREY .. "  · ce soir : " .. (got[e.name] or 0) .. " objet(s)  · " .. (votes[e.name] or 0) .. " voix|r"
       .. (#gear > 0 and ("\n" .. GREY .. "porte |r" .. table.concat(gear, ", ")) or "") .. (e.x.note ~= "" and ("\n" .. GREY .. "« " .. e.x.note .. " »|r") or "")
     local buttons = {}
@@ -222,6 +224,11 @@ RA.sheetWindow = function() return sheetWin end
 --------------------------------------------------------------------------------------------------------------------
 function RA.FillTab(L)
   local d = RA.Current()
+  if RA.test then
+    L.Header("Raid d'essai")
+    L.Add(ORANGE .. "Joueurs fictifs : rien ne part au site, au chat du raid ni aux autres joueurs.|r",
+      { { "Panneau d'essai", 140, function() RA.ShowTest() end }, { "Quitter l'essai", 130, function() RA.StopTest() end } })
+  end
   L.Header("Raid")
   if d then
     local e = d.entry
@@ -231,8 +238,11 @@ function RA.FillTab(L)
   else
     L.Add(GREY .. "Pas de raid du site dans les 2 h : charge les données du site (onglet Synchro) avant le raid.|r", { { "Fenêtre du butin", 150, function() RA.ShowLoot() end } })
   end
+  if not RA.test and not (IsInGroup and IsInGroup()) then
+    L.Add(GREY .. "Pour tout essayer seul (butin, conseil, fiches, consommables) : un raid fictif de 10 joueurs.|r", { { "Raid d'essai", 120, function() RA.StartTest() end } })
+  end
 
-  if IsInGroup and IsInGroup() then
+  if (IsInGroup and IsInGroup()) or RA.test then
     local rows = RA.VersionRows()
     local ok, old, none, wait = {}, {}, {}, {}
     for _, r in ipairs(rows) do
@@ -258,7 +268,10 @@ function RA.FillTab(L)
     if s then
       L.Add(string.format("Appel de %s%s|r par %s : %s%d prêt(s)|r · %s%d incomplet(s)|r · %s%d sans réponse|r%s", GOLD, date("%H:%M", RA.call.at), RA.call.by,
         GREEN, #s.ready, ORANGE, #s.missing, RED, #s.silent, RA.call.open and (GREY .. " (réponses en cours)|r") or ""))
-      for _, m in ipairs(s.missing) do L.Add(m.name .. "  " .. GREY .. table.concat(m.lacks, ", ") .. "|r") end
+      for _, m in ipairs(s.missing) do
+        local who = d.roster[m.name]
+        L.Add((who and who.role and (K.roleIcon(who.role) .. " ") or "") .. m.name .. "  " .. GREY .. table.concat(m.lacks, ", ") .. "|r")
+      end
       if #s.silent > 0 then L.Add(RED .. "Sans réponse : |r" .. names(s.silent, 12)) end
     end
     local buttons = {}
@@ -294,4 +307,5 @@ end
 function RA.RefreshWindows()
   ns.safe("butin", RA.RefreshLoot)
   ns.safe("conseil", RA.RefreshCouncil)
+  if ns.Test then ns.safe("essai", ns.Test.Refresh) end
 end

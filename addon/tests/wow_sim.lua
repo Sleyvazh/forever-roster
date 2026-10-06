@@ -430,6 +430,93 @@ run("conso")
 assert(errors() == beforeG and failures == 0, "onglet En raid sans erreur")
 IsInRaid = function() return false end
 IsInGroup = function() return false end
+
+-- Icônes de rôle : atlas du jeu s'il existe, sinon le rôle en texte
+assert(ns.UI.roleIcon("Tank") == "Tank" and ns.UI.roleIcon(nil) == "", "rôle en texte sans atlas")
+C_Texture = { GetAtlasInfo = function(a) return a == "UI-LFG-RoleIcon-Tank" and {} or nil end }
+GetIconForRole = function(r) if r == "TANK" then return "UI-LFG-RoleIcon-Tank" end error("Unknown role: " .. r) end
+assert(ns.UI.roleIcon("Tank") == "|A:UI-LFG-RoleIcon-Tank:14:14|a" and ns.UI.roleIcon("Heal") == "Heal", "icône de rôle du jeu")
+C_Texture, GetIconForRole = nil, nil
+
+-- 7. Raid d'essai (/fr test) : 9 joueurs fictifs ; rien n'est envoyé (chat, addons) ni noté pour le site
+local sentBefore, saidBefore = #sent, #said
+local handBefore, lootBefore = #ForeverRosterDB.handover, #(R.Current() and R.Current().loot or {})
+IsInGroup = function() return true end
+assert(not RA.StartTest() and not RA.test, "pas de raid d'essai en groupe")
+IsInGroup = function() return false end
+local simVersion = ns.version
+ns.version = "1.1.0" -- Thorn a la 0.9.0 : plus ancienne
+run("test")
+assert(RA.test and #RA.Members() == 10 and RA.Current().entry.raid.id == "essai", "raid d'essai lancé")
+RA.AskVersions(true)
+local tv = {}
+for _, r in ipairs(RA.VersionRows()) do tv[r.name] = r.state end
+assert(tv.Tournicoti == "ok" and tv.Gorrak == "ok" and tv.Thorn == "old" and tv.Mirelle ~= "ok", "versions simulées")
+COUNTS[13457], COUNTS[13452] = 6, 0
+assert(RA.CallConsumables(), "appel aux consommables (essai)")
+local ts = RA.CallSummary()
+assert(#ts.ready == 4 and #ts.missing == 4 and #ts.silent == 2, "consommables simulés : 4 prêts, 4 incomplets, 2 sans réponse")
+TARGET = "Ragnaros"
+RA.dismissed = {}
+fire("PLAYER_TARGET_CHANGED")
+assert(sw:IsShown() and sw.mine:GetText():find("Fils de la flamme"), "fiche d'essai en ciblant un PNJ")
+fire("PLAYER_REGEN_DISABLED")
+assert(not sw:IsShown(), "fiche fermée au combat")
+TARGET = nil
+ns.Test.OpenCorpse("softres")
+assert(#RA.items == 4 and RA.Current().loot == "softres", "corps d'essai (soft reserve)")
+-- SR avec bonus : mon vrai jet compte, Sylvaë (sans réservation) est ignorée
+RA.StartRoll(RA.items[1], "sr")
+fire("CHAT_MSG_SYSTEM", "Tournicoti obtient un 90 (1-100).")
+local tr = RA.Ranking()
+assert(tr[1].name == "Tournicoti" and tr[2].total == 68 and tr[3].total == 61 and RA.session.ignored["Sylvaë"], "jets SR simulés")
+RA.AwardSession()
+-- Égalité puis relance entre ex æquo
+RA.StartRoll(RA.items[1], "sr")
+local _, ttie = RA.Ranking()
+assert(ttie and #ttie == 2, "égalité simulée")
+RA.StartRoll(RA.session.item, "sr", ttie)
+local _, ttie2 = RA.Ranking()
+assert(not ttie2 and RA.session.reroll, "relance départagée")
+local tw = RA.Ranking()[1]
+RA.Keep(RA.session.item, tw.name, "sr", nil, RA.RollDetail(RA.session, tw))
+assert(#RA.Handover() == 1, "objet à remettre (essai)")
+RA.Trade(RA.Handover()[1])
+assert(#RA.Handover() == 0, "échange simulé")
+-- Personne en MS, puis jets OS (le mauvais dé est ignoré)
+RA.StartRoll(RA.items[1], "ms")
+assert(#RA.Ranking() == 0, "personne en MS")
+RA.StartRoll(RA.items[1], "os")
+local to = RA.Ranking()
+assert(#to == 2 and to[1].name == "Ilyra", "jets OS simulés")
+RA.AwardSession()
+RA.StartRoll(RA.items[1], "free")
+assert(RA.Ranking()[1].name == "Gorrak" and #RA.Ranking() == 2, "jet libre simulé")
+RA.ShowLoot()
+RA.AwardSession()
+-- Conseil : réponses (dont chuchotées), votes, ma réponse, mon vote, attribution
+ns.Test.OpenCorpse("council")
+RA.StartCouncil(RA.items[1])
+local tsid = RA.session.sid
+local tc = RA.councils[tsid]
+assert(tc.cands.Mirelle.response == "bis" and tc.cands.Mirelle.note == "chuchoté" and tc.cands.Gorrak.response == "pass", "réponses simulées")
+assert(RA.Tally(tsid).Mirelle == 1 and RA.Tally(tsid).Ilyra == 1, "votes simulés")
+assert(#RA.asks == 1, "ma fenêtre de réponse")
+RA.Respond(RA.asks[1], "upgrade")
+RA.Vote(tsid, "Mirelle")
+assert(tc.cands.Tournicoti.response == "upgrade" and RA.Tally(tsid).Mirelle == 2, "ma réponse et mon vote")
+RA.ShowCouncil(tsid)
+RA.AwardCouncil(tsid, "Mirelle")
+assert(#RA.test.log.loot == 5, "5 objets attribués pendant l'essai")
+local beforeT = errors()
+run("enraid")
+run("test")
+assert(errors() == beforeT and failures == 0, "onglet En raid et panneau d'essai sans erreur")
+assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat du raid")
+assert(#ForeverRosterDB.handover == handBefore and #(R.Current() and R.Current().loot or {}) == lootBefore, "rien noté pour le site")
+RA.StopTest()
+assert(not RA.test and #RA.items == 0 and #RA.asks == 0, "raid d'essai terminé")
+ns.version = simVersion
 UnitName = realUnitName
 
 -- Habillage du site : fenêtres reconstruites (UI rechargée), chaque onglet, la synchro rapide, le rappel et l'alerte

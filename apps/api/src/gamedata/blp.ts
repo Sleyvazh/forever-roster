@@ -7,11 +7,11 @@ import sharp from "sharp";
 
 export interface Rgba { width: number; height: number; data: Buffer }
 
-export function decodeBlp(buf: Buffer): Rgba {
+export function decodeBlp(buf: Buffer, maxSize = 1024): Rgba {
   if (buf.length < 148 || buf.toString("latin1", 0, 4) !== "BLP2") throw new Error("pas un fichier BLP2");
   const compression = buf.readUInt8(8), alphaDepth = buf.readUInt8(9), alphaType = buf.readUInt8(10);
   const width = buf.readUInt32LE(12), height = buf.readUInt32LE(16);
-  if (!width || !height || width > 1024 || height > 1024) throw new Error(`taille invalide ${width}×${height}`);
+  if (!width || !height || width > maxSize || height > maxSize) throw new Error(`taille invalide ${width}×${height}`);
   const offset = buf.readUInt32LE(20), size = buf.readUInt32LE(84);
   if (!offset || offset + size > buf.length) throw new Error("données tronquées");
   const src = buf.subarray(offset, offset + size);
@@ -89,6 +89,17 @@ function dxt5Alpha(b: Buffer, px: Buffer) {
   let bits = 0n;
   for (let k = 0; k < 6; k++) bits |= BigInt(b[2 + k]!) << BigInt(8 * k);
   for (let i = 0; i < 16; i++) px[i * 4 + 3] = a[Number((bits >> BigInt(3 * i)) & 7n)]!;
+}
+
+/** Fichier BLP du jeu par son identifiant, depuis wago.tools (branches essayées dans l'ordre), ou null. */
+export async function fetchBlp(fid: number, branches: string[]) {
+  for (const branch of branches) {
+    const res = await fetch(`https://wago.tools/api/casc/${fid}?download&branch=${encodeURIComponent(branch)}`, { signal: AbortSignal.timeout(20_000) });
+    if (!res.ok) continue;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.toString("latin1", 0, 4) === "BLP2") return buf;
+  }
+  return null;
 }
 
 /** BLP → JPEG 56×56 sur fond noir (même format que les icônes du serveur d'images de Blizzard). */

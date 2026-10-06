@@ -362,8 +362,24 @@ local function colored(cls, name)
   return c and ("|c" .. (c.colorStr or "ffffffff") .. name .. "|r") or name
 end
 
+-- Icône de rôle du jeu (atlas de la recherche de groupe) dans un texte, sinon le rôle en toutes lettres
+local ROLE_KEY = { Tank = "TANK", Heal = "HEALER", DPS = "DAMAGER" }
+local ROLE_ATLAS = { Tank = "UI-LFG-RoleIcon-Tank", Heal = "UI-LFG-RoleIcon-Healer", DPS = "UI-LFG-RoleIcon-DPS" }
+local function roleIcon(role, size)
+  if not ROLE_KEY[role or ""] then return role or "" end
+  local atlas = ROLE_ATLAS[role]
+  if GetIconForRole then
+    local ok, a = pcall(GetIconForRole, ROLE_KEY[role])
+    if ok and type(a) == "string" then atlas = a end
+  end
+  if not (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)) then return role end
+  size = size or 14
+  return CreateAtlasMarkup and CreateAtlasMarkup(atlas, size, size) or ("|A:" .. atlas .. ":" .. size .. ":" .. size .. "|a")
+end
+U.roleIcon = roleIcon
+
 -- Outils partagés avec les fenêtres du raid (Raid.lua : butin, conseil, fiche du boss)
-U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea, front = front }
+U.kit = { window = window, button = button, list = list, hint = hint, colored = colored, site = site, textArea = textArea, front = front, roleIcon = roleIcon }
 
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
@@ -442,7 +458,7 @@ refreshers.compo = function(p)
         group = m.group
         L.Header(group > 0 and ("Groupe " .. group) or "Non placés")
       end
-      L.Add(string.format("%s  %s%s %s|r  %s%s", colored(m.class, m.name), GREY, m.role or "", m.spec or "", STATE[s.state] or s.state,
+      L.Add(string.format("%s  %s%s %s|r  %s%s", colored(m.class, m.name), GREY, roleIcon(m.role), m.spec or "", STATE[s.state] or s.state,
         (s.state ~= "missing" and s.online == false) and " |cffff6b5e(hors ligne)|r" or ""))
     end
   end

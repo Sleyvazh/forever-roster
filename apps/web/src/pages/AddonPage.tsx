@@ -88,7 +88,9 @@ function Sync() {
 const COMMANDS: [string, string][] = [
   ["Ta touche de synchro", "« Synchro rapide avec le site » : une seule case, ton export déjà sélectionné (Ctrl+C) ou tu y colles les données du site (Ctrl+V). À choisir dans l'onglet Options de l'addon."],
   ["/fr", "Ouvrir ou fermer la fenêtre (comme le bouton de la minicarte ; clic droit : synchro rapide)"],
-  ["/fr synchro · raids · compo · patrons · options", "Ouvrir directement un onglet"],
+  ["/fr synchro · raids · enraid · compo · patrons · options", "Ouvrir directement un onglet"],
+  ["/fr butin · /fr boss · /fr conso", "Fenêtre du maître du butin, fiche du boss, appel aux consommables (en raid)"],
+  ["/fr test", "Raid d'essai : toi et 9 joueurs fictifs pour tout essayer seul (butin, conseil, fiches de boss, consommables), sans rien envoyer"],
   ["/fr habillage", "Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options)"],
   ["/fr cherche + Maj+clic sur un objet", "Marquer un patron vu ailleurs (hôtel des ventes, chat) comme recherché, ou l'en retirer"],
 ];

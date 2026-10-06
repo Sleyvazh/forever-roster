@@ -1137,3 +1137,8 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
   .pr-crow { grid-template-columns: minmax(0, 1fr) 64px 28px; }
   .pr-crow select { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Icônes de rôle du jeu (components/RoleIcon.tsx) : à la place des pastilles Tank / Heal / DPS */
+.ricon { display: inline-block; width: 16px; height: 16px; vertical-align: -3px; flex: none; object-fit: contain; }
+.rtag { display: inline-flex; align-items: center; gap: 4px; font: 600 12px/1 var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.rtag .ricon { vertical-align: 0; }
