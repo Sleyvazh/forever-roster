@@ -36,9 +36,9 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const site = useSite();
   const loc = useLocation();
   if (me.isLoading) return <p className="muted">Chargement…</p>;
-  if (!me.data?.user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.hash)}`} replace />;
+  if (!me.data?.user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />;
   // Site pas encore ouvert (Roster avant les données Retail) : seul le compte est accessible
-  if (!site.open && loc.pathname !== "/account") return <ComingSoon />;
+  if (!site.open && loc.pathname !== "/account" && loc.pathname !== "/appairer") return <ComingSoon />;
   return <>{children}</>;
 }
 

@@ -80,6 +80,12 @@ export function addonZip(): Plugin {
       mkdirSync(path.join(outDir, "downloads"), { recursive: true });
       writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip"), data);
       writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip.sha256"), `${createHash("sha256").update(data).digest("hex")}  ForeverRoster.zip\n`);
+      // Roster Companion (lot K1) : version et empreinte lues par l'appli pour installer ou mettre à jour l'addon
+      const toc = readFileSync(path.join(ADDON_DIR, "ForeverRoster.toc"), "utf8");
+      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.json"), `${JSON.stringify({
+        name: "ForeverRoster", file: "ForeverRoster.zip", version: addonVersion(),
+        interface: toc.match(/^## Interface:\s*(.+)$/m)?.[1]?.trim() ?? "", sha256: createHash("sha256").update(data).digest("hex"), size: data.length,
+      }, null, 2)}\n`);
     },
   };
 }

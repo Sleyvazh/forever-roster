@@ -1,8 +1,8 @@
 import { parseCharacterExports, parseRaidLogs, type CharacterExport, type RaidLogExport } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ApiError, get, post, type Character } from "../api";
-import { ALL_PARTS, applyBlocks, blockKey, blockSummary, guessTarget, PARTS, type ApplyResult, type Part, type Target } from "../addonImport";
+import { ApiError, get, type Character } from "../api";
+import { ALL_PARTS, blockKey, blockSummary, guessTarget, importOnServer, PARTS, type ApplyResult, type Part, type Target } from "../addonImport";
 import { ClassIcon } from "./Icons";
 import { flushAutosaves } from "../autosave";
 
@@ -17,6 +17,7 @@ export function PasteImport() {
   const qc = useQueryClient();
   const chars = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
   const [blocks, setBlocks] = useState<CharacterExport[] | null>(null);
+  const [pasted, setPasted] = useState("");
   const [logs, setLogs] = useState<RaidLogExport[]>([]);
   const [skipLogs, setSkipLogs] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<string[]>([]);
@@ -33,7 +34,7 @@ export function PasteImport() {
       const text = e.clipboardData?.getData("text/plain") ?? "";
       if (!/^\s*FR[CB];/.test(text)) return;
       e.preventDefault();
-      setResults(null); setTargets({}); setSkipLogs(new Set());
+      setResults(null); setTargets({}); setSkipLogs(new Set()); setPasted(text);
       // Persos (blocs FRC) et bilans de raid relevés par l'addon (blocs FRB), dans le même collage
       const raid = parseRaidLogs(text);
       setLogs(raid.data);
@@ -63,16 +64,12 @@ export function PasteImport() {
   const apply = async () => {
     setBusy(true);
     await flushAutosaves(); // une modification de la fiche encore en attente part avant l'import, pas après
-    const out: ApplyResult[] = [];
-    out.push(...await applyBlocks(blocks, targetOf, parts, mine));
-    // Bilans après les persos : le BiS reçu est coché sur la fiche à jour (sinon l'équipement des persos l'écraserait)
-    for (const l of logsToSave) {
-      const label = `Bilan de ${l.raidName || "raid"}`;
-      try {
-        const r = await post<{ attendees: number; loot: number; bis: number; unknown: string[] }>("/raid-logs",
-          { raidId: l.raidId, start: l.start, end: l.end, recorder: l.recorder, instance: l.instance, attendees: l.attendees, loot: l.loot, consumableCall: l.consumableCall });
-        out.push({ name: label, ok: true, msg: `enregistré · ${r.attendees} présent${r.attendees > 1 ? "s" : ""}, ${r.loot} objet${r.loot > 1 ? "s" : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
-      } catch (e) { out.push({ name: label, ok: false, msg: e instanceof ApiError ? e.message : "enregistrement impossible" }); }
+    let out: ApplyResult[];
+    try {
+      // Persos puis bilans, appliqués par le serveur (le BiS reçu est coché sur la fiche à jour)
+      out = await importOnServer(pasted, Object.fromEntries(blocks.map(d => [blockKey(d), targetOf(d)])), parts, [...skipLogs]);
+    } catch (e) {
+      out = [{ name: "Mise à jour", ok: false, msg: e instanceof ApiError ? e.message : "mise à jour impossible" }];
     }
     await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["character"] }),
       qc.invalidateQueries({ queryKey: ["char-recipes"] }), qc.invalidateQueries({ queryKey: ["raids"] }), qc.invalidateQueries({ queryKey: ["week"] }),

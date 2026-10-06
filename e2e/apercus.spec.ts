@@ -423,6 +423,41 @@ test("aperçus du lot I", async ({ page }) => {
   await page.locator("table.rl-att").screenshot({ path: `${OUT}/apercu-presence-objets.png` });
 });
 
+test("aperçus du lot K1", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await page.goto("/login");
+  await page.fill("#email", EMAIL);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+
+  // 1. Page /appairer : ce que Roster Companion a déclaré, le code à comparer, Autoriser / Refuser
+  const start = await (await page.request.post("/api/devices/pair", { data: { name: "PC-FLO", platform: "Windows 11", appVersion: "0.1.0" } })).json();
+  await page.goto(`/appairer?code=${start.userCode}`);
+  await expect(page.locator(".cp-code")).toHaveText(start.userCode);
+  await page.locator(".cp-page").screenshot({ path: `${OUT}/apercu-appairer.png` });
+  await page.getByRole("button", { name: "Autoriser cet appareil" }).click();
+  await expect(page.getByRole("status")).toContainText("PC-FLO est relié");
+  await page.locator(".cp-page").screenshot({ path: `${OUT}/apercu-appairer-ok.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const second = await (await page.request.post("/api/devices/pair", { data: { name: "PORTABLE", platform: "Windows 10", appVersion: "0.1.0" } })).json();
+  await page.goto(`/appairer?code=${second.userCode}`);
+  await expect(page.locator(".cp-code")).toHaveText(second.userCode);
+  await page.screenshot({ path: `${OUT}/apercu-appairer-mobile.png`, fullPage: true });
+  await page.getByRole("button", { name: "Autoriser cet appareil" }).click();
+  await page.setViewportSize({ width: 1360, height: 900 });
+
+  // 2. Compte & sécurité : appareils reliés (l'appli a reçu son jeton) et journal
+  await new Promise(r => setTimeout(r, 4200));
+  for (const s of [start, second]) await page.request.post("/api/devices/pair/poll", { data: { pairId: s.pairId } });
+  await page.goto("/account");
+  await expect(page.locator("#appareils")).toContainText("PORTABLE");
+  await page.locator("#appareils").screenshot({ path: `${OUT}/apercu-appareils.png` });
+});
+
 /**
  * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
  * Sortie : test-results/tour/.

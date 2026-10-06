@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 34, date: "2026-10-06", kind: "site", title: "Le Ctrl+V se souvient de tes fiches partout",
+    text: "Quand tu colles l'export de l'addon, le site retient quelle fiche va avec quel perso du jeu, sur ton compte et plus seulement dans ce navigateur : sur un autre ordinateur ou après avoir renommé une fiche, tout est retrouvé sans rien choisir. La mise à jour se fait aussi d'un seul coup, plus vite. Et ça prépare Roster Companion, l'appli (en option) qui fera la synchro entre le jeu et le site sans copier-coller." },
   { n: 33, date: "2026-10-06", kind: "addon", version: "1.2", title: "Objets lus comme le veut le client de Forever",
     text: "Le jeu de Forever range autrement ses fonctions d'objets : l'addon 1.2.1 les utilise maintenant pour les noms d'objets, le nombre de consommables dans tes sacs (appel aux consommables) et la fin d'un échange (objet remis). /fr objet dit aussi si un objet est connu du jeu et du serveur." },
   { n: 32, date: "2026-10-06", kind: "addon", version: "1.2", title: "Conseil du butin en tableau",

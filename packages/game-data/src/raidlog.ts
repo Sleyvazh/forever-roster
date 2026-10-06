@@ -13,6 +13,9 @@ import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from
  * Version 2 (lot C2) : l'en-tête ajoute l'instance réelle (nom renvoyé par le jeu), et L la façon dont l'objet
  * a été attribué : `L;<objet>;<reçu par>;<heure>;<boss>;<méthode>;<réponse>;<détail>` (champs vides permis).
  *
+ * Lot K1 (addon 1.3) : 9e champ de l'en-tête, `1` si celui qui a relevé menait le raid ou distribuait le butin
+ * (chef de raid) : Roster Companion n'envoie tout seul que ce bilan-là. Absent ou `0` sinon.
+ *
  * Lot G (hors du compte de END, ignoré par un site plus ancien) : appel aux consommables lancé en raid,
  * `Q;<heure unix>;<lancé par>` puis `K;<nom en jeu>;<objet:quantité,…>` par joueur (`-` : pas de réponse, pas d'addon).
  */
@@ -23,6 +26,8 @@ export interface RaidLogExport {
   raidId: string; start: number; end: number; recorder: string; raidName: string;
   /** Version 2 : instance où le relevé a été fait (nom du jeu). */
   instance?: string;
+  /** Lot K1 : relevé par le chef de raid (il menait le raid ou distribuait le butin). */
+  lead?: boolean;
   attendees: RaidLogAttendee[]; loot: RaidLogLoot[];
   /** Lot G : dernier appel aux consommables (null par joueur : pas de réponse). */
   consumableCall?: { at: number; by: string; counts: { name: string; items: Record<number, number> | null }[] };
@@ -43,6 +48,7 @@ function parseBlock(lines: string[]): { ok: true; data: RaidLogExport } | { ok: 
   if (start === null || end === null || end < start) return { ok: false, error: "heures du bilan illisibles" };
   const data: RaidLogExport = { raidId: raidId.toLowerCase(), start, end, recorder: gameNameOf(head[5] ?? ""), raidName: txt(head[6], 60), attendees: [], loot: [] };
   if (head[1] === "2" && txt(head[7], 60)) data.instance = txt(head[7], 60);
+  if (head[1] === "2" && head[8]?.trim() === "1") data.lead = true;
   let count: number | null = null;
   for (const line of lines.slice(1)) {
     const f = line.trim().split(";");

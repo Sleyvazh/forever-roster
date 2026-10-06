@@ -22,3 +22,24 @@ export function RosterLogo({ size = 30, className }: { size?: number; className?
     </svg>
   );
 }
+
+/**
+ * Logo de Roster Companion (appli de synchro, lot K1) : l'épée commune aux deux sites dans deux flèches de synchro
+ * (choix de Flo, 06/10 : dessin A). Dessin original, lisible en 16 px.
+ */
+export function CompanionLogo({ size = 30, className }: { size?: number; className?: string }) {
+  return (
+    <svg className={`logo ${className ?? ""}`} viewBox="0 0 64 64" width={size} height={size} aria-hidden="true" focusable="false">
+      <path d="M11.15 22.28 A23 23 0 0 1 51.92 20.50" fill="none" stroke="currentColor" strokeWidth="4.4" strokeLinecap="round"/>
+      <path d="M55.14 26.97 L56.52 17.95 L47.18 22.51 Z" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
+      <path d="M52.85 41.72 A23 23 0 0 1 12.08 43.50" fill="none" stroke="currentColor" strokeWidth="4.4" strokeLinecap="round"/>
+      <path d="M8.86 37.03 L7.48 46.05 L16.82 41.49 Z" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round"/>
+      <g transform="translate(9.6 12.2) scale(.7)">
+        <path d="M32 3 L34.6 8.5 L34.6 44 L32 48 L29.4 44 L29.4 8.5 Z" fill="currentColor"/>
+        <path d="M22 44 H42" stroke="currentColor" strokeWidth="4.4" strokeLinecap="round"/>
+        <rect x="30.2" y="46" width="3.6" height="7.5" fill="currentColor"/>
+        <rect x="28.8" y="53.8" width="6.4" height="6.4" fill="currentColor" transform="rotate(45 32 57)"/>
+      </g>
+    </svg>
+  );
+}

@@ -25,3 +25,24 @@ export function parseTalentLink(input: string): TalentLink {
   const points = blocks.map(s => [...s].reduce((a, d) => a + Number(d), 0)) as [number, number, number];
   return { ok: true, cls, points, blocks, split: points.join("/") };
 }
+
+/** Talent d'un arbre de Forever, tel que le lien du calculateur le range (ordre linkIndex). */
+export interface LinkTalent { id: number; tree: number; linkIndex: number; maxRank: number }
+
+/**
+ * Talents pris en jeu (rang par nœud, export de l'addon) → lien du calculateur et répartition (« 9/37/5 »).
+ * Null si la classe est inconnue ou si aucun point n'est placé.
+ */
+export function linkFromRanks(cls: string, talents: LinkTalent[], ranks: Map<number, number>) {
+  const slug = CLASSES[cls as ClassName]?.slug;
+  if (!slug) return null;
+  const blocks = [0, 1, 2].map(tree => {
+    const list = talents.filter(t => t.tree === tree);
+    const digits = Array.from({ length: Math.max(0, ...list.map(t => t.linkIndex + 1)) }, () => 0);
+    for (const t of list) digits[t.linkIndex] = Math.min(t.maxRank, ranks.get(t.id) ?? 0);
+    return digits.join("").replace(/0+$/, "");
+  });
+  const points = blocks.map(b => [...b].reduce((a, d) => a + Number(d), 0));
+  if (!points.some(Boolean)) return null;
+  return { link: `https://foreverchanges.pro/talents/${slug}?b=${blocks.join("-").replace(/-+$/, "")}`, split: points.join("/") };
+}

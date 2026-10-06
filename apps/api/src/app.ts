@@ -28,6 +28,9 @@ import { raidLogRoutes } from "./routes/raidlogs";
 import { imageRoutes } from "./routes/images";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
 import { siteRoutes } from "./routes/site";
+import { deviceRoutes } from "./routes/devices";
+import { syncRoutes } from "./routes/sync";
+import { registerDeviceAuth } from "./lib/device-auth";
 
 export interface AppContext {
   db: Db;
@@ -65,6 +68,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   }
 
   registerSession(app);
+  registerDeviceAuth(app);
 
   // Images envoyées en binaire brut (le navigateur a déjà recadré) ; limite propre à ce type de contenu.
   app.addContentTypeParser(IMAGE_TYPES, { parseAs: "buffer", bodyLimit: MAX_UPLOAD_BYTES }, (_req, body, done) => done(null, body));
@@ -101,6 +105,9 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(absenceRoutes, { prefix: "/api/absences" });
   await app.register(imageRoutes, { prefix: "/api/images" });
   await app.register(eventRoutes, { prefix: "/api/events" });
+  // Roster Companion (lot K1) : appairage des appareils et synchro par jeton
+  await app.register(deviceRoutes, { prefix: "/api/devices" });
+  await app.register(syncRoutes, { prefix: "/api/sync" });
 
   return app;
 }

@@ -15,7 +15,7 @@ import { currentUser, requireAuth } from "../lib/session";
 /** Présence comptée sur les derniers raids relevés du groupe. */
 const RECENT_RAIDS = 8;
 
-const logInput = z.object({
+export const logInput = z.object({
   raidId: z.uuid(),
   start: z.int().min(0), end: z.int().min(0),
   recorder: z.string().trim().max(40),
@@ -26,12 +26,16 @@ const logInput = z.object({
   })).max(200),
   /** Bilan v2 : instance réelle (sinon, le nom du raid sert pour le catalogue de butin). */
   instance: z.string().trim().max(60).optional(),
+  /** Lot K1 : relevé par le chef de raid (addon 1.3). */
+  lead: z.boolean().optional(),
   /** Lot G : appel aux consommables lancé en raid (quantités par joueur, null : pas de réponse). */
   consumableCall: z.object({
     at: z.int().min(0), by: z.string().trim().max(40),
     counts: z.array(z.object({ name: z.string().trim().min(1).max(40), items: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).nullable() })).max(80),
   }).optional(),
 });
+
+export type RaidLogInput = z.infer<typeof logInput>;
 
 type GroupChar = { id: string; name: string; cls: string; userId: string; owner: string; gear: Gear };
 const key = (name: string) => gameName(name).toLowerCase();
@@ -98,52 +102,60 @@ export async function raidLogView(db: Db, raid: { id: string; groupId: string; s
   return { recorder: log.recorder, startedAt: log.startedAt, endedAt: log.endedAt, updatedAt: log.updatedAt, attendance, loot };
 }
 
+/**
+ * Enregistre le bilan relevé par l'addon (remplace le précédent). Réservé aux officiers du groupe et au créateur du raid :
+ * le relevé de n'importe quel joueur présent ressemblerait, mais un seul fait foi. Les objectifs BiS reçus sont cochés « obtenu ».
+ * auto (Roster Companion) : un bilan qui n'est pas celui du chef de raid ne remplace pas celui du chef (kept).
+ */
+export async function saveRaidLog(db: Db, userId: string, body: RaidLogInput, opts: { auto?: boolean } = {}) {
+  const [raid] = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, createdBy: raids.createdBy }).from(raids).where(eq(raids.id, body.raidId));
+  if (!raid) throw notFound("Raid introuvable (supprimé du site ?).");
+  const role = await membership(db, raid.groupId, userId);
+  if (role === "member" && raid.createdBy !== userId) throw forbidden("Seuls les officiers du groupe enregistrent le bilan d'un raid.");
+  if (body.end < body.start) throw badRequest("Heures du bilan incohérentes.");
+
+  // Catalogue de butin appris (instance réelle, sinon le nom du raid) ; un nouveau collage ne recompte pas
+  const [before] = await db.select({ loot: raidLogs.loot, lead: raidLogs.lead }).from(raidLogs).where(eq(raidLogs.raidId, raid.id));
+  if (opts.auto && before?.lead && !body.lead) {
+    return { status: "kept" as const, raid: { id: raid.id, groupId: raid.groupId, name: raid.name }, attendees: body.attendees.length, loot: body.loot.length, bis: 0, unknown: [] as string[] };
+  }
+  const values = {
+    recordedBy: userId, recorder: body.recorder, startedAt: new Date(body.start * 1000), endedAt: new Date(body.end * 1000),
+    attendees: body.attendees, loot: body.loot, lead: !!body.lead, updatedAt: new Date(),
+    // Un bilan recollé sans appel garde l'appel déjà enregistré
+    ...(body.consumableCall && { consumableCall: body.consumableCall }),
+  };
+  await learnLoot(db, body.instance || raid.name, body.loot, before?.loot ?? []);
+  await db.insert(raidLogs).values({ raidId: raid.id, ...values }).onConflictDoUpdate({ target: raidLogs.raidId, set: values });
+
+  // Objectifs BiS reçus pendant le raid : cochés « obtenu » sur la fiche du perso
+  const { byName } = await groupCharacters(db, raid.groupId);
+  const signed = new Set((await db.select({ id: raidSignups.characterId }).from(raidSignups).where(eq(raidSignups.raidId, raid.id))).flatMap(s => (s.id ? [s.id] : [])));
+  let bis = 0;
+  const updated = new Map<string, Gear>();
+  for (const l of body.loot) {
+    const c = pick(byName, l.name, signed);
+    if (!c) continue;
+    const gear = updated.get(c.id) ?? { ...c.gear };
+    for (const [slot, g] of Object.entries(gear)) {
+      if (g?.bisId === l.itemId && !g.got) { gear[slot] = { ...g, got: true }; bis++; updated.set(c.id, gear); }
+    }
+  }
+  for (const [id, gear] of updated) await db.update(characters).set({ gear, updatedAt: new Date() }).where(eq(characters.id, id));
+  const unknown = body.attendees.filter(a => !byName.has(key(a.name))).map(a => a.name);
+  bus.group({ t: "raid", g: raid.groupId, r: raid.id });
+  if (updated.size) bus.group({ t: "chars", g: raid.groupId });
+  return { status: "saved" as const, raid: { id: raid.id, groupId: raid.groupId, name: raid.name }, attendees: body.attendees.length, loot: body.loot.length, bis, unknown };
+}
+
 export async function raidLogRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
   app.addHook("preHandler", requireAuth);
 
-  /**
-   * Enregistre le bilan relevé par l'addon (remplace le précédent). Réservé aux officiers du groupe et au créateur du raid :
-   * le relevé de n'importe quel joueur présent ressemblerait, mais un seul fait foi. Les objectifs BiS reçus sont cochés « obtenu ».
-   */
   app.post("/raid-logs", async (req) => {
     const u = currentUser(req);
-    const body = parse(logInput, req.body);
-    const [raid] = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, createdBy: raids.createdBy }).from(raids).where(eq(raids.id, body.raidId));
-    if (!raid) throw notFound("Raid introuvable (supprimé du site ?).");
-    const role = await membership(db, raid.groupId, u.id);
-    if (role === "member" && raid.createdBy !== u.id) throw forbidden("Seuls les officiers du groupe enregistrent le bilan d'un raid.");
-    if (body.end < body.start) throw badRequest("Heures du bilan incohérentes.");
-
-    const values = {
-      recordedBy: u.id, recorder: body.recorder, startedAt: new Date(body.start * 1000), endedAt: new Date(body.end * 1000),
-      attendees: body.attendees, loot: body.loot, updatedAt: new Date(),
-      // Un bilan recollé sans appel garde l'appel déjà enregistré
-      ...(body.consumableCall && { consumableCall: body.consumableCall }),
-    };
-    // Catalogue de butin appris (instance réelle, sinon le nom du raid) ; un nouveau collage ne recompte pas
-    const [before] = await db.select({ loot: raidLogs.loot }).from(raidLogs).where(eq(raidLogs.raidId, raid.id));
-    await learnLoot(db, body.instance || raid.name, body.loot, before?.loot ?? []);
-    await db.insert(raidLogs).values({ raidId: raid.id, ...values }).onConflictDoUpdate({ target: raidLogs.raidId, set: values });
-
-    // Objectifs BiS reçus pendant le raid : cochés « obtenu » sur la fiche du perso
-    const { byName } = await groupCharacters(db, raid.groupId);
-    const signed = new Set((await db.select({ id: raidSignups.characterId }).from(raidSignups).where(eq(raidSignups.raidId, raid.id))).flatMap(s => (s.id ? [s.id] : [])));
-    let bis = 0;
-    const updated = new Map<string, Gear>();
-    for (const l of body.loot) {
-      const c = pick(byName, l.name, signed);
-      if (!c) continue;
-      const gear = updated.get(c.id) ?? { ...c.gear };
-      for (const [slot, g] of Object.entries(gear)) {
-        if (g?.bisId === l.itemId && !g.got) { gear[slot] = { ...g, got: true }; bis++; updated.set(c.id, gear); }
-      }
-    }
-    for (const [id, gear] of updated) await db.update(characters).set({ gear, updatedAt: new Date() }).where(eq(characters.id, id));
-    const unknown = body.attendees.filter(a => !byName.has(key(a.name))).map(a => a.name);
-    bus.group({ t: "raid", g: raid.groupId, r: raid.id });
-    if (updated.size) bus.group({ t: "chars", g: raid.groupId });
-    return { raid: { id: raid.id, groupId: raid.groupId, name: raid.name }, attendees: body.attendees.length, loot: body.loot.length, bis, unknown };
+    const r = await saveRaidLog(db, u.id, parse(logInput, req.body));
+    return { raid: r.raid, attendees: r.attendees, loot: r.loot, bis: r.bis, unknown: r.unknown };
   });
 
   /** Présence et butin du groupe : les derniers raids relevés, et pour chaque perso ses statuts, son taux et ses objets. */

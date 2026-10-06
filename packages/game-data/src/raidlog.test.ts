@@ -29,6 +29,10 @@ END;4`;
     const r = parseRaidLogs(v2);
     expect(r.errors).toEqual([]);
     expect(r.data[0]!.instance).toBe("Molten Core");
+    expect(r.data[0]!.lead).toBeUndefined();
+    // Lot K1 : 9e champ = relevé par le chef de raid
+    expect(parseRaidLogs(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;1")).data[0]!.lead).toBe(true);
+    expect(parseRaidLogs(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;0")).data[0]!.lead).toBeUndefined();
     expect(r.data[0]!.loot).toEqual([
       { itemId: 16828, name: "Thalwen", at: 3000, boss: "Lucifron", method: "council", response: "bis", detail: "3 votes" },
       { itemId: 17063, name: "Grumdal", at: 5000, boss: "Garr", method: "sr", detail: "jet 87 + 10" },

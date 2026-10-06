@@ -60,6 +60,8 @@ export interface Character {
   talentNodes?: import("@forever/game-data").ExportedTalentNode[] | null;
   /** Dernière mise à jour depuis l'addon. */
   addonSyncedAt?: string | null;
+  /** Lot K1 : perso du jeu lié à la fiche (« Prénom-Royaume »), retenu par l'import de l'addon. */
+  addonKey?: string | null;
   /** Dans la liste des persos d'un groupe : perso principal (main) de son joueur dans ce groupe. */
   isMain?: boolean;
   /** Dans Mes persos : groupe où le perso est rangé (un seul, ou aucun) et s'il y est le main. */

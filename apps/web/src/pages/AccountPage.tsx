@@ -21,11 +21,13 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   group_created: ["Groupe créé", ""], group_joined: ["Groupe rejoint", ""], group_left: ["Groupe quitté", ""],
   group_role_changed: ["Rôle modifié dans un groupe", ""], group_member_removed: ["Membre retiré d'un groupe", ""],
   invite_created: ["Invitation créée", ""], invite_revoked: ["Invitation révoquée", ""], raid_created: ["Raid créé", ""], raid_deleted: ["Raid supprimé", ""],
+  device_linked: ["Appareil relié", "warn"], device_pair_denied: ["Appairage refusé", "warn"], device_unlinked: ["Appareil délié", ""],
 };
 
 /** Résumé lisible d'un user-agent, sans bibliothèque. */
 function device(ua: string | null) {
   if (!ua) return "Appareil inconnu";
+  if (/RosterCompanion/.test(ua)) return "Roster Companion";
   const os = /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "macOS" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Linux/.test(ua) ? "Linux" : "Autre";
   const br = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Navigateur";
   return `${br} · ${os}`;
@@ -71,6 +73,7 @@ export function AccountPage() {
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
       </div>
       <Sessions />
+      <Devices />
       <AuditLog />
       <DeleteAccount hasPassword={user.hasPassword} />
     </div>
@@ -203,6 +206,37 @@ function Sessions() {
   );
 }
 
+interface DeviceRow { id: string; name: string; platform: string; appVersion: string; createdAt: string; lastSeenAt: string; lastSyncAt: string | null }
+
+/** Roster Companion (lot K1) : appareils reliés au compte. Section absente tant qu'il n'y en a pas. */
+function Devices() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["devices"], queryFn: () => get<{ devices: DeviceRow[] }>("/devices") });
+  const a = useAction();
+  if (!data?.devices.length) return a.view;
+  return (
+    <section className="panel pad stack" id="appareils">
+      <div><h3>Appareils reliés</h3><p className="hint" style={{ margin: "4px 0 0" }}>Roster Companion sur tes ordinateurs. Un appareil délié ne peut plus rien envoyer ni recevoir.</p></div>
+      {a.view}
+      <div className="tscroll"><table className="data">
+        <thead><tr><th>Appareil</th><th>Relié le</th><th>Dernière synchro</th><th /></tr></thead>
+        <tbody>{data.devices.map(d => (
+          <tr key={d.id}>
+            <td><strong>{d.name}</strong><div className="small muted">{[d.platform, d.appVersion && `appli ${d.appVersion}`].filter(Boolean).join(" · ")}</div></td>
+            <td className="small">{fmt.format(new Date(d.createdAt))}</td>
+            <td className="small">{d.lastSyncAt ? fmt.format(new Date(d.lastSyncAt)) : <span className="muted">pas encore</span>}</td>
+            <td><button className="btn ghost sm" type="button" onClick={() => void a.run(async () => {
+              await del(`/devices/${d.id}`);
+              await Promise.all([qc.invalidateQueries({ queryKey: ["devices"] }), qc.invalidateQueries({ queryKey: ["audit"] })]);
+              return `${d.name} délié.`;
+            })}>Délier</button></td>
+          </tr>
+        ))}</tbody>
+      </table></div>
+    </section>
+  );
+}
+
 function AuditLog() {
   const { data } = useQuery({ queryKey: ["audit"], queryFn: () => get<{ events: EventRow[] }>("/account/audit") });
   return (
@@ -210,7 +244,9 @@ function AuditLog() {
       <div className="tscroll" style={{ maxHeight: 420, overflowY: "auto" }}><table className="data">
         <thead><tr><th>Date</th><th>Événement</th><th>Adresse IP</th><th>Appareil</th></tr></thead>
         <tbody>{data?.events.map(e => {
-          const [label, tone] = EVENT[e.type] ?? [e.type, ""];
+          const [base, tone] = EVENT[e.type] ?? [e.type, ""];
+          // Appareils (Roster Companion) : leur nom suit le libellé
+          const label = e.type.startsWith("device_") && typeof e.meta.name === "string" ? `${base} : ${e.meta.name}` : base;
           return (
             <tr key={e.id}>
               <td className="small">{fmt.format(new Date(e.createdAt))}</td>

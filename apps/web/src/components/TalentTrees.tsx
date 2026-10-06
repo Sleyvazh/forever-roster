@@ -37,20 +37,6 @@ export function ranksFrom(talents: Talent[], source: { blocks?: readonly string[
 }
 
 /** Lien ForeverChanges et répartition reconstruits depuis des rangs par nœud (export de l'addon). */
-export function linkFromRanks(cls: string, talents: Talent[], ranks: Map<number, number>) {
-  const slug = CLASSES[cls as ClassName]?.slug;
-  if (!slug) return null;
-  const blocks = [0, 1, 2].map(tree => {
-    const list = talents.filter(t => t.tree === tree);
-    const digits = Array.from({ length: Math.max(0, ...list.map(t => t.linkIndex + 1)) }, () => 0);
-    for (const t of list) digits[t.linkIndex] = Math.min(t.maxRank, ranks.get(t.id) ?? 0);
-    return digits.join("").replace(/0+$/, "");
-  });
-  const points = blocks.map(b => [...b].reduce((a, d) => a + Number(d), 0));
-  if (!points.some(Boolean)) return null;
-  return { link: `https://foreverchanges.pro/talents/${slug}?b=${blocks.join("-").replace(/-+$/, "")}`, split: points.join("/") };
-}
-
 /** Icône d'un arbre : celle d'une spé de cet arbre (ex. Feral Combat → Feral Cat). */
 function TreeIcon({ cls, tree, size }: { cls: string; tree: number; size: number }) {
   const spec = ((CLASS_SPECS as Record<string, readonly SpecDef[]>)[cls] ?? []).find(d => d.tree === tree);

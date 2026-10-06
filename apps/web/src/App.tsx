@@ -9,6 +9,7 @@ import { CharactersPage } from "./pages/CharactersPage";
 import { GroupPage } from "./pages/GroupPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { JoinPage } from "./pages/JoinPage";
+import { PairPage } from "./pages/PairPage";
 import { RaidPage } from "./pages/RaidPage";
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
             <Route path="/groups/:groupId/raids/:raidId/:tab?" element={<RequireAuth><RaidPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
             <Route path="/addon" element={<RequireAuth><AddonPage /></RequireAuth>} />
+            <Route path="/appairer" element={<RequireAuth><PairPage /></RequireAuth>} />
             <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />
           </Routes>
         </main>

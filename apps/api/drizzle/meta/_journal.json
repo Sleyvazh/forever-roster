@@ -190,6 +190,13 @@
       "when": 1791277213663,
       "tag": "0026_loot_counts",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791281615053,
+      "tag": "0027_companion_devices",
+      "breakpoints": true
     }
   ]
 }

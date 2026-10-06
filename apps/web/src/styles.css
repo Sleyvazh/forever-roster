@@ -1163,3 +1163,16 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .soon { max-width: 640px; margin: 40px auto 0; }
 .soon h1 { font-size: clamp(26px, 4vw, 36px); }
 .soon p { margin: 0; color: var(--ink-2); }
+
+/* Roster Companion (lot K1) : page /appairer */
+.cp-page { max-width: 720px; }
+.cp-panel { gap: 16px; }
+.cp-dev { display: flex; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.cp-ico { width: 40px; height: 40px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--gold); background: var(--panel); border: 1px solid var(--frame); }
+.cp-ico .logo { --logo-gap: var(--panel); }
+.cp-code { font-size: 22px; font-weight: 600; letter-spacing: .14em; color: var(--gold); margin-top: 6px; }
+.cp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cp-two ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; display: grid; gap: 3px; }
+@media (max-width: 560px) { .cp-two { grid-template-columns: 1fr; } }
+.cp-warn { color: var(--warn); border-color: var(--warn); background: color-mix(in srgb, var(--warn) 7%, transparent); }
+input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }

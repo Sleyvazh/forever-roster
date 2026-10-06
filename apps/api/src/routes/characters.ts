@@ -1,27 +1,25 @@
 import { bus, charsChanged } from "../lib/events";
 import { promoteMain } from "../lib/group-characters";
-import { and, asc, eq, inArray, max, or, sql } from "drizzle-orm";
+import { and, asc, eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { PROFESSION_SKILL_LINES } from "@forever/game-data";
 import { characterRecipes, characters, gameRecipes, groupCharacters, groups, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { canSee } from "../lib/visibility";
-import { currentLines } from "../lib/professions";
+import { importKnownRecipes, MAX_RECIPES, recipeImportInput, setWantedPatterns } from "../lib/recipes";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { siteOf } from "../lib/site";
 
-const MAX_CHARACTERS = 50;
-const MAX_RECIPES = 2000;
+export const MAX_CHARACTERS = 50;
 const idParam = z.object({ id: z.uuid() });
 
 export type CharacterRow = typeof characters.$inferSelect;
 export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
-  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null,
+  portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null, addonKey: c.addonKey ?? null,
 });
 
 
@@ -141,31 +139,10 @@ export async function characterRoutes(app: FastifyInstance) {
   app.post("/:id/recipes/import", async (req) => {
     const u = currentUser(req);
     const { id } = parse(idParam, req.params);
-    const body = parse(z.object({
-      spellIds: z.array(z.int().positive()).max(MAX_RECIPES).default([]),
-      itemIds: z.array(z.int().positive()).max(MAX_RECIPES).default([]),
-      /** Métiers lus en jeu dans le même export (la fiche peut ne pas être encore enregistrée). */
-      professions: z.array(z.enum(Object.keys(PROFESSION_SKILL_LINES) as [string, ...string[]])).max(12).default([]),
-    }), req.body);
+    const body = parse(recipeImportInput, req.body);
     const [ch] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
     if (!ch) throw notFound("Personnage introuvable.");
-    const bySpell = body.spellIds.length
-      ? await db.select({ spellId: gameRecipes.spellId }).from(gameRecipes).where(inArray(gameRecipes.spellId, body.spellIds)) : [];
-    const byItem = body.itemIds.length
-      ? await db.select({ spellId: gameRecipes.spellId, skillLine: gameRecipes.skillLine, itemId: gameRecipes.createdItemId })
-        .from(gameRecipes).where(inArray(gameRecipes.createdItemId, body.itemIds)) : [];
-    // Un objet peut être fabriqué par plusieurs recettes : on garde celles des métiers du perso
-    const lines = currentLines(ch.professions);
-    for (const p of body.professions) lines.add(PROFESSION_SKILL_LINES[p]);
-    const spells = [...new Set([...bySpell.map(r => r.spellId), ...byItem.filter(r => lines.has(r.skillLine)).map(r => r.spellId)])].slice(0, MAX_RECIPES);
-    if (spells.length) {
-      await db.insert(characterRecipes).values(spells.map(spellId => ({ characterId: id, spellId, status: "known" as const })))
-        .onConflictDoUpdate({ target: [characterRecipes.characterId, characterRecipes.spellId], set: { status: "known", updatedAt: new Date() } });
-    }
-    // Inconnus : identifiants qui ne correspondent à aucune recette de la base (ou d'un autre métier)
-    const foundItems = new Set(byItem.filter(r => lines.has(r.skillLine)).map(r => r.itemId));
-    const unknown = body.spellIds.length - bySpell.length + body.itemIds.filter(i => !foundItems.has(i)).length;
-    return { known: spells.length, unknown };
+    return importKnownRecipes(db, ch, body);
   });
 
   /**
@@ -181,24 +158,7 @@ export async function characterRoutes(app: FastifyInstance) {
     }), req.body);
     const [ch] = await db.select({ id: characters.id }).from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
     if (!ch) throw notFound("Personnage introuvable.");
-    const items = [...new Set([...body.add, ...body.remove])];
-    const taught = items.length
-      ? await db.select({ spellId: gameRecipes.spellId, taughtBy: gameRecipes.taughtBy }).from(gameRecipes)
-        .where(or(...items.map(i => sql`${gameRecipes.taughtBy} @> ${JSON.stringify([i])}::jsonb`)))
-      : [];
-    const spellsFor = (itemIds: number[]) => [...new Set(taught.filter(r => r.taughtBy.some(t => itemIds.includes(t))).map(r => r.spellId))];
-    const add = spellsFor(body.add), remove = spellsFor(body.remove);
-    const current = add.length || remove.length
-      ? await db.select({ spellId: characterRecipes.spellId, status: characterRecipes.status }).from(characterRecipes)
-        .where(and(eq(characterRecipes.characterId, id), inArray(characterRecipes.spellId, [...add, ...remove])))
-      : [];
-    const status = new Map(current.map(r => [r.spellId, r.status]));
-    const toAdd = add.filter(s => !status.has(s));
-    const toRemove = remove.filter(s => status.get(s) === "wanted");
-    if (toAdd.length) await db.insert(characterRecipes).values(toAdd.map(spellId => ({ characterId: id, spellId, status: "wanted" as const }))).onConflictDoNothing();
-    if (toRemove.length) await db.delete(characterRecipes).where(and(eq(characterRecipes.characterId, id), inArray(characterRecipes.spellId, toRemove)));
-    const found = new Set(taught.flatMap(r => r.taughtBy));
-    return { added: toAdd.length, removed: toRemove.length, unknown: items.filter(i => !found.has(i)).length };
+    return setWantedPatterns(db, id, body.add, body.remove);
   });
 
   /* ----- Portrait ----- */

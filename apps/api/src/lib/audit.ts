@@ -11,7 +11,8 @@ export type AuditType =
   | "invite_created" | "invite_revoked" | "raid_created" | "raid_deleted" | "group_discord_linked" | "group_discord_unlinked"
   | "raid_template_created" | "raid_template_updated" | "raid_template_deleted" | "raid_roster_published" | "raid_roster_unpublished"
   | "group_character_changed" | "group_loot_settings" | "group_nudge_settings" | "raid_nudged" | "raid_ask_sent" | "group_orders_linked" | "group_orders_unlinked" | "raid_council"
-  | "loot_count_corrected";
+  | "loot_count_corrected"
+  | "device_linked" | "device_pair_denied" | "device_unlinked";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

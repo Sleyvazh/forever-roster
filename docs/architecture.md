@@ -80,6 +80,7 @@ erDiagram
 ```
 
 - `characters.game` et `groups.game` : `forever` ou `retail` (voir « Un site, deux adresses »).
+- Roster Companion (lot K1) : `devices` (un jeton haché par appareil relié), `device_pairings` (demandes d'appairage en cours), `addon_ignored` (persos du jeu que le joueur a choisi d'ignorer), `characters.addon_key` (perso du jeu « Prénom-Royaume » lié à la fiche, unique par compte et par jeu) et `raid_logs.lead` (bilan relevé par le chef de raid).
 - Compte des objets reçus (lot I) : calculé à la demande depuis `raid_logs.loot` sur la période du groupe (`groups.loot_settings`), moins `loot_exclusions` (objet sorti du compte, repéré par raid, objet, receveur et heure : un nouveau collage du bilan le garde), plus `loot_corrections` (± avec motif, datées).
 
 - `characters.professions`, `gear` et `legacy` sont en JSONB : leur structure est validée par zod à l'entrée et typée côté Drizzle.

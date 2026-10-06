@@ -181,6 +181,8 @@ Q;<heure unix>;<lancé par>
 K;<prénom>;<objet>:<quantité>,…   (ou « - » : pas de réponse, pas d'addon)
 ```
 
+**Lot K1 (addon 1.3)** : 9e champ de l'en-tête, `1` si celui qui a relevé est le chef de raid (il a distribué du butin avec l'addon, ou menait le raid au moins la moitié des relevés), `0` sinon. Roster Companion n'envoie tout seul que le bilan du chef ; un envoi automatique d'un autre officier ne remplace pas ce bilan (réponse `kept`). Collé à la main, le dernier bilan remplace toujours le précédent.
+
 Méthode : `council`, `sr`, `roll`, `ml` (maître du butin) ou vide ; réponse au conseil : `bis`, `upgrade`, `off`, `transmo` ou vide ; détail libre (« 3 votes », « jet 87 + 10 »). Le site lit les versions 1 et 2. Chaque bilan alimente aussi le **catalogue de butin** (objet, boss, instance ; aucune donnée de joueur), qui sert à proposer les objets d'un raid en soft reserve : les tables de butin ne sont pas dans les fichiers du jeu.
 
 Sur le site (Ctrl+V n'importe où), le bilan est enregistré sur le raid (un nouveau collage le remplace), seulement par un officier du groupe ou le créateur du raid. Les prénoms sont rapprochés des fiches des membres. Statuts : présent ; en retard (arrivé plus de 10 min après l'heure prévue) ; parti tôt (absent du dernier quart de la soirée, au moins 15 min) ; banc (inscription « banc ») ; inscrit, absent (inscrit présent ou en retard, jamais vu). Un objet reçu qui est l'objectif BiS d'une fiche y est coché « obtenu ».
@@ -200,3 +202,35 @@ Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) s
 | `LC;<session>;<gagnant>` | maître du butin → raid | Conseil terminé : les fenêtres de réponse se ferment. |
 
 Les jets (soft reserve, MS / OS, jet libre) passent par `/roll` : l'addon du maître du butin lit le message du jeu (`RANDOM_ROLL_RESULT`, dans la langue du client), ne compte que le premier jet de chacun et le bon dé (100, ou 99 en OS), ajoute le bonus SR+ ; en cas d'égalité, seuls les ex æquo relancent.
+
+
+# Roster Companion (lot K1, addon 1.3)
+
+L'appli (en option) fait la synchro sans copier-coller, avec les mêmes formats. Le jeu ne lit et n'écrit les fichiers d'addon qu'à la connexion, au `/reload` et à la déconnexion : ce n'est pas du temps réel.
+
+**Du jeu vers le site.** À `PLAYER_LOGOUT` (aussi déclenché par `/reload`), l'addon écrit dans sa sauvegarde (`WTF\Account\<compte>\SavedVariables\ForeverRoster.lua`) :
+
+```lua
+ForeverRosterDB.outbox = { v = 1, at = <unix>, addon = "1.3.0", blocks = {
+  { kind = "frc", key = "Tournicoti-Forever EU", sig = "<empreinte>", text = "FRC;2;…\nEND;7" },
+  { kind = "frb", key = "frb:<id du raid>", sig = "<log.updated>", lead = true, text = "FRB;2;…;1\n…\nEND;12" },
+} }
+```
+
+Seulement ce qui a changé depuis le dernier envoi (comme l'onglet Synchro). L'appli lit ce fichier sans l'exécuter, envoie les blocs à `POST /api/sync/upload` (`{ text, create, ignore }`) et n'envoie tout seul un bloc `frb` que si `lead` est vrai. Réponse : un résultat par bloc (`updated`, `created`, `unknown` : perso que le site ne connaît pas, à créer ou ignorer ; `ignored`, `kept`, `refused`, `error`).
+
+**Du site vers le jeu.** `GET /api/sync/frg` donne le même texte que « Copier pour le jeu » (tous les groupes du jeu de l'adresse appelée), avec un `ETag` qui ne change qu'avec les données. L'appli l'écrit, avec les accusés de réception, dans l'addon séparé `ForeverRoster_Data` (`Data.lua`), que l'addon principal lit à `PLAYER_LOGIN` (`## OptionalDeps: ForeverRoster_Data`) :
+
+```lua
+ForeverRosterData = { v = 1, at = <unix>, app = "0.1.0",
+  frg = "FRG;1;…", frgAt = <unix>,              -- "" : plus aucun groupe
+  acks = { ["Tournicoti-Forever EU"] = "<empreinte>", ["frb:<id du raid>"] = "<log.updated>" },
+  report = { at = <unix>, items = { "Tournicoti", "bilan de « Vroum Vroum »" } } }
+```
+
+- `frg` remplace tous les groupes chargés, sans message, s'il est plus récent que le dernier chargement (un collage manuel plus récent est gardé).
+- `acks` : le perso est marqué envoyé (`sentSig`), le bilan aussi (`sentAt`) ; le compteur de la minicarte retombe.
+- `report` : affiché dans l'onglet Synchro (« Roster Companion s'en occupe »), textes nettoyés des codes du jeu. L'appli est considérée active si `at` date de moins de 3 jours.
+- Toutes les chaînes sont écrites par l'appli en chaînes Lua échappées octet par octet (`\\`, `\"`, `\ddd`), jamais en crochets longs.
+
+**Fichiers servis par le site** : `/downloads/ForeverRoster.zip` et `/downloads/ForeverRoster.json` (`name`, `file`, `version`, `interface`, `sha256`, `size`), lus par l'appli pour installer ou mettre à jour l'addon.

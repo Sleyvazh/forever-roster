@@ -123,6 +123,8 @@ export const characters = pgTable("characters", {
   talentNodes: jsonb("talent_nodes").$type<TalentNode[] | null>(),
   /** Dernière mise à jour de la fiche depuis l'addon (export collé sur le site). */
   addonSyncedAt: ts("addon_synced_at"),
+  /** Lot K1 : perso du jeu lié à cette fiche (« Prénom-Royaume ») : l'import de l'addon la retrouve d'un envoi à l'autre. */
+  addonKey: text("addon_key"),
   /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
   consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
   consumablesAt: ts("consumables_at"),
@@ -135,6 +137,7 @@ export const characters = pgTable("characters", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [
   index("characters_user_idx").on(t.userId, t.sortOrder),
+  uniqueIndex("characters_addon_key_uq").on(t.userId, t.game, t.addonKey),
   check("characters_level", sql`${t.level} BETWEEN 1 AND 60`),
   check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
@@ -512,6 +515,8 @@ export const raidLogs = pgTable("raid_logs", {
   loot: jsonb("loot").$type<RaidLogLoot[]>().notNull().default([]),
   /** Lot G : dernier appel aux consommables lancé en raid (quantités de chaque joueur). */
   consumableCall: jsonb("consumable_call").$type<RaidLogExport["consumableCall"] | null>(),
+  /** Lot K1 : relevé par le chef de raid (il menait le raid ou distribuait le butin). Un envoi automatique ne le remplace pas. */
+  lead: boolean("lead").notNull().default(false),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 
@@ -603,3 +608,57 @@ export const lootCorrections = pgTable("loot_corrections", {
   index("loot_corrections_group_idx").on(t.groupId, t.createdAt),
   check("loot_corrections_delta_chk", sql`${t.delta} between -20 and 20 and ${t.delta} <> 0`),
 ]);
+
+/* ---------- Roster Companion (lot K1) ---------- */
+
+/**
+ * Appareils reliés (Roster Companion) : un jeton par appareil, haché comme les sessions, valable seulement pour la
+ * synchro (/api/sync) ; révocable depuis Compte & sécurité ou depuis l'appli.
+ */
+export const devices = pgTable("devices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  platform: text("platform").notNull().default(""),
+  appVersion: text("app_version").notNull().default(""),
+  tokenHash: text("token_hash").notNull(),
+  lastIp: text("last_ip"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+  /** Dernier envoi ou dernière réception de données (pas un simple contrôle du jeton). */
+  lastSyncAt: ts("last_sync_at"),
+  revokedAt: ts("revoked_at"),
+}, t => [
+  uniqueIndex("devices_token_uq").on(t.tokenHash),
+  index("devices_user_idx").on(t.userId),
+]);
+
+/**
+ * Demandes d'appairage (façon « device flow », RFC 8628) : l'appli affiche le code, le joueur le valide sur le site,
+ * l'appli récupère son jeton une seule fois. pairHash : SHA-256 de l'identifiant secret que seule l'appli connaît.
+ */
+export const devicePairings = pgTable("device_pairings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  pairHash: text("pair_hash").notNull(),
+  userCode: text("user_code").notNull(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull().default(""),
+  appVersion: text("app_version").notNull().default(""),
+  ip: text("ip"),
+  status: text("status", { enum: ["pending", "approved", "denied", "done"] }).notNull().default("pending"),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  lastPollAt: ts("last_poll_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  expiresAt: ts("expires_at").notNull(),
+}, t => [
+  uniqueIndex("device_pairings_hash_uq").on(t.pairHash),
+  uniqueIndex("device_pairings_code_uq").on(t.userCode),
+]);
+
+/** Persos du jeu que le joueur a choisi d'ignorer (perso de banque…) : l'appli ne les propose plus. */
+export const addonIgnored = pgTable("addon_ignored", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  game: text("game").$type<Game>().notNull(),
+  key: text("key").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.userId, t.game, t.key] })]);

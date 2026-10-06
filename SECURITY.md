@@ -41,6 +41,8 @@ Deux protections cumulées sur toute requête `POST`, `PUT`, `PATCH` ou `DELETE`
 
 S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net démarre par un `POST` protégé, pour empêcher un site tiers de lancer une liaison à l'insu de l'utilisateur.
 
+Exception : les routes de Roster Companion sans cookie (`/api/sync/*`, `/api/devices/self`, `/api/devices/pair` et `/pair/poll`) n'ont pas ces contrôles. Elles s'authentifient par un jeton `Authorization: Bearer`, qu'un navigateur n'envoie jamais tout seul, ou ne demandent pas de compte ; elles ignorent le cookie de session. La validation d'un appairage (`/pair/approve`, `/pair/deny`) reste une route à cookie, avec `Origin` et jeton CSRF.
+
 ## OAuth Battle.net
 
 - Flux *authorization code*. Le `state` fait 256 bits, est stocké haché avec une expiration de 10 minutes **et** posé dans un cookie `HttpOnly` limité au chemin `/api/auth/battlenet`. Le callback exige que les deux correspondent. Cela bloque le *login CSRF*, où un attaquant ferait lier son propre compte Battle.net à la session de la victime.
@@ -98,6 +100,13 @@ S'y ajoute `SameSite=Lax` sur le cookie. La liaison d'un compte Battle.net déma
 - **Du jeu vers le site (FRC) :** le texte collé est lu champ par champ (nombres, identifiants UUID, statuts et emplacements sur liste blanche, 50 persos et 2 000 lignes au plus), puis envoyé aux routes habituelles, qui revérifient tout (zod) et le droit d'accès : un joueur ne modifie que ses propres fiches, et ne s'inscrit qu'aux raids de ses groupes. Le texte n'est jamais interprété comme du HTML (React échappe l'affichage).
 - **Du site vers le jeu (FRG, FRR) :** réservé aux membres du groupe ; il ne contient que ce qu'ils voient déjà sur le site (prénoms des persos, raids, patrons, BiS). Le site retire `;`, `|` et les retours à la ligne, et l'addon retire de nouveau `|` (couleurs, liens et textures du jeu) et borne la longueur de chaque texte avant de l'afficher ou de l'annoncer dans le chat. L'addon ne fait que lire ces données : jamais `loadstring` ni exécution de texte.
 - **Chat :** l'addon n'écrit dans le raid ou le groupe que sur un clic (« Annoncer »).
+
+## Roster Companion (appli de synchro, en option)
+
+- **Appairage sans mot de passe** (façon RFC 8628) : l'appli demande un code (8 consonnes, 10 minutes, usage unique) et un identifiant secret ; le joueur valide le code sur le site, connecté ; l'appli reçoit son jeton une seule fois (une mise à jour conditionnelle empêche deux remises). La page de validation affiche le nom de l'appareil, son système, son IP et le code à comparer, avec un avertissement contre l'hameçonnage par code (« si tu n'as pas lancé l'appli toi-même, refuse »). Demandes limitées à 5 par IP et par 10 minutes ; attente trop rapprochée → `slow_down`.
+- **Jeton par appareil** (`rc_` + 256 bits) : seul son SHA-256 est stocké. Il ne vaut que pour la synchro (`/api/sync`) et pour se délier : `requireAuth` exige une session, donc aucune route du site ne l'accepte. Révocable dans Compte & sécurité (« Appareils reliés ») ou depuis l'appli ; au-delà de 10 appareils, le plus ancien est délié. Journal : appareil relié, appairage refusé, appareil délié.
+- **Même import que le Ctrl+V** : le texte envoyé passe par le même lecteur (`parseCharacterExports`, `parseRaidLogs`), les mêmes contrôles (zod, combinaisons race / classe, droits d'officier pour un bilan) et la même logique serveur (`lib/addon-import.ts`). Un perso inconnu n'est jamais créé sans réponse du joueur.
+- **Côté poste (à venir dans l'appli)** : jeton dans le Gestionnaire d'identification de Windows ; sauvegarde de l'addon lue sans jamais être exécutée ; écriture limitée à `Interface\AddOns\ForeverRoster_Data` (chaînes Lua échappées octet par octet) ; addon téléchargé vérifié par signature.
 
 ## En-têtes et transport (ASVS V14)
 

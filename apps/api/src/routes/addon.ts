@@ -1,4 +1,4 @@
-import { dpsType, groupAddonExport, specDef, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
+import { dpsType, groupAddonExport, IMPORT_PARTS, specDef, type Game, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
 import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -12,6 +12,7 @@ import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
 import { currentUser, requireAuth } from "../lib/session";
 import { siteOf } from "../lib/site";
+import { importAddonText } from "../lib/addon-import";
 
 /** Raids envoyés à l'addon : à venir (ou commencés depuis moins de 3 h), puis ceux sans date. */
 const MAX_RAIDS = 15;
@@ -134,16 +135,37 @@ export async function addonRoutes(app: FastifyInstance) {
   /** Tous mes groupes d'un coup (page Addon du site) : un bloc FRG par groupe. */
   app.get("/addon/export", async (req) => {
     const u = currentUser(req);
-    // Groupes du jeu de cette adresse (un site, deux adresses)
-    const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
-      .where(and(eq(groupMembers.userId, u.id), eq(groups.game, siteOf(app.ctx.cfg, req).game))).limit(MAX_GROUPS);
-    const parts = [];
-    for (const g of mine) parts.push(await groupExport(db, g.id, u.id));
-    parts.sort((a, b) => a.name.localeCompare(b.name));
-    return {
-      text: parts.map(p => p.text).join("\n"),
-      groups: parts.map(p => ({ name: p.name, raids: p.raids, patterns: p.patterns, bis: p.bis })),
-    };
+    return allGroupsExport(db, u.id, siteOf(app.ctx.cfg, req).game);
+  });
+
+  /**
+   * Export de l'addon collé sur le site (Ctrl+V n'importe où, lot K1 : appliqué côté serveur) : persos (FRC) sur la fiche
+   * choisie pour chacun, puis bilans de raid (FRB). Les choix de fiche sont retenus (clé du perso) pour les prochaines fois.
+   */
+  app.post("/addon/import", async (req) => {
+    const u = currentUser(req);
+    const body = parse(z.object({
+      text: z.string().max(250_000),
+      parts: z.array(z.enum(IMPORT_PARTS)).max(IMPORT_PARTS.length).optional(),
+      targets: z.record(z.string().max(100), z.union([z.uuid(), z.literal("new"), z.literal("skip")])).refine(r => Object.keys(r).length <= 60).optional(),
+      skipLogs: z.array(z.uuid()).max(10).optional(),
+    }), req.body);
+    return importAddonText(db, u, body.text, {
+      game: siteOf(app.ctx.cfg, req).game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
+      skipLogs: new Set(body.skipLogs ?? []), unknown: "create",
+    });
   });
 }
 
+/** Tous les groupes du joueur dans ce jeu, un bloc FRG chacun (page Addon, Roster Companion). */
+export async function allGroupsExport(db: Db, userId: string, game: Game) {
+  const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
+    .where(and(eq(groupMembers.userId, userId), eq(groups.game, game))).limit(MAX_GROUPS);
+  const parts = [];
+  for (const g of mine) parts.push(await groupExport(db, g.id, userId));
+  parts.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    text: parts.map(p => p.text).join("\n"),
+    groups: parts.map(p => ({ name: p.name, raids: p.raids, patterns: p.patterns, bis: p.bis })),
+  };
+}

@@ -238,6 +238,33 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
+  await test.step("Roster Companion : appairage d'un appareil", async () => {
+    // L'appli demande un code (sans compte), le joueur le valide sur le site, l'appli reçoit son jeton
+    const start = await (await page.request.post("/api/devices/pair", { data: { name: "PC-E2E", platform: "Windows 11", appVersion: "0.1.0" } })).json();
+    await page.goto(`/appairer?code=${start.userCode}`);
+    await expect(page.getByRole("heading", { name: "Relier un appareil" })).toBeVisible();
+    await expect(page.locator(".cp-code")).toHaveText(start.userCode);
+    await expect(page.locator(".cp-dev")).toContainText("Roster Companion sur PC-E2E");
+    await page.getByRole("button", { name: "Autoriser cet appareil" }).click();
+    await expect(page.getByRole("status")).toContainText("PC-E2E est relié à ton compte");
+    await new Promise(r => setTimeout(r, 4200)); // intervalle d'attente de l'appli
+    const done = await (await page.request.post("/api/devices/pair/poll", { data: { pairId: start.pairId } })).json();
+    expect(done.status).toBe("approved");
+    const frg = await page.request.get("/api/sync/frg", { headers: { authorization: `Bearer ${done.token}` } });
+    expect(frg.status()).toBe(200);
+    expect((await frg.json()).text).toContain("Les Testeurs");
+    // Compte & sécurité : l'appareil, le journal, et « Délier »
+    await page.goto("/account");
+    const section = page.locator("#appareils");
+    await expect(section).toContainText("PC-E2E");
+    await expect(page.getByText("Appareil relié : PC-E2E")).toBeVisible();
+    await section.getByRole("button", { name: "Délier" }).click();
+    await expect(page.getByText("PC-E2E délié.")).toBeVisible();
+    expect((await page.request.get("/api/sync/frg", { headers: { authorization: `Bearer ${done.token}` } })).status()).toBe(401);
+    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: /Les Testeurs/ }).click();
+  });
+
   await test.step("fiche joueur", async () => {
     await page.getByRole("tab", { name: /Membres/ }).click();
     await page.locator(".ps-link").first().click();

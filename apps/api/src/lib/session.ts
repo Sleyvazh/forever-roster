@@ -4,6 +4,7 @@ import { sessions, users } from "../db/schema";
 import { randomToken, safeEqual, sha256 } from "./crypto";
 import { forbidden, unauthorized } from "./http";
 import { siteOf } from "./site";
+import { isDeviceUrl } from "./device-auth";
 
 export const SESSION_TTL_MS = 30 * 24 * 3600 * 1000; // durée absolue
 export const SESSION_IDLE_MS = 7 * 24 * 3600 * 1000; // inactivité
@@ -52,6 +53,8 @@ export function registerSession(app: FastifyInstance) {
   // 2. Protection CSRF : vérification de l'origine + jeton synchronisé pour les requêtes qui modifient des données
   app.addHook("onRequest", async (req) => {
     if (!UNSAFE.has(req.method)) return;
+    // Roster Companion : jeton Bearer ou route sans compte, jamais authentifiées par le cookie (lib/device-auth.ts)
+    if (isDeviceUrl(req.url)) return;
     const origin = req.headers.origin ?? originOf(req.headers.referer);
     // Origine du site auquel la requête est adressée (un site, deux adresses : chacune n'accepte que la sienne)
     if (origin !== siteOf(cfg, req).origin) throw forbidden("Origine de la requête refusée.");
