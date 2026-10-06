@@ -72,6 +72,23 @@ function GetNumSubgroupMembers() return 0 end
 function UnitIsGroupLeader() return true end
 function UnitIsGroupAssistant() return false end
 function InCombatLockdown() return false end
+-- Addons chargés à la demande (ForeverRoster_Data1 à 9) : lus dans ADDONS_DIR quand il est donné (section 9)
+local ADDONS_DIR, LOADED = nil, {}
+function IsAddOnLoaded(name) return LOADED[name] == true end
+function GetAddOnInfo(name)
+  local f = ADDONS_DIR and io.open(ADDONS_DIR .. "/" .. name .. "/" .. name .. ".toc")
+  if not f then return name, nil, nil, false, "MISSING" end
+  f:close()
+  return name, name, "", true, "DEMAND_LOADED"
+end
+function LoadAddOn(name)
+  if LOADED[name] then return true end
+  local chunk = ADDONS_DIR and loadfile(ADDONS_DIR .. "/" .. name .. "/Data.lua")
+  if not chunk then return nil, "MISSING" end
+  chunk()
+  LOADED[name] = true
+  return true
+end
 function Ambiguate(n) return n end
 function time() return 1790000000 end
 -- Raccourcis clavier
@@ -633,6 +650,104 @@ do
   for _, g in ipairs(ns.Group.List()) do if g.name == "Collé à la main" then found = true end end
   assert(found, "collage manuel plus récent gardé")
   ForeverRosterData = nil
+end
+
+-- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
+-- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
+local helper = os.getenv("RC_HELPER")
+if helper and helper ~= "" then
+  local function esc(str) return (str:gsub("\\", "\\\\"):gsub("\"", "\\\""):gsub("\n", "\\n"):gsub("\r", "\\r")) end
+  -- Sauvegarde au format du jeu : ["clé"] = valeur, tableaux suivis de « -- [n] »
+  local function ser(v, out, depth)
+    local t = type(v)
+    if t == "string" then out[#out + 1] = "\"" .. esc(v) .. "\""
+    elseif t == "number" or t == "boolean" then out[#out + 1] = tostring(v)
+    elseif t == "table" then
+      out[#out + 1] = "{\n"
+      local n = #v
+      for i = 1, n do ser(v[i], out, depth + 1) out[#out + 1] = ", -- [" .. i .. "]\n" end
+      local keys = {}
+      for k in pairs(v) do if not (type(k) == "number" and k >= 1 and k <= n and k % 1 == 0) then keys[#keys + 1] = k end end
+      table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+      for _, k in ipairs(keys) do
+        out[#out + 1] = "[" .. (type(k) == "string" and ("\"" .. esc(k) .. "\"") or tostring(k)) .. "] = "
+        ser(v[k], out, depth + 1)
+        out[#out + 1] = ",\n"
+      end
+      out[#out + 1] = "}"
+    else out[#out + 1] = "nil" end
+  end
+  -- Quelque chose à envoyer : le perso et un bilan du chef de raid repassent « non envoyés »
+  ForeverRosterDB.chars["Tournicoti-Forever EU"].sentSig = nil
+  local logId
+  for id, log in pairs(ForeverRosterDB.raidLogs) do if next(log.people) then log.sentAt = nil log.given = 1 logId = id end end
+  assert(logId, "un bilan à envoyer")
+  fire("PLAYER_LOGOUT")
+  local out = { "\nForeverRosterDB = " }
+  ser(ForeverRosterDB, out, 0)
+  out[#out + 1] = "\n"
+  local sv, dir = os.tmpname(), os.tmpname()
+  os.remove(dir)
+  assert(os.execute("mkdir -p '" .. dir .. "'") == 0, "dossier des addons")
+  local f = assert(io.open(sv, "wb")) f:write(table.concat(out)) f:close()
+  -- L'appli lit la sauvegarde et écrit ForeverRoster_Data et ses copies (étape 1), puis de nouvelles données (étape 2)
+  local function app(step)
+    local cmd = string.format("RC_SV='%s' RC_ADDONS='%s' RC_STEP=%d '%s' --exact helper_ecrit_data_lua --nocapture --quiet > /dev/null", sv, dir, step, helper)
+    local ok = os.execute(cmd)
+    assert(ok == 0 or ok == true, "l'appli a lu la sauvegarde et écrit ForeverRoster_Data (étape " .. step .. ")")
+  end
+  app(1)
+  -- Le jeu charge Data.lua comme un fichier d'addon
+  ForeverRosterData = nil
+  dofile(dir .. "/ForeverRoster_Data/Data.lua")
+  assert(type(ForeverRosterData) == "table" and ForeverRosterData.v == 1, "Data.lua chargé")
+  fire("PLAYER_LOGIN")
+  for _, e in ipairs(ns.Export.Pending()) do assert(e.key ~= "Tournicoti-Forever EU", "perso marqué envoyé par l'accusé de l'appli") end
+  assert(ForeverRosterDB.raidLogs[logId].sentAt, "bilan marqué envoyé par l'accusé de l'appli")
+  local function groupNames()
+    local names = {}
+    for _, g in ipairs(ns.Group.List()) do names[#names + 1] = g.name end
+    return table.concat(names, ",")
+  end
+  assert(groupNames():find("Les \"Veilleurs\"", 1, true), "données du site chargées, guillemets compris")
+  assert(ns.Companion.StatusText():find("bilan de", 1, true), "compte rendu de l'appli affiché")
+
+  -- Actualisation sans /reload : l'appli dépose de nouvelles données, l'addon charge la copie suivante
+  ADDONS_DIR = dir
+  assert(ns.Companion.SlotsLeft() == 9, "9 copies chargeables")
+  local ok, msg, changed = ns.Companion.Refresh()
+  assert(ok and not changed and msg:find("rien de nouveau", 1, true) and msg:find("Encore 8 actualisations possibles", 1, true), msg)
+  app(2)
+  ok, msg, changed = ns.Companion.Refresh()
+  assert(ok and changed and msg:find("actualisées", 1, true) and msg:find("Encore 7", 1, true), msg)
+  assert(groupNames():find("Les Retardataires", 1, true), "nouvelles données chargées sans /reload")
+  -- En combat : remis à la fin du combat
+  InCombatLockdown = function() return true end
+  ok, msg = ns.Companion.Refresh()
+  assert(not ok and msg:find("fin du combat", 1, true), msg)
+  InCombatLockdown = function() return false end
+  fire("PLAYER_REGEN_ENABLED")
+  assert(ns.Companion.SlotsLeft() == 6, "chargée après le combat")
+  -- Fenêtre ouverte : toute seule si la dernière actualisation date de 15 min
+  ns.Companion.AutoRefresh()
+  assert(ns.Companion.SlotsLeft() == 6, "pas d'actualisation trop rapprochée")
+  local realTime = time
+  time = function() return realTime() + 16 * 60 end
+  ns.Companion.AutoRefresh()
+  time = realTime
+  assert(ns.Companion.SlotsLeft() == 5, "actualisation toute seule à l'ouverture")
+  run("actualiser")
+  for _ = 1, 4 do ok, msg = ns.Companion.Refresh() end
+  assert(ok and msg:find("dernière actualisation", 1, true), msg)
+  ok, msg = ns.Companion.Refresh()
+  assert(not ok and msg:find("/reload", 1, true), msg)
+  run("actualiser")
+  ADDONS_DIR = nil
+  os.remove(sv)
+  assert(os.execute("rm -rf '" .. dir .. "'") == 0)
+  ForeverRosterData = nil
+  print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
+  print("aller-retour avec Roster Companion : bon")
 end
 
 if failures > 0 then os.exit(1) end

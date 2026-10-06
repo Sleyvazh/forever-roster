@@ -705,6 +705,10 @@ local function buildSynchro(p)
   p.input:SetScript("OnTextChanged", onPaste)
   p.loadStatus = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.loadStatus:SetPoint("TOPLEFT", 6, -118) p.loadStatus:SetWidth(526) p.loadStatus:SetJustifyH("LEFT")
+  -- Roster Companion (1.4) : nouveautés déposées par l'appli, sans /reload
+  p.pull = button(p, "Charger les nouveautés", 180, function() ns.Companion.RefreshCommand() end)
+  p.pull:SetPoint("TOPRIGHT", p, "TOPRIGHT", -4, -112)
+  p.pull:Hide()
   headerBar(p, -140, "2 · Du jeu vers le site")
   p.text = textArea(p, 6, -182, 526, 180)
   p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
@@ -729,7 +733,11 @@ local function buildSynchro(p)
 end
 refreshers.synchro = function(p)
   -- Roster Companion (lot K1) : l'appli fait la synchro ; le copier-coller reste possible pour forcer un envoi
-  p.hint:SetText(ns.Companion.Active() and ns.Companion.StatusText(GREEN) or SYNC_HINT)
+  local companion = ns.Companion.Active()
+  p.hint:SetText(companion and ns.Companion.StatusText(GREEN) or SYNC_HINT)
+  local pull = companion and ns.Companion.SlotsLeft() > 0
+  if pull then p.pull:Show() else p.pull:Hide() end
+  p.loadStatus:SetWidth(pull and 336 or 526)
   local last = ForeverRosterDB.lastLoad
   p.loadStatus:SetText(last and (GREEN .. "Chargé le " .. date("%d/%m %H:%M", last.at) .. " : " .. last.text .. "|r")
     or (GREY .. "Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul.|r"))
@@ -987,7 +995,7 @@ local function buildMain()
     builders[t.key](p)
     pages[t.key] = p
   end
-  main:SetScript("OnShow", function() U.Refresh() end)
+  main:SetScript("OnShow", function() ns.safe("Roster Companion", ns.Companion.AutoRefresh) U.Refresh() end)
 end
 
 function U.Refresh()

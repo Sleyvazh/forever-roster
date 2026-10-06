@@ -93,6 +93,7 @@ local HELP = {
   "/fr cherche <lien> : marquer un patron recherché (Maj+clic sur l'objet pour mettre son lien), ou l'en retirer",
   "/fr objet <lien> : ce que le jeu répond pour un objet (si un nom reste « objet 12345 »)",
   "/fr oublier Nom-Royaume : retirer un perso supprimé de l'export",
+  "/fr actualiser : charger les nouveautés déposées par Roster Companion, sans /reload",
   "/fr minicarte : afficher ou masquer le bouton de la minicarte",
   "/fr rappels : couper ou remettre le rappel de raid à la connexion",
   "/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)",
@@ -148,6 +149,8 @@ local function run(msg)
     end
     ns.Export.Forget(key)
     ns.print(key .. " retiré de l'export.")
+  elseif cmd == "actualiser" or cmd == "maj" then
+    ns.Companion.RefreshCommand()
   elseif cmd == "rappels" then
     ForeverRosterDB.noReminder = not ForeverRosterDB.noReminder or nil
     ns.print(ForeverRosterDB.noReminder and "rappels de raid coupés." or "rappels de raid remis : à la connexion, raids des prochaines 24 h.")
