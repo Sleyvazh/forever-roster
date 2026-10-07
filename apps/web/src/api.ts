@@ -47,6 +47,8 @@ export interface User {
   hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; discordReminders: boolean; createdAt: string;
   /** Roster : langue des noms du jeu (auto = navigateur) et accès anticipé tant que Roster est fermé. */
   gameLang: import("@forever/game-data").GameLangPref; rosterPreview: boolean;
+  /** Admin du site (page des signalements) ; dernière version de l'addon vue à l'import. */
+  siteAdmin?: boolean; addonVersion?: string | null;
 }
 export interface Me { user: User | null; csrfToken: string | null; battlenetEnabled: boolean; discordEnabled: boolean }
 
@@ -118,3 +120,14 @@ export interface RaidSlot { group: number; pos: number; characterId?: string; si
 export const slotKey = (s: { characterId?: string; signupId?: string }) => (s.characterId ? `c:${s.characterId}` : `s:${s.signupId}`);
 export interface RaidChar { id: string; name: string; cls: string; spec1: string; level: number; race: string; owner: string }
 export interface Coverage { id: string; covered: boolean; sources: number; missingGroups: number[] }
+
+/* ---------- Signalements (bug, idée, question) ---------- */
+
+export type ReportKind = "bug" | "idea" | "question";
+export type ReportArea = "site" | "addon" | "bot" | "companion";
+export type ReportStatus = "new" | "wip" | "done" | "refused";
+export interface Report {
+  id: string; author: string; game: import("@forever/game-data").Game; kind: ReportKind; area: ReportArea; title: string; body: string;
+  page: string; browser: string; addonVersion: string | null; hasImage: boolean;
+  status: ReportStatus; reply: string; repliedAt: string | null; repliedBy: string | null; unseen: boolean; createdAt: string; updatedAt: string;
+}

@@ -13,6 +13,7 @@ import { decodeId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
+import { CAPTURE_NAME, createReportSync, renderReport } from "./reports";
 import { resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
 
@@ -81,6 +82,25 @@ async function start() {
         catch (e) { if (!(e instanceof DiscordAPIError && e.code === UNKNOWN_MESSAGE)) throw e; }
       }
       const m = await ch.send(payload);
+      return { channelId: ch.id, messageId: m.id };
+    },
+  }, log);
+  // Signalements du site : salon privé des admins (/signalements-lier). La capture est jointe au message
+  // (renvoyée à chaque modification, rare : statut ou réponse) ; si elle n'est plus lisible, le message part sans.
+  const reports = createReportSync(api, {
+    async upsert(r, messageId) {
+      const ch = await client.channels.fetch(r.channelId);
+      if (!ch || !ch.isSendable()) throw new Error(`Salon ${r.channelId} inaccessible`);
+      // Sans le droit « Joindre des fichiers », le message part sans la capture (elle reste sur le site)
+      const canAttach = !("permissionsFor" in ch) || !!ch.permissionsFor(client.user!)?.has(PermissionFlagsBits.AttachFiles);
+      const image = r.hasImage && canAttach ? await api.reportImage(r.id) : null;
+      const payload = { ...renderReport(r, !!image), files: image ? [{ attachment: image, name: CAPTURE_NAME }] : [], attachments: [] };
+      if (messageId) {
+        try { const m = await ch.messages.edit(messageId, payload); return { channelId: ch.id, messageId: m.id }; }
+        catch (e) { if (!(e instanceof DiscordAPIError && e.code === UNKNOWN_MESSAGE)) throw e; }
+      }
+      const { attachments: _, ...first } = payload;
+      const m = await ch.send(first);
       return { channelId: ch.id, messageId: m.id };
     },
   }, log);
@@ -153,6 +173,7 @@ async function start() {
     setInterval(() => { refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message)); }, 6 * 3600e3);
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendNudges().catch(e => log.warn("Relances impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendAsks().catch(e => log.warn("Demandes impossibles", e?.message)); }, 15e3);
@@ -204,6 +225,23 @@ async function start() {
       }
       await i.editReply(`✅ Salon lié au groupe **${group.name}**. Les raids à venir y seront publiés dans quelques secondes.`);
       void sync.tick().catch(() => {});
+      return;
+    }
+
+    if (i.commandName === "signalements-lier") {
+      const need = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
+      if (!i.appPermissions.has(need)) {
+        return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");
+      }
+      await api.bindReports({ guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
+      const ch = i.guild?.channels.cache.get(i.channelId);
+      const open = ch && "permissionsFor" in ch && i.guild ? ch.permissionsFor(i.guild.roles.everyone)?.has(PermissionFlagsBits.ViewChannel) : false;
+      await i.editReply([
+        "✅ Les signalements du site (bugs, idées, questions) arriveront ici, avec leur capture d'écran. Les réponses se font sur la page admin du site.",
+        ...(open ? ["⚠️ Ce salon est visible par tout le monde : réserve-le aux admins (les signalements peuvent contenir des captures personnelles)."] : []),
+        ...(i.appPermissions.has(PermissionFlagsBits.AttachFiles) ? [] : ["ℹ️ Sans le droit « Joindre des fichiers » dans ce salon, les captures restent sur le site (lien sous chaque signalement)."]),
+      ].join("\n"));
+      void reports.tick().catch(() => {});
       return;
     }
 

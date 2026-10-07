@@ -28,6 +28,10 @@ export const users = pgTable("users", {
   gameLang: text("game_lang").$type<GameLangPref>().notNull().default("auto"),
   /** Roster encore fermé : accès anticipé (Flo et les officiers de la guilde), donné par roster-preview-cli. */
   rosterPreview: boolean("roster_preview").notNull().default(false),
+  /** Admin du site (signalements : page admin, réponses), donné par site-admin-cli. */
+  siteAdmin: boolean("site_admin").notNull().default(false),
+  /** Dernière version de l'addon vue dans un export collé ou envoyé (aide aux signalements). */
+  addonVersion: text("addon_version"),
   /** Image du compte (200×200, WebP ré-encodé par le serveur). */
   avatarId: uuid("avatar_id").references((): AnyPgColumn => images.id, { onDelete: "set null" }),
   failedLogins: integer("failed_logins").notNull().default(0),
@@ -543,6 +547,57 @@ export const raidLogs = pgTable("raid_logs", {
   consumableCall: jsonb("consumable_call").$type<RaidLogExport["consumableCall"] | null>(),
   /** Lot K1 : relevé par le chef de raid (il menait le raid ou distribuait le butin). Un envoi automatique ne le remplace pas. */
   lead: boolean("lead").notNull().default(false),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/* ---------- Signalements (bug, idée, question) ---------- */
+
+export type ReportKind = "bug" | "idea" | "question";
+export type ReportArea = "site" | "addon" | "bot" | "companion";
+export type ReportStatus = "new" | "wip" | "done" | "refused";
+
+/**
+ * Signalement d'un joueur connecté, sur l'une ou l'autre adresse. Gardé sur le site (suivi par le joueur, page admin)
+ * et posté dans le salon Discord des admins (site_settings « reports_channel »). Capture d'écran ré-encodée en WebP.
+ */
+export const reports = pgTable("reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  /** Nom affiché au moment du signalement (le compte peut disparaître). */
+  author: text("author").notNull(),
+  game: text("game").$type<Game>().notNull(),
+  kind: text("kind").$type<ReportKind>().notNull(),
+  area: text("area").$type<ReportArea>().notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  page: text("page").notNull().default(""),
+  userAgent: text("user_agent").notNull().default(""),
+  addonVersion: text("addon_version"),
+  image: bytea("image"),
+  status: text("status").$type<ReportStatus>().notNull().default("new"),
+  reply: text("reply").notNull().default(""),
+  repliedAt: ts("replied_at"),
+  repliedBy: text("replied_by"),
+  /** Réponse lue par le joueur (pastille du menu tant que null après une réponse). */
+  replySeenAt: ts("reply_seen_at"),
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  index("reports_user_idx").on(t.userId, t.createdAt),
+  index("reports_status_idx").on(t.status, t.createdAt),
+  check("reports_kind", sql`${t.kind} IN ('bug', 'idea', 'question')`),
+  check("reports_area", sql`${t.area} IN ('site', 'addon', 'bot', 'companion')`),
+  check("reports_status", sql`${t.status} IN ('new', 'wip', 'done', 'refused')`),
+]);
+
+/** Réglages du site (une ligne par clé) : salon Discord des signalements, etc. */
+export const siteSettings = pgTable("site_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<Record<string, unknown>>().notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 

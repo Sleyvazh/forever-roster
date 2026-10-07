@@ -170,6 +170,7 @@ ssh forever "rm ~/latest.dump"
 | IP bannies par fail2ban | `sudo fail2ban-client status sshd` |
 | Règles du pare-feu | `sudo ufw status verbose` |
 | Espace disque Docker | `sudo docker system df` |
+| Ajouter un admin du site (signalements) | `sudo docker compose exec api node dist/site-admin.js add <e-mail>` |
 
 ### Changer le mot de passe SMTP
 
@@ -230,6 +231,23 @@ sudo docker compose exec api node dist/roster-preview.js remove flo@example.com 
 ```
 
 La personne recharge la page de Roster : un badge « Accès anticipé » s'affiche en haut. Ce qui est déjà là (lot R2a) : persos créés à la main (nom, royaume, classe, spés, liens Armurerie / Raider.IO / Warcraft Logs, notes), groupes, raids Normal / Héroïque / Mythique avec l'effectif de chaque difficulté (10 à 30 ; Mythique 20, ou 15 à 25 pour les raids flexibles), inscriptions, compo et buffs de raid de Midnight, annonces Discord. Depuis R2b : import des persos depuis Battle.net et « Mettre à jour » (niveau, niveau d'objet, spé active), voir plus bas. Pas encore : butin, préparation, bilan et addon (R3).
+
+### Signalements (bug, idée, question)
+
+Sur les deux adresses, chaque joueur connecté a **Signaler un bug ou une idée** dans le menu de son compte : type (bug, idée, question), partie concernée (site, addon, bot, Companion), titre, détails, et une capture d'écran facultative (fichier, glisser-déposer ou Ctrl+V ; réduite à 1 600 px et ré-encodée en WebP, jointe dans les 15 minutes). La page, le navigateur, le site et la dernière version de l'addon vue à l'import sont ajoutés d'office. Il suit ses signalements et les réponses dans **Mes signalements** (pastille sur l'avatar tant qu'une réponse n'est pas lue). Limite : 5 signalements par 10 minutes.
+
+**Admins du site** (page `/admin/signalements`, statut Nouveau / En cours / Fait / Refusé, réponse visible sur le site seulement, suppression) :
+
+```bash
+cd ~/forever-roster
+sudo docker compose exec api node dist/site-admin.js add flo@example.com     # ajouter (le compte doit exister)
+sudo docker compose exec api node dist/site-admin.js list                    # qui l'est
+sudo docker compose exec api node dist/site-admin.js remove flo@example.com  # retirer
+```
+
+La personne recharge la page : **Signalements (admin)** apparaît dans le menu de son compte.
+
+**Salon Discord des admins :** un admin du site, avec son Discord lié dans Compte & sécurité, tape `/signalements-lier` dans un salon **privé** (commande visible des membres qui peuvent gérer le serveur). Le bot y poste chaque signalement (texte, auteur, site, page, navigateur, addon, capture, lien vers la page admin), puis met le message à jour quand le statut ou la réponse change ; supprimer un signalement supprime son message. Il prévient si le salon est visible par @everyone. Le salon étant privé, ajoute le bot à ses membres (Modifier le salon → Permissions → ajouter le rôle du bot). Droits du bot dans ce salon : Voir le salon, Envoyer des messages, Intégrer des liens, et Joindre des fichiers pour les captures (sinon elles restent sur le site). Un seul salon pour les deux adresses : relancer la commande ailleurs déplace les messages. Seuls les signalements des 30 derniers jours sont suivis dans Discord.
 
 ### Import Battle.net (Roster)
 

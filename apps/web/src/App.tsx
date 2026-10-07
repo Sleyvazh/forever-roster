@@ -11,6 +11,7 @@ import { GroupsPage } from "./pages/GroupsPage";
 import { JoinPage } from "./pages/JoinPage";
 import { PairPage } from "./pages/PairPage";
 import { RaidPage } from "./pages/RaidPage";
+import { AdminReportsPage, MyReportsPage } from "./pages/ReportsPage";
 
 export function App() {
   return (
@@ -34,6 +35,8 @@ export function App() {
             <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
             <Route path="/addon" element={<RequireAuth><AddonPage /></RequireAuth>} />
             <Route path="/appairer" element={<RequireAuth><PairPage /></RequireAuth>} />
+            <Route path="/signalements" element={<RequireAuth><MyReportsPage /></RequireAuth>} />
+            <Route path="/admin/signalements" element={<RequireAuth><AdminReportsPage /></RequireAuth>} />
             <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />
           </Routes>
         </main>

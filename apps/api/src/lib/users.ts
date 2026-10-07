@@ -15,6 +15,9 @@ export function publicUser(u: UserRow) {
     // Roster (R2) : langue des noms du jeu, accès anticipé tant que Roster est fermé
     gameLang: u.gameLang,
     rosterPreview: u.rosterPreview,
+    // Admin du site : page des signalements ; dernière version de l'addon vue à l'import (jointe aux signalements)
+    siteAdmin: u.siteAdmin,
+    addonVersion: u.addonVersion,
     avatarId: u.avatarId,
     createdAt: u.createdAt,
   };

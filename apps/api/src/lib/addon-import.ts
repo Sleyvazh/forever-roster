@@ -10,7 +10,7 @@ import {
 } from "@forever/game-data";
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { addonIgnored, characters, gameTalents, raids, type Gear } from "../db/schema";
+import { addonIgnored, characters, gameTalents, raids, users, type Gear } from "../db/schema";
 import { itemsById } from "../routes/gamedata";
 import { logInput, saveRaidLog } from "../routes/raidlogs";
 import { MAX_CHARACTERS } from "../routes/characters";
@@ -22,7 +22,7 @@ import { importKnownRecipes, setWantedPatterns } from "./recipes";
 import { signUpSiteUser } from "./signups";
 
 type CharacterRow = typeof characters.$inferSelect;
-type User = { id: string; displayName: string };
+type User = { id: string; displayName: string; addonVersion?: string | null };
 
 export interface ImportOptions {
   game: Game;
@@ -118,6 +118,9 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
     .where(and(eq(addonIgnored.userId, user.id), eq(addonIgnored.game, opts.game)))).map(r => r.key));
   const out: ImportResult[] = [];
   let changed = false;
+  // Version de l'addon la plus récente de cet envoi : affichée dans les signalements du joueur
+  const version = blocks.map(b => b.addon).filter(Boolean).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))[0];
+  if (version && version !== user.addonVersion) await db.update(users).set({ addonVersion: version.slice(0, 20) }).where(eq(users.id, user.id));
 
   for (const d of blocks) {
     const key = addonKeyOf(d);

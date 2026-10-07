@@ -87,6 +87,8 @@ erDiagram
 - Roster Companion (lot K1) : `devices` (un jeton haché par appareil relié), `device_pairings` (demandes d'appairage en cours), `addon_ignored` (persos du jeu que le joueur a choisi d'ignorer), `characters.addon_key` (perso du jeu « Prénom-Royaume » lié à la fiche, unique par compte et par jeu) et `raid_logs.lead` (bilan relevé par le chef de raid).
 - Compte des objets reçus (lot I) : calculé à la demande depuis `raid_logs.loot` sur la période du groupe (`groups.loot_settings`), moins `loot_exclusions` (objet sorti du compte, repéré par raid, objet, receveur et heure : un nouveau collage du bilan le garde), plus `loot_corrections` (± avec motif, datées).
 
+- Signalements : `reports` (bug, idée ou question ; capture en WebP dans la colonne `image`, réponse d'un admin et `reply_seen_at` pour la pastille ; `discord_*` pour le message du salon des admins, relevé par le bot comme les commandes d'artisanat), `site_settings` (réglages du site, ici le salon Discord des signalements), `users.site_admin` et `users.addon_version` (dernière version de l'addon vue à l'import).
+
 - `characters.professions`, `gear` et `legacy` sont en JSONB : leur structure est validée par zod à l'entrée et typée côté Drizzle.
 - `raids.slots` est un tableau JSONB `{group, pos, characterId}`. L'API vérifie à chaque écriture que les personnages appartiennent à des membres du groupe.
 

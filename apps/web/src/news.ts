@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 40, date: "2026-10-07", kind: "site", title: "Signale un bug ou une idée",
+    text: "Dans le menu de ton compte (ton nom en haut à droite) : « Signaler un bug ou une idée ». Dis si c'est un bug, une idée ou une question, et si ça touche le site, l'addon, le bot ou Roster Companion ; ajoute une capture d'écran si tu veux (Ctrl+V marche). La page et ton navigateur sont joints tout seuls. L'équipe te répond dans « Mes signalements », avec une pastille sur ton avatar." },
   { n: 39, date: "2026-10-07", kind: "addon", version: "1.5", title: "Inscriptions en jeu : le site garde le dernier mot",
     text: "Une inscription faite dans l'onglet Raids de l'addon part au site à ta prochaine synchro, puis l'addon l'oublie dès que le site l'a enregistrée : si tu changes d'avis ensuite sur le site, ton ancien choix ne revient plus l'écraser. Et remettre en jeu un statut déjà envoyé part bien au site. La ligne du raid dit où en est ton choix (pas encore envoyé, reçu par le site). Version 1.5.4." },
   { n: 38, date: "2026-10-07", kind: "addon", version: "1.5", title: "Message « ForeverRoster has been blocked » corrigé",

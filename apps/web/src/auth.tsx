@@ -31,7 +31,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   if (me.isLoading) return <p className="muted">Chargement…</p>;
   if (!me.data?.user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search + loc.hash)}`} replace />;
   // Site pas encore ouvert (Roster avant les données Retail) : seul le compte est accessible
-  if (!site.open && loc.pathname !== "/account" && loc.pathname !== "/appairer") return <ComingSoon />;
+  // (les signalements servent aussi : ils concernent les deux adresses)
+  if (!site.open && !["/account", "/appairer", "/signalements", "/admin/signalements"].includes(loc.pathname)) return <ComingSoon />;
   return <>{children}</>;
 }
 

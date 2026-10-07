@@ -41,6 +41,12 @@ export interface OrderView {
   item: { id: number; name: string; quality: number } | null; recipeName: string; quantity: number; requester: string; character: string | null;
   crafters: string[]; status: "open" | "taken" | "done"; taker: string | null; reagents: { name: string; n: number; provided: boolean }[]; note: string;
 }
+/** Signalement (bug, idée, question) dans le salon des admins du site. */
+export interface ReportView {
+  id: string; channelId: string; messageId: string | null; changedAt: string; createdAt: string; url: string;
+  kind: "bug" | "idea" | "question"; area: "site" | "addon" | "bot" | "companion"; title: string; body: string; author: string;
+  site: string; page: string; browser: string; addonVersion: string | null; hasImage: boolean; status: "new" | "wip" | "done" | "refused"; reply: string; repliedBy: string | null;
+}
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
@@ -98,6 +104,18 @@ export class InternalApi {
     return this.req<{ ok: true }>("POST", `/internal/discord/orders/${id}/published`, b);
   }
   takeOrder(id: string, discordUserId: string) { return this.req<{ view: OrderView | null }>("POST", `/internal/discord/orders/${id}/take`, { discordUserId }); }
+  bindReports(b: { guildId: string; channelId: string; discordUserId: string }) { return this.req<{ ok: true }>("POST", "/internal/discord/reports/bind", b); }
+  reportsOutbox() { return this.req<{ reports: ReportView[] }>("GET", "/internal/discord/reports/outbox"); }
+  reportPublished(id: string, b: { channelId: string; messageId: string; changedAt: string }) {
+    return this.req<{ ok: true }>("POST", `/internal/discord/reports/${id}/published`, b);
+  }
+  /** Capture du signalement (WebP), ou null si elle n'existe plus. */
+  async reportImage(id: string): Promise<Buffer | null> {
+    const res = await this.f(`${this.base}/internal/discord/reports/${id}/image`, {
+      headers: { authorization: `Bearer ${this.secret}` }, signal: AbortSignal.timeout(15_000),
+    }).catch(() => null);
+    return res?.ok ? Buffer.from(await res.arrayBuffer()) : null;
+  }
   deletionDone(id: number) { return this.req<{ ok: true }>("DELETE", `/internal/discord/deletions/${id}`); }
   view(raidId: string) { return this.req<RaidView>("GET", `/internal/discord/raids/${raidId}/view`); }
   choices(raidId: string, discordUserId: string) {

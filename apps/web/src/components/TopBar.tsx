@@ -13,6 +13,7 @@ import { CopyForGame } from "./CopyForGame";
 import { PasteImport } from "./PasteImport";
 import { News } from "./News";
 import { useApplySite, useSite } from "../site";
+import { ReportDialog, useUnseenReports } from "./Report";
 
 const Brand = () => {
   const site = useSite();
@@ -42,8 +43,10 @@ function AccountMenu() {
   const logout = useLogout();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const user = me.data?.user;
+  const unseen = useUnseenReports(!!user);
   const chars = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000, enabled: !!user });
   useEffect(() => setOpen(false), [loc.pathname]);
   useEffect(() => {
@@ -57,8 +60,10 @@ function AccountMenu() {
   const main = chars.data?.characters[0];
   return (
     <div className="acct" ref={ref}>
-      <button type="button" className="acct-btn" aria-haspopup="true" aria-expanded={open} aria-controls="acct-menu" onClick={() => setOpen(o => !o)}>
+      <button type="button" className="acct-btn" aria-haspopup="true" aria-expanded={open} aria-controls="acct-menu" onClick={() => setOpen(o => !o)}
+        aria-label={unseen ? `${user.displayName} : ${unseen} réponse${unseen > 1 ? "s" : ""} à lire` : undefined}>
         <Avatar /><span className="who">{user.displayName}</span><span className="chev" aria-hidden="true" />
+        {unseen > 0 && <span className="acct-dot" aria-hidden="true" />}
       </button>
       {open && (
         <div className="acct-menu" id="acct-menu" aria-label="Compte">
@@ -66,9 +71,14 @@ function AccountMenu() {
           <Link className="item" to="/account">Compte &amp; sécurité</Link>
           <div className="mrow"><span>Thème</span><ThemeToggle /></div>
           <hr />
+          <button type="button" className="item" onClick={() => { setOpen(false); setReporting(true); }}>Signaler un bug ou une idée</button>
+          <Link className="item" to="/signalements">Mes signalements{unseen > 0 && <span className="acct-count">{unseen} réponse{unseen > 1 ? "s" : ""}</span>}</Link>
+          {user.siteAdmin && <Link className="item" to="/admin/signalements">Signalements (admin)</Link>}
+          <hr />
           <button type="button" className="item danger" onClick={() => void logout()}>Se déconnecter</button>
         </div>
       )}
+      {reporting && <ReportDialog onClose={() => setReporting(false)} />}
     </div>
   );
 }

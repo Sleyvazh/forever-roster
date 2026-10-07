@@ -3,7 +3,7 @@ import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, s
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
-import { characters, craftOrders, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, users } from "./db/schema";
+import { characters, craftOrders, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, reports, users } from "./db/schema";
 import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
@@ -14,6 +14,7 @@ import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { applyAbsencesToRaid } from "./lib/absences";
 import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
+import { bindReportsChannel, reportDiscordView, reportsChannel } from "./lib/reports";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
 import { formatFor } from "./routes/raids";
@@ -365,6 +366,48 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     await db.update(raidAsks).set({ answer: body.yes ? "yes" : "no", answeredAt: new Date() }).where(eq(raidAsks.id, id));
     await notifyRaid(raid.id);
     return { answer: body.yes ? "yes" as const : "no" as const, character: a.name, spec: specLabel(group.game, a.cls, a.ask.spec, "fr"), url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, view: body.yes ? await view(raid.id) : null, already: false };
+  });
+
+  /* ----- Signalements (bug, idée, question) dans le salon des admins ----- */
+
+  /** /signalements-lier : un admin du site (Discord lié) choisit le salon où arrivent les signalements. */
+  app.post("/internal/discord/reports/bind", async (req: FastifyRequest) => {
+    const body = parse(z.object({ guildId: snowflake, channelId: snowflake, discordUserId: snowflake }), req.body);
+    const [u] = await db.select({ id: users.id, siteAdmin: users.siteAdmin }).from(users).where(eq(users.discordId, body.discordUserId));
+    if (!u) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
+    if (!u.siteAdmin) throw forbidden("Réservé aux admins du site.");
+    await bindReportsChannel(db, { guildId: body.guildId, channelId: body.channelId });
+    await audit(db, req, "reports_channel_linked", { userId: u.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+    return { ok: true };
+  });
+
+  /** Signalements à publier ou à mettre à jour (statut, réponse) : ceux des 30 derniers jours. */
+  app.get("/internal/discord/reports/outbox", async () => {
+    const ch = await reportsChannel(db);
+    if (!ch) return { reports: [] };
+    const rows = await db.select().from(reports).where(and(
+      gt(reports.createdAt, new Date(Date.now() - 30 * 86400e3)),
+      // La capture arrive juste après l'envoi : on lui laisse 30 s pour partir avec le premier message
+      or(isNotNull(reports.image), lt(reports.createdAt, new Date(Date.now() - 30e3))),
+      or(isNull(reports.discordSyncedAt), sql`${reports.discordSyncedAt} < date_trunc('milliseconds', ${reports.discordChangedAt})`,
+        sql`${reports.discordChannelId} IS DISTINCT FROM ${ch.channelId}`),
+    )).orderBy(asc(reports.discordChangedAt)).limit(20);
+    return { reports: rows.map(r => reportDiscordView(r, ch.channelId, g => siteForGame(cfg, g).origin)) };
+  });
+
+  /** Capture jointe au message du salon des admins. */
+  app.get("/internal/discord/reports/:id/image", async (req: FastifyRequest, reply) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const [r] = await db.select({ image: reports.image }).from(reports).where(eq(reports.id, id));
+    if (!r?.image) throw notFound("Image introuvable.");
+    return reply.type("image/webp").send(r.image);
+  });
+
+  app.post("/internal/discord/reports/:id/published", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({ channelId: snowflake, messageId: snowflake, changedAt: z.iso.datetime({ offset: true }) }), req.body);
+    await db.update(reports).set({ discordChannelId: body.channelId, discordMessageId: body.messageId, discordSyncedAt: new Date(body.changedAt) }).where(eq(reports.id, id));
+    return { ok: true };
   });
 
   /* ----- Commandes d'artisanat dans leur salon (lot F) ----- */

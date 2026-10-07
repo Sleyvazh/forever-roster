@@ -28,6 +28,14 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
       { type: ApplicationCommandOptionType.String, name: "description", description: "Consignes, point de rendez-vous…", required: false, max_length: 1000 },
     ],
   },
+  // Signalements du site (bug, idée, question) : le salon privé des admins du site
+  {
+    type: ApplicationCommandType.ChatInput,
+    name: "signalements-lier",
+    description: "Fait arriver ici les signalements du site : bugs, idées, questions (admins du site).",
+    contexts: [InteractionContextType.Guild],
+    default_member_permissions: PermissionFlagsBits.ManageGuild.toString(),
+  },
   // Avis : fonction autonome, pour n'importe quel serveur (sans groupe du site ni addon)
   {
     type: ApplicationCommandType.ChatInput,

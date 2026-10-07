@@ -458,6 +458,103 @@ test("aperçus du lot K1", async ({ page }) => {
   await page.locator("#appareils").screenshot({ path: `${OUT}/apercu-appareils.png` });
 });
 
+/** Fausse capture d'une fenêtre de l'addon (dessin, sans icône du jeu) pour l'aperçu des signalements. */
+const fakeShot = () => import("sharp").then(({ default: sharp }) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <rect width="1920" height="1080" fill="#1d2433"/><rect x="560" y="260" width="800" height="520" rx="10" fill="#0e1427" stroke="#6d5a2c" stroke-width="4"/>
+  <text x="600" y="320" font-family="sans-serif" font-size="34" fill="#e6bf57">Conseil de butin</text>
+  ${[0, 1, 2, 3].map(i => `<rect x="600" y="${360 + i * 90}" width="720" height="70" rx="6" fill="#1b2340"/><text x="630" y="${405 + i * 90}" font-family="sans-serif" font-size="26" fill="#cfd6ea">Candidat ${i + 1} · Besoin</text>`).join("")}
+</svg>`)).png().toBuffer());
+
+/** Aperçus de « Signaler un bug ou une idée » (comptes et données propres à ce test). */
+test("aperçus des signalements", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  const pass = "une phrase de passe pour la démo des signalements";
+  const register = async (p: Page, name: string) => {
+    const email = `apercu-${name.toLowerCase()}@example.test`;
+    await p.goto("/register");
+    await p.fill("#dn", name); await p.fill("#em", email); await p.fill("#pw", pass); await p.fill("#pw2", pass);
+    await p.getByRole("button", { name: /créer/i }).click();
+    const tok = () => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
+    await expect.poll(tok).not.toBe("");
+    await p.goto(`/verify-email#${tok()}`);
+    await p.goto("/login");
+    await p.fill("#email", email); await p.fill("#password", pass);
+    await p.getByRole("button", { name: /se connecter/i }).click();
+    await expect(p.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+    return email;
+  };
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await register(page, "Isolde");
+  // Version de l'addon vue à l'import (jointe d'office)
+  // Requêtes faites depuis la page (origine et jeton CSRF comme le site)
+  const call = (url: string, data: object) => page.evaluate(async ([u, d]) => {
+    const { csrfToken } = await (await fetch("/api/auth/me")).json();
+    const r = await fetch(u as string, { method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify(d) });
+    if (!r.ok) throw new Error(`${u} : ${r.status}`);
+  }, [url, data] as const);
+  await call("/api/addon/import", { text: "FRC;2;Isoldë;Forever EU;PRIEST;Undead;60;Horde;1790000000;1.5.4\nEND;0" });
+  await page.reload();
+  const shot = await fakeShot();
+
+  // 1. La fenêtre, remplie, capture jointe
+  await page.goto("/groups");
+  await page.locator(".acct-btn").click();
+  await page.locator(".acct-menu").screenshot({ path: `${OUT}/apercu-signaler-menu.png` });
+  await page.getByRole("button", { name: "Signaler un bug ou une idée" }).click();
+  const dlg = page.getByRole("dialog");
+  await dlg.getByRole("button", { name: "Addon", exact: true }).click();
+  await dlg.getByLabel("Titre").fill("La fenêtre du conseil se ferme quand je passe");
+  await dlg.getByLabel("Détails").fill("En raid, quand je clique sur « Passer » dans le conseil de butin, la fenêtre se ferme pour tout le monde et le vote est perdu.");
+  await dlg.locator("input[type=file]").setInputFiles({ name: "capture.png", mimeType: "image/png", buffer: shot });
+  await expect(dlg.getByRole("img", { name: "Capture jointe" })).toBeVisible();
+  await page.screenshot({ path: `${OUT}/apercu-signaler.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${OUT}/apercu-signaler-mobile.png` });
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await dlg.getByRole("button", { name: "Envoyer" }).click();
+  await expect(dlg.getByRole("heading", { name: "Merci !" })).toBeVisible();
+  await page.screenshot({ path: `${OUT}/apercu-signaler-merci.png` });
+  await dlg.getByRole("button", { name: "Fermer" }).click();
+  // Deux autres signalements, par l'API
+  const send = (data: object) => call("/api/reports", data);
+  await send({ kind: "idea", area: "site", title: "Trier les persos du groupe par niveau d'objet", body: "Pour préparer la compo plus vite.", page: "/groups" });
+  await send({ kind: "question", area: "bot", title: "Le bot peut-il rappeler le raid 1 h avant ?", body: "Le rappel de la veille est bien, mais beaucoup oublient le jour même.", page: "/groups" });
+
+  // 2. Un admin répond (page des admins)
+  const admin = await (await browser.newContext({ locale: "fr-FR", timezoneId: "Europe/Paris", colorScheme: "dark", viewport: { width: 1360, height: 900 } })).newPage();
+  await admin.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  const adminEmail = await register(admin, "Flo");
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  await db.query("UPDATE users SET site_admin = true WHERE email = $1", [adminEmail]);
+  await db.end();
+  await admin.goto("/admin/signalements");
+  const item = admin.locator(".sg-item", { hasText: "Le bot peut-il" });
+  await item.getByLabel(/Réponse au joueur/).fill("Bonne idée : c'est noté pour une prochaine version du bot.");
+  await item.getByRole("button", { name: "Répondre" }).click();
+  await expect(item.getByRole("status")).toContainText("Réponse envoyée");
+  const bug = admin.locator(".sg-item", { hasText: "La fenêtre du conseil" });
+  await bug.getByLabel(/Réponse au joueur/).fill("Merci ! Je regarde ça avant le prochain raid.");
+  await bug.getByRole("button", { name: "Répondre" }).click();
+  await expect(bug.getByRole("status")).toContainText("Réponse envoyée");
+  await admin.reload();
+  await expect(admin.locator(".sg-item")).toHaveCount(3);
+  await admin.screenshot({ path: `${OUT}/apercu-signalements-admin.png`, fullPage: true });
+  await admin.context().close();
+
+  // 3. Le joueur : pastille, puis « Mes signalements »
+  await page.goto("/persos");
+  await expect(page.locator(".acct-dot")).toBeVisible();
+  await page.locator(".acct-btn").click();
+  await page.locator(".topnav").screenshot({ path: `${OUT}/apercu-signaler-pastille.png` });
+  await page.locator(".acct-menu").screenshot({ path: `${OUT}/apercu-signaler-pastille-menu.png` });
+  await page.getByRole("link", { name: /Mes signalements/ }).click();
+  await expect(page.locator(".sg-new").first()).toBeVisible();
+  await page.screenshot({ path: `${OUT}/apercu-mes-signalements.png`, fullPage: true });
+});
+
 /**
  * Tour de toutes les pages (TOUR=1, après les aperçus) : captures pleine page, bureau et téléphone, pour la revue UX.
  * Sortie : test-results/tour/.

@@ -20,7 +20,7 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   account_created_battlenet: ["Compte créé via Battle.net", ""],
   battlenet_import_list: ["Liste des persos lue sur Battle.net", ""], battlenet_import: ["Persos importés de Battle.net", ""],
   discord_linked: ["Discord lié", "warn"], discord_unlinked: ["Discord délié", "warn"],
-  group_discord_linked: ["Salon Discord lié à un groupe", ""], group_discord_unlinked: ["Salon Discord délié d'un groupe", ""],
+  group_discord_linked: ["Salon Discord lié à un groupe", ""], reports_channel_linked: ["Salon Discord des signalements lié", ""], group_discord_unlinked: ["Salon Discord délié d'un groupe", ""],
   group_created: ["Groupe créé", ""], group_joined: ["Groupe rejoint", ""], group_left: ["Groupe quitté", ""],
   group_role_changed: ["Rôle modifié dans un groupe", ""], group_member_removed: ["Membre retiré d'un groupe", ""],
   invite_created: ["Invitation créée", ""], invite_revoked: ["Invitation révoquée", ""], raid_created: ["Raid créé", ""], raid_deleted: ["Raid supprimé", ""],

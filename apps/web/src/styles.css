@@ -1198,3 +1198,36 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .bi-group { gap: 10px; }
 .rc-bnet { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel-2); font-size: 14px; }
 .rc-bnet-k { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: #148eff; }
+
+/* Signalements (bug, idée, question) : fenêtre, mes signalements, page des admins */
+.acct-btn { position: relative; }
+.acct-dot { position: absolute; top: 0; left: 24px; width: 10px; height: 10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px var(--bg); }
+.acct-count { margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: var(--gold); color: var(--on-gold); font: 600 11px/1.3 var(--f-mono); }
+.sg-dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 20px 22px; border-radius: 10px; border: 1px solid var(--frame); background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+.sg-dialog::backdrop { background: rgb(6 9 20 / .6); }
+.sg-dialog h2 { font-size: 24px; }
+.sg-head { flex-wrap: nowrap; align-items: flex-start; }
+.sg-two { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 18px; align-items: start; }
+.sg-two .seg { flex-wrap: wrap; }
+.sg-dialog textarea { min-height: 110px; }
+.sg-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; border: 1px dashed var(--line-2); border-radius: 6px; background: var(--panel-2); }
+.sg-shot-on { display: flex; align-items: flex-start; gap: 12px; }
+.sg-shot-on img { max-width: 220px; max-height: 140px; border-radius: 4px; border: 1px solid var(--line); object-fit: contain; background: var(--panel-2); }
+.sg-auto { margin: 0; }
+.sg-auto code, .sg-meta code { font: 500 12px var(--f-mono); overflow-wrap: anywhere; }
+.sg-actions { justify-content: flex-end; }
+.sg-item { display: grid; gap: 8px; }
+.sg-item h3 { font-size: 19px; }
+.sg-item.focus { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.sg-tags { gap: 6px; }
+.sg-body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.sg-meta { margin: 0; }
+.sg-thumb { justify-self: start; }
+.sg-thumb img { display: block; max-width: min(360px, 100%); max-height: 220px; border-radius: 4px; border: 1px solid var(--line); object-fit: contain; background: var(--panel-2); }
+.sg-reply { border-left: 3px solid var(--line-2); padding: 6px 0 6px 12px; display: grid; gap: 4px; }
+.sg-reply.new { border-left-color: var(--gold); }
+.sg-new { color: var(--gold); }
+.sg-filters { flex-wrap: wrap; justify-self: start; }
+.sg-admin { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: start; border-top: 1px solid var(--line); padding-top: 10px; }
+.sg-admin textarea { min-height: 72px; }
+@media (max-width: 640px) { .sg-two, .sg-admin { grid-template-columns: 1fr; } .sg-dialog { padding: 16px; } .sg-dialog h2 { font-size: 20px; } }
