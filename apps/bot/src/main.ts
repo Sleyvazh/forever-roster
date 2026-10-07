@@ -174,6 +174,7 @@ async function start() {
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendNudges().catch(e => log.warn("Relances impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendAsks().catch(e => log.warn("Demandes impossibles", e?.message)); }, 15e3);
@@ -200,6 +201,7 @@ async function start() {
   client.on(Events.MessageCreate, m => { feedback.dm(m).catch(e => log.warn("MP d'avis non traité", (e as Error).message)); });
 
   async function handle(i: Interaction) {
+    if (i.isAutocomplete()) return i.commandName === "feedback-config" ? feedback.autocomplete(i).catch(() => i.respond([]).catch(() => {})) : undefined;
     if (i.isChatInputCommand()) return command(i);
     if (i.isButton()) return isFeedbackId(i.customId) ? feedback.button(i) : button(i);
     if (i.isModalSubmit()) return feedback.modal(i);

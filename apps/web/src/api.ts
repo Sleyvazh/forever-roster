@@ -128,6 +128,13 @@ export interface Coverage { id: string; covered: boolean; sources: number; missi
 export type ReportKind = "bug" | "idea" | "question";
 export type ReportArea = "site" | "addon" | "bot" | "companion";
 export type ReportStatus = "new" | "wip" | "done" | "refused";
+/** Avis Discord suivi par un groupe (Administration → Avis) : mêmes statuts que les signalements. */
+export type FeedbackStatus = ReportStatus;
+export interface FeedbackMessage { id: number; from: "team" | "author"; name: string | null; text: string; source: "discord" | "site"; delivered: boolean | null; createdAt: string; unseen: boolean }
+export interface GroupFeedbackItem {
+  id: string; anonymous: boolean; author: string | null; text: string; status: FeedbackStatus; reachable: boolean;
+  createdAt: string; closedAt: string | null; authorAt: string; unseen: boolean; messages: FeedbackMessage[];
+}
 export interface Report {
   id: string; author: string; game: import("@forever/game-data").Game; kind: ReportKind; area: ReportArea; title: string; body: string;
   page: string; browser: string; addonVersion: string | null; hasImage: boolean;

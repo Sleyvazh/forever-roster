@@ -194,6 +194,9 @@ export const groups = pgTable("groups", {
 }, t => [
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
   check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
+  // Groupes liés à un serveur Discord (avis : seuls ceux-là sont proposés), quel que soit le nombre de groupes
+  index("groups_discord_guild_idx").on(t.discordGuildId),
+  index("groups_orders_guild_idx").on(t.ordersGuildId),
 ]);
 
 export const groupMembers = pgTable("group_members", {
@@ -616,22 +619,33 @@ export const discordDeletions = pgTable("discord_deletions", {
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 
-/* ---------- Avis (feedback) par le bot Discord, sans compte sur le site ---------- */
+/* ---------- Avis (feedback) par le bot Discord ---------- */
 
-/** Réglages d'un serveur Discord : salon où arrivent les avis, salon du bouton « Donner mon avis ». */
+export type FeedbackStatus = "new" | "wip" | "done" | "refused";
+
+/**
+ * Réglages d'un serveur Discord : salon où arrivent les avis, salon du bouton « Donner mon avis ».
+ * Facultatif : groupe du site qui suit les avis (Administration → Avis, chef et officiers), choisi parmi les groupes
+ * déjà liés à ce serveur. Sans groupe, les avis restent seulement dans Discord.
+ */
 export const feedbackSettings = pgTable("feedback_settings", {
   guildId: text("guild_id").primaryKey(),
+  /** Nom du serveur Discord au dernier réglage (affiché sur le site). */
+  guildName: text("guild_name").notNull().default(""),
   inboxChannelId: text("inbox_channel_id").notNull(),
   panelChannelId: text("panel_channel_id"),
   panelMessageId: text("panel_message_id"),
   allowAnonymous: boolean("allow_anonymous").notNull().default(true),
+  groupId: uuid("group_id").references(() => groups.id, { onDelete: "set null" }),
   updatedBy: text("updated_by").notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, t => [index("feedback_settings_group_idx").on(t.groupId)]);
 
 /**
- * Avis publiés. Le texte n'est pas gardé ici (il est dans le message Discord) ; l'auteur l'est 30 jours,
- * pour que l'équipe puisse lui répondre par le bot (même anonyme, sans le connaître), puis il est effacé.
+ * Avis publiés. Sans groupe : seul le lien avis ↔ auteur est gardé, 30 jours (le texte reste dans Discord).
+ * Suivi par un groupe : texte, statut et conversation gardés jusqu'à suppression par un officier ; l'auteur (pour la
+ * réponse par le bot) est oublié 30 jours après la clôture (« Fait » ou « Refusé »). Un avis anonyme ne montre jamais
+ * son auteur sur le site : authorId ne sert qu'au bot.
  */
 export const feedbacks = pgTable("feedbacks", {
   id: uuid("id").primaryKey(),
@@ -640,8 +654,50 @@ export const feedbacks = pgTable("feedbacks", {
   messageId: text("message_id").notNull(),
   anonymous: boolean("anonymous").notNull(),
   authorId: text("author_id"),
+  groupId: uuid("group_id").references(() => groups.id, { onDelete: "set null" }),
+  /** Avis suivi par un groupe : texte et nom (signé seulement). */
+  text: text("text"),
+  authorName: text("author_name"),
+  status: text("status").$type<FeedbackStatus>().notNull().default("new"),
+  closedAt: ts("closed_at"),
+  /** Dernier message de l'auteur (l'avis ou une réponse) : pastille des officiers. */
+  authorAt: ts("author_at").notNull().defaultNow(),
+  /** Statut à reporter sur le message du salon de l'équipe. */
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
   createdAt: ts("created_at").notNull().defaultNow(),
-}, t => [index("feedbacks_created_idx").on(t.createdAt)]);
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  index("feedbacks_created_idx").on(t.createdAt),
+  index("feedbacks_group_idx").on(t.groupId, t.authorAt),
+  check("feedbacks_status", sql`${t.status} IN ('new', 'wip', 'done', 'refused')`),
+]);
+
+/** Conversation d'un avis suivi : réponses de l'équipe (Discord ou site) et de l'auteur. */
+export const feedbackMessages = pgTable("feedback_messages", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  feedbackId: uuid("feedback_id").notNull().references(() => feedbacks.id, { onDelete: "cascade" }),
+  from: text("from").$type<"team" | "author">().notNull(),
+  /** Officier qui répond, ou auteur d'un avis signé ; null pour l'auteur d'un avis anonyme. */
+  name: text("name"),
+  text: text("text").notNull(),
+  source: text("source").$type<"discord" | "site">().notNull(),
+  /** Réponse de l'équipe : remise en MP (null : écrite sur le site, le bot ne l'a pas encore envoyée). */
+  delivered: boolean("delivered"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("feedback_messages_idx").on(t.feedbackId, t.createdAt),
+  index("feedback_messages_pending_idx").on(t.createdAt).where(sql`${t.source} = 'site' AND ${t.delivered} IS NULL`),
+  check("feedback_messages_from", sql`${t.from} IN ('team', 'author')`),
+  check("feedback_messages_source", sql`${t.source} IN ('discord', 'site')`),
+]);
+
+/** Dernière visite d'un officier dans les avis de son groupe (pastilles). */
+export const feedbackSeen = pgTable("feedback_seen", {
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  seenAt: ts("seen_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.userId, t.groupId] })]);
 
 /** Soft reserve : objets réservés par un perso pour un raid. */
 export const softReserves = pgTable("soft_reserves", {

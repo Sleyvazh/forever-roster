@@ -14,7 +14,8 @@ export type AuditType =
   | "loot_count_corrected"
   | "device_linked" | "device_pair_denied" | "device_unlinked"
   | "battlenet_import_list" | "battlenet_import"
-  | "reports_channel_linked";
+  | "reports_channel_linked"
+  | "group_feedback_linked" | "group_feedback_unlinked";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

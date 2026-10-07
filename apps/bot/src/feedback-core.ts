@@ -1,10 +1,17 @@
-import { ButtonStyle, ComponentType, TextInputStyle, type APIButtonComponentWithCustomId, type APIEmbed, type APIModalInteractionResponseCallbackData } from "discord.js";
+import { ButtonStyle, ComponentType, TextInputStyle, type APIButtonComponent, type APIButtonComponentWithCustomId, type APIEmbed, type APIEmbedField, type APIModalInteractionResponseCallbackData } from "discord.js";
+import type { FeedbackStatus } from "./api";
 import { escapeMd, type Row } from "./render";
 
 /**
  * Avis (feedback) : partie pure, testée sans Discord. Fonction autonome, utilisable par n'importe quel serveur
  * (guilde WoW ou autre jeu) sans le site ni l'addon : aucun vocabulaire de jeu ici.
+ * Suivi facultatif par un groupe du site (Track) : statut sur le message de l'équipe, lien vers le site.
  */
+
+/** Groupe du site qui suit les avis du serveur. url : section Avis du groupe (sans l'avis). */
+export interface Track { group: string; site: string; url: string }
+export const avisUrl = (t: Pick<Track, "url">, id: string) => `${t.url}?avis=${id}`;
+export const STATUS_LABEL: Record<FeedbackStatus, string> = { new: "🆕 Nouveau", wip: "🔧 En cours", done: "✅ Fait", refused: "⛔ Refusé" };
 
 export const MAX_TEXT = 1800;
 export const MAX_REPLY = 1500;
@@ -58,6 +65,8 @@ export function decodeFb(id: string): FbAction | null {
 
 export interface Session {
   guildId: string; guildName: string; allowAnonymous: boolean;
+  /** Avis suivis sur le site par un groupe : le joueur en est prévenu dans l'aperçu. */
+  track?: Track | null;
   /** Nom affiché si l'avis est signé (pseudo sur le serveur) et avatar. */
   name: string; avatarUrl: string | null;
   text: string | null;
@@ -119,7 +128,7 @@ export function checkText(content: string, attachments = 0): { ok: true; text: s
 type Style = ButtonStyle.Primary | ButtonStyle.Secondary | ButtonStyle.Success | ButtonStyle.Danger;
 const button = (custom_id: string, label: string, style: Style, emoji?: string): APIButtonComponentWithCustomId =>
   ({ type: ComponentType.Button, custom_id, label, style, ...(emoji ? { emoji: { name: emoji } } : {}) });
-const row = (...components: APIButtonComponentWithCustomId[]): Row => ({ type: ComponentType.ActionRow, components });
+const row = (...components: APIButtonComponent[]): Row => ({ type: ComponentType.ActionRow, components });
 const none = { parse: [] as [] };
 
 /** Message du salon dédié, avec le bouton. */
@@ -166,6 +175,7 @@ export function previewMessage(s: Session & { text: string }, note: string | nul
     s.allowAnonymous
       ? `**Anonyme** : ton nom n'apparaît nulle part. L'équipe peut quand même te répondre par mon intermédiaire, sans savoir qui tu es. Je garde ce lien ${KEEP_DAYS} jours, puis je l'efface.`
       : "Ce serveur n'accepte que les avis signés.",
+    ...(s.track ? [`Ton avis et les réponses sont aussi visibles du chef et des officiers du groupe « ${escapeMd(s.track.group)} » sur ${s.track.site}${s.allowAnonymous ? " (sans ton nom si tu l'envoies anonyme)" : ""}.`] : []),
     "",
     "-# Pour corriger, envoie simplement un nouveau message : il remplace celui-ci.",
   ];
@@ -201,18 +211,42 @@ export function sentMessage(guildName: string, anonymous: boolean, text: string)
 
 export interface Author { id: string; name: string; avatarUrl: string | null }
 
+/** Champs « Statut » et « Suivi » d'un avis suivi par un groupe du site. */
+function trackFields(status: FeedbackStatus, track: Pick<Track, "group" | "site">): APIEmbedField[] {
+  return [
+    { name: "Statut", value: STATUS_LABEL[status], inline: true },
+    { name: "Suivi", value: `${track.site} · ${escapeMd(track.group)}`.slice(0, 1024), inline: true },
+  ];
+}
+const linkButton = (url: string): APIButtonComponent => ({ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url });
+
+/** Boutons sous l'avis : « Répondre », et le lien vers le site s'il est suivi. */
+export function inboxButtons(id: string, url: string | null) {
+  return [row(button(encodeFb({ a: "reply", id }), "Répondre", ButtonStyle.Secondary, "↩️"), ...(url ? [linkButton(url)] : []))];
+}
+
 /** Avis publié dans le salon de l'équipe. Anonyme : aucune trace de l'auteur dans le message. */
-export function inboxMessage(id: string, text: string, author: Author | null, at = new Date()) {
+export function inboxMessage(id: string, text: string, author: Author | null, at = new Date(), track: Track | null = null) {
+  const fields: APIEmbedField[] = [
+    ...(author ? [{ name: "De", value: `<@${author.id}>`, inline: true }] : []),
+    ...(track ? trackFields("new", track) : []),
+  ];
   const embed: APIEmbed = {
     color: author ? COLOR : COLOR_ANON,
     author: author ? { name: author.name, ...(author.avatarUrl ? { icon_url: author.avatarUrl } : {}) } : { name: "Anonyme" },
     title: "Nouvel avis",
     description: text,
-    ...(author ? { fields: [{ name: "De", value: `<@${author.id}>`, inline: true }] } : {}),
+    ...(fields.length ? { fields } : {}),
     footer: { text: author ? "Répondre : la réponse part en MP à l'auteur." : "Répondre : la réponse part en MP à l'auteur, sans révéler son nom." },
     timestamp: at.toISOString(),
   };
-  return { embeds: [embed], components: [row(button(encodeFb({ a: "reply", id }), "Répondre", ButtonStyle.Secondary, "↩️"))], allowedMentions: none };
+  return { embeds: [embed], components: inboxButtons(id, track ? avisUrl(track, id) : null), allowedMentions: none };
+}
+
+/** Message de l'avis avec le statut changé sur le site : le reste (texte, auteur, date) est gardé tel quel. */
+export function withStatus(embed: APIEmbed, status: FeedbackStatus, track: Pick<Track, "group" | "site">): APIEmbed {
+  const kept = (embed.fields ?? []).filter(f => f.name !== "Statut" && f.name !== "Suivi");
+  return { ...embed, fields: [...kept, ...trackFields(status, track)] };
 }
 
 /** MP à l'auteur : réponse de l'équipe, avec un bouton pour répondre à son tour. */

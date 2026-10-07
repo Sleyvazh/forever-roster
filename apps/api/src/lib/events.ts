@@ -13,6 +13,7 @@ export type LiveEvent =
   | { t: "raids"; g: string }   // la liste des raids ou des raids récurrents d'un groupe
   | { t: "group"; g: string }   // nom, membres, invitations, salon Discord
   | { t: "chars"; g: string }   // persos, équipement, métiers ou patrons d'un membre
+  | { t: "feedback"; g: string } // avis Discord suivis par le groupe (Administration → Avis)
   | { t: "membership" };        // l'utilisateur a rejoint ou quitté un groupe
 
 interface Conn { userId: string; groups: Set<string>; send: (e: LiveEvent) => void }

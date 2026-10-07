@@ -2,7 +2,7 @@ import { AttendanceTab } from "../components/RaidLog";
 import { classColor, ATTENDED, CLASSES, SKILL_LINE_NAMES, type AttendanceStatus, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, put, type Character, type CraftersRecipe, type GroupRole, type Member } from "../api";
 import { useMe } from "../auth";
 import { CRAFTING } from "../components/GameData";
@@ -11,6 +11,7 @@ import { ItemHover, ItemIcon } from "../components/ItemTooltip";
 import { NumberField } from "../components/NumberField";
 import { GroupAddonExport } from "../components/GroupAddonExport";
 import { GroupRaids } from "../components/GroupRaids";
+import { GroupFeedback } from "../components/GroupFeedback";
 import { CraftOrders, type OrderPrefill } from "../components/CraftOrders";
 import { GroupCharacters } from "../components/GroupRoster";
 import { LootSettingsPanel } from "../components/Loot";
@@ -19,7 +20,12 @@ import { ROLE_LABEL } from "./GroupsPage";
 import { useSite } from "../site";
 import type { Game } from "@forever/game-data";
 
-interface GroupDetail { group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean }; role: GroupRole; members: Member[] }
+interface GroupDetail {
+  group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean };
+  role: GroupRole; members: Member[];
+  /** Chef et officiers : avis Discord suivis par le groupe (null pour un membre). */
+  feedback: { linked: boolean; unseen: number } | null;
+}
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
@@ -33,6 +39,7 @@ const EVENT_LABEL: Record<string, string> = {
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
   group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin",
   group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
+  group_feedback_linked: "a relié les avis d'un serveur Discord", group_feedback_unlinked: "a retiré les avis d'un serveur Discord",
 };
 
 type GroupTab = "raids" | "members" | "characters" | "crafters" | "presence" | "admin";
@@ -46,6 +53,9 @@ export function GroupPage() {
   const myId = me.data?.user?.id;
   const site = useSite();
   const [error, setError] = useState<string | null>(null);
+  // Lien « Voir sur le site » d'un avis dans Discord : /groups/:id/admin?avis=<id>
+  const [params] = useSearchParams();
+  const avis = params.has("avis") ? params.get("avis") || null : undefined;
 
   const detail = useQuery({ queryKey: ["group", groupId], queryFn: () => get<GroupDetail>(`/groups/${groupId}`) });
   const isOfficer = detail.data && detail.data.role !== "member";
@@ -75,6 +85,7 @@ export function GroupPage() {
   const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
   const tab: GroupTab = tabs.some(([k]) => k === wanted) ? wanted : "raids";
   const setTab = (t: GroupTab) => nav(`/groups/${groupId}${t === "raids" ? "" : `/${GROUP_TAB_SLUG[t]}`}`);
+  const unseen = detail.data.feedback?.unseen ?? 0;
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -95,7 +106,7 @@ export function GroupPage() {
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="panel lift">
         <div className="tabs" role="tablist">
-          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}
+          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}{k === "admin" && !!unseen && <span className="av-badge" aria-label={`${unseen} avis avec du nouveau`}>{unseen}</span>}</button>)}
         </div>
         <div className="pane">
           {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
@@ -104,11 +115,12 @@ export function GroupPage() {
           {tab === "crafters" && <Crafters groupId={groupId} myId={myId} />}
           {tab === "presence" && <AttendanceTab groupId={groupId} />}
           {tab === "admin" && isOfficer && (
-            <Admin isOwner={isOwner} sections={{
+            <Admin isOwner={isOwner} unseen={unseen} initial={avis !== undefined ? "feedback" : undefined} sections={{
               invites: <Invites groupId={groupId} guard={guard} />,
               loot: <LootSettingsPanel groupId={groupId} />,
               discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
                 <OrdersChannel groupId={groupId} linked={group.ordersLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} /></>,
+              feedback: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,
               addon: <GroupAddonExport groupId={groupId} />,
               journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
               danger: (
@@ -126,18 +138,19 @@ export function GroupPage() {
   );
 }
 
-type AdminKey = "invites" | "loot" | "discord" | "addon" | "journal" | "danger";
-const ADMIN_NAV: [AdminKey, string][] = [["invites", "Invitations"], ["loot", "Butin"], ["discord", "Discord et relances"], ["addon", "Données pour l'addon"], ["journal", "Journal"], ["danger", "Zone sensible"]];
+type AdminKey = "invites" | "loot" | "discord" | "feedback" | "addon" | "journal" | "danger";
+const ADMIN_NAV: [AdminKey, string][] = [["invites", "Invitations"], ["loot", "Butin"], ["discord", "Discord et relances"], ["feedback", "Avis"], ["addon", "Données pour l'addon"], ["journal", "Journal"], ["danger", "Zone sensible"]];
 
 /** Administration (lot E) : une petite navigation à gauche, une section à la fois. */
-function Admin({ sections, isOwner }: { sections: Record<AdminKey, React.ReactNode>; isOwner: boolean }) {
-  const [cur, setCur] = useState<AdminKey>("invites");
+function Admin({ sections, isOwner, unseen, initial }: { sections: Record<AdminKey, React.ReactNode>; isOwner: boolean; unseen: number; initial?: AdminKey }) {
+  const [cur, setCur] = useState<AdminKey>(initial ?? "invites");
+  useEffect(() => { if (initial) setCur(initial); }, [initial]);
   const retail = useSite().game === "retail";
   const nav = ADMIN_NAV.filter(([k]) => (k !== "danger" || isOwner) && !(retail && (k === "loot" || k === "addon")));
   return (
     <div className="adm">
       <nav className="adm-nav" aria-label="Sections de l'administration">
-        {nav.map(([k, l]) => <button key={k} type="button" className={`${cur === k ? "on" : ""}${k === "danger" ? " bad" : ""}`} aria-current={cur === k ? "true" : undefined} onClick={() => setCur(k)}>{l}</button>)}
+        {nav.map(([k, l]) => <button key={k} type="button" className={`${cur === k ? "on" : ""}${k === "danger" ? " bad" : ""}`} aria-current={cur === k ? "true" : undefined} onClick={() => setCur(k)}>{l}{k === "feedback" && !!unseen && <span className="av-badge">{unseen}</span>}</button>)}
       </nav>
       <div className="adm-body admin">{sections[cur]}</div>
     </div>
@@ -300,7 +313,7 @@ function Journal({ groupId }: { groupId: string }) {
     <div className="tscroll"><table className="data">
       <thead><tr><th>Date</th><th>Qui</th><th>Action</th></tr></thead>
       <tbody>{data.events.map(e => (
-        <tr key={e.id}><td className="small muted">{fmt.format(new Date(e.createdAt))}</td><td>{e.actor ?? "Compte supprimé"}</td><td>{EVENT_LABEL[e.type] ?? e.type}{typeof e.meta.name === "string" ? ` · ${e.meta.name}` : ""}{e.type === "group_renamed" && typeof e.meta.from === "string" && typeof e.meta.to === "string" ? ` · ${e.meta.from} → ${e.meta.to}` : ""}</td></tr>
+        <tr key={e.id}><td className="small muted">{fmt.format(new Date(e.createdAt))}</td><td>{e.actor ?? (typeof e.meta.by === "string" ? `${e.meta.by} (Discord)` : "Compte supprimé")}</td><td>{EVENT_LABEL[e.type] ?? e.type}{typeof e.meta.name === "string" ? ` · ${e.meta.name}` : ""}{e.type === "group_renamed" && typeof e.meta.from === "string" && typeof e.meta.to === "string" ? ` · ${e.meta.from} → ${e.meta.to}` : ""}</td></tr>
       ))}</tbody>
     </table></div>
   );

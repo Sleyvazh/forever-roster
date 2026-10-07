@@ -1231,3 +1231,25 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .sg-admin { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: start; border-top: 1px solid var(--line); padding-top: 10px; }
 .sg-admin textarea { min-height: 72px; }
 @media (max-width: 640px) { .sg-two, .sg-admin { grid-template-columns: 1fr; } .sg-dialog { padding: 16px; } .sg-dialog h2 { font-size: 20px; } }
+
+/* Avis du Discord suivis par le groupe (Administration → Avis) : préfixe av- */
+.av-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 999px; background: var(--gold); color: var(--on-gold); font: 600 11px/1 var(--f-mono); vertical-align: 1px; }
+.av-src { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.av-ico { flex: none; width: 30px; height: 30px; border-radius: 8px; background: #5865f2; color: #fff; display: grid; place-items: center; font-weight: 700; }
+.av-how code { font: 500 12.5px var(--f-mono); }
+.av-item { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.av-item.open { border-color: var(--frame); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--frame) 40%, transparent); }
+.av-item.focus { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.av-head { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.av-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); display: inline-block; }
+.av-anon { font-style: italic; color: var(--ink-2); }
+.av-ex { margin: 0; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.av-toggle { background: none; border: 0; padding: 0; color: var(--gold); font-size: 13px; cursor: pointer; }
+.av-thread { display: grid; gap: 10px; }
+.av-msg { border-left: 3px solid var(--line-2); padding: 4px 0 4px 12px; display: grid; gap: 2px; }
+.av-msg.team { border-left-color: var(--frame); }
+.av-msg.new { border-left-color: var(--gold); }
+.av-msg p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.av-item textarea { min-height: 76px; }
+.av-ctl { gap: 6px; }
+.av-ctl select { width: auto; padding: 4px 8px; font-size: 13.5px; }

@@ -507,7 +507,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return view(raidId);
   });
 
-  feedbackRoutes(app, db);
+  feedbackRoutes(app, db, cfg);
   return app;
 }
 

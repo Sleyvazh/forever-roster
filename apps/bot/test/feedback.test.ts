@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COMMANDS } from "../src/commands";
 import {
   authorReplyInbox, checkText, Cooldown, decodeFb, encodeFb, inboxMessage, MAX_TEXT, panelMessage, previewMessage, promptMessage,
-  replyLog, SESSION_MS, Sessions, teamReplyDm, writeModal, type Session,
+  replyLog, SESSION_MS, Sessions, teamReplyDm, withStatus, writeModal, type Session,
 } from "../src/feedback-core";
 
 const GUILD = "900000000000000001";
@@ -101,5 +101,49 @@ describe("avis : messages", () => {
     expect(fb?.default_member_permissions).toBeUndefined();
     expect(cfg?.default_member_permissions).toBe("32");
     for (const c of COMMANDS) expect(c.description.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("avis suivis par un groupe du site", () => {
+  const track = { group: "Les Veilleurs", site: "Forever Roster", url: "https://forever.test/groups/g1/admin" };
+
+  it("message de l'équipe : statut, suivi et lien vers l'avis sur le site", () => {
+    const m = inboxMessage(ID, "Les raids finissent trop tard", null, new Date(), track);
+    const fields = m.embeds[0]!.fields!;
+    expect(fields).toEqual([
+      { name: "Statut", value: "🆕 Nouveau", inline: true },
+      { name: "Suivi", value: "Forever Roster · Les Veilleurs", inline: true },
+    ]);
+    const buttons = m.components[0]!.components as { custom_id?: string; url?: string }[];
+    expect(buttons[0]!.custom_id).toBe(`fb|reply|${ID}`);
+    expect(buttons[1]!.url).toBe(`https://forever.test/groups/g1/admin?avis=${ID}`);
+    // Sans suivi : rien de nouveau (serveurs sans le site)
+    const plain = inboxMessage(ID, "Top", null);
+    expect(plain.embeds[0]!.fields).toBeUndefined();
+    expect(plain.components[0]!.components).toHaveLength(1);
+  });
+
+  it("statut changé sur le site : seul le statut change, l'auteur et le texte restent", () => {
+    const signed = inboxMessage(ID, "Top", { id: USER, name: "Aldric", avatarUrl: null }, new Date(), track).embeds[0]!;
+    const done = withStatus(signed, "done", track);
+    expect(done.description).toBe("Top");
+    expect(done.fields!.map(f => `${f.name}=${f.value}`)).toEqual([`De=<@${USER}>`, "Statut=✅ Fait", "Suivi=Forever Roster · Les Veilleurs"]);
+    // Un ancien avis sans champ de statut le reçoit
+    expect(withStatus({ title: "Nouvel avis", description: "x" }, "wip", track).fields![0]).toEqual({ name: "Statut", value: "🔧 En cours", inline: true });
+  });
+
+  it("aperçu : le joueur sait que le chef et les officiers du groupe le verront sur le site", () => {
+    const s = { ...base, text: "Idée", expiresAt: 0, track } as Session & { text: string };
+    expect(json(previewMessage(s))).toContain("officiers du groupe « Les Veilleurs » sur Forever Roster");
+    expect(json(previewMessage({ ...s, track: null }))).not.toContain("officiers");
+  });
+
+  it("commande : options site et groupe (autocomplétion), facultatives", () => {
+    const regler = COMMANDS.find(c => c.name === "feedback-config")!.options!.find(o => o.name === "regler") as { options: { name: string; description: string; required?: boolean; autocomplete?: boolean; choices?: unknown[] }[] };
+    const site = regler.options.find(o => o.name === "site")!, groupe = regler.options.find(o => o.name === "groupe")!;
+    expect(site.required).toBe(false);
+    expect(site.choices).toEqual([{ name: "Forever Roster", value: "forever" }, { name: "Roster", value: "retail" }]);
+    expect(groupe).toMatchObject({ required: false, autocomplete: true });
+    for (const o of regler.options) expect(o.description.length).toBeLessThanOrEqual(100);
   });
 });

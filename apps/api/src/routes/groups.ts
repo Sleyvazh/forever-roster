@@ -18,6 +18,7 @@ import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { bus } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
+import { feedbackSummary } from "./group-feedback";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -96,7 +97,9 @@ export async function groupRoutes(app: FastifyInstance) {
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
     // game : un groupe de l'autre jeu ouvert sur cette adresse renvoie vers son site
     const site = siteForGame(cfg, g!.game);
-    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members };
+    // Chef et officiers : avis Discord suivis par le groupe (pastille de l'onglet Administration)
+    const feedback = role === "member" ? null : await feedbackSummary(db, u.id, id);
+    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members, feedback };
   });
 
   app.patch("/:id", async (req) => {

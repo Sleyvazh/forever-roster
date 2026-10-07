@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 41, date: "2026-10-07", kind: "bot", title: "Avis du Discord suivis sur le site",
+    text: "Les avis envoyés par /feedback peuvent arriver aussi dans l'onglet Administration de ton groupe, section « Avis » : le chef et les officiers y suivent chaque avis (Nouveau, En cours, Fait, Refusé), voient toute la conversation et répondent depuis le site, la réponse part en MP à l'auteur. Un avis anonyme reste anonyme. Pour l'activer : /feedback-config regler avec les options site et groupe, sur un serveur Discord déjà lié au groupe." },
   { n: 40, date: "2026-10-07", kind: "site", title: "Signale un bug ou une idée",
     text: "Dans le menu de ton compte (ton nom en haut à droite) : « Signaler un bug ou une idée ». Dis si c'est un bug, une idée ou une question, et si ça touche le site, l'addon, le bot ou Roster Companion ; ajoute une capture d'écran si tu veux (Ctrl+V marche). La page et ton navigateur sont joints tout seuls. L'équipe te répond dans « Mes signalements », avec une pastille sur ton avatar." },
   { n: 39, date: "2026-10-07", kind: "addon", version: "1.5", title: "Inscriptions en jeu : le site garde le dernier mot",

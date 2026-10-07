@@ -56,6 +56,10 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
           { type: ApplicationCommandOptionType.Channel, name: "destination", description: "Salon privé de l'équipe, où arrivent les avis", required: true, channel_types: [ChannelType.GuildText] },
           { type: ApplicationCommandOptionType.Channel, name: "bouton", description: "Salon dédié où le bot pose le bouton « Donner mon avis » (il le verrouille)", required: false, channel_types: [ChannelType.GuildText] },
           { type: ApplicationCommandOptionType.Boolean, name: "anonyme", description: "Autoriser les avis anonymes (oui par défaut)", required: false },
+          // Suivi sur le site (facultatif) : groupe déjà lié à ce serveur ; absent = on garde le réglage actuel
+          { type: ApplicationCommandOptionType.String, name: "site", description: "Site du groupe qui suit les avis (filtre la liste des groupes)", required: false,
+            choices: [{ name: "Forever Roster", value: "forever" }, { name: "Roster", value: "retail" }] },
+          { type: ApplicationCommandOptionType.String, name: "groupe", description: "Groupe du site qui suit les avis (Administration → Avis), lié à ce serveur", required: false, autocomplete: true },
         ],
       },
       { type: ApplicationCommandOptionType.Subcommand, name: "retirer", description: "Désactive les avis et retire le bouton" },

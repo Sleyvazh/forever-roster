@@ -7,6 +7,7 @@ export type LiveEvent =
   | { t: "raids"; g: string }
   | { t: "group"; g: string }
   | { t: "chars"; g: string }
+  | { t: "feedback"; g: string }
   | { t: "membership" };
 
 const LIVE = "fr-live";
@@ -19,6 +20,7 @@ function refresh(qc: QueryClient, e: LiveEvent) {
     case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
     case "group": inv(["group", e.g]); inv(["orders", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
     case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
+    case "feedback": inv(["feedback", e.g]); inv(["group", e.g]); inv(["group-audit", e.g]); break;
     case "membership": inv(["groups"]); inv(["week"]); break;
   }
 }

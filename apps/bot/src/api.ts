@@ -54,8 +54,19 @@ export type Choices =
   | { mode: "guest"; linked: boolean; current: Current | null; game?: Game };
 export interface SignupBody { status: SignupStatus; characterId?: string | null; cls?: string; spec?: string }
 export interface Deletion { id: number; channelId: string; messageId: string }
-export interface FeedbackConfig { guildId: string; inboxChannelId: string; panelChannelId: string | null; panelMessageId: string | null; allowAnonymous: boolean }
-export interface FeedbackRecord { id: string; guildId: string; channelId: string; messageId: string; anonymous: boolean; authorId: string }
+/** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
+export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string }
+export interface FeedbackConfig {
+  guildId: string; inboxChannelId: string; panelChannelId: string | null; panelMessageId: string | null; allowAnonymous: boolean;
+  guildName?: string; groupId?: string | null; track?: FeedbackTrack | null;
+}
+export interface FeedbackRecord { id: string; guildId: string; channelId: string; messageId: string; anonymous: boolean; authorId: string; tracked?: boolean }
+export type FeedbackStatus = "new" | "wip" | "done" | "refused";
+/** Groupe proposé par l'autocomplétion de /feedback-config (lié à ce serveur). */
+export interface FeedbackGroupChoice { id: string; name: string; site: string; raidsChannelId: string | null; ordersChannelId: string | null }
+/** Relève : réponse écrite sur le site à envoyer en MP, statut à reporter sur le message de l'avis. */
+export interface FeedbackReplyOut { id: number; feedbackId: string; responder: string; text: string; authorId: string; guildId: string; guildName: string; channelId: string; messageId: string; original: string | null }
+export interface FeedbackStatusOut { id: string; channelId: string; messageId: string; status: FeedbackStatus; changedAt: string; track: { groupName: string; site: string; url: string } }
 
 /** Erreur renvoyée par le site ; `message` peut être montré tel quel au joueur. */
 export class ApiError extends Error {
@@ -124,14 +135,28 @@ export class InternalApi {
   signup(raidId: string, b: SignupBody & { discordUserId: string; discordName: string }) {
     return this.req<RaidView>("POST", `/internal/discord/raids/${raidId}/signup`, b);
   }
-  /* Avis (feedback) : fonction autonome, sans groupe du site */
+  /* Avis (feedback) : fonction autonome ; suivi facultatif par un groupe du site lié au serveur */
   feedbackConfig(guildId: string) { return this.req<{ config: FeedbackConfig | null }>("GET", `/internal/feedback/config/${guildId}`); }
-  saveFeedbackConfig(guildId: string, b: Omit<FeedbackConfig, "guildId"> & { updatedBy: string }) {
+  /** groupId : absent = garder le groupe actuel, null = plus de suivi sur le site. */
+  saveFeedbackConfig(guildId: string, b: Omit<FeedbackConfig, "guildId" | "track" | "groupId"> & { updatedBy: string; updatedByName?: string; groupId?: string | null }) {
     return this.req<{ config: FeedbackConfig; previous: FeedbackConfig | null }>("PUT", `/internal/feedback/config/${guildId}`, b);
   }
-  removeFeedbackConfig(guildId: string) { return this.req<{ previous: FeedbackConfig | null }>("DELETE", `/internal/feedback/config/${guildId}`); }
-  recordFeedback(b: FeedbackRecord) { return this.req<{ ok: true }>("POST", "/internal/feedback", b); }
+  removeFeedbackConfig(guildId: string, by?: { by: string; byName: string }) {
+    return this.req<{ previous: FeedbackConfig | null }>("DELETE", `/internal/feedback/config/${guildId}`, by ?? {});
+  }
+  feedbackGroups(guildId: string, q: string, game?: Game) {
+    const qs = new URLSearchParams({ q: q.slice(0, 60), ...(game ? { game } : {}) });
+    return this.req<{ groups: FeedbackGroupChoice[] }>("GET", `/internal/feedback/groups/${guildId}?${qs}`);
+  }
+  recordFeedback(b: FeedbackRecord & { text: string; authorName: string | null }) { return this.req<{ ok: true; tracked: boolean }>("POST", "/internal/feedback", b); }
   feedback(id: string) { return this.req<{ feedback: FeedbackRecord }>("GET", `/internal/feedback/${id}`); }
+  /** Réponse écrite dans Discord (équipe ou auteur), ajoutée au fil d'un avis suivi. */
+  feedbackMessage(id: string, b: { from: "team" | "author"; name: string | null; text: string; delivered?: boolean }) {
+    return this.req<{ ok: true; tracked: boolean }>("POST", `/internal/feedback/${id}/messages`, b);
+  }
+  feedbackOutbox() { return this.req<{ replies: FeedbackReplyOut[]; statuses: FeedbackStatusOut[] }>("GET", "/internal/feedback/outbox"); }
+  feedbackReplyDone(id: number, delivered: boolean) { return this.req<{ ok: true }>("POST", `/internal/feedback/replies/${id}`, { delivered }); }
+  feedbackSynced(id: string, changedAt: string) { return this.req<{ ok: true }>("POST", `/internal/feedback/${id}/synced`, { changedAt }); }
   unsign(raidId: string, discordUserId: string) {
     return this.req<RaidView>("DELETE", `/internal/discord/raids/${raidId}/signup/${discordUserId}`);
   }

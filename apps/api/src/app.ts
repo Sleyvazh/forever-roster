@@ -21,6 +21,7 @@ import { lootRoutes } from "./routes/loot";
 import { reachRoutes } from "./routes/reach";
 import { absenceRoutes } from "./routes/absences";
 import { orderRoutes } from "./routes/orders";
+import { groupFeedbackRoutes } from "./routes/group-feedback";
 import { prepRoutes } from "./routes/prep";
 import { eventRoutes } from "./routes/events";
 import { raidRoutes } from "./routes/raids";
@@ -105,6 +106,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(lootRoutes, { prefix: "/api/groups" });
   await app.register(reachRoutes, { prefix: "/api/groups" });
   await app.register(orderRoutes, { prefix: "/api/groups" });
+  await app.register(groupFeedbackRoutes, { prefix: "/api/groups" });
   await app.register(prepRoutes, { prefix: "/api/groups" });
   await app.register(absenceRoutes, { prefix: "/api/absences" });
   await app.register(imageRoutes, { prefix: "/api/images" });
