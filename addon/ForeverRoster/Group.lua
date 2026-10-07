@@ -34,6 +34,7 @@ function G.Load(text, replace, quiet)
   end
   if not quiet then ns.print(string.format("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
   ns.safe("consommables", G.CountConsumables)
+  ns.safe("inscriptions", G.Reconcile)
   return groups
 end
 
@@ -44,6 +45,33 @@ function G.List()
   return out
 end
 
+-- Inscriptions faites en jeu (c.signups[raidId] = { group, status, time = heure du raid, at = heure du clic,
+-- outSig, sent, sentAt }) : gardées pour le perso jusqu'à ce que le site les ait enregistrées (1.5.4).
+-- L'heure du clic compte dans l'empreinte du perso : chaque clic part au site, même pour remettre un statut déjà
+-- envoyé (avant, l'addon croyait l'avoir déjà envoyé et le gardait pour lui). Une fois enregistrée sur le site,
+-- l'inscription faite en jeu est oubliée : un changement fait ensuite sur le site n'est plus écrasé au prochain envoi.
+local KEEP = 86400 -- envoyée jusqu'à 24 h après l'heure du raid
+
+local function live(s, now) return (s.time or 0) == 0 or s.time > (now or time()) - KEEP end
+
+local function findRaid(groupId, raidId)
+  local g = db()[groupId]
+  if not g then return nil, nil end
+  for _, r in ipairs(g.raids or {}) do if r.id == raidId then return g, r end end
+  return g, nil
+end
+
+-- Prénom du perso d'une clé « Prénom-Royaume »
+local function nameOf(key) return (key or ""):match("^(.-)%-") or key end
+
+-- Où en est une inscription faite en jeu : "sent" (le site l'a reçue), "outbox" (écrite au dernier /reload,
+-- Roster Companion l'envoie), "todo" (pas encore sortie du jeu)
+function G.SignupState(s)
+  if s.sent then return "sent" end
+  if s.outSig and ns.Companion and ns.Companion.Active() then return "outbox" end
+  return "todo"
+end
+
 -- Raids à venir de tous les groupes chargés, avec mon inscription (faite en jeu, sinon celle du site)
 function G.Raids()
   local now, mine, out = time(), ns.charDB().signups or {}, {}
@@ -51,7 +79,7 @@ function G.Raids()
     for _, r in ipairs(g.raids or {}) do
       if r.time == 0 or r.time > now - 3 * 3600 then
         local s = mine[r.id]
-        out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, onSite = r.status, siteChar = r.char }
+        out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, state = s and G.SignupState(s) or nil, onSite = r.status, siteChar = r.char }
       end
     end
   end
@@ -62,22 +90,85 @@ function G.Raids()
   return out
 end
 
--- Inscription en jeu : gardée pour ce perso, envoyée au site avec le prochain export
+-- Inscription en jeu : gardée pour ce perso, envoyée au site avec le prochain export (ou le prochain /reload avec
+-- Roster Companion). Le statut déjà enregistré sur le site pour ce perso : rien à envoyer (un choix pas encore parti
+-- est annulé), sauf si un choix précédent est déjà en route (les données du site ne le montrent peut-être pas encore).
 function G.SignUp(groupId, raidId, status, raidTime)
   local c = ns.charDB()
   c.signups = c.signups or {}
-  c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0 }
-  ns.print("inscription notée : " .. (G.LABEL[status] or status) .. ". Elle part au site avec ta prochaine synchro.")
+  local old, label = c.signups[raidId], G.LABEL[status] or status
+  local inflight = old and (old.outSig ~= nil or old.sent or old.inflight) or nil
+  local _, r = findRaid(groupId, raidId)
+  if r and r.status == status and (r.char == nil or r.char == UnitName("player")) and not inflight then
+    c.signups[raidId] = nil
+    ns.print("inscription : " .. label .. ", c'est déjà ton statut sur le site.")
+    return
+  end
+  c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0, at = time(), inflight = inflight }
+  if ns.Companion and ns.Companion.Active() then
+    ns.print("inscription notée : " .. label .. ". « Envoyer maintenant » (onglet Raids) l'envoie au site tout de suite, sinon elle part au prochain /reload.")
+  else
+    ns.print("inscription notée : " .. label .. ". Elle part au site avec ta prochaine synchro.")
+  end
 end
 
 function G.SignupLines(c)
   local lines, now = {}, time()
   for raidId, s in pairs((c or ns.charDB()).signups or {}) do
-    if (s.time or 0) == 0 or s.time > now - 86400 then lines[#lines + 1] = { "S", s.group, raidId, s.status } end
+    if live(s, now) then lines[#lines + 1] = { "S", s.group, raidId, s.status } end
   end
   table.sort(lines, function(a, b) return a[3] < b[3] end)
   return lines
 end
+
+-- Heures des clics, pour l'empreinte du perso ("" sans inscription horodatée : empreinte inchangée depuis 1.5.3)
+function G.SignupStamp(c)
+  local parts, now = {}, time()
+  for raidId, s in pairs(c.signups or {}) do
+    if s.at and live(s, now) then parts[#parts + 1] = raidId .. "@" .. s.at end
+  end
+  table.sort(parts)
+  return #parts > 0 and ("@" .. table.concat(parts, ",")) or ""
+end
+
+-- Écrites pour l'appli (outbox, au /reload ou à la déconnexion) dans le bloc d'empreinte sig
+function G.MarkOut(c, sig)
+  for _, s in pairs(c.signups or {}) do if live(s) and not s.sent then s.outSig = sig end end
+end
+
+-- Le site a reçu le bloc d'empreinte sig (accusé de l'appli) ; sig nil : export copié (Ctrl+C)
+function G.MarkReceived(c, sig, at)
+  for _, s in pairs(c.signups or {}) do
+    if live(s) and not s.sent and (sig == nil or s.outSig == sig) then s.sent, s.sentAt = true, at or time() end
+  end
+end
+
+-- Après chaque chargement des données du site : oublie les inscriptions faites en jeu que le site a enregistrées
+-- (même statut), celles qu'il a reçues puis changées (données plus récentes que l'accusé : le site a le dernier mot),
+-- celles d'un raid retiré, et celles d'un raid passé depuis plus de 24 h. Sans faire repartir le perso.
+function G.Reconcile()
+  local now = time()
+  for key, c in pairs(ForeverRosterDB.chars or {}) do
+    if c.signups and next(c.signups) then
+      -- 1.5.3 et avant : pas d'heure de clic ; déjà reçue si le perso n'avait plus rien à envoyer
+      local wasSent = ns.Export.IsSent(c)
+      ns.Export.Quietly(c, function()
+        for raidId, s in pairs(c.signups) do
+          if not s.at and not s.sent and wasSent then s.sent, s.sentAt = true, c.sentAt or 0 end
+          local g, r = findRaid(s.group, raidId)
+          local drop = not live(s, now)
+          if not drop and g then
+            drop = not r
+              or (r.status == s.status and (r.char == nil or r.char == nameOf(key)))
+              or (s.sent and (g.at or 0) > (s.sentAt or 0))
+          end
+          if drop then c.signups[raidId] = nil end
+        end
+      end)
+    end
+  end
+end
+ns.on("PLAYER_LOGIN", function() ns.safe("inscriptions", G.Reconcile) end)
 
 -- Patrons marqués « recherché » en jeu (true) ou retirés (false), pour ce perso, envoyés avec l'export
 function G.IsWantedHere(itemId) return (ns.charDB().wanted or {})[itemId] == true end

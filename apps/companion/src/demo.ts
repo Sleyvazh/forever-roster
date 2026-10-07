@@ -10,7 +10,7 @@ export const demoScreen = params.get("ecran") ?? "principal";
 
 const forever: Install = {
   path: "C:\\Games\\World of Warcraft\\_classic_beta_", dirName: "_classic_beta_", version: "1.60.1.70170", game: "forever", test: true,
-  addonVersion: "1.5.1", dataAddon: true, accounts: 1, saved: 1,
+  addonVersion: "1.5.4", dataAddon: true, accounts: 1, saved: 1,
 };
 const retail: Install = { path: "C:\\Games\\World of Warcraft\\_retail_", dirName: "_retail_", version: "12.1.0.63000", game: "retail", test: false, addonVersion: null, dataAddon: false, accounts: 1, saved: 0 };
 
@@ -44,7 +44,7 @@ function retailGame(): GameView {
 }
 
 let state: Status = {
-  version: "0.2.1", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
+  version: "0.2.2", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
   device: demoScreen === "appairage" ? null : { id: "d1", name: "PC-FLO", user: "Flo", linkedAt: now() - 3600 },
   setupDone: !["appairage", "dossiers"].includes(demoScreen), pausedUntil: null, settings, games: [game(), retailGame()],
   installs: [forever, retail, { ...forever, path: "C:\\Games\\World of Warcraft\\_classic_era_", dirName: "_classic_era_", version: "1.15.7.61000", game: null, test: false, addonVersion: null }],
@@ -56,7 +56,7 @@ const listeners = new Set<(s: Status) => void>();
 const push = () => { state = { ...state, now: now() }; listeners.forEach(f => f(state)); };
 
 const JOURNAL = [
-  "2026-10-06T19:40:02Z  INFO Roster Companion 0.2.1 démarre (avec la session)",
+  "2026-10-06T19:40:02Z  INFO Roster Companion 0.2.2 démarre (avec la session)",
   "2026-10-06T19:40:03Z  INFO dossiers trouvés : _classic_beta_ (Forever), _retail_ (Retail)",
   "2026-10-06T21:42:11Z  INFO sauvegarde lue (compte 12345678#1) : 3 blocs",
   "2026-10-06T21:42:12Z  INFO envoyé au site : Tournicoti, Brakka, bilan de « Vroum Vroum »",

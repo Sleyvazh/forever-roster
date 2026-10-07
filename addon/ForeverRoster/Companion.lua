@@ -56,7 +56,13 @@ local function applyAcks(acks, at)
         if log and t and (log.sentAt or 0) < t then log.sentAt = t n = n + 1 end
       else
         local c = ForeverRosterDB.chars and ForeverRosterDB.chars[key]
-        if c and c.sentSig ~= sig then c.sentSig, c.sentAt = sig, at n = n + 1 end
+        -- Seulement un accusé pas encore vu : les données de l'appli le gardent, il revient à chaque chargement et ne
+        -- doit pas remplacer une empreinte plus récente (Ctrl+C, inscription oubliée sans renvoi : 1.5.4)
+        if c and c.ackSig ~= sig then
+          c.ackSig = sig
+          if c.sentSig ~= sig then c.sentSig, c.sentAt = sig, at n = n + 1 end
+        end
+        if c then ns.safe("inscriptions", ns.Group.MarkReceived, c, sig, at) end
       end
     end
   end
@@ -95,6 +101,7 @@ function C.Apply()
       end
     end
   end
+  ns.safe("inscriptions", ns.Group.Reconcile) -- accusés reçus : inscriptions faites en jeu à oublier
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
 end
 

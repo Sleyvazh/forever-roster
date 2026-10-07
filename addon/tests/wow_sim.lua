@@ -4,13 +4,14 @@ local printed = {}
 function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") end
 
 -- Cadres : toute méthode existe et ne fait rien (sauf texte et visibilité, utiles aux vérifications)
+TEXTS = setmetatable({}, { __mode = "v" }) -- dernier cadre qui affiche ce texte (boutons)
 local function frame()
   local f = { shown = false, text = "", scripts = {} }
   return setmetatable(f, { __index = function(t, k)
     if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
     if k == "Hide" then return function(self) self.shown = false local h = rawget(self, "scripts").OnHide if h then h(self) end end end
     if k == "IsShown" then return function(self) return self.shown end end
-    if k == "SetText" then return function(self, v) self.text = v end end
+    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self end end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetScript" then return function(self, n, fn) rawget(self, "scripts")[n] = fn end end
     if k == "GetStringHeight" then return function() return 100 end end
@@ -673,6 +674,99 @@ do
   local found = false
   for _, g in ipairs(ns.Group.List()) do if g.name == "Collé à la main" then found = true end end
   assert(found, "collage manuel plus récent gardé")
+  ForeverRosterData = nil
+end
+
+-- 8 bis. Inscriptions faites en jeu (1.5.4) : chaque clic part au site, l'inscription est oubliée une fois enregistrée
+-- (sans faire repartir le perso), un changement fait ensuite sur le site n'est plus écrasé
+do
+  local G, E, C = ns.Group, ns.Export, ns.Companion
+  local key, c = ns.charKey(), ns.charDB()
+  local realTime, clock = time, time() + 600
+  time = function() return clock end
+  local raidAt = clock + 86400
+  local function frg(at, status)
+    return "FRG;1;gi;" .. at .. ";Inscriptions\nR;ri;" .. raidAt .. ";Molten Core;" .. (status or "") .. ";" .. (status and "Tournicoti" or "") .. "\nEND;1"
+  end
+  local function data(acks, at, status)
+    ForeverRosterData = { v = 1, at = clock, app = "0.2.2", frgAt = at, acks = acks, frg = frg(at, status) }
+    C.Apply()
+  end
+  local function outboxBlock()
+    fire("PLAYER_LOGOUT")
+    for _, b in ipairs(ForeverRosterDB.outbox.blocks) do if b.key == key then return b end end
+  end
+  local function entry() for _, e in ipairs(G.Raids()) do if e.raid.id == "ri" then return e end end end
+  ForeverRosterDB.companion.seen = clock
+  data({}, clock, "absent")
+  E.MarkSent(select(2, E.Build({ all = true })))
+  assert(E.IsSent(c) and C.Active(), "départ : tout est envoyé, appli active")
+  -- Clic « Présent » : pas encore envoyé, bouton « Envoyer maintenant » (rechargement de l'interface)
+  clock = clock + 10
+  G.SignUp("gi", "ri", "present", raidAt)
+  assert(not E.IsSent(c) and entry().status == "present" and entry().state == "todo", "clic : à envoyer")
+  run("raids")
+  local send = TEXTS["Envoyer maintenant"]
+  assert(send and send:IsShown(), "bouton « Envoyer maintenant » sur la ligne du raid")
+  local reloads, realReload = 0, ReloadUI
+  ReloadUI = function() reloads = reloads + 1 end
+  rawget(send, "scripts").OnClick(send)
+  ReloadUI = realReload
+  assert(reloads == 1, "« Envoyer maintenant » recharge l'interface")
+  -- /reload : bloc du perso avec l'inscription, envoi en cours ; accusé et données du site → oubliée sans renvoi
+  local b1 = outboxBlock()
+  assert(b1 and b1.text:find("\nS;gi;ri;present\n") and entry().state == "outbox", "écrite pour l'appli : envoi en cours")
+  clock = clock + 10
+  data({ [key] = b1.sig }, clock + 1, "present")
+  assert(c.signups.ri == nil and E.IsSent(c), "enregistrée par le site : oubliée, le perso ne repart pas")
+  -- Changement sur le site (Absent) : rien ne repart, le site garde le dernier mot
+  clock = clock + 60
+  data({ [key] = b1.sig }, clock, "absent")
+  assert(E.IsSent(c) and entry().status == nil and entry().onSite == "absent", "changement du site gardé")
+  -- Cliquer le statut du site alors que le choix n'est pas parti : annulé, rien à envoyer
+  clock = clock + 10
+  G.SignUp("gi", "ri", "late", raidAt)
+  G.SignUp("gi", "ri", "absent", raidAt)
+  assert(c.signups.ri == nil and E.IsSent(c) and printed[#printed]:find("déjà ton statut", 1, true), "statut du site : rien à envoyer")
+  -- Remettre « Présent » en jeu (même statut qu'au premier envoi) : repart bien (bug du 07/10)
+  clock = clock + 10
+  G.SignUp("gi", "ri", "present", raidAt)
+  local b2 = outboxBlock()
+  assert(b2 and b2.sig ~= b1.sig and b2.text:find("\nS;gi;ri;present\n"), "même statut remis en jeu : repart")
+  -- « Présent » en route : revenir au statut du site n'est pas annulé, il doit repartir
+  clock = clock + 10
+  G.SignUp("gi", "ri", "absent", raidAt)
+  assert(c.signups.ri and c.signups.ri.status == "absent" and c.signups.ri.inflight, "choix précédent en route : le statut du site repart")
+  -- Reçue, puis changée sur le site avant que l'addon voie la confirmation : données plus récentes que l'accusé → oubliée
+  clock = clock + 10
+  G.SignUp("gi", "ri", "late", raidAt)
+  local b3 = outboxBlock()
+  clock = clock + 10
+  data({ [key] = b3.sig }, clock - 15, "absent")
+  assert(entry().state == "sent", "accusé reçu, données plus anciennes : reçue par le site")
+  clock = clock + 60
+  data({ [key] = b3.sig }, clock, "tentative")
+  assert(c.signups.ri == nil and E.IsSent(c) and entry().onSite == "tentative", "changée sur le site ensuite : le site a le dernier mot")
+  -- Sans l'appli : Ctrl+C de l'export = reçue
+  ForeverRosterDB.companion.seen = nil
+  G.SignUp("gi", "ri", "present", raidAt)
+  assert(entry().state == "todo", "copier-coller : à envoyer")
+  run("raids")
+  E.MarkSent(select(2, E.Build({})))
+  assert(entry().state == "sent", "copier-coller : Ctrl+C = reçue")
+  -- Inscription d'avant 1.5.4 (sans heure de clic), déjà envoyée, site changé depuis : oubliée au chargement
+  c.signups.ri = { group = "gi", status = "late", time = raidAt }
+  E.MarkSent(select(2, E.Build({ all = true })))
+  c.signups.ri.sent, c.signups.ri.sentAt, c.sentAt = nil, nil, clock
+  clock = clock + 60
+  assert(G.Load(frg(clock, "absent"), true, true))
+  assert(c.signups.ri == nil and E.IsSent(c), "inscription d'avant 1.5.4 : oubliée sans renvoi")
+  -- Raid passé depuis plus de 24 h : oubliée
+  G.SignUp("gi", "ri", "present", raidAt)
+  clock = raidAt + 86400 + 1
+  G.Reconcile()
+  assert(c.signups.ri == nil, "raid passé : oubliée")
+  time = realTime
   ForeverRosterData = nil
 end
 

@@ -95,6 +95,7 @@ function Forever({ s, g }: { s: Status; g: GameView }) {
           </ul>
         ) : <p className="hint">Rien d'envoyé pour l'instant : l'appli envoie dès que le jeu écrit la sauvegarde de l'addon (déconnexion ou <code>/reload</code>).</p>}
         {g.queue > 0 && <p className="hint">{g.queue} en attente d'envoi.</p>}
+        {g.running && g.history.length > 0 && <p className="hint">Jeu lancé : ce que tu fais en jeu (inscriptions, persos) part au prochain <code>/reload</code> (« Synchroniser » ou « Envoyer maintenant » dans l'addon) ou à la déconnexion. « Synchroniser maintenant » envoie seulement ce que le jeu a déjà écrit.</p>}
         {g.queueErrors.map(e => <div className="alert bad" key={e}>{e}</div>)}
       </Box>
       <Box title="Vers le jeu" dir="↓" when={g.lastPull ? `à jour ${ago(g.lastPull, s.now)}` : "pas encore relevé"}>

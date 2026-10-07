@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 39, date: "2026-10-07", kind: "addon", version: "1.5", title: "Inscriptions en jeu : le site garde le dernier mot",
+    text: "Une inscription faite dans l'onglet Raids de l'addon part au site à ta prochaine synchro, puis l'addon l'oublie dès que le site l'a enregistrée : si tu changes d'avis ensuite sur le site, ton ancien choix ne revient plus l'écraser. Et remettre en jeu un statut déjà envoyé part bien au site. La ligne du raid dit où en est ton choix (pas encore envoyé, reçu par le site). Version 1.5.4." },
   { n: 38, date: "2026-10-07", kind: "addon", version: "1.5", title: "Message « ForeverRoster has been blocked » corrigé",
     text: "Depuis la version 1.5.1, le jeu pouvait afficher « ForeverRoster has been blocked from an action only available to the Blizzard UI ». C'est corrigé en 1.5.3 : mets l'addon à jour. D'ici là, « Ignore » ferme le message sans rien casser." },
   { n: 37, date: "2026-10-07", kind: "addon", version: "1.5", title: "Infobulles des objets dans l'addon",

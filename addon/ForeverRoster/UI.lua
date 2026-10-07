@@ -574,13 +574,24 @@ refreshers.raids = function(p)
     local names = {}
     for _, g in ipairs(groups) do names[#names + 1] = g.name .. GREY .. " (" .. date("%d/%m %H:%M", g.at) .. ")|r" end
     L.Header("Raids à venir")
-    L.Add(GREY .. "Groupes : |r" .. table.concat(names, ", ") .. "\n" .. GREY .. "Inscription de " .. (UnitName("player") or "ce perso") .. ", envoyée au site avec l'export.|r")
+    local companion = ns.Companion and ns.Companion.Active()
+    local who = UnitName("player") or "ce perso"
+    L.Add(GREY .. "Groupes : |r" .. table.concat(names, ", ") .. "\n" .. GREY .. "Inscription de " .. who
+      .. (companion and " : elle part au site au prochain /reload (« Envoyer maintenant ») ou à la déconnexion.|r" or ", envoyée au site avec l'export.|r"))
     local raids = G.Raids()
     if #raids == 0 then L.Add(GREY .. "Aucun raid à venir.|r") end
     for _, e in ipairs(raids) do
       local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or "date à définir"
       local site = e.onSite and (GREY .. "  site : " .. (G.LABEL[e.onSite] or e.onSite) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
-      local game = e.status and (GREEN .. "  en jeu : " .. G.LABEL[e.status] .. "|r") or ""
+      -- Inscription faite en jeu, en attendant que le site l'enregistre (elle est alors oubliée : 1.5.4)
+      local game = ""
+      if e.status then
+        local label = G.LABEL[e.status] or e.status
+        if e.state == "sent" then game = GREEN .. "  en jeu : " .. label .. ", reçu par le site|r"
+        elseif e.state == "outbox" then game = GOLD .. "  en jeu : " .. label .. ", envoi en cours|r"
+        elseif companion then game = GOLD .. "  en jeu : " .. label .. ", pas encore envoyé|r"
+        else game = GOLD .. "  en jeu : " .. label .. ", part avec ton prochain export|r" end
+      end
       local buttons = {}
       -- Choisi : l'inscription faite en jeu, sinon celle du site
       local current = e.status or e.onSite
@@ -590,6 +601,10 @@ refreshers.raids = function(p)
         end, { color = st.color, selected = current == st.key } }
       end
       L.Add(GOLD .. e.raid.name .. "|r  " .. when .. site .. game, buttons)
+      if e.state == "todo" and companion then
+        L.Add(GREY .. "Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), puis Roster Companion le transmet au site.|r",
+          { { "Envoyer maintenant", 160, function() ns.Companion.Reload() end } })
+      end
     end
   end
   L.Done()
@@ -1251,7 +1266,10 @@ local function buildReminder()
   reminder.foot = reminder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   reminder.foot:SetPoint("BOTTOMLEFT", 18, 18) reminder.foot:SetWidth(260) reminder.foot:SetJustifyH("LEFT")
   reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
-  reminder.sync = button(reminder, "Synchro rapide", 120, function() reminder:Hide() U.Quick(false) end)
+  reminder.sync = button(reminder, "Synchro rapide", 120, function()
+    reminder:Hide()
+    if reminder.send then ns.Companion.Reload() else U.Quick(false) end
+  end)
   reminder.sync:SetPoint("BOTTOMRIGHT", -16, 12)
   U.reminder = reminder
 end
@@ -1264,12 +1282,21 @@ function U.Reminder(after)
   if not e then
     if after and reminder:IsShown() then
       reminder.entry = false
-      reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site.")
+      -- Avec Roster Companion : l'inscription part au prochain rechargement de l'interface (le clic l'autorise)
+      reminder.send = ns.Companion and ns.Companion.Active() or false
+      if reminder.send then
+        reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache tout de suite :\n« Envoyer maintenant » recharge l'interface, Roster Companion fait le reste.")
+        reminder.sync:SetText("Envoyer maintenant") reminder.sync:SetWidth(160)
+      else
+        reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site.")
+      end
       for _, b in ipairs(reminder.buttons) do b:Hide() end
       reminder.foot:SetText("")
     end
     return false
   end
+  reminder.send = false
+  reminder.sync:SetText("Synchro rapide") reminder.sync:SetWidth(120)
   reminder.entry = e
   local who = UnitName("player") or "ce perso"
   reminder.text:SetText(GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time) .. GREY .. "  ·  " .. (e.group.name or "") .. "|r\n" ..

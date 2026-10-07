@@ -216,7 +216,22 @@ local function signature(c, snap)
     for i, v in ipairs(l) do f[i] = tostring(v) end
     parts[#parts + 1] = table.concat(f, ";")
   end
+  -- Heure des clics d'inscription en jeu (1.5.4) : un nouveau clic fait repartir le perso, même statut compris
+  local ok, stamp = pcall(ns.Group.SignupStamp, c)
+  if ok and stamp ~= "" then parts[#parts + 1] = stamp end
   return hash(table.concat(parts, "\n"))
+end
+
+-- Le perso n'a rien de nouveau à envoyer
+function E.IsSent(c)
+  return c.snapshot ~= nil and c.sentSig ~= nil and c.sentSig == signature(c, c.snapshot)
+end
+
+-- Retire ce que le site a déjà (inscriptions enregistrées) sans faire repartir le perso pour autant
+function E.Quietly(c, change)
+  local was = E.IsSent(c)
+  change()
+  if was then c.sentSig = signature(c, c.snapshot) end
 end
 
 -- Persos qui ont changé depuis leur dernier envoi
@@ -270,7 +285,9 @@ end
 function E.Outbox()
   local out = {}
   for _, e in ipairs(E.Pending()) do
-    out[#out + 1] = { kind = "frc", key = e.key, sig = signature(e.char, e.snap), text = block(e.char, e.snap) }
+    local sig = signature(e.char, e.snap)
+    out[#out + 1] = { kind = "frc", key = e.key, sig = sig, text = block(e.char, e.snap) }
+    ns.safe("inscriptions", ns.Group.MarkOut, e.char, sig)
   end
   return out
 end
@@ -280,6 +297,7 @@ function E.MarkSent(included)
   for _, e in ipairs(included or {}) do
     e.char.sentSig = signature(e.char, e.snap)
     e.char.sentAt = time()
+    ns.safe("inscriptions", ns.Group.MarkReceived, e.char, nil)
   end
   if ns.Recorder then ns.Recorder.MarkSent((included or {}).logs) end
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end

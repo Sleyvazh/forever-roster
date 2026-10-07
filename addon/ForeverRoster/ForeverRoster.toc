@@ -2,7 +2,7 @@
 ## Title: Forever Roster
 ## Notes: Compo de raid, inscriptions, butin (soft reserve, conseil), fiches de boss et consommables du site Forever Roster ; export du perso vers le site.
 ## Author: Sleyvazh
-## Version: 1.5.3
+## Version: 1.5.4
 ## SavedVariables: ForeverRosterDB
 ## OptionalDeps: ForeverRoster_Data
 ## IconTexture: Interface\AddOns\ForeverRoster\Media\Logo
