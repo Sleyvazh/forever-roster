@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 38, date: "2026-10-07", kind: "addon", version: "1.5", title: "Message « ForeverRoster has been blocked » corrigé",
+    text: "Depuis la version 1.5.1, le jeu pouvait afficher « ForeverRoster has been blocked from an action only available to the Blizzard UI ». C'est corrigé en 1.5.3 : mets l'addon à jour. D'ici là, « Ignore » ferme le message sans rien casser." },
   { n: 37, date: "2026-10-07", kind: "addon", version: "1.5", title: "Infobulles des objets dans l'addon",
     text: "Survole un objet dans la fenêtre du butin, les jets, le conseil, ta réponse ou les objets à remettre : l'infobulle du jeu s'affiche, comme dans le chat. Maj+clic le met dans ta saisie de chat." },
   { n: 36, date: "2026-10-06", kind: "bot", title: "Discord : garder sa spé d'un clic",

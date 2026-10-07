@@ -8,7 +8,7 @@
 -- l'addon ne peut pas savoir quand l'appli a du nouveau, il charge donc aux moments utiles (1.5) : ouverture de la
 -- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, et au moins toutes les heures (1.5.1) ; et à la demande
 -- (bouton, touche, /fr actualiser). Les 20 copies utilisées : le jeu interdit à un addon de recharger l'interface tout
--- seul (il faut un clic ou une touche), l'addon le propose donc dans une fenêtre, au plus une fois par heure.
+-- seul (il faut un clic ou une touche), l'addon le propose donc dans sa propre fenêtre, au plus une fois par heure.
 -- Sans l'appli, rien ne change : la synchro rapide et le copier-coller restent là.
 local _, ns = ...
 local C = {}
@@ -213,23 +213,13 @@ function C.RefreshCommand()
   if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 end
 
--- Les 20 copies utilisées : fenêtre « Recharger / Plus tard » (le clic permet le rechargement), hors combat, au plus
--- une fois par heure
-StaticPopupDialogs = StaticPopupDialogs or {}
-StaticPopupDialogs.FOREVERROSTER_RELOAD = {
-  text = "Forever Roster : les 20 actualisations sans /reload de cette session sont utilisées.\nRecharger l'interface pour recevoir les nouveautés du site (et envoyer tes persos) ?",
-  button1 = "Recharger",
-  button2 = "Plus tard",
-  OnAccept = function() C.Reload() end,
-  timeout = 0,
-  whileDead = true,
-  hideOnEscape = true,
-  preferredIndex = 3,
-}
+-- Les 20 copies utilisées : fenêtre de l'addon « Recharger / Plus tard » (le clic permet le rechargement), hors combat,
+-- au plus une fois par heure. Pas de StaticPopup : réassigner StaticPopupDialogs (variable de l'interface de Blizzard)
+-- « contamine » l'interface du jeu (taint), qui bloque alors des actions de Blizzard au nom de l'addon (1.5.1).
 function C.OfferReload()
-  if InCombatLockdown() or time() - reloadOfferedAt < HOURLY or not StaticPopup_Show then return false end
+  if InCombatLockdown() or time() - reloadOfferedAt < HOURLY or not (ns.UI and ns.UI.AskReload) then return false end
   reloadOfferedAt = time()
-  StaticPopup_Show("FOREVERROSTER_RELOAD")
+  ns.UI.AskReload("Les 20 actualisations sans /reload de cette session sont utilisées.\nRecharger l'interface pour recevoir les nouveautés du site (et envoyer tes persos) ?")
   return true
 end
 

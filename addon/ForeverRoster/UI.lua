@@ -1207,6 +1207,25 @@ function U.SoonRaids()
   return ask, known
 end
 
+-- Roster Companion : les 20 actualisations sans /reload sont utilisées, proposer de recharger l'interface (le jeu ne
+-- l'autorise qu'après un clic). Fenêtre de l'addon plutôt que StaticPopup, qui toucherait l'interface de Blizzard.
+local reloadAsk
+function U.AskReload(text)
+  if not reloadAsk then
+    reloadAsk = window("ForeverRosterReload", "Forever Roster  ·  Roster Companion", 420, 150, ns.LOGO)
+    reloadAsk.text = reloadAsk:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    reloadAsk.text:SetPoint("TOPLEFT", gapX(), -36) reloadAsk.text:SetWidth(402 - gapX()) reloadAsk.text:SetJustifyH("LEFT")
+    local later = button(reloadAsk, "Plus tard", 110, function() reloadAsk:Hide() end)
+    later:SetPoint("BOTTOMRIGHT", -16, 12)
+    reloadAsk.go = button(reloadAsk, "Recharger", 120, function() reloadAsk:Hide() ns.Companion.Reload() end)
+    reloadAsk.go:SetPoint("RIGHT", later, "LEFT", -8, 0)
+  end
+  reloadAsk.text:SetText(text)
+  front(reloadAsk)
+  reloadAsk:Show()
+  return reloadAsk
+end
+
 local reminder
 local function buildReminder()
   reminder = window("ForeverRosterReminder", "Forever Roster  ·  Raid", 420, 168, "Interface\\Icons\\INV_Misc_Head_Dragon_01")

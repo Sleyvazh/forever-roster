@@ -72,9 +72,6 @@ function GetNumSubgroupMembers() return 0 end
 function UnitIsGroupLeader() return true end
 function UnitIsGroupAssistant() return false end
 function InCombatLockdown() return false end
-StaticPopupDialogs = {}
-local popups = {}
-function StaticPopup_Show(name) popups[#popups + 1] = name end
 -- Addons chargés à la demande (ForeverRoster_Data1 à 20) : lus dans ADDONS_DIR quand il est donné (section 9)
 local ADDONS_DIR, LOADED = nil, {}
 function IsAddOnLoaded(name) return LOADED[name] == true end
@@ -105,12 +102,22 @@ function GetBindingText(key) return key end
 function IsAltKeyDown() return false end
 function IsShiftKeyDown() return false end
 
+-- Variables de l'interface de Blizzard : l'addon ne doit jamais les réassigner, même à l'identique (sinon il
+-- « contamine » l'interface du jeu : le jeu bloque alors des actions de Blizzard au nom de l'addon)
+local BLIZZARD = { StaticPopupDialogs = {}, UISpecialFrames = UISpecialFrames, UIPanelWindows = {}, GameTooltip = GameTooltip, UIParent = UIParent, Minimap = Minimap }
+for k in pairs(BLIZZARD) do rawset(_G, k, nil) end
+local reassigned = {}
+setmetatable(_G, { __index = BLIZZARD, __newindex = function(t, k, v)
+  if BLIZZARD[k] ~= nil then reassigned[#reassigned + 1] = k end
+  rawset(t, k, v)
+end })
 local ns = {}
 for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
   if line:match("%.lua$") then assert(loadfile("addon/ForeverRoster/" .. line))("ForeverRoster", ns) end
 end
 -- Déclenche ADDON_LOADED par le gestionnaire enregistré
 fire("ADDON_LOADED", "ForeverRoster")
+assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
 for _, line in ipairs(printed) do assert(not line:find("non chargés"), line) end
 
 local failures = 0
@@ -802,26 +809,29 @@ if helper and helper ~= "" then
   assert(ok and msg:find("dernière actualisation", 1, true), msg)
   ok, msg = ns.Companion.Refresh()
   assert(not ok and msg:find("/reload", 1, true), msg)
-  -- Plus de copie : fenêtre « Recharger / Plus tard », hors combat, au plus une fois par heure ; le clic recharge
+  -- Plus de copie : fenêtre de l'addon « Recharger / Plus tard », hors combat, au plus une fois par heure ; le clic recharge
   clock = clock + 3 * 60
   local before = #printed
+  local asks, realAsk, shown = 0, ns.UI.AskReload, nil
+  ns.UI.AskReload = function(text) asks = asks + 1 shown = realAsk(text) return shown end
   InCombatLockdown = function() return true end
   fire("READY_CHECK")
-  assert(#popups == 0, "pas de fenêtre en combat")
+  assert(asks == 0, "pas de fenêtre en combat")
   InCombatLockdown = function() return false end
   fire("READY_CHECK")
   fire("READY_CHECK")
-  assert(#popups == 1 and popups[1] == "FOREVERROSTER_RELOAD", "proposé une seule fois")
+  assert(asks == 1 and shown and shown.text.text:find("20 actualisations", 1, true), "proposé une seule fois")
   local said = 0
   for k = before + 1, #printed do if printed[k]:find("20 actualisations", 1, true) then said = said + 1 end end
   assert(said == 1, "copies épuisées : dit une seule fois dans le chat")
   clock = clock + 61 * 60
   ns.Companion.Tick()
-  assert(#popups == 2, "reproposé au bout d'une heure (mode passif)")
+  assert(asks == 2, "reproposé au bout d'une heure (mode passif)")
   local reloads2, realReload2 = 0, ReloadUI
   ReloadUI = function() reloads2 = reloads2 + 1 end
-  StaticPopupDialogs.FOREVERROSTER_RELOAD.OnAccept()
+  rawget(shown.go, "scripts").OnClick(shown.go)
   ReloadUI = realReload2
+  ns.UI.AskReload = realAsk
   assert(reloads2 == 1, "« Recharger » recharge l'interface")
   run("actualiser")
   time = realTime
