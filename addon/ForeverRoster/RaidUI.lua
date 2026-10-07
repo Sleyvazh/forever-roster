@@ -28,6 +28,7 @@ local function listWindow(name, title, h)
   local p = CreateFrame("Frame", nil, w)
   p:SetPoint("TOPLEFT", 14, K.site() and -36 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
   w.hintText = K.hint(p, "")
+  K.itemTips(p) -- objet en titre (jets en cours, essai)
   w.list = K.list(p, -40)
   return w
 end
@@ -108,6 +109,7 @@ function RA.ShowAsk()
   if not ask then
     ask = K.window("ForeverRosterAsk", "Conseil du butin · ta réponse", 470, 210)
     ask:ClearAllPoints() ask:SetPoint("TOP", 0, -140)
+    K.itemTips(ask) -- objet proposé et objets portés
     local x = K.site() and 18 or 66
     ask.text = ask:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     ask.text:SetPoint("TOPLEFT", x, -36) ask.text:SetWidth(470 - x - 18) ask.text:SetJustifyH("LEFT")
@@ -152,6 +154,7 @@ function RA.ShowCouncil(sid)
     p:SetPoint("TOPLEFT", 14, K.site() and -36 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
     w.hintText = K.hint(p, "")
     w.hintText:SetPoint("RIGHT", p, "RIGHT", -10, 0)
+    K.itemTips(p) -- objet du conseil, en titre
     w.grid = K.grid(p, -40, 44, COUNCIL_COLS)
     w.foot = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     w.foot:SetPoint("BOTTOMLEFT", 8, 4) w.foot:SetPoint("BOTTOMRIGHT", -26, 4)

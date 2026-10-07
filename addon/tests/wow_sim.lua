@@ -562,6 +562,20 @@ assert(ms == 1 and mt == 1 and is == 1 and it == 0, "essai : reçus de la saison
 GetItemInfo = function() return nil end
 assert(ns.Group.displayLink(16866):find("%[Objet 16866%]"), "nom de l'objet porté connu avant la réponse du jeu")
 GetItemInfo = realGetItemInfo
+-- Infobulle au survol d'un lien d'objet dans les fenêtres de l'addon (1.5.2)
+do
+  local f = CreateFrame("Frame")
+  ns.UI.kit.itemTips(f)
+  local shown
+  rawset(GameTooltip, "SetHyperlink", function(_, l) shown = l end)
+  local enter = rawget(f, "scripts").OnHyperlinkEnter
+  assert(enter and rawget(f, "scripts").OnHyperlinkLeave, "liens d'objets actifs sur le cadre")
+  enter(f, "player:Gorrak", "[Gorrak]")
+  assert(shown == nil, "lien de joueur : pas d'infobulle d'objet")
+  enter(f, "item:281267", "[Raptorscale Pants]")
+  assert(shown == "item:281267", "infobulle de l'objet au survol")
+  rawset(GameTooltip, "SetHyperlink", nil)
+end
 run("objet 16901")
 local beforeT = errors()
 run("enraid")

@@ -76,3 +76,5 @@ Conseil du butin (1.2) : la fenêtre des votes est un tableau, une ligne par jou
 Client de Forever (1.2.1) : il n'a plus la fonction globale `GetItemInfo` de Classic (`GetItemCount` est toujours là) ; l'addon passe par `C_Item` quand une fonction d'objet manque (noms, objets portés, consommables dans les sacs, fin d'un échange).
 
 Raid d'essai (1.3.1) : le corps d'essai montre les objets que le joueur porte, connus du serveur de Forever (infobulles) ; s'il en manque, des objets de Molten Core complètent.
+
+Infobulles (1.5.2) : tout lien d'objet affiché par l'addon (fenêtre du butin, jets, conseil, ta réponse, objets à remettre, consommables) montre l'infobulle du jeu au survol ; Maj+clic le met dans le chat (`U.itemTips`, liens actifs sur le cadre).

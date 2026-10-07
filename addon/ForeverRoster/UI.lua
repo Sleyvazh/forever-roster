@@ -261,6 +261,26 @@ local function styleStatus(b, label, color, selected)
 end
 U.styleStatus = styleStatus
 
+-- Liens d'objets dans les textes d'un cadre : infobulle du jeu au survol, clic comme dans le chat
+-- (Maj+clic : le lien dans la saisie du chat ; clic : fiche de l'objet). Sans effet si le client ne le permet pas.
+local function itemTips(f)
+  if not f or not f.SetHyperlinksEnabled then return f end
+  f:SetHyperlinksEnabled(true)
+  if f.EnableMouse and not (f.IsMouseEnabled and f:IsMouseEnabled()) then f:EnableMouse(true) end
+  f:SetScript("OnHyperlinkEnter", function(self, link)
+    if not GameTooltip or type(link) ~= "string" or not link:find("^item:") then return end
+    GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+    GameTooltip:SetHyperlink(link)
+    GameTooltip:Show()
+  end)
+  f:SetScript("OnHyperlinkLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+  f:SetScript("OnHyperlinkClick", function(self, link, text, button)
+    if SetItemRef and type(link) == "string" then pcall(SetItemRef, link, text, button, self) end
+  end)
+  return f
+end
+U.itemTips = itemTips
+
 -- Consigne de l'onglet, en haut à droite du portrait
 local function hint(parent, text)
   local h = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -287,6 +307,7 @@ local function list(parent, top)
     r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     r.text:SetJustifyH("LEFT")
     r.buttons, r.sbuttons = {}, {}
+    itemTips(r) -- objets des listes (butin, jets, objets à remettre…) : infobulle au survol
     rows[k] = r
     return r
   end
@@ -523,7 +544,7 @@ end
 U.roleIcon = roleIcon
 
 -- Outils partagés avec les fenêtres du raid (Raid.lua : butin, conseil, fiche du boss)
-U.kit = { window = window, button = button, list = list, grid = grid, resizable = resizable, hint = hint, colored = colored, site = site, textArea = textArea, front = front, roleIcon = roleIcon }
+U.kit = { window = window, button = button, list = list, grid = grid, resizable = resizable, hint = hint, colored = colored, site = site, textArea = textArea, front = front, roleIcon = roleIcon, itemTips = itemTips }
 
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main

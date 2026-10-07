@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 37, date: "2026-10-07", kind: "addon", version: "1.5", title: "Infobulles des objets dans l'addon",
+    text: "Survole un objet dans la fenêtre du butin, les jets, le conseil, ta réponse ou les objets à remettre : l'infobulle du jeu s'affiche, comme dans le chat. Maj+clic le met dans ta saisie de chat." },
   { n: 36, date: "2026-10-06", kind: "bot", title: "Discord : garder sa spé d'un clic",
     text: "Dans les menus d'inscription du bot, ta spé et ton perso actuels ne sont plus présélectionnés : Discord empêchait de les choisir à nouveau. Ils sont simplement marqués « actuel » ; un clic suffit pour les garder ou en changer." },
   { n: 35, date: "2026-10-06", kind: "addon", version: "1.3", title: "Raid d'essai avec tes objets",
