@@ -1,5 +1,6 @@
--- Bouton autour de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer, /roster minicarte :
--- masquer) et entrée de Roster dans la liste des addons de la minicarte (## AddonCompartmentFunc du .toc, Retail 10.1+).
+-- Bouton autour de la minicarte (clic : fenêtre, clic droit : synchro rapide, Maj+clic : objets à remettre, glisser :
+-- déplacer, /roster minicarte : masquer) et entrée de Roster dans la liste des addons de la minicarte
+-- (## AddonCompartmentFunc du .toc, Retail 10.1+).
 local ADDON, ns = ...
 local M = {}
 ns.Minimap = M
@@ -62,14 +63,18 @@ local function tooltip(owner, anchor, drag)
   M.Update()
   if M.count > 0 then GameTooltip:AddLine(M.count .. " envoi(s) en attente pour le site", 0.66, 0.78, 0.92) end
   if M.recording then GameTooltip:AddLine("Relevé du raid en cours (présence et butin)", 1, 0.23, 0.19) end
+  if M.handover > 0 then GameTooltip:AddLine(M.handover .. (M.handover > 1 and " objets à remettre" or " objet à remettre") .. " aux gagnants (échange)", 0.94, 0.71, 0.24) end
   GameTooltip:AddLine("Clic : ouvrir la fenêtre", 1, 1, 1)
   GameTooltip:AddLine("Clic droit : synchro rapide avec le site", 1, 1, 1)
+  if M.handover > 0 then GameTooltip:AddLine("Maj+clic : objets à remettre", 1, 1, 1) end
   if drag then GameTooltip:AddLine("Glisser : déplacer le bouton", 0.6, 0.64, 0.71) end
   GameTooltip:Show()
 end
 
 local function click(which)
-  if which == "RightButton" then ns.call("UI", "Quick") else ns.call("UI", "Toggle") end
+  if which == "RightButton" then ns.call("UI", "Quick")
+  elseif IsShiftKeyDown and IsShiftKeyDown() and ns.LootUI and ns.LootUI.ShowHandover then ns.LootUI.ShowHandover()
+  else ns.call("UI", "Toggle") end
 end
 
 function M.Create()
@@ -118,12 +123,22 @@ function M.Create()
   if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(20, function() ns.safe("minicarte", M.Update) end) end
 end
 
--- Met à jour la pastille (envois en attente) et « REC » (relevé en cours)
+-- Objets attribués par le chef de butin, pas encore échangés (distribution par Roster)
+local function handover()
+  local list = ns.Loot and ns.Loot.Items and ns.Loot.Items()
+  local n = 0
+  if type(list) == "table" then for _, e in pairs(list) do if type(e) == "table" and e.status == "awarded" then n = n + 1 end end end
+  return n
+end
+
+-- Met à jour la pastille (envois en attente), « REC » (relevé en cours) et le compte des objets à remettre (infobulle)
 function M.Update()
   local okCount, n = pcall(function() return ns.Data and ns.Data.PendingCount and ns.Data.PendingCount() or 0 end)
   local okRec, rec = pcall(function() return ns.Recorder and ns.Recorder.IsRecording and ns.Recorder.IsRecording() end)
+  local okGive, give = pcall(handover)
   M.count = okCount and tonumber(n) or 0
   M.recording = okRec and rec and true or false
+  M.handover = okGive and give or 0
   if not button then return end
   if M.count > 0 then button.badge.text:SetText(M.count) button.badge:Show() else button.badge:Hide() end
   if M.recording then button.rec:Show() else button.rec:Hide() end

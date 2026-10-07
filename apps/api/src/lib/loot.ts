@@ -1,13 +1,22 @@
-import { gameName, instanceKey, lootSettings, srPlusBonus, type LootSettings } from "@forever/game-data";
+import { gameName, instanceKey, lootSettings, RETAIL_NO_SOFTRES, srPlusBonus, type Game, type LootMode, type LootSettings } from "@forever/game-data";
 import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, gameItems, groupCharacters, groups, lootCatalog, raidLogs, raids, softReserves, users, type RaidLogLoot } from "../db/schema";
+import { badRequest } from "./http";
 
 /** Butin des raids (lot C2) : réglages du groupe, soft reserve (avec SR+) et catalogue appris par les bilans. */
 
 export async function groupLootSettings(db: Db, groupId: string): Promise<LootSettings> {
   const [g] = await db.select({ s: groups.lootSettings }).from(groups).where(eq(groups.id, groupId));
   return lootSettings(g?.s);
+}
+
+/**
+ * Roster (lot R3b) : pas de soft reserve, le butin est en journal ou distribué par l'addon Roster (conseil).
+ * Un raid ou un modèle déjà en soft reserve reste valable : seul un passage à la soft reserve est refusé.
+ */
+export function checkLootMode(game: Game, mode: LootMode | undefined, current?: LootMode) {
+  if (game === "retail" && mode === "softres" && current !== "softres") throw badRequest(RETAIL_NO_SOFTRES);
 }
 
 /** Heure de fermeture des réservations (null : raid sans date, jamais fermé). */

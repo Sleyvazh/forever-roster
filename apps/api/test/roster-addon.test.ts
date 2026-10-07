@@ -1,5 +1,7 @@
-import { buildRRR, retailRoleOf, type RosterExportMember } from "@forever/game-data";
+import { buildRRR, RETAIL_NO_SOFTRES, retailRoleOf, type RosterExportMember } from "@forever/game-data";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { raids, raidTemplates } from "../src/db/schema";
 import { importAddonText } from "../src/lib/addon-import";
 import { frgEtag } from "../src/routes/sync";
 import { Client, setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
@@ -66,7 +68,13 @@ describe("Roster : « Copier pour le jeu » (RRG) et compo (RRR)", () => {
     expect(out.groups).toEqual([{ name: "Pasta e Basta A", raids: 1, patterns: 0, bis: 0 }]);
     const lines = out.text.split("\n");
     expect(lines[0]).toMatch(new RegExp(`^RRG;1;${s.g.id};\\d+;Pasta e Basta A$`));
-    expect(lines.slice(1)).toEqual([`R;${s.raid.id};${s.at};Flèche du Vide;heroic;25;present;Kaeldra-Hyjal;journal`, "END;1"]);
+    expect(lines.slice(1)).toEqual([
+      `R;${s.raid.id};${s.at};Flèche du Vide;heroic;25;present;Kaeldra-Hyjal;journal`,
+      // Lot R3b : conseil par défaut (persos des officiers) et objets reçus, par joueur (main d'abord), hors du compte de END
+      "O;Kaeldra-Hyjal",
+      "N;saison;depuis le début;Kaeldra-Hyjal:0,Tharok-ConseildesOmbres+Tharok-Ysondre:0",
+      "END;1",
+    ]);
     // Le membre : son inscription et son perso
     expect((await s.mem.r.get("/api/addon/export")).json().text).toContain(`;heroic;25;late;Tharok-ConseildesOmbres;journal`);
     // Un seul groupe (Administration) : même format
@@ -184,5 +192,142 @@ describe("textes de l'autre addon refusés", () => {
     const cross = (await s.off.forever.post("/api/addon/import", { text: frb })).json();
     expect(cross.results).toMatchObject([{ status: "error", message: "Ce bilan est celui d'un raid de Roster (WoW Retail)." }]);
     expect((await s.off.r.get(s.base)).json().log).toBeNull();
+  });
+});
+
+/* ---------- Lot R3b : distribution du butin par Roster ---------- */
+
+describe("Roster : modes de butin (journal ou conseil, pas de soft reserve)", () => {
+  it("soft reserve refusée pour un raid ou un raid récurrent de Roster ; conseil accepté ; Forever inchangé", async () => {
+    const s = await scene("G");
+    const gr = `/api/groups/${s.g.id}`;
+    const refused = await s.off.r.post(`${gr}/raids`, { name: "L'Abîme Venimeux", difficulty: "normal", lootMode: "softres" });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toBe(RETAIL_NO_SOFTRES);
+    const council = await s.off.r.post(`${gr}/raids`, { name: "L'Abîme Venimeux", difficulty: "normal", lootMode: "council" });
+    expect(council.statusCode).toBe(201);
+    expect((await s.off.r.get(`${gr}/raids/${council.json().raid.id}`)).json().raid.lootMode).toBe("council");
+    // Page du raid (onglet Butin) et enregistrement de la compo
+    expect((await s.off.r.patch(`${s.base}/loot`, { lootMode: "softres" })).json().error).toBe(RETAIL_NO_SOFTRES);
+    expect((await s.off.r.patch(`${s.base}/loot`, { lootMode: "council" })).json()).toMatchObject({ lootMode: "council" });
+    expect((await s.off.r.put(s.base, { name: "Flèche du Vide", slots: [], lootMode: "softres" })).json().error).toBe(RETAIL_NO_SOFTRES);
+    // Raids récurrents
+    expect((await s.off.r.post(`${gr}/raid-templates`, { name: "Flèche du Vide", weekday: 3, time: "21:00", difficulty: "heroic", lootMode: "softres" })).json().error).toBe(RETAIL_NO_SOFTRES);
+    const t = (await s.off.r.post(`${gr}/raid-templates`, { name: "Flèche du Vide", weekday: 3, time: "21:00", difficulty: "heroic", lootMode: "council", leadDays: 10, description: "Pull à 21 h" })).json().template;
+    expect(t.lootMode).toBe("council");
+    // Pause : le reste du modèle ne change pas (mode de butin, description, jours d'avance)
+    expect((await s.off.r.patch(`${gr}/raid-templates/${t.id}`, { active: false })).json().template)
+      .toMatchObject({ active: false, lootMode: "council", leadDays: 10, description: "Pull à 21 h" });
+    expect((await s.off.r.patch(`${gr}/raid-templates/${t.id}`, { lootMode: "softres" })).json().error).toBe(RETAIL_NO_SOFTRES);
+    expect((await s.off.r.patch(`${gr}/raid-templates/${t.id}`, { lootMode: "journal" })).json().template.lootMode).toBe("journal");
+    // Réservations : jamais sur Roster
+    expect((await s.mem.r.put(`${s.base}/soft-reserves`, { characterId: s.tharok.id, itemId: 1 })).json().error).toBe(RETAIL_NO_SOFTRES);
+    // Forever Roster : la soft reserve reste proposée
+    const fg = (await s.off.forever.post("/api/groups", { name: "Classique G" })).json().group;
+    expect((await s.off.forever.post(`/api/groups/${fg.id}/raids`, { name: "Molten Core", lootMode: "softres" })).statusCode).toBe(201);
+  });
+
+  it("données existantes : un raid ou un modèle de Roster déjà en soft reserve reste valable, envoyé en journal à l'addon", async () => {
+    const s = await scene("H");
+    const db = env.app.ctx.db;
+    await db.update(raids).set({ lootMode: "softres" }).where(eq(raids.id, s.raid.id));
+    expect((await s.off.r.patch(`${s.base}/loot`, { lootMode: "softres", srHidden: true })).statusCode).toBe(200);
+    expect((await s.off.r.put(s.base, { name: "Flèche du Vide", slots: [], lootMode: "softres" })).statusCode).toBe(200);
+    expect((await s.off.r.get("/api/addon/export")).json().text).toContain(`;heroic;25;present;Kaeldra-Hyjal;journal`);
+    const gr = `/api/groups/${s.g.id}`;
+    const t = (await s.off.r.post(`${gr}/raid-templates`, { name: "Flèche du Vide", weekday: 4, time: "21:00", difficulty: "heroic" })).json().template;
+    await db.update(raidTemplates).set({ lootMode: "softres" }).where(eq(raidTemplates.id, t.id));
+    expect((await s.off.r.patch(`${gr}/raid-templates/${t.id}`, { name: "Flèche du Vide", lootMode: "softres", time: "21:30" })).statusCode).toBe(200);
+  });
+});
+
+describe("Roster : conseil du butin et objets reçus (RRG O, L, N)", () => {
+  /** Butin distribué par Roster : conseil, jets MS / OS, jet libre, chef de butin, et un objet seulement noté. */
+  const lootRRB = (s: Ctx) => {
+    const { raid, at } = s;
+    const lines = [
+      `A;Kaeldra-Hyjal;${at};${at + 3 * 3600};180`,
+      `A;Tharok-ConseildesOmbres;${at};${at + 3 * 3600};180`,
+      `L;250001;Tharok-ConseildesOmbres;${at + 100};Imperator Averzian;council;bis;3 votes;Heaume du Vide`,
+      `L;250002;Kaeldra-Hyjal;${at + 200};Imperator Averzian;council;off;1 vote;Cape d'ombre`,
+      `L;250003;Kaeldra-Hyjal;${at + 300};Imperator Averzian;roll;;MS 87;Dague`,
+      `L;250004;Tharok-ConseildesOmbres;${at + 400};Vorasius;roll;;OS 54;Bottes`,
+      `L;250005;Tharok-Ysondre;${at + 500};Vorasius;roll;;jet 54;Anneau`,
+      `L;250006;Tharok-Ysondre;${at + 600};Vorasius;ml;;;Bague`,
+      `L;250007;Kaeldra-Hyjal;${at + 700};Vorasius;;;;Cape grise`,
+    ];
+    return [`RRB;1;${raid.id};${at};${at + 3 * 3600};Kaeldra-Hyjal;Flèche du Vide;The Voidspire;1;heroic`, ...lines, `END;${lines.length}`].join("\n");
+  };
+
+  it("conseil choisi pour le raid (onglet Butin) : lu par tous, modifié par les officiers, envoyé en ligne L", async () => {
+    const s = await scene("I");
+    const view = (await s.mem.r.get(`${s.base}/council`)).json();
+    expect(view).toEqual({ council: null, canEdit: false, members: [
+      { userId: s.mem.user.id, name: "MemI", officer: false }, { userId: s.off.user.id, name: "OffI", officer: true },
+    ] });
+    expect((await s.mem.r.put(`${s.base}/council`, { userIds: [s.mem.user.id] })).statusCode).toBe(403);
+    expect((await s.off.r.put(`${s.base}/council`, { userIds: [s.mem.user.id, s.off.user.id] })).statusCode).toBe(200);
+    expect((await s.off.r.get(`${s.base}/council`)).json()).toMatchObject({ council: [s.mem.user.id, s.off.user.id], canEdit: true });
+
+    // Raid en journal : pas de ligne L ; O = persos des officiers et du propriétaire joués dans le groupe
+    const lines = (await s.off.r.get("/api/addon/export")).json().text.split("\n") as string[];
+    expect(lines.filter(l => /^[OL];/.test(l))).toEqual(["O;Kaeldra-Hyjal"]);
+    expect(lines.at(-1)).toBe("END;1");
+    // Raid en conseil : ligne L avec les persos des membres choisis (Prénom-Royaume)
+    expect((await s.off.r.patch(`${s.base}/loot`, { lootMode: "council" })).statusCode).toBe(200);
+    const text = (await s.mem.r.get("/api/addon/export")).json().text as string;
+    expect(text.split("\n").filter(l => /^[ROL];/.test(l))).toEqual([
+      `R;${s.raid.id};${s.at};Flèche du Vide;heroic;25;late;Tharok-ConseildesOmbres;council`,
+      "O;Kaeldra-Hyjal",
+      `L;${s.raid.id};Kaeldra-Hyjal,Tharok-ConseildesOmbres,Tharok-Ysondre`,
+    ]);
+    // Retour au conseil par défaut : plus de ligne L
+    expect((await s.off.r.put(`${s.base}/council`, { userIds: null })).statusCode).toBe(200);
+    expect((await s.off.r.get("/api/addon/export")).json().text).not.toMatch(/\nL;/);
+  });
+
+  it("objets reçus d'après les bilans RRB : conseil BiS, jet MS, chef de butin et objets notés comptent ; pas OS, jet libre ni Off-Spec", async () => {
+    const s = await scene("J");
+    const gr = `/api/groups/${s.g.id}`;
+    expect((await s.off.r.post("/api/addon/import", { text: lootRRB(s) })).json().results).toMatchObject([{ status: "updated" }]);
+
+    // Bilan : méthode, réponse et détail de chaque objet, et s'il compte
+    const log = (await s.mem.r.get(s.base)).json().log;
+    expect(log.loot.map((l: { itemId: number; method: string | null; response: string | null; detail: string; skip: string | null; characterId: string | null }) =>
+      [l.itemId, l.method, l.response, l.detail, l.skip, l.characterId])).toEqual([
+      [250001, "council", "bis", "3 votes", null, s.tharok.id],
+      [250002, "council", "off", "1 vote", "Off-Spec", s.kaeldra.id],
+      [250003, "roll", null, "MS 87", null, s.kaeldra.id],
+      [250004, "roll", null, "OS 54", "jet OS", s.tharok.id],
+      [250005, "roll", null, "jet 54", "jet libre", s.twin.id],
+      [250006, "ml", null, "", null, s.twin.id],
+      [250007, null, null, "", null, s.kaeldra.id],
+    ]);
+
+    // Par joueur (réglage par défaut) : Kaeldra 2 (MS, noté) ; Tharok et son homonyme d'Ysondre 2 (conseil BiS, chef de butin)
+    const counted = async () => Object.fromEntries(((await s.mem.r.get(`${gr}/attendance`)).json().characters as { id: string; counted: number }[]).map(c => [c.id, c.counted]));
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 2, [s.tharok.id]: 2, [s.twin.id]: 2 });
+    const n = () => s.off.r.get("/api/addon/export").then(r => (r.json().text as string).split("\n").find(l => l.startsWith("N;")));
+    expect(await n()).toMatch(/^N;saison;depuis le début;(Kaeldra-Hyjal:2,Tharok-(ConseildesOmbres\+Tharok-Ysondre|Ysondre\+Tharok-ConseildesOmbres):2|Tharok-(ConseildesOmbres\+Tharok-Ysondre|Ysondre\+Tharok-ConseildesOmbres):2,Kaeldra-Hyjal:2)$/);
+
+    // Exclusion par un officier (« Ne pas compter ») : un membre ne peut pas
+    const excl = { itemId: 250007, name: "Kaeldra-Hyjal", at: s.at + 700, excluded: true };
+    expect((await s.mem.r.put(`${s.base}/loot-exclusions`, excl)).statusCode).toBe(403);
+    expect((await s.off.r.put(`${s.base}/loot-exclusions`, excl)).json()).toEqual({ excluded: true });
+    expect((await s.mem.r.get(s.base)).json().log.loot.find((l: { itemId: number }) => l.itemId === 250007)).toMatchObject({ excluded: true, skip: null });
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 1, [s.tharok.id]: 2 });
+    // Nom introuvable dans le bilan
+    expect((await s.off.r.put(`${s.base}/loot-exclusions`, { ...excl, name: "Kaeldra-Ysondre" })).statusCode).toBe(404);
+
+    // Par perso, avec une correction d'un officier ; la fiche du joueur suit
+    expect((await s.off.r.put(`${gr}/loot-settings`, { countBy: "character" })).statusCode).toBe(200);
+    expect((await s.off.r.post(`${gr}/loot-corrections`, { characterId: s.tharok.id, delta: 2, note: "Objets donnés hors addon" })).statusCode).toBe(201);
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 1, [s.tharok.id]: 3, [s.twin.id]: 1 });
+    expect(await n()).toMatch(/^N;saison;depuis le début;/);
+    expect((await n())!.split(";")[3]!.split(",").sort()).toEqual(["Kaeldra-Hyjal:1", "Tharok-ConseildesOmbres:3", "Tharok-Ysondre:1"]);
+    const sheet = (await s.off.r.get(`${gr}/members/${s.mem.user.id}/sheet`)).json();
+    expect(sheet.lootCount).toMatchObject({ by: "character", player: 4 });
+    expect(sheet.loot.filter((l: { skip: string | null }) => l.skip).map((l: { itemId: number; skip: string }) => [l.itemId, l.skip]).sort())
+      .toEqual([[250004, "jet OS"], [250005, "jet libre"]]);
   });
 });

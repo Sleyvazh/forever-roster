@@ -1,8 +1,10 @@
 -- Simulation de l'API de WoW Retail (12.x) pour l'addon Roster : lua5.1 addon/tests/roster_sim.lua (depuis la racine du dépôt).
 -- Charge les fichiers de addon/Roster/Roster.toc dans l'ordre (addon/Roster, sinon addon/shared). Les fichiers du socle
--- (Core.lua, UI.lua, Minimap.lua) absents sont remplacés par une version minimale du contrat entre les deux moitiés de l'addon.
+-- (Core.lua, UI.lua, Minimap.lua) absents sont remplacés par une version minimale du contrat entre les deux moitiés de l'addon ;
+-- Test.lua (raid d'essai) absent est ignoré.
 -- Scénario : données du site, invitations, placement, versions, file des messages pendant un boss, relevé du raid, bilan,
--- pages dans les deux habillages, valeurs secrètes. Échoue au premier problème.
+-- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), pages et
+-- fenêtres dans les deux habillages, valeurs secrètes. Échoue au premier problème.
 local printed = {}
 local verbose = os.getenv("ROSTER_SIM_VERBOSE") -- messages de l'addon affichés au fil de l'eau
 function print(...)
@@ -84,6 +86,8 @@ local S = {
   invites = {}, converted = 0, moves = 0, sent = {}, whispers = {}, throttled = 0, prefixes = {},
   addons = {}, -- joueurs qui ont l'addon : nom complet → version
   instance = nil, quality = {},
+  -- Butin (R3b) : jets du butin de groupe en cours, sacs, objets portés, échange
+  loot = {}, rollCalls = {}, confirms = {}, bags = { [0] = {}, {}, {}, {}, {} }, equipped = {}, tradeLeft = {}, items = {}, ilvl = {}, equipLoc = {},
 }
 local function fullOf(m) return m.name .. "-" .. m.realm end
 local function findMember(full) for i, m in ipairs(S.members) do if fullOf(m) == full then return m, i end end end
@@ -112,7 +116,13 @@ end
 local function inGroup() return S.raid or #S.members > 1 end
 -- Allocation des messages d'addon par préfixe (10, +1 par seconde) : le jeu refuse au-delà
 local allowance, allowanceAt = 10, BASE
-local LOOT_Q = { [242394] = 4, [242395] = 4, [242396] = 3 }
+local LOOT_Q = { [242394] = 4, [242395] = 4, [242396] = 3, [242397] = 4, [242398] = 4, [242399] = 4, [242400] = 4, [242401] = 4 }
+local function idOf(item) return type(item) == "number" and item or tonumber(tostring(item or ""):match("item:(%d+)")) end
+local function bagCount(id)
+  local n = 0
+  for bag = 0, 4 do for _, link in pairs(S.bags[bag]) do if idOf(link) == id then n = n + 1 end end end
+  return n
+end
 
 local BLIZZARD = {
   UIParent = frame(), UISpecialFrames = {}, GameTooltip = frame(), Minimap = frame(), StaticPopupDialogs = {}, UIPanelWindows = {},
@@ -146,6 +156,7 @@ local BLIZZARD = {
   GetRealmName = function() return "Hyjal" end,
   UnitFullName = function(unit)
     local m = unitMember(unit)
+    if unit == "npc" then m = S.tradePartner end -- partenaire de l'échange
     if not m then return nil end
     if m.secretName then return secretValue("UnitFullName"), nil end
     return m.name, (unit == "player" or m.realm ~= "Hyjal") and m.realm or nil
@@ -161,7 +172,8 @@ local BLIZZARD = {
     local m = S.raid and S.members[i]
     if not m then return nil end
     local name = m.secretName and secretValue("GetRaidRosterInfo") or (m.unknown and "Unknown") or (m.realm == "Hyjal" and m.name or fullOf(m))
-    return name, i == 1 and (S.leader and 2 or (S.assistant and 1 or 0)) or 0, m.subgroup, 90, "Classe", m.class, "Faille", true, false, nil, false, "DAMAGER"
+    local rank = i == 1 and (S.leader and 2 or (S.assistant and 1 or 0)) or (S.leaderFull == fullOf(m) and 2 or 0)
+    return name, rank, m.subgroup, 90, "Classe", m.class, "Faille", true, false, nil, false, "DAMAGER"
   end,
   UnitIsGroupLeader = function() return S.leader end,
   UnitIsGroupAssistant = function() return S.assistant end,
@@ -172,7 +184,54 @@ local BLIZZARD = {
     if not i then return "Khaz Algar", "none", 0, "", 5, 0, false, 2552, 1 end
     return i.secret and secretValue("GetInstanceInfo") or i.name, "raid", i.difficulty, "Héroïque", 30, 0, true, 2900, #S.members
   end,
-  C_Item = { GetItemQualityByID = function(id) return LOOT_Q[id] end },
+  C_Item = {
+    GetItemQualityByID = function(id) return LOOT_Q[id] end,
+    GetDetailedItemLevelInfo = function(item) local id = idOf(item) return id and (S.ilvl[id] or 639) or nil end,
+    GetItemInfoInstant = function(item) local id = idOf(item) if not id then return nil end return id, "Armure", "Plaques", S.equipLoc[id] or "", 1234, 4, 4 end,
+    GetItemInfo = function(item)
+      local link = S.items[idOf(item) or 0]
+      if not link then return nil end
+      return link:match("|h%[(.-)%]|h"), link, 4
+    end,
+    GetItemCount = function(id) return bagCount(id) end,
+    RequestLoadItemDataByID = function() end,
+  },
+  -- Butin de groupe (R3b)
+  RANDOM_ROLL_RESULT = "%s obtient un %d (%d-%d).",
+  BIND_TRADE_TIME_REMAINING = "Vous pouvez échanger cet objet avec les joueurs qui pouvaient aussi le ramasser pendant encore %s.",
+  GetLootRollItemLink = function(id)
+    local r = S.loot[id]
+    if not r then return nil end
+    return r.secret and secretValue("GetLootRollItemLink") or r.link
+  end,
+  GetLootRollItemInfo = function(id)
+    local r = S.loot[id]
+    if not r then return nil end
+    return 1234, r.link:match("|h%[(.-)%]|h"), 1, r.quality or 4, true, r.need or false, r.greed ~= false, false, 0, 0, 0, 0, r.transmog or false
+  end,
+  GetLootRollTimeLeft = function(id) return S.loot[id] and (S.loot[id].left or 115000) or 0 end,
+  RollOnLoot = function(id, kind) S.rollCalls[#S.rollCalls + 1] = { id = id, kind = kind } end,
+  ConfirmLootRoll = function(id, kind) S.confirms[#S.confirms + 1] = { id = id, kind = kind } end,
+  StaticPopup_Hide = function(which) S.popupHidden = which end,
+  GetInventoryItemLink = function(_, slot) return S.equipped[slot] end,
+  C_Container = {
+    GetContainerNumSlots = function(bag) return (bag >= 0 and bag <= 4) and 16 or 0 end,
+    GetContainerItemLink = function(bag, slot) return S.bags[bag] and S.bags[bag][slot] end,
+    PickupContainerItem = function(bag, slot) assert(not S.combat, "objet pris en combat") S.cursor = S.bags[bag][slot] S.picked = { bag, slot } end,
+  },
+  C_TooltipInfo = {
+    GetBagItem = function(bag, slot)
+      local link = S.bags[bag] and S.bags[bag][slot]
+      if not link then return nil end
+      local lines = { { leftText = link:match("|h%[(.-)%]|h") }, { leftText = "Lié quand ramassé" } }
+      if S.tradeLeft[link] then lines[#lines + 1] = { leftText = "|cff00ccff" .. BIND_TRADE_TIME_REMAINING:gsub("%%s", S.tradeLeft[link]) .. "|r" } end
+      return { type = 0, lines = lines }
+    end,
+  },
+  ClearCursor = function() S.cursor = nil end,
+  ClickTradeButton = function(i) S.tradeSlots = S.tradeSlots or {} S.tradeSlots[i] = S.cursor S.cursor = nil end,
+  CheckInteractDistance = function(unit) return S.far ~= unit end,
+  InitiateTrade = function(unit) assert(not S.combat, "échange en combat") S.tradeWith = unit end,
   C_PartyInfo = {
     InviteUnit = function(name) assert(type(name) == "string" and name:find("^[^%-]+%-.+$"), "invitation par « Prénom-Royaume »") S.invites[#S.invites + 1] = name end,
     ConvertToRaid = function()
@@ -276,6 +335,8 @@ STUBS["UI.lua"] = function(ns)
   }
 end
 STUBS["Minimap.lua"] = function(ns) ns.Minimap = { Update = function() ns.Minimap.pending = ns.Data.PendingCount() ns.Minimap.rec = ns.Recorder.IsRecording() end } end
+-- Raid d'essai (/roster test) : simulé dans roster_ui_test.lua ; ici, seuls ses crochets ns.Loot.test le sont (section 9)
+STUBS["Test.lua"] = function() end
 
 local ns = {}
 local function addonFile(line)
@@ -453,7 +514,7 @@ local wb = TEXTS["Chuchoter"]
 assert(wb and wb.shown, "bouton Chuchoter")
 rawget(wb, "scripts").OnClick(wb)
 assert(#S.whispers == 1 and S.whispers[1].chatType == "WHISPER" and S.whispers[1].target == "Mordak-Ysondre"
-  and S.whispers[1].msg == "Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence, et bientôt le butin) : pense à l'installer.", "chuchotement envoyé")
+  and S.whispers[1].msg == "Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence et distribution du butin) : pense à l'installer.", "chuchotement envoyé")
 -- Simple membre : ni bouton ni chuchotement
 S.leader = false
 P.Refresh("enraid")
@@ -601,6 +662,441 @@ buildPages(nil)
 assert(P.state.enraid.recording and P.state.compo.ok == 7 and P.state.compo.total == 9 and P.state.raids.raids == 3, "pages du raid (Ilyra partie) : " .. P.state.compo.ok .. "/" .. P.state.compo.total .. ", " .. P.state.raids.raids .. " raids")
 buildPages("site")
 assert(errors() == 0, "pages sans erreur : " .. tostring(lastPrinted("erreur")))
+
+--------------------------------------------------------------------------------------------------------------------
+-- 9. Distribution du butin (R3b) : chef de butin, passer automatique, objets reçus, conseil, jets, échange, file
+--------------------------------------------------------------------------------------------------------------------
+local Lo, LU = ns.Loot, ns.LootUI
+assert(Lo and LU and Lo.Master and LU.ShowLoot, "modules du butin chargés")
+-- Messages d'addon et du chat envoyés depuis une position (recherche du dernier qui correspond)
+local function sentMsg(pattern, from, dist)
+  for i = #S.sent, from or 1, -1 do local e = S.sent[i] if e.msg:find(pattern) and (not dist or e.dist == dist) then return e, i end end
+end
+local function said(pattern, from)
+  for i = #S.whispers, from or 1, -1 do if S.whispers[i].msg:find(pattern, 1, true) then return S.whispers[i] end end
+end
+local function printedSince(mark, text) for i = mark + 1, #printed do if printed[i]:find(text, 1, true) then return printed[i] end end end
+local function addon(sender, msg, dist) fire("CHAT_MSG_ADDON", "RosterRT", msg, dist or "RAID", sender) end
+local function item(id, name, bonus) local l = "|cnIQ4:|Hitem:" .. id .. "::::::::90:::::" .. (bonus or "") .. "|h[" .. name .. "]|h|r" S.items[id] = l return l end
+local LEGS, RING, TRINKET = item(242394, "Jambières de l'Étreinte toxique", "1:6652"), item(242395, "Anneau des spores"), item(242397, "Fiole de spores")
+local CLOAK, HELM, BOOTS = item(242398, "Cape de la Faille"), item(242399, "Heaume de Kith'ix"), item(242400, "Bottes de Sporefall")
+local OLD_LEGS = item(230001, "Vieilles jambières")
+S.equipLoc = { [242394] = "INVTYPE_LEGS", [242395] = "INVTYPE_FINGER", [242397] = "INVTYPE_TRINKET", [242398] = "INVTYPE_CLOAK", [242399] = "INVTYPE_HEAD" }
+S.ilvl = { [230001] = 626, [242111] = 636 }
+S.equipped[7] = OLD_LEGS
+-- Données du site avec le conseil du raid (L) et les objets reçus (N)
+ok, msg = D.Load(table.concat({
+  "RRG;1;g1;" .. BASE .. ";Les Veilleurs",
+  "R;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "O;Kaeldra-Hyjal,Grumbar-Hyjal",
+  "L;" .. RAID_ID .. ";Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre",
+  "N;saison;depuis le 05/11/2026;Tharok-Hyjal:2,Vex-Kael'Thas+Ilyra-Hyjal:1",
+  "END;1",
+}, "\n"))
+assert(ok and R.IsRecording() and G.Current().raid.id == RAID_ID, "données du site avec le conseil : " .. tostring(msg))
+local council = Lo.CouncilNames()
+assert(#council == 3 and council[2] == "Tharok-Hyjal", "conseil du raid présent (ligne L)")
+for _, e in ipairs(Lo.Items()) do Lo.Remove(e.key) end -- objets reçus plus haut (relevé)
+
+-- 9a. Chef de butin : le chef de raid, ou celui qu'il désigne ; distribution d'office (raid en mode conseil)
+assert(Lo.Master() == "Kaeldra-Hyjal" and Lo.IsMaster() and Lo.Enabled() and Lo.AutoPass(), "chef de raid = chef de butin, distribution d'office")
+local mark = #S.sent
+assert(Lo.SetMaster("Tharok-Hyjal") and Lo.Master() == "Tharok-Hyjal" and not Lo.IsMaster(), "chef de butin désigné")
+advance(1)
+assert(sentMsg("^ML;1;Tharok%-Hyjal$", mark + 1, "RAID"), "ML au raid")
+addon("Vex-Kael'Thas", "ML;0;Vex-Kael'Thas")
+assert(Lo.Enabled() and Lo.Master() == "Tharok-Hyjal", "ML d'un autre joueur ignoré")
+addon("Tharok-Hyjal", "ML;0;Tharok-Hyjal")
+assert(not Lo.Enabled() and Lo.Master() == "Tharok-Hyjal", "le chef de butin coupe la distribution")
+addon("Tharok-Hyjal", "ML;1;Tharok-Hyjal")
+assert(Lo.Enabled() and lastPrinted("Tharok distribue"), "le chef de butin la rallume (message au joueur)")
+mark = #S.sent
+addon("Orvane-Hyjal", "MQ")
+advance(1)
+assert(sentMsg("^ML;1;Tharok%-Hyjal$", mark + 1), "réponse à MQ (chef de raid)")
+S.leader = false
+assert(not Lo.SetMaster("Vex-Kael'Thas") and lastPrinted("seul le chef de raid"), "simple membre : pas de désignation")
+assert(not Lo.SetEnabled(false) and Lo.Enabled(), "simple membre (pas chef de butin) : distribution inchangée")
+S.leader = true
+-- Onglet En raid : section Butin, désigner depuis la liste
+buildPages(nil)
+local es = P.state.enraid.loot
+assert(es and es.master == "Tharok-Hyjal" and es.canDesignate and es.canSet and es.enabled, "onglet En raid : section Butin")
+rawget(TEXTS["Désigner un autre"], "scripts").OnClick(TEXTS["Désigner un autre"])
+P.Refresh("enraid") -- la fenêtre principale n'est pas ouverte : la page est rafraîchie à la main
+es = P.state.enraid.loot
+assert(#es.designate == 7 and es.designate[7] == "Zephyra-Hyjal", "liste des membres à désigner : " .. table.concat(es.designate, ", "))
+rawget(TEXTS["Désigner"], "scripts").OnClick(TEXTS["Désigner"])
+assert(Lo.Master() == "Zephyra-Hyjal", "désigné d'un clic")
+assert(Lo.SetMaster(nil) and Lo.IsMaster() and Lo.Master() == "Kaeldra-Hyjal", "le chef de raid reprend le butin")
+assert(Lo.SetEnabled(false) and not Lo.Enabled() and Lo.SetEnabled(true) and Lo.Enabled(), "distribution coupée puis remise")
+advance(2)
+
+-- 9b. Joueur : attend le LR du chef de butin (20 s au plus) puis passe ; sans LR, ne passe pas et le dit
+assert(Lo.SetMaster("Tharok-Hyjal"), "Tharok chef de butin")
+S.loot[10] = { link = LEGS, need = true }
+fire("START_LOOT_ROLL", 10, 120000)
+assert(#S.rollCalls == 0 and Lo.pending[10], "en attente du LR")
+addon("Vex-Kael'Thas", "LR;242394")
+assert(#S.rollCalls == 0, "LR d'un autre que le chef de butin ignoré")
+addon("Tharok-Hyjal", "LR;242394")
+assert(#S.rollCalls == 1 and S.rollCalls[1].id == 10 and S.rollCalls[1].kind == 0 and lastPrinted("c'est le chef de butin qui distribue"), "passe après le LR")
+-- LR arrivé avant le jet (le jeu ne prévient pas tout le monde en même temps)
+S.loot[11] = { link = BOOTS }
+addon("Tharok-Hyjal", "LR;242400")
+fire("START_LOOT_ROLL", 11, 120000)
+assert(#S.rollCalls == 2 and S.rollCalls[2].id == 11 and S.rollCalls[2].kind == 0, "LR déjà reçu : passe tout de suite")
+-- Passer automatique coupé (Options)
+RosterDB.autoPass = false
+S.loot[12] = { link = LEGS }
+fire("START_LOOT_ROLL", 12, 120000)
+addon("Tharok-Hyjal", "LR;242394")
+assert(#S.rollCalls == 2 and lastPrinted("passer automatique coupé chez toi"), "passer automatique coupé : rien n'est passé")
+RosterDB.autoPass = nil
+-- Pas de LR en 20 s : ne passe pas, le dit
+S.loot[13] = { link = RING }
+fire("START_LOOT_ROLL", 13, 120000)
+advance(19)
+assert(#S.rollCalls == 2 and not lastPrinted("pas de signal du chef de butin"), "pas encore 20 s")
+advance(2)
+assert(#S.rollCalls == 2 and printedSince(0, "pas de signal du chef de butin pour " .. RING), "sans LR en 20 s : pas passé, message")
+-- Jet presque fini : attente plus courte
+S.loot[14] = { link = HELM, left = 8000 }
+fire("START_LOOT_ROLL", 14, 120000)
+advance(7)
+assert(printedSince(0, "pas de signal du chef de butin pour " .. HELM), "attente bornée par la fin du jet")
+-- Butin ordinaire (rare) sans LR : pas de message
+local pmark = #printed
+S.loot[15] = { link = "|cnIQ3:|Hitem:242396::::|h[Bleu]|h|r", quality = 3 }
+fire("START_LOOT_ROLL", 15, 120000)
+advance(21)
+assert(not printedSince(pmark, "Bleu"), "objet sous le seuil : silencieux")
+-- Valeurs secrètes : ignorées
+S.loot[16] = { link = LEGS, secret = true }
+fire("START_LOOT_ROLL", 16, 120000)
+fire("START_LOOT_ROLL", secretValue("rollID"), 120000)
+assert(not Lo.pending[16] and errors() == 0, "jet illisible ignoré")
+-- Conseil vu d'un joueur membre du conseil : LO du chef de butin seulement, réponse au conseil, LC qui ferme
+addon("Vex-Kael'Thas", "LO;77001;item:242394::::::::90:::::;Faux")
+assert(#Lo.Offers() == 0, "LO d'un autre que le chef de butin ignoré")
+addon("Tharok-Hyjal", "LO;77002;item:242394::::::::90:::::1:6652;Jambières de l'Étreinte toxique")
+local po = Lo.Offers()
+assert(#po == 1 and po[1].from == "Tharok-Hyjal" and po[1].link == LEGS and LU.state.offer.session == "77002", "fenêtre de réponse ouverte")
+local pc = Lo.Council("77002")
+assert(pc and pc.master == "Tharok-Hyjal" and not pc.isMaster and LU.state.council.session == "77002", "membre du conseil : fenêtre du conseil")
+mark = #S.sent
+assert(Lo.Answer("77002", "bis", ""), "réponse")
+advance(1)
+local pt = {}
+for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;77002;bis;230001:626;$") then pt[S.sent[i].target] = true end end
+assert(pt["Tharok-Hyjal"] and pt["Brumelune-Ysondre"], "réponse au chef de butin et au conseil")
+addon("Brumelune-Ysondre", "LV;77002;Kaeldra-Hyjal", "WHISPER")
+assert(Lo.Council("77002").cands[1].votes == 1 and not Lo.AwardCouncil("77002", "Kaeldra-Hyjal"), "vote reçu ; seul le chef de butin donne")
+addon("Tharok-Hyjal", "LC;77002;Kaeldra-Hyjal")
+assert(#Lo.Offers() == 0 and Lo.Council("77002").closed and Lo.Council("77002").winner == "Kaeldra-Hyjal", "LC : conseil terminé")
+addon("Tharok-Hyjal", "RS;242397;msos")
+assert(lastPrinted("/roll 100 en spé principale, /roll 99 en spé secondaire"), "RS : rappel des jets")
+-- LW : l'attribution du chef de butin notée aussi dans mon relevé (bilans du raid qui concordent)
+local mylog = R.Current()
+assert(mylog, "relevé en cours")
+local nLoot = #mylog.loot
+fire("CHAT_MSG_LOOT", "Tharok-Hyjal reçoit le butin : " .. LEGS .. ".", "", "", "", "")
+assert(#mylog.loot == nLoot + 1 and mylog.loot[nLoot + 1].who == "Tharok-Hyjal", "objet ramassé par le chef de butin")
+addon("Vex-Kael'Thas", "LW;1-242394-9;242394;Vex-Kael'Thas;ml;;")
+assert(mylog.loot[nLoot + 1].who == "Tharok-Hyjal", "LW d'un autre que le chef de butin ignoré")
+addon("Tharok-Hyjal", "LW;1-242394-9;242394;Brumelune-Ysondre;council;bis;3 votes")
+local lw = mylog.loot[nLoot + 1]
+assert(#mylog.loot == nLoot + 1 and lw.who == "Brumelune-Ysondre" and lw.method == "council" and lw.response == "bis" and lw.detail == "3 votes", "LW : gagnant noté")
+addon("Tharok-Hyjal", "LW;1-242394-9;242394;Mordak-Ysondre;roll;;MS 87")
+assert(#mylog.loot == nLoot + 1 and lw.who == "Mordak-Ysondre" and lw.method == "roll" and lw.response == "" and lw.detail == "MS 87", "LW : nouveau gagnant du même objet")
+assert(not mylog.distributed, "pas distribué par moi")
+table.remove(mylog.loot, nLoot + 1)
+assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
+advance(2)
+
+-- 9c. Chef de butin : prend l'objet (Besoin, sinon Transmo, sinon Cupidité), confirme, envoie le LR
+mark = #S.sent
+S.loot[20] = { link = LEGS, need = true }
+fire("START_LOOT_ROLL", 20, 120000)
+assert(S.rollCalls[#S.rollCalls].id == 20 and S.rollCalls[#S.rollCalls].kind == 1, "chef : Besoin")
+fire("CONFIRM_LOOT_ROLL", 20, 1, "BIND")
+assert(S.confirms[1] and S.confirms[1].id == 20 and S.confirms[1].kind == 1 and S.popupHidden == "CONFIRM_LOOT_ROLL", "objet lié : jet confirmé")
+fire("CONFIRM_LOOT_ROLL", 99, 1, "BIND")
+assert(#S.confirms == 1, "jet pris à la main : pas confirmé par l'addon")
+S.loot[21] = { link = RING, transmog = true }
+fire("START_LOOT_ROLL", 21, 120000)
+assert(S.rollCalls[#S.rollCalls].id == 21 and S.rollCalls[#S.rollCalls].kind == 4, "chef : Transmo à défaut de Besoin")
+S.loot[22] = { link = TRINKET }
+fire("START_LOOT_ROLL", 22, 120000)
+assert(S.rollCalls[#S.rollCalls].id == 22 and S.rollCalls[#S.rollCalls].kind == 2, "chef : Cupidité à défaut")
+local calls = #S.rollCalls
+S.loot[23] = { link = CLOAK, greed = false }
+fire("START_LOOT_ROLL", 23, 120000)
+assert(#S.rollCalls == calls and printedSince(0, "tu ne peux pas prendre " .. CLOAK), "chef pas éligible : rien pris, pas de LR")
+S.loot[24] = { link = "|cnIQ3:|Hitem:242396::::|h[Bleu]|h|r", quality = 3, need = true }
+fire("START_LOOT_ROLL", 24, 120000)
+assert(#S.rollCalls == calls, "chef : butin ordinaire laissé au jet habituel")
+advance(2)
+assert(sentMsg("^LR;242394$", mark + 1, "RAID") and sentMsg("^LR;242395$", mark + 1) and sentMsg("^LR;242397$", mark + 1) and not sentMsg("^LR;242398$", mark + 1), "LR au raid pour les objets pris")
+-- Le chef reçoit les jambières : à distribuer, place dans les sacs et minuteur d'échange lus
+S.bags[0][3], S.tradeLeft[LEGS] = LEGS, "1 h 58 min"
+local logLines = #log.loot
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. LEGS .. ".", "", "", "", "")
+local items = Lo.Items()
+local legs = items[#items]
+assert(#items == 1 and legs.itemId == 242394 and legs.status == "new" and legs.bag == 0 and legs.slot == 3 and legs.ilvl == 639, "objet reçu : à distribuer")
+assert(legs.expires and math.abs(legs.expires - (time() + 7080)) <= 1 and legs.name == "Jambières de l'Étreinte toxique", "minuteur d'échange lu dans l'infobulle")
+assert(#log.loot == logLines + 1 and log.loot[#log.loot].who == "Kaeldra-Hyjal", "bilan : ramassé par le chef de butin")
+-- Mordak (sans l'addon) gagne l'anneau : signalé au chef, qui lui chuchote de le garder
+fire("CHAT_MSG_LOOT", "Mordak-Ysondre reçoit le butin : " .. RING .. ".", "", "", "", "")
+local np = Lo.NotPassed()
+assert(#np == 1 and np[1].name == "Mordak-Ysondre" and np[1].itemId == 242395 and lastPrinted("Mordak%-Ysondre a gagné"), "pas passé : signalé au chef de butin")
+local wmark = #S.whispers
+assert(Lo.WhisperNotPassed("Mordak-Ysondre"), "chuchotement au joueur qui n'a pas passé")
+assert(S.whispers[wmark + 1].chatType == "WHISPER" and S.whispers[wmark + 1].target == "Mordak-Ysondre" and S.whispers[wmark + 1].msg:find("garde l'objet pour l'instant", 1, true), "chuchoté : garder pour l'échange")
+assert(np[1].whispered and not Lo.WhisperNotPassed("Mordak-Ysondre"), "chuchoté une fois")
+-- Fiole reçue un peu après le message (le jeu la pose ensuite dans les sacs)
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. TRINKET .. ".", "", "", "", "")
+local trinket = Lo.Items()[2]
+assert(trinket.itemId == 242397 and not trinket.bag and not trinket.expires, "pas encore dans les sacs")
+S.bags[1][5], S.tradeLeft[TRINKET] = TRINKET, "1 h 59 min"
+advance(1.5)
+assert(trinket.bag == 1 and trinket.slot == 5 and trinket.expires, "retrouvé dans les sacs")
+-- Cape et heaume reçus (en dehors des jets : objets épiques reçus pendant la distribution)
+S.bags[2][1], S.bags[2][2], S.tradeLeft[CLOAK], S.tradeLeft[HELM] = CLOAK, HELM, "1 h 50 min", "25 min"
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. CLOAK .. ".", "", "", "", "")
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. HELM .. ".", "", "", "", "")
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : |cnIQ3:|Hitem:242396::::|h[Bleu]|h|r.", "", "", "", "")
+items = Lo.Items()
+local cloak, helm = items[3], items[4]
+assert(#items == 4 and cloak.itemId == 242398 and helm.itemId == 242399 and helm.expires - time() == 1500, "objets reçus (le rare reste au joueur)")
+LU.ShowLoot()
+assert(LU.state.loot.items == 4 and LU.state.loot.master and LU.state.loot.notPassed == 1, "fenêtre du butin")
+advance(2)
+
+-- 9d. Conseil : proposé au raid, réponses (une chuchotée par un joueur sans addon), votes, « Donner »
+mark, wmark = #S.sent, #S.whispers
+local okC, sid = Lo.StartCouncil(legs.key)
+assert(okC and sid and legs.status == "council" and legs.session == sid, "conseil lancé")
+advance(1)
+local lo = sentMsg("^LO;", mark + 1, "RAID")
+assert(lo and lo.msg == "LO;" .. sid .. ";item:242394::::::::90:::::1:6652;Jambières de l'Étreinte toxique", "LO : chaîne de l'objet sans couleurs, nom : " .. tostring(lo and lo.msg))
+assert(said("Roster : conseil du butin pour " .. LEGS, wmark + 1) and said("chuchote-moi bis, up, os ou transmo", wmark + 1).chatType == "RAID", "conseil annoncé dans le raid")
+local offers = Lo.Offers()
+assert(#offers == 1 and offers[1].session == sid and offers[1].link == LEGS and offers[1].from == "Kaeldra-Hyjal" and not offers[1].answered, "fenêtre de réponse chez moi aussi")
+assert(LU.state.offer.session == sid and LU.state.council.session == sid, "fenêtres de réponse et du conseil ouvertes")
+-- Ma réponse : au conseil (Tharok, Brumelune) en privé, avec l'objet porté et son niveau
+mark = #S.sent
+assert(Lo.Answer(sid, "upgrade", "petit gain ; deux pièces"), "réponse envoyée")
+advance(2)
+local la = sentMsg("^LA;" .. sid, mark + 1)
+assert(la and la.dist == "WHISPER" and la.msg == "LA;" .. sid .. ";upgrade;230001:626;petit gain   deux pièces", "LA chuchoté : " .. tostring(la and la.msg))
+local targets = {}
+for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;") then targets[S.sent[i].target] = true end end
+assert(targets["Tharok-Hyjal"] and targets["Brumelune-Ysondre"] and not targets["Kaeldra-Hyjal"] and not targets["Vex-Kael'Thas"], "LA au conseil seulement")
+assert(offers[1].answered and #Lo.Offers() == 1 and LU.state.offer.session == nil, "répondu : fenêtre de réponse fermée")
+-- Réponses des autres : Tharok (addon), Vex (addon, Off-spec), Mordak chuchote « BIS » (sans addon)
+addon("Tharok-Hyjal", "LA;" .. sid .. ";bis;242111:636;BiS pour moi", "WHISPER")
+addon("Vex-Kael'Thas", "LA;" .. sid .. ";off;;", "WHISPER")
+addon("Orvane-Hyjal", "LA;" .. sid .. ";super;;", "WHISPER")
+mark = #S.sent
+fire("CHAT_MSG_WHISPER", " BIS ", "Mordak-Ysondre", "", "", "Mordak-Ysondre")
+fire("CHAT_MSG_WHISPER", "salut", "Sylvane-Hyjal", "", "", "Sylvane-Hyjal")
+fire("CHAT_MSG_WHISPER", secretValue("whisper"), "Sylvane-Hyjal")
+advance(2)
+local relay = sentMsg("^LA;" .. sid .. ";bis;;chuchoté;Mordak%-Ysondre$", mark + 1)
+assert(relay and relay.dist == "WHISPER", "réponse chuchotée relayée au conseil")
+-- Votes : Tharok et Brumelune (conseil), Vex (pas du conseil : ignoré), moi
+addon("Tharok-Hyjal", "LV;" .. sid .. ";Tharok-Hyjal", "WHISPER")
+addon("Brumelune-Ysondre", "LV;" .. sid .. ";Mordak-Ysondre", "WHISPER")
+addon("Brumelune-Ysondre", "LV;" .. sid .. ";Tharok-Hyjal", "WHISPER") -- vote changé
+addon("Vex-Kael'Thas", "LV;" .. sid .. ";Vex-Kael'Thas", "WHISPER")
+assert(Lo.Vote(sid, "Mordak-Ysondre") and Lo.Vote(sid, "Mordak-Ysondre") and Lo.Council(sid).myVote == nil, "vote retiré")
+assert(Lo.Vote(sid, "Tharok-Hyjal"), "mon vote")
+local c = Lo.Council(sid)
+assert(#c.cands == 4 and c.cands[1].name == "Tharok-Hyjal" and c.cands[1].response == "bis" and c.cands[1].votes == 3 and c.myVote == "Tharok-Hyjal", "conseil : Tharok en tête (BiS, 3 votes)")
+assert(c.cands[2].name == "Mordak-Ysondre" and c.cands[2].whispered and c.cands[2].votes == 0, "réponse chuchotée")
+assert(c.cands[3].name == "Kaeldra-Hyjal" and c.cands[3].note == "petit gain   deux pièces" and c.cands[3].gear[1].id == 230001 and c.cands[3].gear[1].ilvl == 626, "ma réponse : note, objet porté")
+assert(c.cands[4].name == "Vex-Kael'Thas" and c.cands[4].response == "off", "réponse Off-spec")
+assert(c.cands[1].gear[1].id == 242111 and c.cands[1].gear[1].ilvl == 636 and c.cands[1].note == "BiS pour moi", "objets portés et note de Tharok")
+assert(c.cands[1].receivedSite == 2 and c.cands[1].receivedTonight == 1 and c.cands[1].received == 3, "Reçus : site (N) et ce soir")
+assert(c.cands[4].receivedSite == 1 and c.counts.short == "saison", "Reçus : persos d'un même joueur ensemble")
+assert(Lo.Counts({ method = "council", response = "bis" }) and Lo.Counts({ method = "roll", detail = "MS 87" }) and Lo.Counts({ method = "ml" }) and Lo.Counts({})
+  and not Lo.Counts({ method = "council", response = "transmo" }) and not Lo.Counts({ method = "roll", detail = "OS 54" })
+  and not Lo.Counts({ method = "roll", detail = "jet 54" }) and not Lo.Counts({ method = "ml", detail = "gardé" }), "Reçus : même règle que le site")
+assert(#c.waiting == 4 and #c.council == 3 and c.isMaster, "en attente : les autres membres")
+LU.ShowCouncil(sid)
+assert(LU.state.council.rows == 4 and not LU.state.council.closed, "fenêtre du conseil")
+-- « Donner » : annonce au raid, chuchotement au gagnant, LC, ligne du bilan
+mark, wmark = #S.sent, #S.whispers
+logLines = #log.loot
+assert(Lo.AwardCouncil(sid, "Tharok-Hyjal"), "objet donné au conseil")
+advance(1)
+local ann = S.whispers[wmark + 1]
+assert(ann and ann.chatType == "RAID" and ann.msg == "Roster : Tharok reçoit " .. LEGS .. " (conseil : BiS)", "annonce au raid : " .. tostring(ann and ann.msg))
+local tell = S.whispers[wmark + 2]
+assert(tell and tell.chatType == "WHISPER" and tell.target == "Tharok-Hyjal" and tell.msg:find("^Tu reçois " .. LEGS:gsub("%p", "%%%0") .. " : passe me voir pour l'échange %(encore 1 h 5%d min%)%.$"), "chuchoté au gagnant : " .. tostring(tell and tell.msg))
+assert(sentMsg("^LC;" .. sid .. ";Tharok%-Hyjal$", mark + 1, "RAID"), "LC au raid")
+assert(sentMsg("^LW;" .. legs.key:gsub("%-", "%%-") .. ";242394;Tharok%-Hyjal;council;bis;3 votes$", mark + 1, "RAID"), "LW au raid : les autres relevés notent le gagnant")
+assert(legs.status == "awarded" and legs.winner == "Tharok-Hyjal" and legs.method == "council" and legs.detail == "3 votes", "objet attribué")
+local line
+for _, l in ipairs(log.loot) do if l.id == 242394 and l.awarded then line = l end end
+assert(#log.loot == logLines and line and line.who == "Tharok-Hyjal" and line.method == "council" and line.response == "bis" and line.detail == "3 votes", "bilan : la ligne du chef devient celle du gagnant")
+assert(Lo.Council(sid).closed and Lo.Council(sid).winner == "Tharok-Hyjal" and #Lo.Offers() == 0, "conseil terminé, réponses fermées")
+assert(not Lo.Vote(sid, "Vex-Kael'Thas"), "plus de vote après le conseil")
+
+-- 9e. Jets MS / OS : premier jet de chacun, bon dé, égalité entre ex æquo seulement
+mark, wmark = #S.sent, #S.whispers
+assert(Lo.StartRoll(trinket.key, "msos") and trinket.status == "roll", "jets MS / OS lancés")
+advance(1)
+assert(sentMsg("^RS;242397;msos$", mark + 1, "RAID") and said("Roster : jets pour " .. TRINKET .. " : /roll 100 en spé principale (MS), /roll 99 en spé secondaire (OS).", wmark + 1), "RS et annonce")
+fire("CHAT_MSG_SYSTEM", "Tharok obtient un 87 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Vex-Kael'Thas obtient un 87 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Orvane obtient un 95 (1-99).")
+fire("CHAT_MSG_SYSTEM", "Tharok obtient un 99 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Sylvane obtient un 30 (1-50).")
+fire("CHAT_MSG_SYSTEM", "Brumelune-Ysondre obtient un 70 (2-100).")
+local r = Lo.Rolls(trinket.key)
+assert(#r.rows == 3 and r.tie and #r.winners == 2 and r.rows[3].name == "Orvane-Hyjal" and r.rows[3].kind == "os", "jets : MS d'abord, égalité à 87")
+assert(r.rows[1].roll == 87 and r.rows[2].roll == 87, "seul le premier jet de Tharok compte")
+assert(not Lo.AwardRoll(trinket.key), "égalité : pas de gagnant")
+fire("CHAT_MSG_SYSTEM", secretValue("system"))
+assert(Lo.Rolls(trinket.key).hidden, "message secret : jets illisibles signalés")
+wmark = #S.whispers
+assert(Lo.Reroll(trinket.key), "relance")
+assert(said("Roster : égalité pour " .. TRINKET .. " entre Tharok, Vex-Kael'Thas : relancez, /roll 100.", wmark + 1), "relance annoncée")
+fire("CHAT_MSG_SYSTEM", "Orvane obtient un 99 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Vex-Kael'Thas obtient un 12 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Tharok obtient un 45 (1-99).")
+fire("CHAT_MSG_SYSTEM", "Tharok obtient un 45 (1-100).")
+r = Lo.Rolls(trinket.key)
+assert(#r.rows == 2 and not r.tie and r.winners[1] == "Tharok-Hyjal" and #r.previous == 1 and r.round == 2, "relance : seuls les ex æquo, bon dé")
+LU.ShowLoot()
+assert(LU.state.loot.rolls and LU.state.loot.rolls.winners[1] == "Tharok-Hyjal", "jets dans la fenêtre du butin")
+wmark = #S.whispers
+assert(Lo.AwardRoll(trinket.key), "donné au gagnant")
+assert(S.whispers[wmark + 1].msg == "Roster : Tharok reçoit " .. TRINKET .. " (MS 45)", "annonce : MS 45")
+line = nil
+for _, l in ipairs(log.loot) do if l.id == 242397 and l.awarded then line = l end end
+assert(line and line.who == "Tharok-Hyjal" and line.method == "roll" and line.response == "" and line.detail == "MS 45", "bilan : jets MS")
+assert(not Lo.StartRoll(trinket.key, "free") and lastPrinted("déjà attribué"), "objet attribué : plus de jets")
+
+-- 9f. Jet libre, donné d'un clic dans la fenêtre du butin
+assert(Lo.StartRoll(cloak.key, "free"), "jet libre")
+assert(said("Roster : jet libre pour " .. CLOAK .. " : /roll 100."), "jet libre annoncé")
+fire("CHAT_MSG_SYSTEM", "Sylvane obtient un 54 (1-100).")
+fire("CHAT_MSG_SYSTEM", "Orvane obtient un 80 (1-99).")
+fire("CHAT_MSG_SYSTEM", "Brumelune-Ysondre obtient un 33 (1-100).")
+LU.ShowLoot()
+wmark = #S.whispers
+rawget(TEXTS["Donner à Sylvane"], "scripts").OnClick(TEXTS["Donner à Sylvane"])
+assert(cloak.status == "awarded" and cloak.winner == "Sylvane-Hyjal" and cloak.detail == "jet 54", "jet libre donné d'un clic")
+assert(S.whispers[wmark + 1].msg == "Roster : Sylvane reçoit " .. CLOAK .. " (jet libre 54)" and S.whispers[wmark + 2].target == "Sylvane-Hyjal", "annonce et chuchotement")
+
+-- 9g. Garder : annoncé, rien de chuchoté, noté « ml » pour moi
+wmark = #S.whispers
+assert(Lo.Keep(helm.key) and helm.status == "kept", "gardé")
+assert(#S.whispers == wmark + 1 and S.whispers[wmark + 1].msg == "Roster : Kaeldra reçoit " .. HELM .. " (gardé)", "annonce : gardé")
+line = nil
+for _, l in ipairs(log.loot) do if l.id == 242399 and l.awarded then line = l end end
+assert(line and line.who == "Kaeldra-Hyjal" and line.method == "ml" and line.detail == "gardé", "bilan : gardé par le chef de butin")
+assert(R.IsLead(log) and log.distributed, "bilan du chef de butin")
+
+-- 9h. Échange : jamais en combat, à portée, objet posé à l'ouverture, remis à la fermeture
+LU.ShowHandover()
+assert(LU.state.handover.items == 3, "objets à remettre : jambières, fiole et cape")
+S.combat = true
+assert(not Lo.Trade(legs.key) and not S.tradeWith and lastPrinted("pas d'échange en combat"), "pas d'échange en combat")
+S.combat = false
+S.far = "raid2"
+assert(not Lo.Trade(legs.key) and lastPrinted("trop loin"), "trop loin")
+S.far = nil
+assert(Lo.Trade(legs.key) and S.tradeWith == "raid2", "échange demandé à Tharok (raid2)")
+S.tradePartner = findMember("Vex-Kael'Thas")
+fire("TRADE_SHOW")
+assert(not S.tradeSlots, "échange avec un autre joueur : rien posé")
+fire("TRADE_CLOSED")
+advance(2)
+assert(Lo.Trade(legs.key), "échange redemandé")
+S.tradePartner = findMember("Tharok-Hyjal")
+fire("TRADE_SHOW")
+assert(S.tradeSlots and S.tradeSlots[1] == LEGS and S.picked[1] == 0 and S.picked[2] == 3, "objet posé dans la première case")
+S.bags[0][3], S.tradeSlots = nil, nil -- échange accepté des deux côtés
+fire("TRADE_CLOSED")
+fire("TRADE_CLOSED")
+advance(2)
+assert(legs.status == "traded" and lastPrinted("objet remis à Tharok"), "échange terminé : remis")
+LU.ShowHandover()
+assert(LU.state.handover.items == 2, "restent la fiole et la cape")
+assert(Lo.MarkTraded(cloak.key) and cloak.status == "traded", "remis à la main")
+
+-- 9i. Pendant une rencontre de boss : attributions et jets refusés, LR gardé puis envoyé
+S.bags[3][1] = BOOTS
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. BOOTS .. ".", "", "", "", "")
+local boots = Lo.Items()[#Lo.Items()]
+startEncounter(3178, "Kith'ix")
+wmark = #S.whispers
+assert(not Lo.Award(boots.key, "Vex-Kael'Thas", "ml") and lastPrinted("pas pendant un combat de boss : attribue"), "pas d'attribution pendant la rencontre")
+assert(not Lo.StartRoll(boots.key, "msos") and not Lo.StartCouncil(boots.key) and #S.whispers == wmark and boots.status == "new", "ni jets ni conseil pendant la rencontre")
+mark = #S.sent
+S.loot[30] = { link = RING, need = true }
+fire("START_LOOT_ROLL", 30, 120000)
+assert(Cm.Held() >= 1 and not sentMsg("^LR;", mark + 1), "LR gardé pendant la rencontre")
+buildPages(nil)
+endEncounter(3178, "Kith'ix", 1)
+advance(3)
+assert(Cm.Held() == 0 and sentMsg("^LR;242395$", mark + 1, "RAID"), "LR envoyé après la rencontre")
+assert(Lo.Award(boots.key, "Vex-Kael'Thas", "ml") and S.whispers[#S.whispers - 1].msg == "Roster : Vex-Kael'Thas reçoit " .. BOOTS .. " (choix du chef de butin)", "donné par le chef de butin après le combat")
+
+-- 9j. Fenêtres dans les deux habillages (l'offre d'un nouveau conseil, le conseil, les objets à remettre)
+S.bags[3][2] = RING
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. RING .. ".", "", "", "", "")
+local ring = Lo.Items()[#Lo.Items()]
+local _, sid2 = Lo.StartCouncil(ring.key)
+local function allWindows()
+  LU.ShowLoot() LU.ShowCouncil(sid2) LU.ShowOffer() LU.ShowHandover() LU.Refresh()
+  assert(LU.state.offer.session == sid2 and LU.state.council.session == sid2, "fenêtres ouvertes")
+end
+allWindows()
+RosterDB.skin = "site"
+assert(loadfile("addon/Roster/LootUI.lua"))("Roster", ns)
+LU = ns.LootUI
+allWindows()
+buildPages("site")
+RosterDB.skin = nil
+assert(Lo.Cancel(ring.key) and ring.status == "new" and #Lo.Offers() == 0, "conseil annulé : réponses fermées")
+assert(errors() == 0, "butin sans erreur : " .. tostring(lastPrinted("erreur")))
+
+-- 9k. Raid d'essai (crochets de Test.lua) : membres, messages, chat et échange simulés ; rien dans le bilan ni la sauvegarde
+local tsent, tsaid, ttrade = {}, {}, {}
+local realItems, realLog, realCalls, realSaid = #RosterDB.loot.items, #log.loot, #S.rollCalls, #S.whispers
+Lo.test = {
+  members = { { name = "Kaeldra-Hyjal", class = "PRIEST", subgroup = 1 }, { name = "Gorrak-Hyjal", class = "WARRIOR", subgroup = 1 },
+    { name = "Mirelle-Hyjal", class = "PRIEST", subgroup = 2, addon = false } },
+  send = function(m, dist, target) tsent[#tsent + 1] = { msg = m, dist = dist, target = target } return true end,
+  say = function(text, chatType, target) tsaid[#tsaid + 1] = { msg = text, chatType = chatType, target = target } end,
+  trade = function(entry) ttrade[#ttrade + 1] = entry end,
+}
+assert(Lo.IsMaster() and Lo.Enabled() and #Lo.Items() == 0, "essai : chef de butin, liste à part")
+local te = Lo.AddTestItem(LEGS, 3600)
+assert(te and #Lo.Items() == 1 and te.expires == time() + 3600 and #RosterDB.loot.items == realItems, "essai : objet ajouté en mémoire")
+local _, tsid = Lo.StartCouncil(te.key)
+assert(tsent[1].msg:find("^LO;" .. tsid) and tsent[1].dist == "RAID" and tsaid[1].chatType == "RAID", "essai : LO et annonce simulés")
+Cm.Deliver("Gorrak-Hyjal", "LA;" .. tsid .. ";bis;;", "WHISPER")
+Cm.Deliver("Gorrak-Hyjal", "LV;" .. tsid .. ";Gorrak-Hyjal", "WHISPER")
+local tc = Lo.Council(tsid)
+assert(#tc.cands == 1 and tc.cands[1].votes == 1 and #tc.waiting == 2, "essai : réponse et vote simulés")
+assert(Lo.AwardCouncil(tsid, "Gorrak-Hyjal") and te.status == "awarded", "essai : objet donné")
+assert(tsaid[#tsaid - 1].msg == "Roster : Gorrak reçoit " .. LEGS .. " (conseil : BiS)" and tsaid[#tsaid].chatType == "WHISPER" and tsaid[#tsaid].target == "Gorrak-Hyjal", "essai : annonce et chuchotement simulés")
+assert(#log.loot == realLog and #Lo.testLog.loot == 1 and #S.whispers == realSaid, "essai : rien dans le bilan ni dans le chat")
+assert(Lo.Trade(te.key) and ttrade[1] == te, "essai : échange simulé")
+local te2 = Lo.AddTestItem(CLOAK)
+assert(Lo.StartRoll(te2.key, "free") and Lo.OnRoll("Gorrak-Hyjal", 88, 1, 100) and Lo.Rolls(te2.key).winners[1] == "Gorrak-Hyjal", "essai : jet injecté")
+fire("START_LOOT_ROLL", 20, 120000)
+assert(#S.rollCalls == realCalls, "essai : pas de RollOnLoot")
+Lo.StopTest()
+assert(Lo.test == nil and #Lo.Items() == realItems and #Lo.testItems == 0, "fin de l'essai : vraie liste")
+assert(errors() == 0, "essai sans erreur : " .. tostring(lastPrinted("erreur")))
 
 --------------------------------------------------------------------------------------------------------------------
 -- 7. Valeurs secrètes renvoyées par le jeu : rien ne casse, rien n'est gardé

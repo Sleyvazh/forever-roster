@@ -146,7 +146,8 @@ function Admin({ sections, isOwner, unseen, initial }: { sections: Record<AdminK
   const [cur, setCur] = useState<AdminKey>(initial ?? "invites");
   useEffect(() => { if (initial) setCur(initial); }, [initial]);
   const retail = useSite().game === "retail";
-  const nav = ADMIN_NAV.filter(([k]) => (k !== "danger" || isOwner) && !(retail && (k === "loot" || k === "addon")));
+  // Roster : réglages du butin (compte des objets reçus, lot R3b) ; « Données pour l'addon » reste propre à Forever Roster
+  const nav = ADMIN_NAV.filter(([k]) => (k !== "danger" || isOwner) && !(retail && k === "addon"));
   return (
     <div className="adm">
       <nav className="adm-nav" aria-label="Sections de l'administration">

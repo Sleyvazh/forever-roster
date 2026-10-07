@@ -13,7 +13,7 @@ import { useLiveListener, type LiveEvent } from "../live";
 import { useMe } from "../auth";
 import { RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
-import { DEFAULT_TARGETS, groupsFor, LOOT_MODE_HINT, LOOT_MODE_LABEL, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
+import { DEFAULT_TARGETS, groupsFor, lootModeHint, lootModeLabel, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
 import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
 import { CouncilPicker, RaidPrepPanel } from "../components/RaidPrep";
 import { RaidReach, type Reach } from "../components/RaidReach";
@@ -238,8 +238,8 @@ export function RaidPage() {
   const tabs: [RaidTab, string][] = [
     ...(canEdit ? [["compo", "Compo"] as [RaidTab, string], ["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string]]
       : [["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string], ["compo", "Compo"] as [RaidTab, string]]),
-    // Roster (WoW Retail) : le bilan vient de l'addon Roster (R3a) ; préparation et butin viendront avec R3b et R3c
-    ...(gt.game === "retail" ? [["bilan", "Bilan"]] : [["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"]]) as [RaidTab, string][], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
+    // Roster (WoW Retail) : butin (R3b) et bilan de l'addon Roster (R3a) ; la préparation viendra avec R3c
+    ...(gt.game === "retail" ? [["butin", "Butin"], ["bilan", "Bilan"]] : [["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"]]) as [RaidTab, string][], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
   ];
   const tab: RaidTab = tabs.some(([k]) => k === tabParam) ? tabParam as RaidTab : tabs[0]![0];
   const setTab = (k: RaidTab) => nav(`/groups/${groupId}/raids/${raidId}${k === tabs[0]![0] ? "" : `/${k}`}`, { replace: true });
@@ -263,7 +263,7 @@ export function RaidPage() {
           <div className="rp-meta">
             <span>{longDate(partsOf(when))}</span>
             <span className="tag">{r.difficulty ? `${DIFFICULTY_LABEL[r.difficulty][gt.lang]} · ` : ""}{size} joueurs</span>
-            {gt.game !== "retail" && <LootModeTag mode={r.lootMode} />}
+            <LootModeTag mode={r.lootMode} />
             {r.rosterPublished && <span className="tag ok" title="L'annonce Discord affiche la compo">Compo publiée</span>}
           </div>
         </div>
@@ -422,9 +422,15 @@ export function RaidPage() {
                   onChange={(lootMode, srHidden) => void patch(`/groups/${groupId}/raids/${raidId}/loot`, { lootMode, srHidden })
                     .then(() => qc.invalidateQueries({ queryKey: ["raid", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Changement impossible."))} />
               </section>
-            ) : <p style={{ margin: 0 }}>Butin : <b>{LOOT_MODE_LABEL[r.lootMode]}</b> <span className="muted">· {LOOT_MODE_HINT[r.lootMode]}</span></p>}
-            {r.lootMode === "softres" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
-            {r.lootMode === "council" && <CouncilPicker groupId={groupId} raidId={raidId} />}
+            ) : <p style={{ margin: 0 }}>Butin : <b>{lootModeLabel(r.lootMode, gt.game)}</b> <span className="muted">· {lootModeHint(r.lootMode, gt.game)}</span></p>}
+            {/* Roster : pas de soft reserve (lot R3b) */}
+            {r.lootMode === "softres" && gt.game !== "retail" && <SoftReservePanel groupId={groupId} raidId={raidId} officer={canEdit} myChars={myLootChars} />}
+            {r.lootMode === "council" && <CouncilPicker groupId={groupId} raidId={raidId} retail={gt.game === "retail"} />}
+            {gt.game === "retail" && (
+              <p className="hint" style={{ margin: 0 }}>{r.lootMode === "council"
+                ? "En jeu, l'addon Roster active la distribution pour ce raid : chacun passe sur le butin de groupe, le chef de butin (le chef de raid, sauf autre choix) reçoit les objets puis les attribue d'un clic. Les objets reçus comptent dans la colonne « Reçus » (onglet Présence & butin)."
+                : "En jeu, chacun joue le butin de groupe du jeu ; l'addon Roster note qui reçoit quoi pour le bilan du raid. Choisis « Conseil » pour que le chef de butin distribue avec l'addon Roster."}</p>
+            )}
           </>}
 
           {tab === "preparation" && <RaidPrepPanel groupId={groupId} raidId={raidId} />}

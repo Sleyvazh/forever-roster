@@ -1,10 +1,13 @@
-import { DEFAULT_TARGETS, DIFFICULTY_LABEL, LOOT_MODE_LABEL, LOOT_MODES, RAID_SIZES, retailDefaultSize, SIGNUP_LABEL, WEEKDAYS, type LootMode, type RaidSize, type RetailDifficulty, type SignupStatus } from "@forever/game-data";
+import {
+  DEFAULT_TARGETS, DIFFICULTY_LABEL, lootModeLabel, lootModesOf, RAID_SIZES, retailDefaultSize, retailLootMode, SIGNUP_LABEL, WEEKDAYS,
+  type LootMode, type RaidSize, type RetailDifficulty, type SignupStatus,
+} from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { del, get, patch, post } from "../api";
 import { DAY_SHORT, DayStrip, habits, hhmm, isoOf, longDate, partsOf, TimeChips, TimeSelect, type Parts } from "./DateTime";
-import { LootModePicker } from "./Loot";
+import { LootModePicker, LootModeTag } from "./Loot";
 import { NumberField } from "./NumberField";
 import { RoleTag } from "./RoleIcon";
 import { RetailFormat, RetailRaidChips } from "./RetailFormat";
@@ -81,7 +84,7 @@ function RaidCard({ groupId, r, past }: { groupId: string; r: RaidSummary; past:
         <b className="gr-name">{r.name}</b>
         <span className="gr-tags">
           <span className="tag">{r.difficulty ? `${DIFFICULTY_LABEL[r.difficulty][t.lang]} · ${r.size}` : r.size}</span>
-          {r.lootMode !== "journal" && !r.difficulty && <span className="tag gold">{LOOT_MODE_LABEL[r.lootMode]}</span>}
+          <LootModeTag mode={r.lootMode} />
           {r.recurring && <span className="tag" title="Créé par un raid récurrent">↻ chaque semaine</span>}
         </span>
         <span className="gr-roles">
@@ -159,7 +162,7 @@ function NewRaid({ groupId, raids, guard, onClose }: { groupId: string; raids: R
           <span className="muted small">{t.tank} tanks · {t.heal} heals · {t.dps} DPS visés</span>
         </div>)}
       </div>
-      {!retail && <div className="gr-line"><span className="lbl">Butin</span><LootModePicker mode={loot.mode} hidden={loot.hidden} idPrefix="gr" onChange={(mode, hidden) => setLoot({ mode, hidden })} /></div>}
+      <div className="gr-line"><span className="lbl">Butin</span><LootModePicker mode={loot.mode} hidden={loot.hidden} idPrefix="gr" onChange={(mode, hidden) => setLoot({ mode, hidden })} /></div>
       <div className="gr-line"><span className="lbl">Récurrent</span>
         <div className="row" style={{ gap: 12 }}>
           <label className="gr-tog"><input type="checkbox" checked={weekly} onChange={e => setWeekly(e.target.checked)} /><i aria-hidden="true" />
@@ -175,7 +178,7 @@ function NewRaid({ groupId, raids, guard, onClose }: { groupId: string; raids: R
           : <textarea aria-label="Description" maxLength={1000} style={{ minHeight: 60 }} placeholder="Ex. Pull à 21 h 15, flasques obligatoires." value={desc} onChange={e => setDesc(e.target.value)} />}
       </div>
       <div className="gr-sum">
-        <p><b>{name || "Raid"}</b> · {parts ? longDate(parts) : "date à choisir"} · {retail ? `${DIFFICULTY_LABEL[rf.difficulty][gt.lang]} · ` : ""}{nPlayers} joueurs{retail ? "" : ` · ${LOOT_MODE_LABEL[loot.mode]}`}{weekly && <> · <b>chaque semaine</b></>}</p>
+        <p><b>{name || "Raid"}</b> · {parts ? longDate(parts) : "date à choisir"} · {retail ? `${DIFFICULTY_LABEL[rf.difficulty][gt.lang]} · ` : ""}{nPlayers} joueurs · {lootModeLabel(loot.mode, gt.game)}{weekly && <> · <b>chaque semaine</b></>}</p>
         <div className="row"><button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
           <button type="submit" className="btn primary" disabled={busy || name.trim().length < 2 || (weekly && !day)}>Créer le raid</button></div>
       </div>
@@ -202,7 +205,7 @@ function RecurringList({ groupId, templates, canEdit, guard }: { groupId: string
       ) : (
         <div key={t.id} className={`gr-recrow${t.active ? "" : " off"}`}>
           <span className="tag">↻</span>
-          <span><b>{t.name}</b> <span className="muted">chaque {WEEKDAYS[t.weekday - 1]?.toLowerCase()} {t.time} · {t.difficulty ? `${DIFFICULTY_LABEL[t.difficulty][gt.lang]} · ` : ""}{t.size}{t.difficulty ? "" : ` · ${LOOT_MODE_LABEL[t.lootMode]}`} · créé {t.leadDays} jour{t.leadDays > 1 ? "s" : ""} avant</span>
+          <span><b>{t.name}</b> <span className="muted">chaque {WEEKDAYS[t.weekday - 1]?.toLowerCase()} {t.time} · {t.difficulty ? `${DIFFICULTY_LABEL[t.difficulty][gt.lang]} · ` : ""}{t.size} · {lootModeLabel(t.lootMode, gt.game, true)} · créé {t.leadDays} jour{t.leadDays > 1 ? "s" : ""} avant</span>
             {!t.active && <span className="tag" style={{ marginLeft: 6 }}>En pause</span>}</span>
           {canEdit && <span className="row gr-recact">
             <button type="button" className="btn ghost sm" onClick={() => setEdit(t.id)}>Modifier</button>
@@ -217,8 +220,10 @@ function RecurringList({ groupId, templates, canEdit, guard }: { groupId: string
 }
 
 function TemplateEdit({ t, onSave, onCancel }: { t: RaidTemplate; onSave: (b: Partial<RaidTemplate>) => Promise<void>; onCancel: () => void }) {
-  const retail = useSite().game === "retail";
-  const [f, setF] = useState({ name: t.name, weekday: t.weekday, time: t.time, leadDays: t.leadDays, size: t.size, lootMode: t.lootMode, description: t.description,
+  const game = useSite().game;
+  const retail = game === "retail";
+  // Roster : journal ou conseil (une ancienne soft reserve repart en journal)
+  const [f, setF] = useState({ name: t.name, weekday: t.weekday, time: t.time, leadDays: t.leadDays, size: t.size, lootMode: retail ? retailLootMode(t.lootMode) as LootMode : t.lootMode, description: t.description,
     ...(retail && { difficulty: t.difficulty ?? "normal" }) });
   return (
     <form className="gr-recedit" onSubmit={e => { e.preventDefault(); void onSave(f); }}>
@@ -231,8 +236,8 @@ function TemplateEdit({ t, onSave, onCancel }: { t: RaidTemplate; onSave: (b: Pa
         {retail
           ? <RetailFormat name={f.name} difficulty={f.difficulty ?? "normal"} size={f.size} idPrefix={`te-${t.id}`} onChange={x => setF({ ...f, ...x })} />
           : <div className="seg">{RAID_SIZES.map(n => <button key={n} type="button" className={f.size === n ? "on" : ""} onClick={() => setF({ ...f, size: n })}>{n}</button>)}</div>}</div>
-      {!retail && <div className="fld" style={{ flex: "0 1 150px" }}><label htmlFor={`te-b-${t.id}`}>Butin</label>
-        <select id={`te-b-${t.id}`} value={f.lootMode} onChange={e => setF({ ...f, lootMode: e.target.value as LootMode })}>{LOOT_MODES.map(m => <option key={m} value={m}>{LOOT_MODE_LABEL[m]}</option>)}</select></div>}
+      <div className="fld" style={{ flex: retail ? "0 1 250px" : "0 1 150px" }}><label htmlFor={`te-b-${t.id}`}>Butin</label>
+        <select id={`te-b-${t.id}`} value={f.lootMode} onChange={e => setF({ ...f, lootMode: e.target.value as LootMode })}>{lootModesOf(game).map(m => <option key={m} value={m}>{lootModeLabel(m, game)}</option>)}</select></div>
       <div className="fld" style={{ flex: "1 1 100%" }}><label htmlFor={`te-x-${t.id}`}>Description (reprise dans chaque raid)</label><input id={`te-x-${t.id}`} type="text" maxLength={1000} value={f.description} onChange={e => setF({ ...f, description: e.target.value })} /></div>
       <div className="row"><button type="submit" className="btn primary sm">Enregistrer</button><button type="button" className="btn ghost sm" onClick={onCancel}>Annuler</button></div>
     </form>

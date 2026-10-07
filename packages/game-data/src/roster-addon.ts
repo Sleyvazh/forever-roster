@@ -1,6 +1,6 @@
 import type { Role, SignupStatus } from "./core";
 import { gameName } from "./addon";
-import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from "./loot";
+import { LOOT_METHODS, LOOT_RESPONSES, retailLootMode, type LootMethod, type LootResponse } from "./loot";
 import type { RaidLogAttendee, RaidLogExport, RaidLogLoot } from "./raidlog";
 import { RETAIL_DIFFICULTIES, retailSpec, type GameLang, type RetailDifficulty } from "./retail";
 import type { Game } from "./site";
@@ -10,7 +10,8 @@ import type { Game } from "./site";
  * section « Roster : l'addon pour WoW Retail ». Mêmes principes que les formats de Forever (une information par ligne,
  * champs séparés par « ; », aucun « | », version en tête, END qui compte les lignes), en-têtes en « RR » :
  *
- *   RRG (site → jeu) : données des groupes (raids à venir, mon inscription), « Copier pour le jeu » ;
+ *   RRG (site → jeu) : données des groupes (raids à venir, mon inscription ; R3b : conseil du butin et objets reçus),
+ *     « Copier pour le jeu » ;
  *   RRR (site → jeu) : compo d'un raid, « Export pour le jeu » de l'onglet Compo ;
  *   RRB (jeu → site) : bilan d'un raid (présence, butin, rencontres), collé sur le site (Ctrl+V).
  *
@@ -59,6 +60,9 @@ export const sameFullName = (a: string, b: string) => fullNameKey(a) === fullNam
 
 /* ---------- RRG : données des groupes (site → jeu) ---------- */
 
+/** Perso du site : nom de la fiche et royaume, écrit « Prénom-Royaume ». */
+export interface RosterCharacterName { name: string; realm: string | null }
+
 export interface RosterGroupRaid {
   id: string; name: string;
   /** Date du raid (secondes Unix, 0 si non fixée). */
@@ -66,15 +70,56 @@ export interface RosterGroupRaid {
   difficulty: RetailDifficulty | null; size: number;
   /** Mon inscription, et le perso choisi (nom et royaume de la fiche). */
   status: SignupStatus | null;
-  character: { name: string; realm: string | null } | null;
+  character: RosterCharacterName | null;
+  /** Mode de butin : `journal` ou `council` sur Roster (une ancienne soft reserve part en `journal`). */
   lootMode?: string;
+  /** Lot R3b : conseil du butin choisi pour ce raid (persos de ses membres) ; vide ou null : celui de la ligne O. */
+  council?: RosterCharacterName[] | null;
 }
 
-/** Bloc RRG d'un groupe : raids à venir avec mon inscription. Spécification : docs/addon-format.md (RRG, version 1). */
-export function buildRRG(group: { id: string; name: string }, generatedAt: number, raids: RosterGroupRaid[]): string {
+/** Lot R3b : lignes O et N du bloc RRG (après les R, hors du compte de END). */
+export interface RosterGroupExtra {
+  /** O : persos joués dans le groupe par le propriétaire et les officiers (conseil du butin par défaut). */
+  council?: RosterCharacterName[];
+  /**
+   * N : objets reçus sur la période du groupe (colonne « Reçus » du conseil) : libellé court et complet, puis une entrée
+   * par joueur (ses persos du groupe, main d'abord, qui partagent le compte) ou par perso.
+   */
+  counts?: { short: string; label: string; entries: { names: RosterCharacterName[]; n: number }[] };
+}
+
+/** Nom d'un perso dans une liste (O, L, N) : « Prénom-Royaume », sans les séparateurs des listes (« , », « : », « + »). */
+const listName = (c: RosterCharacterName) => fullName(c.name, c.realm).replace(/[,:+]/g, "");
+/** Noms sans doublon (même nom en jeu), dans l'ordre donné. */
+function uniqueNames(list: RosterCharacterName[]) {
+  const seen = new Set<string>();
+  return list.map(listName).filter(n => {
+    const k = fullNameKey(n);
+    if (!n || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+/** Liste triée « Prénom-Royaume,Prénom-Royaume » (lignes O et L). */
+const nameList = (list: RosterCharacterName[]) => uniqueNames(list).sort((a, b) => a.localeCompare(b)).join(",");
+
+/**
+ * Bloc RRG d'un groupe : raids à venir avec mon inscription ; lot R3b : conseil par défaut (O), conseil choisi pour
+ * chaque raid (L) et objets reçus (N). Spécification : docs/addon-format.md (RRG, version 1).
+ */
+export function buildRRG(group: { id: string; name: string }, generatedAt: number, raids: RosterGroupRaid[], extra: RosterGroupExtra = {}): string {
   const lines = raids.map(r => ["R", r.id, Math.max(0, Math.floor(r.at)), clean(r.name), r.difficulty ?? "", Math.max(0, Math.round(r.size)),
-    r.status ?? "", r.character ? fullName(r.character.name, r.character.realm) : "", clean(r.lootMode ?? "")].join(";"));
-  return [`RRG;${ROSTER_FORMAT_VERSION};${group.id};${Math.floor(generatedAt)};${clean(group.name)}`, ...lines, `END;${lines.length}`].join("\n");
+    r.status ?? "", r.character ? fullName(r.character.name, r.character.realm) : "", r.lootMode ? retailLootMode(r.lootMode) : ""].join(";"));
+  // Lot R3b, après les R et hors du compte de END : un addon 0.1 les ignore sans signaler de texte incomplet
+  const council = nameList(extra.council ?? []);
+  const counts = (extra.counts?.entries ?? []).map(e => ({ names: uniqueNames(e.names).join("+"), n: Math.round(e.n) }))
+    .filter(e => e.names).map(e => `${e.names}:${e.n}`).join(",");
+  const after = [
+    ...(council ? [`O;${council}`] : []),
+    ...raids.flatMap(r => { const l = nameList(r.council ?? []); return l ? [`L;${r.id};${l}`] : []; }),
+    ...(extra.counts && counts ? [["N", clean(extra.counts.short), clean(extra.counts.label), counts].join(";")] : []),
+  ];
+  return [`RRG;${ROSTER_FORMAT_VERSION};${group.id};${Math.floor(generatedAt)};${clean(group.name)}`, ...lines, ...after, `END;${lines.length}`].join("\n");
 }
 
 /* ---------- RRR : compo d'un raid (site → jeu) ---------- */

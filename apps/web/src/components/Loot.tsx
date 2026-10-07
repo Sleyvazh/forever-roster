@@ -1,27 +1,37 @@
-import { classColor, CLASSES, itemLinks, LOOT_COUNT_DAYS, LOOT_MODE_HINT, LOOT_MODE_LABEL, LOOT_MODES, lootCountLabel, type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings } from "@forever/game-data";
+import {
+  classColor, CLASSES, itemLinks, LOOT_COUNT_DAYS, lootCountLabel, lootModeHint, lootModeLabel, lootModesOf, retailLootMode,
+  type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings,
+} from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, put, type Character } from "../api";
+import { useSite } from "../site";
 
-/** Butin des raids (lot C2) : choix du mode, soft reserve d'un raid, réglages du groupe. Classes CSS « lt- ». */
+/**
+ * Butin des raids (lot C2) : choix du mode, soft reserve d'un raid, réglages du groupe. Classes CSS « lt- ».
+ * Roster (lot R3b) : journal ou conseil (distribution par l'addon Roster), pas de soft reserve.
+ */
 
 const clsColor = (cls: string) => classColor(cls);
 const hm = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /* ---------- Choix du mode (création du raid, raids récurrents, page du raid) ---------- */
 
-export function LootModePicker({ mode, hidden, onChange, idPrefix = "lt" }: {
+export function LootModePicker({ mode: raw, hidden, onChange, idPrefix = "lt" }: {
   mode: LootMode; hidden: boolean; onChange: (mode: LootMode, hidden: boolean) => void; idPrefix?: string;
 }) {
-  // Trois choix en un sélecteur ; l'explication seulement pour le choix fait (lot E)
+  const game = useSite().game;
+  // Roster : une ancienne soft reserve se lit comme un journal
+  const mode = game === "retail" ? retailLootMode(raw) : raw;
+  // Trois choix (deux sur Roster) en un sélecteur ; l'explication seulement pour le choix fait (lot E)
   return (
     <div className="lt-pick">
       <div className="seg" role="radiogroup" aria-label="Butin" id={`${idPrefix}-mode`}>
-        {LOOT_MODES.map(m => (
-          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""} onClick={() => onChange(m, hidden)}>{LOOT_MODE_LABEL[m]}</button>
+        {lootModesOf(game).map(m => (
+          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""} onClick={() => onChange(m, hidden)}>{lootModeLabel(m, game)}</button>
         ))}
       </div>
-      <p className="hint lt-hint">{LOOT_MODE_HINT[mode]}</p>
+      <p className="hint lt-hint">{lootModeHint(mode, game)}</p>
       {mode === "softres" && (
         <label className="lt-check"><input type="checkbox" checked={hidden} onChange={e => onChange(mode, e.target.checked)} />
           Réservations cachées jusqu'à la fermeture <span className="muted small">(sinon visibles de tous)</span></label>
@@ -30,7 +40,11 @@ export function LootModePicker({ mode, hidden, onChange, idPrefix = "lt" }: {
   );
 }
 
-export const LootModeTag = ({ mode }: { mode: LootMode }) => mode === "journal" ? null : <span className="tag gold">{LOOT_MODE_LABEL[mode]}</span>;
+export function LootModeTag({ mode }: { mode: LootMode }) {
+  const game = useSite().game;
+  const m = game === "retail" ? retailLootMode(mode) : mode;
+  return m === "journal" ? null : <span className="tag gold">{lootModeLabel(m, game, true)}</span>;
+}
 
 /* ---------- Soft reserve d'un raid ---------- */
 
@@ -157,6 +171,7 @@ const todayParis = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Pa
 
 export function LootSettingsPanel({ groupId }: { groupId: string }) {
   const qc = useQueryClient();
+  const retail = useSite().game === "retail";
   const { data } = useQuery({ queryKey: ["loot-settings", groupId], queryFn: () => get<{ settings: LootSettings }>(`/groups/${groupId}/loot-settings`) });
   const [s, setS] = useState<LootSettings | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -175,8 +190,10 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
   return (
     <section className="stack admin-sec" aria-labelledby="lt-set">
       <h3 id="lt-set">Butin</h3>
-      <p className="hint" style={{ margin: 0 }}>Le mode (journal, loot council, soft reserve) se choisit à la création de chaque raid. Ici, les réglages communs.</p>
-      <div className="row" style={{ alignItems: "flex-end" }}>
+      {retail
+        ? <p className="hint" style={{ margin: 0 }}>Le mode (journal, ou conseil : distribution par l'addon Roster) se choisit à la création de chaque raid. Pas de soft reserve sur Roster. Ici, le compte des objets reçus.</p>
+        : <p className="hint" style={{ margin: 0 }}>Le mode (journal, loot council, soft reserve) se choisit à la création de chaque raid. Ici, les réglages communs.</p>}
+      {!retail && <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="lt-count">Réservations par perso</label>
           <select id="lt-count" value={s.srCount} onChange={e => setS2({ ...s, srCount: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
         <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-close">Fermeture SR</label>
@@ -187,9 +204,11 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
         {s.srPlus && <div className="fld" style={{ flex: "0 1 140px" }}><label htmlFor="lt-step">Bonus par raid</label>
           <select id="lt-step" value={s.srPlusStep} onChange={e => setS2({ ...s, srPlusStep: Number(e.target.value) })}>{[5, 10, 15, 20, 25].map(n => <option key={n} value={n}>+{n}</option>)}</select></div>}
         <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS2({ ...s, mainsFirst: e.target.checked })} /> Mains avant alts</label>
-      </div>
+      </div>}
       <h4 className="gm-sec" style={{ marginTop: 6 }}>Objets reçus</h4>
-      <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
+      {retail
+        ? <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (colonne « Reçus » de l'addon Roster) et dans l'onglet Présence &amp; butin, d'après les bilans des raids. Comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés ; pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
+        : <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>}
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-cm">Période</label>
           <select id="lt-cm" value={s.countMode} onChange={e => setS2({ ...s, countMode: e.target.value as LootCountMode })}>
@@ -209,7 +228,9 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
       </div>
       <p className="small muted" style={{ margin: 0 }}>Compte actuel : objets reçus {lootCountLabel(s)}{s.countBy === "player" ? ", main et alts ensemble" : ", perso par perso"}.</p>
       {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
-      <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>
+      {retail
+        ? <p className="hint" style={{ margin: 0 }}>Conseil : les officiers du groupe le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).</p>
+        : <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>}
     </section>
   );
 }

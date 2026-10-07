@@ -124,22 +124,43 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
 
 /**
  * Données d'un groupe de Roster pour l'addon Roster (format RRG v1, docs/addon-format.md) : raids à venir (mêmes raids
- * que FRG) avec leur difficulté et leur effectif, mon inscription et mon perso (« Prénom-Royaume »).
+ * que FRG) avec leur difficulté et leur effectif, mon inscription et mon perso (« Prénom-Royaume ») ; lot R3b : conseil du
+ * butin par défaut (O, persos du propriétaire et des officiers), conseil choisi pour un raid en conseil (L), objets reçus (N).
  */
 async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId: string) {
   const now = Date.now();
-  const raidRows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, difficulty: raids.difficulty, size: raids.size, lootMode: raids.lootMode }).from(raids)
+  const raidRows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, difficulty: raids.difficulty, size: raids.size, lootMode: raids.lootMode, council: raids.council }).from(raids)
     .where(and(eq(raids.groupId, g.id), or(gte(raids.scheduledAt, new Date(now - RECENT_MS)), isNull(raids.scheduledAt))))
     .orderBy(asc(raids.scheduledAt), asc(raids.name)).limit(MAX_RAIDS);
   const mine = raidRows.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, name: characters.name, realm: characters.realm })
     .from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
     .where(and(eq(raidSignups.userId, userId), inArray(raidSignups.raidId, raidRows.map(r => r.id)))) : [];
   const myByRaid = new Map(mine.map(m => [m.raidId, m]));
+
+  // Persos joués dans le groupe, par compte, avec le rôle du joueur : conseil par défaut (O) et conseil d'un raid (L)
+  const played = await db.select({ userId: groupCharacters.userId, name: characters.name, realm: characters.realm, role: groupMembers.role }).from(groupCharacters)
+    .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+    .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
+    .where(eq(groupCharacters.groupId, g.id));
+  const byUser = new Map<string, { name: string; realm: string }[]>();
+  for (const c of played) byUser.set(c.userId, [...(byUser.get(c.userId) ?? []), { name: c.name, realm: c.realm }]);
+  const council = played.filter(c => c.role !== "member").map(c => ({ name: c.name, realm: c.realm }));
+
+  // Objets reçus sur la période (colonne « Reçus » du conseil) ; par joueur, ses persos partagent le compte (main d'abord)
+  const settings = await groupLootSettings(db, g.id);
+  const counts = await groupLootCounts(db, g.id, settings);
+  const byPlayer = new Map<string, typeof counts.rows>();
+  for (const r of counts.rows) byPlayer.set(r.userId, [...(byPlayer.get(r.userId) ?? []), r]);
+  const entries = settings.countBy === "player"
+    ? [...byPlayer.values()].map(rs => ({ names: rs.sort((a, b) => Number(b.isMain) - Number(a.isMain)).map(r => ({ name: r.name, realm: r.realm })), n: rs[0]!.player }))
+    : counts.rows.map(r => ({ names: [{ name: r.name, realm: r.realm }], n: r.own }));
+
   const text = buildRRG(g, Math.floor(now / 1000), raidRows.map(r => {
     const m = myByRaid.get(r.id);
     return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, difficulty: r.difficulty, size: r.size,
-      status: m?.status ?? null, character: m?.name ? { name: m.name, realm: m.realm } : null, lootMode: r.lootMode };
-  }));
+      status: m?.status ?? null, character: m?.name ? { name: m.name, realm: m.realm } : null, lootMode: r.lootMode,
+      council: r.lootMode === "council" && r.council ? r.council.flatMap(u => byUser.get(u) ?? []) : null };
+  }), { council, counts: { short: counts.summary.short, label: counts.summary.label, entries } });
   return { text, name: g.name, raids: raidRows.length, patterns: 0, bis: 0 };
 }
 

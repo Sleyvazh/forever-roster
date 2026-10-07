@@ -8,21 +8,27 @@ import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { ensureRecurringRaids, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
+import { checkLootMode } from "../lib/loot";
 import { currentUser, requireAuth } from "../lib/session";
 import { bus } from "../lib/events";
 
 /** Raids récurrents d'un groupe : lecture pour les membres, gestion par les officiers. */
-const fields = z.object({
+const editable = z.object({
   name: z.string().trim().min(2).max(60),
-  description: z.string().trim().max(1000).default(""),
+  description: z.string().trim().max(1000),
   weekday: z.int().min(1).max(7),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure au format HH:MM"),
-  leadDays: z.int().min(1).max(28).default(7),
+  leadDays: z.int().min(1).max(28),
   size: z.int().min(5).max(40).optional(),
   difficulty: z.enum(RETAIL_DIFFICULTIES).nullable().optional(),
-  lootMode: z.enum(LOOT_MODES).default("journal"),
-  srHidden: z.boolean().default(false),
-  active: z.boolean().default(true),
+  lootMode: z.enum(LOOT_MODES),
+  srHidden: z.boolean(),
+  active: z.boolean(),
+});
+/** Création : valeurs par défaut. Modification (PATCH) : seulement les champs envoyés (zod 4 applique les défauts même en `partial`). */
+const fields = editable.extend({
+  description: editable.shape.description.default(""), leadDays: editable.shape.leadDays.default(7),
+  lootMode: editable.shape.lootMode.default("journal"), srHidden: editable.shape.srHidden.default(false), active: editable.shape.active.default(true),
 });
 const gid = z.object({ id: z.uuid() });
 const tid = gid.extend({ templateId: z.uuid() });
@@ -49,7 +55,9 @@ export async function templateRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
     const raw = parse(fields, req.body);
-    const body = { ...raw, ...formatFor(await groupGame(id), raw.name, raw.size, raw.difficulty) };
+    const game = await groupGame(id);
+    checkLootMode(game, raw.lootMode);
+    const body = { ...raw, ...formatFor(game, raw.name, raw.size, raw.difficulty) };
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raidTemplates).where(eq(raidTemplates.groupId, id));
     if (n >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
     const [t] = await db.insert(raidTemplates).values({ ...body, groupId: id, createdBy: u.id }).returning();
@@ -63,11 +71,13 @@ export async function templateRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const p = parse(tid, req.params);
     await requireRole(db, p.id, u.id, "officer");
-    const raw = parse(fields.partial(), req.body);
+    const raw = parse(editable.partial(), req.body);
     const [cur] = await db.select().from(raidTemplates).where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id)));
     if (!cur) throw notFound("Raid récurrent introuvable.");
+    const game = await groupGame(p.id);
+    checkLootMode(game, raw.lootMode, cur.lootMode);
     const changedDifficulty = raw.difficulty !== undefined && raw.difficulty !== cur.difficulty;
-    const body = { ...raw, ...formatFor(await groupGame(p.id), raw.name ?? cur.name, raw.size ?? (changedDifficulty ? undefined : cur.size), raw.difficulty === undefined ? cur.difficulty : raw.difficulty) };
+    const body = { ...raw, ...formatFor(game, raw.name ?? cur.name, raw.size ?? (changedDifficulty ? undefined : cur.size), raw.difficulty === undefined ? cur.difficulty : raw.difficulty) };
     const [t] = await db.update(raidTemplates).set({ ...body, updatedAt: new Date() })
       .where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
     if (!t) throw notFound("Raid récurrent introuvable.");

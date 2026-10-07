@@ -1,3 +1,4 @@
+import { weeklyOccurrences } from "@forever/game-data";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -62,8 +63,14 @@ describe("raids récurrents", () => {
     expect(await ensureRecurringRaids(db)).toBe(0);
     expect(await list()).toHaveLength(1);
 
-    // Trois semaines plus tard, la semaine suivante est créée
-    expect(await ensureRecurringRaids(db, new Date(Date.now() + 7 * 86400e3))).toBe(1);
+    // Une semaine plus tard, la semaine suivante est créée. Fenêtre comptée en heures : un changement d'heure (fin
+    // octobre, fin mars) peut la faire finir juste avant le mercredi 21:00 ; le compte attendu suit alors la même règle.
+    const later = new Date(Date.now() + 7 * 86400e3);
+    const due = weeklyOccurrences(3, "21:00", rows[1]!.scheduledAt!, new Date(later.getTime() + 14 * 86400e3)).length;
+    expect(due).toBeGreaterThanOrEqual(0);
+    expect(due).toBeLessThanOrEqual(1);
+    expect(await ensureRecurringRaids(db, later)).toBe(due);
+    if (due === 0) expect(await ensureRecurringRaids(db, new Date(later.getTime() + 3600e3))).toBe(1);
 
     // En pause : plus rien n'est créé ; suppression du modèle : les raids restent
     await off.c.patch(`/api/groups/${g.id}/raid-templates/${t.id}`, { active: false });

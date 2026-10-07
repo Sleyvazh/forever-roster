@@ -98,8 +98,11 @@ function R.Sample()
   minimap()
 end
 
+-- Bilan du chef : celui qui mène le raid au moins la moitié des relevés, ou le chef de butin qui a distribué avec Roster
+-- (son bilan seul connaît les gagnants : comme le bilan du maître du butin sur Forever Roster)
 function R.IsLead(log)
   if not log then return false end
+  if log.distributed then return true end
   return (log.leadTicks or 0) > 0 and (log.leadTicks or 0) * 2 >= math.max(1, log.ticks or 0)
 end
 
@@ -148,6 +151,42 @@ function R.OnLoot(msg)
   log.updated = time()
   minimap()
   refresh()
+end
+
+-- Lot R3b : objet attribué par la distribution de Roster (un clic du chef de butin). La ligne du butin ramassé par le
+-- chef de butin (« … reçoit le butin », sans méthode) prend le gagnant, la méthode, la réponse et le détail ; sans elle,
+-- une ligne est ajoutée. index : ligne d'une attribution précédente du même objet ; key : objet du chef de butin (une
+-- nouvelle attribution du même objet remplace la précédente). from : chef de butin quand l'attribution vient de son
+-- message LW (relevé d'un autre joueur : son bilan connaît aussi les gagnants). Renvoie l'index de la ligne.
+function R.Award(itemId, winner, method, response, detail, name, index, key, from)
+  local log = R.Current()
+  if not log or not itemId or not usable(winner) then return nil end
+  log.loot = log.loot or {}
+  local holder = from or ns.Comm.Me()
+  local line = index and log.loot[index]
+  if not (line and line.id == itemId and line.awarded) then line, index = nil, nil end
+  if not line and key then
+    for i, l in ipairs(log.loot) do if l.awardKey == key and l.id == itemId then line, index = l, i break end end
+  end
+  if not line then
+    for i = #log.loot, 1, -1 do
+      local l = log.loot[i]
+      if l.id == itemId and not l.awarded and (l.method or "") == "" and F.SameName(l.who, holder) then line, index = l, i break end
+    end
+  end
+  if not line then
+    local boss = (R.boss and time() - R.boss.at < BOSS_WINDOW) and R.boss.name or ""
+    line = { id = itemId, at = time(), boss = boss }
+    log.loot[#log.loot + 1] = line
+    index = #log.loot
+  end
+  line.who, line.method, line.response, line.detail, line.awarded, line.awardKey = winner, method or "", response or "", detail or "", true, key
+  if usable(name) and not line.name then line.name = name end
+  if not from then log.distributed = true end
+  log.updated = time()
+  minimap()
+  refresh()
+  return index
 end
 
 -- Où en est le relevé (onglet En raid) : présents au dernier relevé, arrivés en retard, partis, boss vaincus, butin

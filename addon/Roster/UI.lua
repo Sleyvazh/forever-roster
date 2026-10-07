@@ -129,7 +129,7 @@ refreshers.synchro = function(p)
   if count > 0 and not p.sent and not pasting then p.text:SetFocus() p.text:HighlightText() end
 end
 
--- Options : touches, habillage, bouton de la minicarte, relevé pendant les raids
+-- Options : touches, habillage, bouton de la minicarte, relevé pendant les raids, passer automatiquement (butin)
 local BINDINGS = {
   { action = "ROSTER_SYNC", label = "Synchro rapide avec le site" },
   { action = "ROSTER_TOGGLE", label = "Ouvrir ou fermer la fenêtre" },
@@ -247,6 +247,21 @@ refreshers.options = function(p)
     buttons[#buttons + 1] = { e[2], e[1] == 5 and 110 or 90, function() R.lootQuality = e[1] U.Refresh() end, { color = e[3], selected = e[1] == q } }
   end
   L.Add("Butin noté à partir de : " .. ACCENT .. label:lower() .. "|r", buttons)
+  -- Distribution par Roster : nil = passer automatiquement (par défaut), false = coupé (lu par Loot.lua)
+  L.Header("Distribution du butin")
+  local auto = R.autoPass ~= false
+  local function setAuto(on) return function() if on then R.autoPass = nil else R.autoPass = false end U.Refresh() end end
+  local okOn, on = pcall(function() return ns.Loot and ns.Loot.Enabled and ns.Loot.Enabled() end)
+  local okMaster, master = pcall(function() return ns.Loot and ns.Loot.Master and ns.Loot.Master() end)
+  local current = ""
+  if okOn and on then
+    current = ACCENT .. "  · distribution par Roster en cours" ..
+      ((okMaster and type(master) == "string" and ns.Format) and (", chef de butin : " .. ns.Format.Display(master)) or "") .. "|r"
+  end
+  L.Add("Passer automatiquement quand le chef de butin distribue (Distribution par Roster) : " .. (auto and (GREEN .. "oui|r") or (GREY .. "non|r")) .. current ..
+    "\n" .. GREY .. "Si tu coupes, passe toi-même sur chaque objet du butin de groupe : sinon il peut te revenir au lieu d'aller au chef de butin.|r",
+    { { "Oui", 80, setAuto(true), { color = { 0.31, 0.83, 0.37 }, selected = auto } },
+      { "Non", 80, setAuto(false), { color = { 0.6, 0.64, 0.71 }, selected = not auto } } })
   L.Done()
 end
 

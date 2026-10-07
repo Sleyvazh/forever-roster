@@ -55,6 +55,31 @@ local evil = F.ParseRRG("RRG;1;g;0;|cffff0000Rouge|r\nR;r;0;|Hitem:1|h[Faux]|h;n
 check(evil and not evil[1].name:find("|", 1, true) and not evil[1].raids[1].name:find("|", 1, true), "codes du jeu retirés")
 check(F.ParseRRG("RRG;1;g;0;G\nR;r;0;Raid;facile;abc;;;\nEND;1")[1].raids[1].difficulty == "", "difficulté inconnue : vide")
 
+-- RRG, lot R3b : conseil par défaut (O), conseil d'un raid (L), objets reçus (N), hors du compte de END
+local RRG3B = table.concat({
+  "RRG;1;g1;1791000000;Les Veilleurs",
+  "R;r1;1791100000;Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "R;r2;0;Kith'ix;mythic;20;;;journal",
+  "O;Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre",
+  "L;r1;Kaeldra-Hyjal,Vex-Kael'Thas",
+  "N;saison;depuis le 05/11/2026;Tharok-Hyjal+Grumbar-Hyjal:3,Vex-Kael'Thas:0,Brumelune-Ysondre:2",
+  "END;2",
+  "RRG;1;g2;1791000000;Pasta",
+  "END;0",
+  "O;Orvane-Hyjal", -- après END : rattachée au groupe en cours
+}, "\n")
+local g3 = F.ParseRRG(RRG3B)
+check(g3 and #g3 == 2 and #g3[1].raids == 2, "RRG avec O, L et N : complet (hors du compte de END)")
+local v = g3 and g3[1]
+check(v and #v.officers == 3 and v.officers[2] == "Tharok-Hyjal", "ligne O : officiers")
+check(v and v.council and #v.council.r1 == 2 and v.council.r1[2] == "Vex-Kael'Thas" and v.council.r2 == nil, "ligne L : conseil du raid")
+check(v and v.counts and v.counts.short == "saison" and v.counts.label == "depuis le 05/11/2026" and #v.counts.entries == 3, "ligne N : période et entrées")
+local grum = v and F.CountFor(v.counts, "Grumbar")
+check(grum and grum.n == 3 and #grum.names == 2 and grum.names[1] == "Tharok-Hyjal", "ligne N : persos d'un même joueur ensemble")
+check(v and F.CountFor(v.counts, "vex-kaelthas").n == 0 and F.CountFor(v.counts, "Inconnu-Hyjal") == nil and F.CountFor(nil, "Vex") == nil, "ligne N : recherche par nom")
+check(g3 and #g3[2].officers == 1, "ligne O après END")
+check(F.ParseRRG("RRG;1;g;0;G\nN;30 j;sur 30 jours;A-B:x,C-D:2,:4\nEND;0")[1].counts.entries[1].names[1] == "C-D", "ligne N abîmée : entrées illisibles ignorées")
+
 -- RRR v1 : compo d'un raid
 local RRR = table.concat({
   "RRR;1;4a1e43ea-54e8-4b49-888f-5e19b5754f61;1794513600;Faille de Sporefall;heroic;20",
@@ -93,7 +118,33 @@ local en = F.LootParser({})
 check(en("Brumelune-Ysondre receives loot: |cnIQ3|Hitem:5|h[Bleu]|h|r.") == "Brumelune-Ysondre", "butin en anglais (textes par défaut)")
 check(select(3, en("Brumelune-Ysondre receives loot: |cnIQ3|Hitem:5|h[Bleu]|h|r.")) == 3, "qualité d'un lien |cnIQ3")
 
--- RRB v1 : bilan d'un raid (contenu fixe, relu par le test du site)
+-- Distribution du butin (R3b) : jets lus dans le chat, minuteur d'échange de l'infobulle, liens d'objets, objets portés
+local frRoll = F.RollParser("%s obtient un %d (%d-%d).")
+local rn, rr, rlo, rhi = frRoll("Tharok obtient un 87 (1-100).")
+check(rn == "Tharok-Hyjal" and rr == 87 and rlo == 1 and rhi == 100, "jet en français (royaume du joueur ajouté)")
+check(frRoll("Vex-Kael'Thas obtient un 12 (1-99).") == "Vex-Kael'Thas" and select(4, frRoll("Vex-Kael'Thas obtient un 12 (1-99).")) == 99, "jet d'un autre royaume, dé 99")
+check(frRoll("Tharok obtient un 87 (1-100)") == nil and frRoll("Vous recevez le butin : [X].") == nil and frRoll(nil) == nil, "autres messages : pas un jet")
+local enRoll = F.RollParser(nil)
+check(enRoll("Brumelune-Ysondre rolls 54 (1-100)") == "Brumelune-Ysondre", "jet en anglais (texte par défaut)")
+check(F.RollParser("%1$s würfelt. Ergebnis: %2$d (%3$d-%4$d)")("Nyx würfelt. Ergebnis: 5 (1-100)") == "Nyx-Hyjal", "texte du jeu à positions")
+local frTrade = F.TradeTimeParser("Vous pouvez échanger cet objet avec les joueurs qui pouvaient aussi le ramasser pendant encore %s.")
+check(frTrade("Vous pouvez échanger cet objet avec les joueurs qui pouvaient aussi le ramasser pendant encore 1 h 58 min.") == 7080, "délai d'échange (français)")
+check(frTrade("|cff00ccffVous pouvez échanger cet objet avec les joueurs qui pouvaient aussi le ramasser pendant encore 45 min.|r") == 2700, "délai d'échange coloré")
+check(frTrade("Lié quand ramassé") == nil and frTrade(nil) == nil, "autre ligne de l'infobulle")
+local enTrade = F.TradeTimeParser(nil)
+check(enTrade("You may trade this item with players that were also eligible to loot this item for the next 1 hr 12 min.") == 4320, "délai d'échange (anglais)")
+check(F.ParseDuration("2 Std. 3 Min.") == 7380 and F.ParseDuration("30 sec") == 30 and F.ParseDuration("bientôt") == nil, "durées du jeu")
+check(F.Duration(7080) == "1 h 58 min" and F.Duration(2700) == "45 min" and F.Duration(30) == "moins d'une minute", "durée affichée")
+local lame = "|cnIQ4:|Hitem:242394::::::::90:::::1:6652|h[Lame de Sporefall]|h|r"
+check(F.ItemString(lame) == "item:242394::::::::90:::::1:6652" and F.ItemId(lame) == 242394 and F.ItemName(lame) == "Lame de Sporefall", "lien d'objet de Retail")
+check(F.ItemString("item:5::::") == "item:5::::" and F.ItemString("[Faux]") == nil and F.ItemId(nil) == nil, "chaîne d'objet")
+local gear = F.Gear("242394:639,242111:636,1:2")
+check(#gear == 2 and gear[1].id == 242394 and gear[1].ilvl == 639 and gear[2].id == 242111, "objets portés (deux au plus)")
+check(F.GearText(gear) == "242394:639,242111:636" and F.GearText({}) == "" and #F.Gear("") == 0, "objets portés : texte")
+check(F.cut("Brumélune", 5) == "Brum" and F.cut("Brumélune", 6) == "Brumé" and F.cut("abc", 10) == "abc", "texte coupé sans casser un accent")
+
+-- RRB v1 : bilan d'un raid (contenu fixe, relu par le test du site). R3b : un objet donné au conseil, un aux jets MS,
+-- un du butin de groupe sans méthode
 local rrb = F.BuildRRB({
   raidId = "4a1e43ea-54e8-4b49-888f-5e19b5754f61", start = 1794513000, stop = 1794524400, recorder = "Kaeldra-Hyjal",
   name = "Faille de Sporefall", instance = "Faille de Sporefall", lead = true, difficulty = "heroic",
@@ -104,8 +155,10 @@ local rrb = F.BuildRRB({
     ["Vex-Kael'Thas"] = { first = 1794513000, last = 1794519600, n = 111 },
   },
   loot = {
-    { id = 242394, who = "Tharok-Hyjal", at = 1794516000, boss = "Gardienne des spores", name = "Jambières de l'Étreinte toxique" },
-    { id = 242395, who = "Vex-Kael'Thas", at = 1794519000, boss = "" },
+    { id = 242394, who = "Tharok-Hyjal", at = 1794516000, boss = "Gardienne des spores", method = "council", response = "bis", detail = "3 votes",
+      name = "Jambières de l'Étreinte toxique", awarded = true },
+    { id = 242395, who = "Vex-Kael'Thas", at = 1794519000, boss = "", method = "roll", response = "", detail = "MS 87", name = "Anneau des spores", awarded = true },
+    { id = 242396, who = "Brumelune-Ysondre", at = 1794520000, boss = "Kith'ix" },
   },
   encounters = {
     { id = 3176, name = "Gardienne des spores", at = 1794515900, success = true },
@@ -118,11 +171,12 @@ local expected = table.concat({
   "A;Kaeldra-Hyjal;1794513000;1794524400;191",
   "A;Tharok-Hyjal;1794513000;1794524400;191",
   "A;Vex-Kael'Thas;1794513000;1794519600;111",
-  "L;242394;Tharok-Hyjal;1794516000;Gardienne des spores;;;;Jambières de l'Étreinte toxique",
-  "L;242395;Vex-Kael'Thas;1794519000;;;;;",
+  "L;242394;Tharok-Hyjal;1794516000;Gardienne des spores;council;bis;3 votes;Jambières de l'Étreinte toxique",
+  "L;242395;Vex-Kael'Thas;1794519000;;roll;;MS 87;Anneau des spores",
+  "L;242396;Brumelune-Ysondre;1794520000;Kith'ix;;;;",
   "E;3176;Gardienne des spores;1794515900;1",
   "E;3177;Kith'ix;1794522000;0",
-  "END;8",
+  "END;9",
 }, "\n")
 check(rrb == expected, "bilan RRB :\n" .. rrb)
 check(F.BuildRRB({ raidId = "x;|y", name = "a\nb", people = {}, loot = {}, encounters = {} }):match("^RRB;1;x  y;0;0;;a b;;0;\nEND;0$"), "« ; », « | » et retours à la ligne retirés")
@@ -134,7 +188,14 @@ local siteRRG = read("addon/tests/sample.rrg")
 if siteRRG then
   local list, e = F.ParseRRG(siteRRG)
   check(list and #list >= 1, "sample.rrg du site lu : " .. tostring(e))
-  for _, grp in ipairs(list or {}) do for _, r in ipairs(grp.raids) do check(r.id ~= "" and r.name ~= "", "raid du site complet") end end
+  for _, grp in ipairs(list or {}) do
+    for _, r in ipairs(grp.raids) do check(r.id ~= "" and r.name ~= "", "raid du site complet") end
+    -- Lot R3b : conseil (O, L) et objets reçus (N) en noms « Prénom-Royaume »
+    local function full(n) return n:find("^[^%-]+%-.+$") ~= nil end
+    for _, n in ipairs(grp.officers or {}) do check(full(n), "officier Prénom-Royaume : " .. n) end
+    for raidId, l in pairs(grp.council or {}) do for _, n in ipairs(l) do check(full(n), "conseil du raid " .. raidId .. " : " .. n) end end
+    for _, e in ipairs(grp.counts and grp.counts.entries or {}) do for _, n in ipairs(e.names) do check(full(n), "objets reçus : " .. n) end end
+  end
 end
 local siteRRR = read("addon/tests/sample.rrr")
 if siteRRR then

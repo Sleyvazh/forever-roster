@@ -35,6 +35,21 @@ function F.clean(s)
   return (tostring(s or ""):gsub("[;|\r\n]", " "))
 end
 
+-- Coupe un texte à n octets sans couper un caractère UTF-8 en deux (é, œ…)
+function F.cut(s, n)
+  s = tostring(s or "")
+  if #s <= n then return s end
+  s = s:sub(1, n)
+  local i = #s
+  while i > 0 and s:byte(i) >= 128 and s:byte(i) < 192 do i = i - 1 end
+  if i > 0 and s:byte(i) >= 192 then
+    local lead = s:byte(i)
+    local need = lead >= 240 and 4 or (lead >= 224 and 3 or 2)
+    if #s - i + 1 < need then s = s:sub(1, i - 1) end
+  end
+  return s
+end
+
 local function plural(n, word, words) return n .. " " .. (n > 1 and (words or (word .. "s")) or word) end
 F.plural = plural
 
@@ -137,7 +152,44 @@ local DIFFICULTIES = { normal = true, heroic = true, mythic = true }
 local function difficulty(s) s = txt(s, 10):lower() return DIFFICULTIES[s] and s or "" end
 local function opt(s, max) s = txt(s, max) return s ~= "" and s or nil end
 
+-- Liste de persos « Prénom-Royaume » séparés par des virgules (lignes O et L du RRG)
+local function names(field, max)
+  local out = {}
+  for name in tostring(field or ""):gmatch("[^,]+") do
+    name = txt(name, 60)
+    if name ~= "" and #out < (max or 40) then out[#out + 1] = name end
+  end
+  return out
+end
+F.names = names
+
+-- Objets reçus (ligne N) : « Perso+Perso:3,Autre:0 » ; les persos d'un même joueur partagent le compte
+local function counts(f)
+  local c = { short = txt(f[2], 20), label = txt(f[3], 60), entries = {} }
+  for part in tostring(f[4] or ""):gmatch("[^,]+") do
+    local list, n = part:match("^(.-):(%-?%d+)%s*$")
+    if list and #c.entries < 200 then
+      local e = { names = {}, n = tonumber(n) or 0 }
+      for name in list:gmatch("[^+]+") do
+        name = txt(name, 60)
+        if name ~= "" and #e.names < 12 then e.names[#e.names + 1] = name end
+      end
+      if #e.names > 0 then c.entries[#c.entries + 1] = e end
+    end
+  end
+  return c
+end
+-- Entrée d'un perso dans les objets reçus (N) : { names, n } ou nil
+function F.CountFor(c, name)
+  if not (c and c.entries) then return nil end
+  for _, e in ipairs(c.entries) do
+    for _, n in ipairs(e.names) do if F.SameName(n, name) then return e end end
+  end
+  return nil
+end
+
 -- RRG v1 : un ou plusieurs groupes à la suite. Les lignes ajoutées plus tard (après les R) sont hors du compte de END.
+-- Lot R3b : O (conseil par défaut : officiers et propriétaire), L (conseil choisi pour un raid), N (objets reçus).
 function F.ParseRRG(text)
   local groups, cur, count, n = {}, nil, nil, 0
   local function close()
@@ -160,6 +212,16 @@ function F.ParseRRG(text)
           size = tonumber(f[6]) or 0, status = opt(f[7], 12), char = opt(f[8], 60), loot = opt(f[9], 12),
         }
       end
+    elseif cur and f[1] == "O" then
+      cur.officers = names(f[2])
+    elseif cur and f[1] == "L" then
+      local raidId = txt(f[2], 40)
+      if raidId ~= "" then
+        cur.council = cur.council or {}
+        cur.council[raidId] = names(f[3])
+      end
+    elseif cur and f[1] == "N" then
+      cur.counts = counts(f)
     elseif cur and f[1] == "END" then
       count = tonumber(f[2])
     end
@@ -283,6 +345,89 @@ function F.LootParser(strings)
     end
     return nil, nil, nil, false
   end
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Distribution du butin (lot R3b)
+--------------------------------------------------------------------------------------------------------------------
+-- Jets de dés lus dans le chat (RANDOM_ROLL_RESULT, langue du client : « %s obtient un %d (%d-%d). » en français,
+-- « %s rolls %d (%d-%d) » en anglais). Renvoie une fonction message → nom complet, jet, min, max.
+function F.RollParser(fmt)
+  local match = F.FormatMatcher(type(fmt) == "string" and fmt or "%s rolls %d (%d-%d)")
+  return function(msg)
+    if not usable(msg) then return nil end
+    local v = match(msg)
+    if not v or not v[1] then return nil end
+    local roll, lo, hi = tonumber(v[2]), tonumber(v[3]), tonumber(v[4])
+    if not (roll and lo and hi) then return nil end
+    return F.FullName(v[1]), roll, lo, hi
+  end
+end
+
+-- Durée lue dans un texte du jeu (« 1 h 58 min », « 1 hr 58 min », « 45 min », « 2 Std. 3 Min. ») → secondes
+function F.ParseDuration(s)
+  if not usable(s) then return nil end
+  local total, found = 0, false
+  for num, unit in s:gmatch("(%d+)%s*([^%d%s]*)") do
+    local u, n = unit:lower(), tonumber(num)
+    found = true
+    if u:find("^h") or u:find("^st") or u:find("^ч") then total = total + n * 3600
+    elseif u:find("^m") then total = total + n * 60
+    elseif u:find("^s") then total = total + n
+    else total = total + n * 60 end
+  end
+  return found and total or nil
+end
+
+-- Temps restant pour échanger un objet lié (BIND_TRADE_TIME_REMAINING, ligne de l'infobulle de l'objet) :
+-- renvoie une fonction ligne → secondes (nil si la ligne n'est pas celle-là)
+function F.TradeTimeParser(fmt)
+  local match = F.FormatMatcher(type(fmt) == "string" and fmt or "You may trade this item with players that were also eligible to loot this item for the next %s.")
+  return function(line)
+    if not usable(line) then return nil end
+    line = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    local v = match(trim(line))
+    return v and v[1] and F.ParseDuration(v[1]) or nil
+  end
+end
+
+-- « 1 h 58 min », « 45 min », « moins d'une minute »
+function F.Duration(sec)
+  sec = math.max(0, math.floor(tonumber(sec) or 0))
+  if sec >= 3600 then return string.format("%d h %02d min", math.floor(sec / 3600), math.floor(sec % 3600 / 60)) end
+  if sec >= 60 then return math.floor(sec / 60) .. " min" end
+  return "moins d'une minute"
+end
+
+-- Lien d'objet → chaîne de l'objet sans couleurs (« item:242394::::::::90:::::… », bonus compris), identifiant, nom
+function F.ItemString(link)
+  if not usable(link) then return nil end
+  if link:find("^item:[%d:%-]+$") then return link end
+  return link:match("|H(item:[%d:%-]+)|h")
+end
+function F.ItemId(link)
+  if not usable(link) then return nil end
+  return tonumber(link:match("item:(%d+)"))
+end
+function F.ItemName(link)
+  if not usable(link) then return nil end
+  return link:match("|h%[(.-)%]|h")
+end
+
+-- Objets portés d'une réponse au conseil (LA) : « objet:niveau,objet:niveau » ↔ { { id, ilvl } }
+function F.Gear(field)
+  local out = {}
+  for id, lvl in tostring(field or ""):gmatch("(%d+):?(%d*)") do
+    if #out < 2 then out[#out + 1] = { id = tonumber(id), ilvl = tonumber(lvl) } end
+  end
+  return out
+end
+function F.GearText(list)
+  local parts = {}
+  for _, g in ipairs(list or {}) do
+    if g.id and #parts < 2 then parts[#parts + 1] = g.id .. (g.ilvl and (":" .. g.ilvl) or "") end
+  end
+  return table.concat(parts, ",")
 end
 
 return F

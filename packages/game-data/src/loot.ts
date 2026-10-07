@@ -1,3 +1,5 @@
+import type { Game } from "./site";
+
 /**
  * Butin des raids (lot C2) : mode choisi à la création du raid, réglages du groupe, soft reserve et réponses
  * au loot council. Partagé par l'API, le site et l'export pour l'addon.
@@ -12,6 +14,31 @@ export const LOOT_MODE_HINT: Record<LootMode, string> = {
   softres: "Chacun réserve des objets avant le raid ; les réservants les jouent aux dés.",
 };
 
+/**
+ * Roster (WoW Retail, lot R3b) : pas de soft reserve (choix de Flo, 07/10). Le butin est seulement noté (journal) ou
+ * distribué par l'addon Roster (conseil) : le chef de butin reçoit les objets, puis conseil, jets MS / OS ou jet libre.
+ */
+export const RETAIL_LOOT_MODES = ["journal", "council"] as const satisfies readonly LootMode[];
+export type RetailLootMode = (typeof RETAIL_LOOT_MODES)[number];
+const RETAIL_LOOT_MODE_LABEL: Record<RetailLootMode, string> = { journal: "Journal", council: "Conseil (distribution par Roster)" };
+const RETAIL_LOOT_MODE_HINT: Record<RetailLootMode, string> = {
+  journal: "L'addon Roster note seulement qui reçoit quoi (butin de groupe du jeu).",
+  council: "Le chef de butin reçoit les objets grâce à l'addon Roster et les distribue : conseil (réponses BiS, Upgrade… et votes), jets MS / OS ou jet libre ; l'échange se fait en jeu.",
+};
+/** Modes de butin proposés selon le jeu du site. */
+export const lootModesOf = (game: Game): readonly LootMode[] => (game === "retail" ? RETAIL_LOOT_MODES : LOOT_MODES);
+/** Mode tel que Roster le connaît : une ancienne soft reserve (impossible sur Roster) est lue comme un journal. */
+export const retailLootMode = (mode: LootMode | string | null | undefined): RetailLootMode => (mode === "council" ? "council" : "journal");
+/** Libellé d'un mode ; `short` : en étiquette (« Conseil » sur Roster). */
+export function lootModeLabel(mode: LootMode, game: Game, short = false): string {
+  if (game !== "retail") return LOOT_MODE_LABEL[mode];
+  const m = retailLootMode(mode);
+  return short && m === "council" ? "Conseil" : RETAIL_LOOT_MODE_LABEL[m];
+}
+export const lootModeHint = (mode: LootMode, game: Game) => (game === "retail" ? RETAIL_LOOT_MODE_HINT[retailLootMode(mode)] : LOOT_MODE_HINT[mode]);
+/** Message de l'API quand on demande la soft reserve pour un raid de Roster. */
+export const RETAIL_NO_SOFTRES = "Pas de soft reserve sur Roster : choisis « Journal » ou « Conseil (distribution par Roster) ».";
+
 /** Réponse d'un joueur à un objet proposé au loot council (lot C2b, en jeu). */
 export const LOOT_RESPONSES = ["bis", "upgrade", "off", "transmo"] as const;
 export type LootResponse = (typeof LOOT_RESPONSES)[number];
@@ -21,6 +48,25 @@ export const LOOT_RESPONSE_LABEL: Record<LootResponse, string> = { bis: "BiS", u
 export const LOOT_METHODS = ["council", "sr", "roll", "ml"] as const;
 export type LootMethod = (typeof LOOT_METHODS)[number];
 export const LOOT_METHOD_LABEL: Record<LootMethod, string> = { council: "conseil", sr: "soft reserve", roll: "jet libre", ml: "maître du butin" };
+
+/**
+ * Roster (lot R3b) : comment un objet a été distribué, pour le bilan : « Conseil : BiS · 3 votes », « Jet MS 87 »,
+ * « Jet OS 54 », « Jet libre 54 », « Chef de butin ». Null pour un objet seulement noté (butin de groupe du jeu).
+ */
+export function retailLootHow(l: { method?: LootMethod | null; response?: LootResponse | null; detail?: string | null }): string | null {
+  const d = (l.detail ?? "").trim();
+  switch (l.method) {
+    case "council": return `Conseil${l.response ? ` : ${LOOT_RESPONSE_LABEL[l.response]}` : ""}${d ? ` · ${d}` : ""}`;
+    case "roll": {
+      if (/^(MS|OS)\b/i.test(d)) return `Jet ${d}`;
+      const free = d.match(/^jet\b\s*(.*)$/i);
+      return free ? `Jet libre${free[1] ? ` ${free[1]}` : ""}` : `Jet${d ? ` · ${d}` : ""}`;
+    }
+    case "ml": return /^gardé/i.test(d) ? "Gardé par le chef de butin" : `Chef de butin${d ? ` · ${d}` : ""}`;
+    case "sr": return `Soft reserve${d ? ` · ${d}` : ""}`;
+    default: return null;
+  }
+}
 
 /** Réglages du butin d'un groupe (Administration) ; le mode, lui, se choisit raid par raid. */
 export interface LootSettings {
@@ -92,6 +138,8 @@ export function lootSkipReason(l: { method?: LootMethod | null; response?: LootR
     if (/^OS\b/i.test(d)) return "jet OS";
     if (/^jet\b/i.test(d)) return "jet libre";
   }
+  // Roster (R3b) : objet gardé par le chef de butin (désenchantement, banque de guilde)
+  if (l.method === "ml" && /^gardé/i.test((l.detail ?? "").trim())) return "gardé";
   return null;
 }
 

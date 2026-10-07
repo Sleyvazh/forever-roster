@@ -78,6 +78,21 @@ function G.Find(raidId)
   return nil
 end
 
+-- Lot R3b : raid du site pour le butin (celui du relevé en cours, sinon le raid en cours), son conseil et ses objets reçus
+function G.LootRaid(now)
+  local log = ns.Recorder and ns.Recorder.Current and ns.Recorder.Current()
+  return (log and G.Find(log.raidId)) or G.Current(now)
+end
+-- Conseil du butin : choisi pour ce raid sur le site (ligne L), sinon les officiers et le propriétaire du groupe (ligne O)
+function G.Council(e)
+  if not e then return {} end
+  local chosen = e.group.council and e.group.council[e.raid.id]
+  if chosen and #chosen > 0 then return chosen end
+  return e.group.officers or {}
+end
+-- Objets reçus sur la période du groupe (ligne N) : { short, label, entries } ou nil
+function G.Counts(e) return e and e.group.counts or nil end
+
 --------------------------------------------------------------------------------------------------------------------
 -- Synchro : chargement des textes du site, export des bilans
 --------------------------------------------------------------------------------------------------------------------

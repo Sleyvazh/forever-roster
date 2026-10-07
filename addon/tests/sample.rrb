@@ -3,8 +3,9 @@ A;Brumelune-Ysondre;1794515400;1794524400;151
 A;Kaeldra-Hyjal;1794513000;1794524400;191
 A;Tharok-Hyjal;1794513000;1794524400;191
 A;Vex-Kael'Thas;1794513000;1794519600;111
-L;242394;Tharok-Hyjal;1794516000;Gardienne des spores;;;;Jambières de l'Étreinte toxique
-L;242395;Vex-Kael'Thas;1794519000;;;;;
+L;242394;Tharok-Hyjal;1794516000;Gardienne des spores;council;bis;3 votes;Jambières de l'Étreinte toxique
+L;242395;Vex-Kael'Thas;1794519000;;roll;;MS 87;Anneau des spores
+L;242396;Brumelune-Ysondre;1794520000;Kith'ix;;;;
 E;3176;Gardienne des spores;1794515900;1
 E;3177;Kith'ix;1794522000;0
-END;8
+END;9

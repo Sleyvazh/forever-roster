@@ -119,7 +119,6 @@ local function recorderSection(L, state)
     if #st.late > 0 then L.Add(ORANGE .. "Arrivés en retard : |r" .. names(st.late)) end
     if #st.left > 0 then L.Add(RED .. "Partis : |r" .. names(st.left)) end
     if #st.bosses > 0 then L.Add(GREEN .. "Boss vaincus : |r" .. table.concat(st.bosses, ", ")) end
-    if ns.Comm.Held() > 0 then L.Add(GREY .. "Messages d'addon en attente de la fin du combat de boss : " .. ns.Comm.Held() .. ".|r") end
   elseif not R.Enabled() then
     L.Add(GREY .. "Relevé coupé (onglet Options).|r")
   elseif not ns.Groups.Current() then
@@ -181,12 +180,68 @@ local function versionsSection(L, state)
   L.Add(GREY .. "La question part à l'arrivée dans un raid ; sans réponse en " .. Cm.WAIT .. " s : sans addon.|r",
     { { "Redemander", 120, function() Cm.AskVersions() refreshUI() end } })
 end
+-- Butin (lot R3b) : chef de butin (le chef de raid en désigne un autre), distribution par Roster, accès aux fenêtres
+local function lootUI(fn) return function() if ns.LootUI and ns.LootUI[fn] then ns.safe("butin", ns.LootUI[fn]) end end end
+local pickMaster = false -- liste des membres à désigner comme chef de butin, ouverte
+local function lootSection(L, state)
+  local Lo, Cm = ns.Loot, ns.Comm
+  if not Lo then return end
+  L.Header("Butin")
+  local st = { master = Lo.Master(), enabled = Lo.Enabled(), isMaster = Lo.IsMaster(), designate = {} }
+  state.loot = st
+  local items, toGive, toHand = Lo.Items(), 0, 0
+  for _, e in ipairs(items) do
+    if e.status == "awarded" then toHand = toHand + 1 elseif e.status ~= "kept" and e.status ~= "traded" then toGive = toGive + 1 end
+  end
+  st.toGive, st.toHand = toGive, toHand
+  local windows = { { "Fenêtre du butin", 140, lootUI("ShowLoot") }, { "Objets à remettre (" .. toHand .. ")", 170, lootUI("ShowHandover") } }
+  if not Cm.InGroup() and not Lo.test then
+    L.Add(GREY .. "Hors groupe. En raid, le chef de raid est chef de butin, sauf s'il en désigne un autre ici. /roster butin : fenêtre du butin.|r", windows)
+    return
+  end
+  local leader = Cm.IsLeader() and not Lo.test
+  st.canDesignate = leader
+  local roster = {}
+  for _, m in ipairs(Lo.Members()) do roster[F.Key(m.name) or ""] = m end
+  local function named(full) local m = roster[F.Key(full) or ""] return who(full, m and m.class) end
+  L.Add("Chef de butin : " .. (st.master and named(st.master) or "?") .. (st.isMaster and (GREEN .. "  (toi)|r") or "")
+    .. "\n" .. GREY .. "Il reçoit le butin de groupe, décide entre les pulls (conseil, jets) et échange l'objet au gagnant.|r",
+    leader and { { pickMaster and "Fermer la liste" or "Désigner un autre", 160, function() pickMaster = not pickMaster refreshUI() end } } or nil)
+  if leader and pickMaster then
+    local list = Lo.Members()
+    table.sort(list, function(a, b) return a.name < b.name end)
+    for _, m in ipairs(list) do
+      if not F.SameName(m.name, st.master) then
+        st.designate[#st.designate + 1] = m.name
+        L.Add("   " .. who(m.name, m.class) .. (m.addon and "" or (RED .. "  sans addon|r")),
+          { { "Désigner", 100, function() Lo.SetMaster(m.name) pickMaster = false refreshUI() end } })
+      end
+    end
+  end
+  local canSet = leader or st.isMaster
+  st.canSet = canSet
+  local function set(on) return function() Lo.SetEnabled(on) refreshUI() end end
+  L.Add("Distribution par Roster : " .. (st.enabled and (GREEN .. "activée|r") or (GREY .. "coupée|r"))
+    .. "\n" .. GREY .. "Activée, les addons des autres joueurs passent le butin de groupe pour que le chef de butin le reçoive (d'office pour un raid du site en mode conseil).|r",
+    canSet and { { "Oui", 80, set(true), { color = { 0.31, 0.83, 0.37 }, selected = st.enabled } },
+      { "Non", 80, set(false), { color = { 0.6, 0.64, 0.71 }, selected = not st.enabled } } } or nil)
+  if not st.isMaster then
+    L.Add(GREY .. "Passer automatique : " .. (Lo.AutoPass() and "oui" or "non") .. " (onglet Options).|r")
+  end
+  local held = Cm.Held()
+  if held > 0 then L.Add(ORANGE .. F.plural(held, "message d'addon", "messages d'addon") .. " en attente de la fin du combat de boss.|r") end
+  if st.isMaster or toGive + toHand > 0 then
+    L.Add(GOLD .. toGive .. "|r à distribuer · " .. GOLD .. toHand .. "|r à remettre" .. GREY .. "  (/roster butin)|r", windows)
+  end
+end
+
 refreshers.enraid = function(p)
   local L = p.list
   local state = {}
   P.state.enraid = state
   L.Reset()
   recorderSection(L, state)
+  lootSection(L, state)
   versionsSection(L, state)
   L.Done()
 end

@@ -1,4 +1,7 @@
-import { ATTENDANCE_LABEL, DIFFICULTY_LABEL, encounterSummary, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, retailItemLink, type AttendanceStatus, type LootMethod, type LootResponse, type RaidLogEncounter, type RetailDifficulty } from "@forever/game-data";
+import {
+  ATTENDANCE_LABEL, DIFFICULTY_LABEL, encounterSummary, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, retailItemLink, retailLootHow,
+  type AttendanceStatus, type LootMethod, type LootResponse, type RaidLogEncounter, type RetailDifficulty,
+} from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -26,7 +29,7 @@ export const AttendanceChip = ({ s }: { s: AttendanceStatus }) => <span classNam
 export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogView | null | undefined; groupId: string; raidId: string; officer: boolean }) {
   const qc = useQueryClient();
   const gt = useGameText();
-  // Roster (WoW Retail) : boss du bilan ; le compte des objets reçus viendra avec le butin (R3b)
+  // Roster (WoW Retail) : boss du bilan, objets distribués par l'addon Roster et compte des objets reçus (R3b)
   const retail = gt.game === "retail";
   const clsColor = (cls: string) => gt.color(cls);
   const itemHref = (id: number) => (retail ? retailItemLink(id, gt.lang) : itemLinks(id).wowhead);
@@ -101,11 +104,13 @@ export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogVi
                       {l.boss && <div className="muted small">{l.boss}</div>}</td>
                     <td style={{ color: clsColor(l.cls) }}>{l.name}</td>
                     <td className="r"><div className="rl-tags">
-                      {l.method && <span className="rl-chip" title={l.detail || undefined}>{l.method === "roll" && /^(MS|OS)\b/.test(l.detail) ? "jet" : LOOT_METHOD_LABEL[l.method]}{l.response ? ` · ${LOOT_RESPONSE_LABEL[l.response]}` : ""}{l.detail ? ` · ${l.detail}` : ""}</span>}
+                      {l.method && (retail
+                        ? <span className="rl-chip" title="Distribué avec l'addon Roster">{retailLootHow(l)}</span>
+                        : <span className="rl-chip" title={l.detail || undefined}>{l.method === "roll" && /^(MS|OS)\b/.test(l.detail) ? "jet" : LOOT_METHOD_LABEL[l.method]}{l.response ? ` · ${LOOT_RESPONSE_LABEL[l.response]}` : ""}{l.detail ? ` · ${l.detail}` : ""}</span>)}
                       {l.bis && <span className="rl-chip ok" title="Objectif BiS de la fiche, coché « obtenu »">BiS ✓</span>}
-                      {!retail && (l.skip ? <span className="rl-chip muted" title="Ne compte pas dans les objets reçus (spé principale seulement)">ne compte pas · {l.skip}</span>
-                        : l.excluded && <span className="rl-chip bad" title="Sorti du compte des objets reçus par un officier">ne compte pas</span>)}
-                      {officer && !retail && !l.skip && <button type="button" className="btn ghost xs rl-excl" onClick={() => void toggle(l)}
+                      {l.skip ? <span className="rl-chip muted" title="Ne compte pas dans les objets reçus (spé principale seulement)">ne compte pas · {l.skip}</span>
+                        : l.excluded && <span className="rl-chip bad" title="Sorti du compte des objets reçus par un officier">ne compte pas</span>}
+                      {officer && !l.skip && <button type="button" className="btn ghost xs rl-excl" onClick={() => void toggle(l)}
                         title={l.excluded ? "Remettre cet objet dans le compte des objets reçus" : "Sortir cet objet du compte des objets reçus (donné par erreur, désenchanté…)"}>{l.excluded ? "Compter" : "Ne pas compter"}</button>}
                     </div></td>
                   </tr>
@@ -131,9 +136,10 @@ export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogVi
         </div>
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
-      {retail ? (
-        <p className="hint" style={{ margin: 0 }}>En retard : arrivé plus de 10 min après l'heure prévue. Parti tôt : absent du dernier quart de la soirée. Les persos sont reconnus à leur nom en jeu et leur royaume. Un nouveau collage du bilan remplace celui-ci.</p>
-      ) : <>
+      {retail ? <>
+        <p className="hint" style={{ margin: 0 }}>En retard : arrivé plus de 10 min après l'heure prévue. Parti tôt : absent du dernier quart de la soirée. Les persos sont reconnus à leur nom en jeu et leur royaume. Un nouveau collage du bilan remplace celui-ci (les objets sortis du compte le restent).</p>
+        <p className="hint" style={{ margin: 0 }}>Objets reçus (colonne « Reçus » de l'onglet Présence &amp; butin et du conseil en jeu) : comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés. Pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin.</p>
+      </> : <>
         <p className="hint" style={{ margin: 0 }}>En retard : arrivé plus de 10 min après l'heure prévue. Parti tôt : absent du dernier quart de la soirée. Un nouveau collage du bilan remplace celui-ci (les objets sortis du compte le restent).</p>
         <p className="hint" style={{ margin: 0 }}>Objets reçus (onglet Présence &amp; butin, conseil en jeu) : comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode. Pas les jets OS, le jet libre, Off-Spec ni Transmo.</p>
       </>}
@@ -154,7 +160,7 @@ const CELL: Record<AttendanceStatus, string> = { present: "✓", late: "R", left
 
 export function AttendanceTab({ groupId }: { groupId: string }) {
   const gt = useGameText();
-  // Roster : présence par raid et objets notés ; le compte des objets reçus (réglages du butin) viendra avec R3b
+  // Roster : présence par raid et objets reçus (« Reçus », comme la colonne du conseil dans l'addon Roster, lot R3b)
   const retail = gt.game === "retail";
   const clsColor = (cls: string) => gt.color(cls);
   const { data, isLoading } = useQuery({ queryKey: ["attendance", groupId], queryFn: () => get<AttendanceResponse>(`/groups/${groupId}/attendance`) });
@@ -177,9 +183,7 @@ export function AttendanceTab({ groupId }: { groupId: string }) {
         <thead><tr>
           <th>Perso</th><th>Présence</th>
           {data.raids.map(r => <th key={r.id} className="c" title={`${r.name} · ${new Date(r.scheduledAt).toLocaleDateString("fr-FR")}`}><Link to={`/groups/${groupId}/raids/${r.id}`}>{new Date(r.scheduledAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}</Link></th>)}
-          {retail
-            ? <th className="r" title="Objets épiques notés par l'addon sur tous les raids relevés">Objets</th>
-            : <th className="r" title={`Objets de spé principale reçus ${data.count.label}${data.count.by === "player" ? ", main et alts ensemble" : ", par perso"} (réglage : Administration → Butin)`}>Objets · {data.count.short}</th>}
+          <th className="r" title={`Objets de spé principale reçus ${data.count.label}${data.count.by === "player" ? ", main et alts ensemble" : ", par perso"} (réglage : Administration → Butin)`}>{retail ? "Reçus" : "Objets"} · {data.count.short}</th>
           <th>Dernier objet</th>
         </tr></thead>
         <tbody>
@@ -190,7 +194,7 @@ export function AttendanceTab({ groupId }: { groupId: string }) {
                 <td><span style={{ color: clsColor(c.cls), fontWeight: 600 }}>{c.name}</span> <span className="muted small">{c.owner}</span></td>
                 <td className="nowrap"><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{c.attended}/{n}</span></td>
                 {c.cells.map((s, i) => <td key={i} className={`c rl-cell ${s ?? ""}`} title={s ? ATTENDANCE_LABEL[s] : "Ni inscrit ni vu"}>{s ? CELL[s] : ""}</td>)}
-                <td className="r num" title={`${c.loot} objet${c.loot > 1 ? "s" : ""} relevé${c.loot > 1 ? "s" : ""} au total`}>{retail ? c.loot : c.counted}</td>
+                <td className="r num" title={`${c.loot} objet${c.loot > 1 ? "s" : ""} relevé${c.loot > 1 ? "s" : ""} au total`}>{c.counted}</td>
                 <td>{c.lastItem ? <a className={`q${c.lastItem.quality}`} href={retail ? retailItemLink(c.lastItem.id, gt.lang) : itemLinks(c.lastItem.id).wowhead} target="_blank" rel="noopener noreferrer" title={c.lastItem.raidName}>{c.lastItem.name}</a> : <span className="muted">—</span>}</td>
               </tr>
             );

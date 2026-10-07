@@ -277,15 +277,19 @@ function Sheet({ sheet, d, roster, onChange, onDrop }: { sheet: BossSheet; d: Pr
 
 /* ---------- Conseil du butin (onglet Butin) ---------- */
 
-export function CouncilPicker({ groupId, raidId }: { groupId: string; raidId: string }) {
+type CouncilData = Pick<PrepData, "council" | "members" | "canEdit">;
+
+/** Conseil choisi pour le raid (null : les officiers du groupe). Seul, sans le reste de la préparation (Roster : lot R3b). */
+export function CouncilPicker({ groupId, raidId, retail = false }: { groupId: string; raidId: string; retail?: boolean }) {
   const qc = useQueryClient();
-  const q = usePrep(groupId, raidId);
+  const q = useQuery({ queryKey: ["council", raidId], queryFn: () => get<CouncilData>(`/groups/${groupId}/raids/${raidId}/council`) });
   const [error, setError] = useState<string | null>(null);
   if (!q.data) return null;
   const d = q.data;
   const chosen = new Set(d.council ?? d.members.filter(m => m.officer).map(m => m.userId));
   const save = (userIds: string[] | null) => void put(`/groups/${groupId}/raids/${raidId}/council`, { userIds })
-    .then(() => qc.invalidateQueries({ queryKey: ["prep", raidId] })).catch(e => setError(e instanceof ApiError ? e.message : "Enregistrement impossible."));
+    .then(() => Promise.all([qc.invalidateQueries({ queryKey: ["council", raidId] }), qc.invalidateQueries({ queryKey: ["prep", raidId] })]))
+    .catch(e => setError(e instanceof ApiError ? e.message : "Enregistrement impossible."));
   if (!d.canEdit) {
     return <p style={{ margin: 0 }}>Conseil du butin : <b>{d.members.filter(m => chosen.has(m.userId)).map(m => m.name).join(", ") || "—"}</b></p>;
   }
@@ -293,7 +297,9 @@ export function CouncilPicker({ groupId, raidId }: { groupId: string; raidId: st
     <section className="stack" aria-labelledby="pr-council" style={{ gap: 8 }}>
       <div className="row between"><h3 id="pr-council" style={{ margin: 0 }}>Conseil du butin</h3>
         {d.council && <button type="button" className="btn ghost sm" onClick={() => save(null)}>Revenir aux officiers</button>}</div>
-      <p className="hint" style={{ margin: 0 }}>{d.council ? "Choisi pour ce raid (repris au prochain raid du même nom)." : "Par défaut : les officiers du groupe."} En jeu, réponses et votes ne sont envoyés qu'à eux et au maître du butin.</p>
+      <p className="hint" style={{ margin: 0 }}>{d.council ? "Choisi pour ce raid (repris au prochain raid du même nom)." : "Par défaut : les officiers du groupe."} {retail
+        ? "L'addon Roster le reçoit avec « Copier pour le jeu » : en jeu, réponses et votes ne vont qu'à ses membres et au chef de butin."
+        : "En jeu, réponses et votes ne sont envoyés qu'à eux et au maître du butin."}</p>
       <div className="pr-council">
         {d.members.map(m => (
           <label key={m.userId} className="pr-cm">

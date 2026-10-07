@@ -170,7 +170,8 @@ function RosterBefore() {
       <ul className="addon-list">
         <li><strong>Raids à venir et inscriptions</strong> : <strong>Copier pour le jeu</strong>, en haut de chaque page ; en jeu, <code>/roster</code>, onglet <strong>Synchro</strong> (ou la synchro rapide de l'addon), puis Ctrl+V. C'est chargé : l'addon connaît les raids de tes groupes, leur difficulté et ton perso inscrit.</li>
         <li><strong>Chef de raid : la compo</strong> : sur la page du raid, onglet <strong>Compo</strong>, « Export pour le jeu ». Colle ce texte dans l'onglet Synchro (ou Compo) de l'addon : invitations et placement des groupes se font depuis l'addon. Les noms sont en <code>Prénom-Royaume</code>, comme dans le jeu ; des macros <code>/inv Prénom-Royaume</code> sont aussi proposées.</li>
-        <li>Copie à nouveau après un changement sur le site (nouveau raid, inscription, compo) : le texte se régénère à chaque fois.</li>
+        <li><strong>Butin</strong> : pour un raid en mode « Conseil (distribution par Roster) », le même texte apporte le conseil du butin (les officiers, ou celui choisi dans l'onglet <strong>Butin</strong> du raid) et les objets reçus de chacun (colonne « Reçus »).</li>
+        <li>Copie à nouveau après un changement sur le site (nouveau raid, inscription, compo, conseil) : le texte se régénère à chaque fois.</li>
       </ul>
     </Step>
   );
@@ -181,6 +182,7 @@ function RosterAfter() {
     <Step n={3} title="Après le raid : le bilan sur le site">
       <ul className="addon-list">
         <li><strong>Pendant le raid</strong> (raid chargé en jeu, de 2 h avant l'heure prévue à 3 h après), l'addon note chaque minute qui est dans le raid, le butin épique vu dans le chat et chaque boss tenté, vaincu ou non.</li>
+        <li><strong>Distribution du butin</strong> (raid en mode « Conseil ») : chacun passe sur le butin de groupe, le chef de butin (le chef de raid, sauf autre choix) reçoit les objets, puis attribue chaque objet d'un clic : conseil (BiS, Upgrade, Off-Spec, Transmo, votes du conseil), jets MS / OS ou jet libre ; il peut aussi le garder. L'échange se fait en jeu ; le bilan note qui a reçu quoi, et comment. Pour essayer seul, hors groupe : <code>/roster test</code> (raid d'essai avec 9 joueurs fictifs, rien ne part au raid ni au site).</li>
         <li><strong>Après le raid</strong> : synchro rapide de l'addon, Ctrl+C, puis <strong>Ctrl+V sur n'importe quelle page</strong> de Roster. Le bilan apparaît dans l'onglet <strong>Bilan</strong> du raid (présence, butin, boss vaincus) et dans l'onglet <strong>Présence &amp; butin</strong> du groupe. Seul un officier du groupe (ou le créateur du raid) l'enregistre ; un nouveau collage remplace le précédent.</li>
         <li><strong>Tes persos</strong> viennent de Battle.net (<em>Mes persos</em>, « Importer depuis Battle.net ») ou se créent à la main : l'addon Roster ne les envoie pas. Ils sont reconnus dans le bilan à leur nom et à leur royaume.</li>
         <li>Chaque addon va avec son site : un texte de l'addon Forever Roster collé sur Roster (ou l'inverse) est refusé, avec un message.</li>

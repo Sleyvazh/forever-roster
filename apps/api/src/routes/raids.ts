@@ -15,6 +15,7 @@ import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { ensureRecurringRaids, MAX_RAIDS_PER_GROUP, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
 import { inheritPrep } from "../lib/prep";
+import { checkLootMode } from "../lib/loot";
 import { applyAbsencesToRaid } from "../lib/absences";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
@@ -138,7 +139,9 @@ export async function raidRoutes(app: FastifyInstance) {
       if (!body.scheduledAt) throw badRequest("Choisis la date du premier raid.");
       if (await db.$count(raidTemplates, eq(raidTemplates.groupId, id)) >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
     }
-    const format = formatFor(await groupGame(id), body.name, body.size, body.difficulty);
+    const game = await groupGame(id);
+    checkLootMode(game, body.lootMode);
+    const format = formatFor(game, body.name, body.size, body.difficulty);
     const [r] = await db.insert(raids).values({
       groupId: id, name: body.name, scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null, description: body.description ?? "", createdBy: u.id,
       lootMode: body.lootMode ?? "journal", srHidden: body.srHidden ?? false, ...format,
@@ -197,6 +200,7 @@ export async function raidRoutes(app: FastifyInstance) {
         name: z.string().max(60), scheduledAt: z.string().max(40).nullable(), description: z.string().max(1000),
       }).optional(),
     }), req.body);
+    checkLootMode(current.game, body.lootMode, current.lootMode);
 
     let slots = body.slots, name = body.name, scheduledAtIso = body.scheduledAt ?? null, description = body.description;
     let merged = false;

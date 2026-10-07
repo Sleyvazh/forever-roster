@@ -77,16 +77,33 @@ export async function prepRoutes(app: FastifyInstance) {
     // Persos du groupe (pour les fiches) et membres (pour le conseil)
     const chars = await db.select({ id: characters.id, name: characters.name, cls: characters.cls }).from(groupCharacters)
       .innerJoin(characters, eq(characters.id, groupCharacters.characterId)).where(eq(groupCharacters.groupId, p.id)).orderBy(characters.name);
-    const members = await db.select({ userId: groupMembers.userId, role: groupMembers.role, name: users.displayName }).from(groupMembers)
-      .innerJoin(users, eq(users.id, groupMembers.userId)).where(eq(groupMembers.groupId, p.id));
     return {
       prep: r.prep, canEdit: role !== "member",
       known: knownBosses(r.prep.instance), instances: RAID_INSTANCES.map(i => ({ key: i.key, name: i.name })),
       items: Object.fromEntries(items.map(i => [i.id, i])),
       characters: chars, roster,
       call: call ? { at: new Date(call.at * 1000).toISOString(), by: call.by } : null,
-      council: r.council, members: members.map(m => ({ userId: m.userId, name: m.name, officer: m.role !== "member" })).sort((a, b) => a.name.localeCompare(b.name)),
+      council: r.council, members: await councilMembers(p.id),
     };
+  });
+
+  /** Membres du groupe, candidats au conseil du butin (les officiers le forment par défaut). */
+  async function councilMembers(groupId: string) {
+    const members = await db.select({ userId: groupMembers.userId, role: groupMembers.role, name: users.displayName }).from(groupMembers)
+      .innerJoin(users, eq(users.id, groupMembers.userId)).where(eq(groupMembers.groupId, groupId));
+    return members.map(m => ({ userId: m.userId, name: m.name, officer: m.role !== "member" })).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * Conseil du butin d'un raid, seul (onglet Butin) : sur Roster, l'onglet Préparation n'existe pas encore (lot R3c),
+   * le conseil choisi part dans la ligne L du texte pour l'addon Roster.
+   */
+  app.get("/:id/raids/:raidId/council", async (req) => {
+    const u = currentUser(req);
+    const p = parse(rid, req.params);
+    const role = await membership(db, p.id, u.id);
+    const r = await loadRaid(p.id, p.raidId);
+    return { council: r.council, canEdit: role !== "member", members: await councilMembers(p.id) };
   });
 
   app.put("/:id/raids/:raidId/prep", async (req) => {

@@ -22,11 +22,22 @@ const GROUP = { id: "7d3c2b1a-0f9e-4d8c-b7a6-5e4d3c2b1a09", name: "Pasta e Basta
 const RAID = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d";
 const GENERATED = 1_794_000_000;
 
+const RAID2 = "2c3d4e5f-6071-4b8c-9dae-1f2a3b4c5d6e", RAID3 = "3d4e5f60-7182-4c9d-aebf-2a3b4c5d6e7f";
+const KAELDRA = { name: "Kaeldra", realm: "Hyjal" }, THAROK = { name: "Tharok", realm: "Conseil des Ombres" };
+const BRUMELUNE = { name: "Brumelune", realm: "Ysondre" }, VEX = { name: "Vex", realm: "Kael'Thas" };
+
+/**
+ * Lot R3b : un raid en journal, un en conseil avec un conseil choisi (L), un en conseil avec le conseil par défaut (O) ;
+ * objets reçus par joueur (N : Kaeldra et son alt Vex partagent le compte).
+ */
 const SAMPLE_RRG = () => buildRRG(GROUP, GENERATED, [
-  { id: RAID, name: "Flèche du Vide", at: 1_794_513_600, difficulty: "heroic", size: 20, status: "present", character: { name: "Kaeldra", realm: "Hyjal" }, lootMode: "journal" },
-  { id: "2c3d4e5f-6071-4b8c-9dae-1f2a3b4c5d6e", name: "L'Abîme Venimeux", at: 1_795_118_400, difficulty: "mythic", size: 20, status: null, character: null, lootMode: "council" },
-  { id: "3d4e5f60-7182-4c9d-aebf-2a3b4c5d6e7f", name: "Déliement de Kith'ix", at: 0, difficulty: "normal", size: 25, status: "tentative", character: { name: "Vex", realm: "Kael'Thas" }, lootMode: "softres" },
-]);
+  { id: RAID, name: "Flèche du Vide", at: 1_794_513_600, difficulty: "heroic", size: 20, status: "present", character: KAELDRA, lootMode: "journal" },
+  { id: RAID2, name: "L'Abîme Venimeux", at: 1_795_118_400, difficulty: "mythic", size: 20, status: null, character: null, lootMode: "council", council: [KAELDRA, BRUMELUNE] },
+  { id: RAID3, name: "Déliement de Kith'ix", at: 0, difficulty: "normal", size: 25, status: "tentative", character: VEX, lootMode: "council", council: null },
+], {
+  council: [THAROK, KAELDRA, BRUMELUNE],
+  counts: { short: "saison", label: "depuis le 05/10/2026", entries: [{ names: [KAELDRA, VEX], n: 3 }, { names: [THAROK], n: 1 }, { names: [BRUMELUNE], n: 0 }] },
+});
 
 const MEMBERS: RosterExportMember[] = [
   { name: "Brumelune", realm: "Ysondre", cls: "Monk", spec: "Mistweaver", role: "Heal", group: 1, pos: 2, status: "present", source: "site" },
@@ -69,17 +80,40 @@ describe("noms en jeu (Prénom-Royaume)", () => {
 });
 
 describe("RRG : données des groupes (site → jeu)", () => {
-  it("un raid par ligne, mon perso en Prénom-Royaume, END compte les R", () => {
+  it("un raid par ligne, mon perso en Prénom-Royaume ; O, L et N (R3b) après les R, hors du compte de END", () => {
     const text = SAMPLE_RRG();
     expect(text.split("\n")).toEqual([
       `RRG;1;${GROUP.id};${GENERATED};Pasta e Basta`,
       `R;${RAID};1794513600;Flèche du Vide;heroic;20;present;Kaeldra-Hyjal;journal`,
-      "R;2c3d4e5f-6071-4b8c-9dae-1f2a3b4c5d6e;1795118400;L'Abîme Venimeux;mythic;20;;;council",
-      "R;3d4e5f60-7182-4c9d-aebf-2a3b4c5d6e7f;0;Déliement de Kith'ix;normal;25;tentative;Vex-Kael'Thas;softres",
+      `R;${RAID2};1795118400;L'Abîme Venimeux;mythic;20;;;council`,
+      `R;${RAID3};0;Déliement de Kith'ix;normal;25;tentative;Vex-Kael'Thas;council`,
+      "O;Brumelune-Ysondre,Kaeldra-Hyjal,Tharok-ConseildesOmbres",
+      `L;${RAID2};Brumelune-Ysondre,Kaeldra-Hyjal`,
+      "N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:1,Brumelune-Ysondre:0",
       "END;3",
     ]);
     expect(buildRRG({ id: GROUP.id, name: "A;B|C" }, 1, [])).toBe(`RRG;1;${GROUP.id};1;A B C\nEND;0`);
     expect(text).not.toContain("|");
+  });
+
+  it("pas de soft reserve sur Roster : une ancienne soft reserve part en journal", () => {
+    const r = { id: RAID, name: "Raid", at: 0, difficulty: null, size: 20, status: null, character: null };
+    expect(buildRRG(GROUP, 1, [{ ...r, lootMode: "softres" }]).split("\n")[1]).toBe(`R;${RAID};0;Raid;;20;;;journal`);
+    expect(buildRRG(GROUP, 1, [r]).split("\n")[1]).toBe(`R;${RAID};0;Raid;;20;;;`);
+  });
+
+  it("listes O, L et N : sans doublon ni séparateur dans les noms, lignes vides omises", () => {
+    const text = buildRRG(GROUP, 1, [{ id: RAID, name: "Raid", at: 0, difficulty: null, size: 20, status: null, character: null, lootMode: "council", council: [] }], {
+      council: [{ name: "Ka,el:dra+", realm: "Hyjal" }, { name: "kaëldra", realm: "hyjal" }, { name: "Tharok", realm: null }],
+      counts: { short: "5 raids", label: "sur les 5 derniers raids", entries: [{ names: [], n: 2 }, { names: [THAROK, THAROK], n: 1.6 }] },
+    });
+    expect(text.split("\n").slice(2)).toEqual([
+      "O;Kaeldra-Hyjal,Tharok",
+      "N;5 raids;sur les 5 derniers raids;Tharok-ConseildesOmbres:2",
+      "END;1",
+    ]);
+    // Sans persos d'officiers ni compte : ni O, ni N
+    expect(buildRRG(GROUP, 1, [], { council: [], counts: { short: "saison", label: "depuis le début", entries: [] } })).toBe(`RRG;1;${GROUP.id};1;Pasta e Basta\nEND;0`);
   });
 });
 
@@ -142,6 +176,28 @@ describe("RRB : bilan d'un raid (jeu → site)", () => {
     expect(encounterSummary(log.encounters)).toEqual([
       { encounterId: 3176, boss: "Imperator Averzian", tries: 2, killedAt: 1794515900, lastAt: 1794515900 },
       { encounterId: 3177, boss: "Vorasius", tries: 1, killedAt: 1794520400, lastAt: 1794520400 },
+    ]);
+  });
+
+  it("R3b : objets distribués par Roster (conseil, jets, chef de butin), comme les bilans de Forever", () => {
+    const lines = [
+      "A;Kaeldra-Hyjal;1794513000;1794527400;240",
+      "L;249330;Tharok-ConseildesOmbres;1794516000;Imperator Averzian;council;bis;3 votes;Heaume du Vide",
+      "L;249331;Brumelune-Ysondre;1794516100;Imperator Averzian;roll;;MS 87;Bâton",
+      "L;249332;Kaeldra-Hyjal;1794516200;Imperator Averzian;roll;;OS 54;Dague",
+      "L;249333;Brumelune-Ysondre;1794516300;Vorasius;roll;;jet 54;Anneau",
+      "L;249334;Kaeldra-Hyjal;1794516400;Vorasius;ml;;;Cape",
+      "L;249335;Tharok-ConseildesOmbres;1794516500;Vorasius;council;transmo;1 vote;Épaulières",
+      "L;249336;Tharok-ConseildesOmbres;1794516600;Vorasius;inconnu;peut-être;;Bottes",
+    ];
+    const r = parseRRB([`RRB;1;${RAID};1794513000;1794527400;Kaeldra-Hyjal;Flèche du Vide;The Voidspire;1;heroic`, ...lines, `END;${lines.length}`].join("\n"));
+    expect(r.errors).toEqual([]);
+    const loot = r.data[0]!.loot;
+    expect(loot[0]).toEqual({ itemId: 249330, name: "Tharok-ConseildesOmbres", at: 1794516000, boss: "Imperator Averzian", method: "council", response: "bis", detail: "3 votes", itemName: "Heaume du Vide" });
+    expect(loot.map(l => [l.method ?? null, l.response ?? null, l.detail ?? null])).toEqual([
+      ["council", "bis", "3 votes"], ["roll", null, "MS 87"], ["roll", null, "OS 54"], ["roll", null, "jet 54"], ["ml", null, null], ["council", "transmo", "1 vote"],
+      // Méthode ou réponse inconnues (addon plus récent) : ignorées, l'objet reste
+      [null, null, null],
     ]);
   });
 

@@ -29,6 +29,8 @@ export function todayParis(now = new Date()) {
 
 export interface LootCountRow {
   characterId: string; userId: string; name: string; cls: string; owner: string; isMain: boolean;
+  /** Royaume de la fiche (Roster : noms « Prénom-Royaume » de la ligne N du texte pour l'addon). */
+  realm: string;
   /** Objets de ce perso (corrections comprises), et de tous les persos du joueur dans le groupe. */
   own: number; player: number;
   /** Le compte retenu par le groupe (par joueur ou par perso). */
@@ -92,7 +94,7 @@ export async function groupLootCounts(db: Db, groupId: string, settings?: LootSe
   for (const c of chars) perUser.set(c.userId, (perUser.get(c.userId) ?? 0) + (own.get(c.id) ?? 0));
   const rows: LootCountRow[] = chars.map(c => {
     const o = own.get(c.id) ?? 0, p = perUser.get(c.userId) ?? 0;
-    return { characterId: c.id, userId: c.userId, name: c.name, cls: c.cls, owner: c.owner, isMain: c.isMain, own: o, player: p, count: s.countBy === "player" ? p : o };
+    return { characterId: c.id, userId: c.userId, name: c.name, realm: c.realm, cls: c.cls, owner: c.owner, isMain: c.isMain, own: o, player: p, count: s.countBy === "player" ? p : o };
   });
   const summary: LootCountSummary = { mode: s.countMode, by: s.countBy, label: lootCountLabel(s), short: lootCountShort(s), since, raids: logs.length };
   return { summary, rows };

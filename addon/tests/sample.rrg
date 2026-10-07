@@ -1,5 +1,8 @@
 RRG;1;7d3c2b1a-0f9e-4d8c-b7a6-5e4d3c2b1a09;1794000000;Pasta e Basta
 R;1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d;1794513600;Flèche du Vide;heroic;20;present;Kaeldra-Hyjal;journal
 R;2c3d4e5f-6071-4b8c-9dae-1f2a3b4c5d6e;1795118400;L'Abîme Venimeux;mythic;20;;;council
-R;3d4e5f60-7182-4c9d-aebf-2a3b4c5d6e7f;0;Déliement de Kith'ix;normal;25;tentative;Vex-Kael'Thas;softres
+R;3d4e5f60-7182-4c9d-aebf-2a3b4c5d6e7f;0;Déliement de Kith'ix;normal;25;tentative;Vex-Kael'Thas;council
+O;Brumelune-Ysondre,Kaeldra-Hyjal,Tharok-ConseildesOmbres
+L;2c3d4e5f-6071-4b8c-9dae-1f2a3b4c5d6e;Brumelune-Ysondre,Kaeldra-Hyjal
+N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:1,Brumelune-Ysondre:0
 END;3

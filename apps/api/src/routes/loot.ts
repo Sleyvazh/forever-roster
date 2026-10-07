@@ -1,4 +1,4 @@
-import { gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings } from "@forever/game-data";
+import { gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings, RETAIL_NO_SOFTRES } from "@forever/game-data";
 import { and, asc, count, desc, eq, gte, ilike } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -8,7 +8,8 @@ import { bus } from "../lib/events";
 import { ensureInGroup } from "../lib/group-characters";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
-import { groupLootSettings, softReserveView, srClosesAt } from "../lib/loot";
+import { checkLootMode, groupLootSettings, softReserveView, srClosesAt } from "../lib/loot";
+import { groupGame } from "../lib/log-names";
 import { groupLootCounts, seasonStartDate } from "../lib/loot-count";
 import { currentUser, requireAuth } from "../lib/session";
 import { likeContains } from "./gamedata";
@@ -129,6 +130,8 @@ export async function lootRoutes(app: FastifyInstance) {
     await requireRole(db, p.id, u.id, "officer");
     const body = parse(z.object({ lootMode: z.enum(LOOT_MODES).optional(), srHidden: z.boolean().optional() }), req.body);
     const r = await loadRaid(p.id, p.raidId);
+    // Roster : journal ou conseil seulement (lot R3b)
+    checkLootMode(await groupGame(db, p.id), body.lootMode, r.lootMode);
     await db.update(raids).set({ ...(body.lootMode && { lootMode: body.lootMode }), ...(body.srHidden !== undefined && { srHidden: body.srHidden }) }).where(eq(raids.id, r.id));
     bus.group({ t: "raid", g: p.id, r: r.id });
     return { lootMode: body.lootMode ?? r.lootMode, srHidden: body.srHidden ?? r.srHidden };
@@ -149,6 +152,7 @@ export async function lootRoutes(app: FastifyInstance) {
     const role = await membership(db, p.id, u.id);
     const body = parse(z.object({ characterId: z.uuid(), itemId: z.int().min(1) }), req.body);
     const r = await loadRaid(p.id, p.raidId);
+    if (await groupGame(db, p.id) === "retail") throw badRequest(RETAIL_NO_SOFTRES);
     if (r.lootMode !== "softres") throw badRequest("Ce raid n'est pas en soft reserve.");
     const s = await groupLootSettings(db, p.id);
     const closes = srClosesAt(r.scheduledAt, s);

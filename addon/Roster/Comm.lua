@@ -37,9 +37,9 @@ function C.IsLead()
 end
 function C.IsLeader() return isTrue(UnitIsGroupLeader and UnitIsGroupLeader("player")) end
 
--- Membres : liste { name = "Prénom-Royaume" (nil si inconnu ou secret), key, index (raid), subgroup, online, class, rank }
--- et compte par sous-groupe. GetRaidRosterInfo donne « Prénom-Royaume » pour un autre royaume, « Unknown » (UNKNOWNOBJECT)
--- tant que le nom n'est pas dans le cache du jeu (12.0.5).
+-- Membres : liste { name = "Prénom-Royaume" (nil si inconnu ou secret), key, index (raid), unit (raidN, partyN, player),
+-- subgroup, online, class, rank, leader } et compte par sous-groupe. GetRaidRosterInfo donne « Prénom-Royaume » pour un
+-- autre royaume, « Unknown » (UNKNOWNOBJECT) tant que le nom n'est pas dans le cache du jeu (12.0.5).
 local function unknown(name) return name == "Unknown" or (UNKNOWNOBJECT ~= nil and name == UNKNOWNOBJECT) end
 function C.Roster()
   local list, byKey, counts = {}, {}, { 0, 0, 0, 0, 0, 0, 0, 0 }
@@ -55,9 +55,10 @@ function C.Roster()
       local ok, name, rank, subgroup, _, _, class, _, online = pcall(GetRaidRosterInfo, i)
       if ok then
         if secret(subgroup) then subgroup = nil end
+        if secret(rank) then rank = 0 end
         local full = (usable(name) and not unknown(name)) and F.FullName(name) or nil
-        add({ name = full, key = full and F.Fold(full), index = i, subgroup = subgroup, online = isTrue(online),
-          class = usable(class) and class or nil, rank = not secret(rank) and rank or 0 })
+        add({ name = full, key = full and F.Fold(full), index = i, unit = "raid" .. i, subgroup = subgroup, online = isTrue(online),
+          class = usable(class) and class or nil, rank = rank or 0, leader = rank == 2 })
       end
     end
   else
@@ -70,8 +71,9 @@ function C.Roster()
       local full = unit == "player" and C.Me() or ((ok and usable(name) and not unknown(name)) and F.FullName(name, realm) or nil)
       local okC, _, class = call(UnitClass, unit)
       local okO, online = call(UnitIsConnected, unit)
-      add({ name = full, key = full and F.Fold(full), index = 0, subgroup = 1, online = unit == "player" or not okO or isTrue(online),
-        class = okC and usable(class) and class or nil, rank = 0 })
+      local okL, lead = call(UnitIsGroupLeader, unit)
+      add({ name = full, key = full and F.Fold(full), index = 0, unit = unit, subgroup = 1, online = unit == "player" or not okO or isTrue(online),
+        class = okC and usable(class) and class or nil, rank = 0, leader = okL and isTrue(lead) })
     end
   end
   return list, byKey, counts
@@ -126,6 +128,19 @@ local function channel()
   if C.InRaid() then return "RAID" end
   if C.InGroup() then return "PARTY" end
   return nil
+end
+-- Canal du groupe (RAID, PARTY, INSTANCE_CHAT ; nil hors groupe), pour les messages d'addon et le chat
+C.Channel = channel
+
+-- Le jeu bloque-t-il le chat en ce moment (combat de boss, verrou du chat) ? Les annonces et chuchotements attendent alors.
+function C.ChatLocked()
+  if encounter and IsEncounterInProgress then
+    local ok, r = call(IsEncounterInProgress)
+    if ok and not secret(r) and r == false then encounter = false end
+  end
+  if encounter then return true end
+  local ok, locked = call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
+  return ok and isTrue(locked)
 end
 
 local flush
@@ -312,15 +327,14 @@ end)
 --------------------------------------------------------------------------------------------------------------------
 -- Chuchoter d'installer Roster, sans lien (choix de Flo, en attendant CurseForge ; sur un clic du chef de raid ou d'un assistant seulement)
 --------------------------------------------------------------------------------------------------------------------
-C.WHISPER = "Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence, et bientôt le butin) : pense à l'installer."
+C.WHISPER = "Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence et distribution du butin) : pense à l'installer."
 C.whispered = {} -- clé du nom → heure
 function C.Whisper(name)
   local full = F.FullName(name)
   if not full then return false end
   if not (C.InGroup() and C.IsLead()) then ns.print("seul le chef de raid ou un assistant peut chuchoter aux joueurs sans l'addon.") return false end
   -- Pendant une rencontre de boss, le jeu bloque les messages des addons (chat compris)
-  local ok, locked = call(C_ChatInfo and C_ChatInfo.InChatMessagingLockdown)
-  if encounter or (ok and isTrue(locked)) then ns.print("pas pendant un combat de boss : réessaie juste après.") return false end
+  if C.ChatLocked() then ns.print("pas pendant un combat de boss : réessaie juste après.") return false end
   local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
   if not send or not pcall(send, C.WHISPER, "WHISPER", nil, full) then ns.print("le jeu n'a pas permis le message à " .. F.Display(full) .. ".") return false end
   C.whispered[F.Fold(full)] = time()

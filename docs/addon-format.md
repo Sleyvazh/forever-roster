@@ -264,7 +264,21 @@ R;<raid>;<date unix, 0 : à définir>;<nom>;<difficulté>;<effectif>;<mon statut
 END;<nombre de lignes R>
 ```
 
-Mêmes raids que FRG (à venir ou commencés depuis moins de 3 h, puis sans date ; 15 au plus). `mon statut` et `mon perso` vides si je ne suis pas inscrit. Mode de butin : `journal`, `council` ou `softres` (utilisé à partir de R3b). Les lignes ajoutées plus tard (soft reserve, conseil, fiches) viendront après les `R`, hors du compte de `END`.
+Mêmes raids que FRG (à venir ou commencés depuis moins de 3 h, puis sans date ; 15 au plus). `mon statut` et `mon perso` vides si je ne suis pas inscrit. Mode de butin sur Roster : `journal` (le butin est seulement noté) ou `council` (distribution par Roster : conseil, jets). **Pas de soft reserve sur Roster** (choix de Flo, 07/10).
+
+**Lot R3b (addon 0.2)**, après les `R`, hors du compte de `END` (un addon 0.1 les ignore) :
+
+```
+O;<persos des officiers et du propriétaire, Prénom-Royaume, séparés par des virgules>
+L;<raid>;<persos du conseil choisis pour ce raid, Prénom-Royaume, virgules>
+N;<période courte>;<période>;<perso>+<perso>:<nombre>,…
+```
+
+- `O` : conseil du butin par défaut (persos joués dans le groupe par le propriétaire et les officiers).
+- `L` : conseil choisi pour ce raid sur le site (onglet Butin du raid) ; sans `L`, le conseil est celui de `O`.
+- `N` : objets reçus sur la période du groupe (colonne « Reçus » du conseil), comme FRG : libellé court (`saison`, `30 j`, `5 raids`), libellé complet, puis une entrée par joueur (ses persos du groupe joints par `+`, main d'abord) ou par perso. Même règle que la colonne « Reçus » du site (`lootSkipReason`) : tout compte sauf une réponse Off-spec ou Transmo, un jet OS ou libre, un objet gardé par le chef de butin (`ml`, détail « gardé ») et ce qu'un officier exclut. Un objet donné directement par le chef de butin (`ml`) compte. L'addon y ajoute les objets de ce soir (bilan en cours), même règle, sans ceux que le chef de butin n'a pas encore distribués.
+
+Ordre : `O`, puis un `L` par raid (dans l'ordre des `R`), puis `N`. Lignes vides omises (pas de `O` sans officier, pas de `L` si aucun membre du conseil choisi n'a de perso dans le groupe : l'addon prend alors `O`).
 
 ## RRR, version 1 : compo d'un raid (site → jeu)
 
@@ -291,9 +305,9 @@ END;<nombre de lignes A, L et E>
 ```
 
 - `A` : présence, un relevé par minute (comme FRB).
-- `L` : objet vu dans le chat (« … reçoit le butin », `CHAT_MSG_LOOT`, plus secret depuis 12.0.7) à partir de la qualité réglée dans l'addon (épique par défaut) ; nom de l'objet tel que le lien le montre (le site n'a pas la base des objets de Retail). En R3a `méthode`, `réponse` et `détail` sont vides (butin de groupe du jeu) ; R3b y mettra conseil, soft reserve ou jets.
+- `L` : objet vu dans le chat (« … reçoit le butin », `CHAT_MSG_LOOT`, plus secret depuis 12.0.7) à partir de la qualité réglée dans l'addon (épique par défaut) ; nom de l'objet tel que le lien le montre (le site n'a pas la base des objets de Retail). En R3a `méthode`, `réponse` et `détail` sont vides (butin de groupe du jeu). **R3b** : pour un objet distribué par Roster, `reçu par` est le gagnant (pas le chef de butin qui l'a ramassé) ; `méthode` : `council` (conseil), `roll` (jets MS / OS ou jet libre), `ml` (donné directement par le chef de butin, ou gardé : détail « gardé ») ; `réponse` (conseil) : `bis`, `upgrade`, `off`, `transmo` ; `détail` comme Forever (le compte des objets reçus en dépend) : « 3 votes » (conseil), « MS 87 », « OS 54 », « jet 54 » (jet libre), « gardé » ; un jet OS ou libre, une réponse Off-spec ou Transmo et un objet gardé ne comptent pas dans « Reçus ». Un objet ramassé par le chef de butin et pas encore distribué reste à son nom, sans méthode.
 - `E` : chaque fin de rencontre (`ENCOUNTER_END`) : identifiant de la rencontre, nom du boss, heure, vaincu ou non.
-- `chef` : 1 si celui qui a relevé menait le raid au moins la moitié des relevés.
+- `chef` : 1 si celui qui a relevé menait le raid au moins la moitié des relevés, **ou** s'il a distribué du butin avec Roster (R3b, comme le bilan du maître du butin sur Forever Roster). Les autres relevés apprennent les gagnants par `LW` : le bilan du chef de raid les a aussi.
 - `difficulté du jeu` : `normal`, `heroic`, `mythic` (d'après l'instance), vide si inconnue.
 
 ## Messages entre addons Roster
@@ -303,5 +317,16 @@ Préfixe `RosterRT`, champs séparés par `;`, canal du raid (ou du groupe ; `IN
 | Message | Sens | Contenu |
 |---|---|---|
 | `VQ` / `VR;<version>` | tous | Qui a l'addon : question à l'arrivée dans un raid (ou « Redemander »), chacun répond avec sa version. Ceux qui ne répondent pas sont signalés au chef de raid, qui peut leur chuchoter d'un clic d'installer l'addon Roster (le nom seulement, sans lien). |
+| `ML;<1 \| 0>;<chef de butin Prénom-Royaume>` | chef de raid ou chef de butin → raid | R3b : distribution par Roster activée (1) ou non (0), et qui est le chef de butin. Envoyé quand ça change, quand quelqu'un rejoint le raid (au plus toutes les 10 s) et en réponse à `MQ`. |
+| `MQ` | joueur → raid | R3b : demande l'état de la distribution (arrivée dans le raid, `/reload`). |
+| `LR;<objet>` | chef de butin → raid | R3b : le chef de butin a un jet du butin de groupe pour cet objet (`START_LOOT_ROLL`) et l'a pris (Besoin, sinon Transmo, sinon Cupidité) : les addons des autres passent cet objet. |
+| `LO;<session>;<item:…>;<nom>` | chef de butin → raid | R3b : objet proposé au conseil (lien d'objet sans couleurs, avec ses bonus : niveau d'objet juste) : fenêtre de réponse chez chacun. Le nom (affiché tant que le jeu ne connaît pas l'objet) est coupé pour que le message tienne en 250 octets. |
+| `LA;<session>;<réponse>;<objets portés>;<note>[;<joueur>]` | joueur → chef de butin et conseil (chuchoté) | R3b : `bis`, `upgrade`, `off`, `transmo` ou `pass` ; objets portés sur cet emplacement `objet:niveau` (deux au plus, séparés par des virgules) ; note libre (60 caractères). Sans l'addon : chuchoter « bis », « up », « os », « transmo » ou « passe » au chef de butin, qui relaie la réponse au conseil avec un 6e champ, le joueur `Prénom-Royaume` (accepté seulement du chef de butin). |
+| `LV;<session>;<candidat>` | conseil → conseil et chef de butin (chuchoté) | R3b : vote (vide : vote retiré). |
+| `LC;<session>;<gagnant>` | chef de butin → raid | R3b : conseil terminé, les fenêtres de réponse se ferment. |
+| `LW;<clé>;<objet>;<gagnant>;<méthode>;<réponse>;<détail>` | chef de butin → raid | R3b : objet attribué (clé : l'objet chez le chef de butin ; méthode, réponse et détail comme la ligne `L` du RRB). Les autres addons qui relèvent le raid notent le gagnant dans leur bilan : le bilan du chef de raid et celui du chef de butin concordent. |
+| `RS;<objet>;<msos \| free>` | chef de butin → raid | R3b : jets ouverts pour cet objet (MS : `/roll 100`, OS : `/roll 99` ; libre : `/roll 100`) ; les jets sont lus dans le chat (`RANDOM_ROLL_RESULT`), le premier de chacun compte, égalité : seuls les ex æquo relancent, sur « Relancer » du chef de butin (annoncé dans le raid, pas de nouveau `RS`). |
+
+**Distribution par Roster (R3b), comme RCLootCouncil.** Le chef de butin est le chef de raid, sauf s'il en désigne un autre (onglet En raid). Il active « Distribution par Roster » pour le raid (activée d'office quand le raid chargé est en mode `council` sur le site). Alors, à chaque jet du butin de groupe, l'addon de chacun attend le `LR` du chef de butin pour cet objet (20 s au plus) puis passe (`RollOnLoot`, passer) ; sans `LR` (chef de butin pas éligible à ce butin…), il ne passe pas et le dit au joueur. Chacun peut couper le passer automatique pour lui (Options, `RosterDB.autoPass = false`). Le chef de butin reçoit les objets, décide entre les pulls (conseil, jets MS / OS, jet libre, garder), puis échange l'objet au gagnant tant que le jeu le permet (2 h, joueurs présents au moment du butin ; minuteur lu dans l'infobulle de l'objet). À chaque attribution (un clic), l'addon l'annonce dans le canal du raid (« Brumelune reçoit [Objet] (conseil : BiS) ») **et** le chuchote au gagnant (« Tu reçois [Objet] : passe me voir pour l'échange »), choix de Flo. Les joueurs sans l'addon qui gagnent un objet au butin de groupe (ils n'ont pas passé) sont signalés au chef de butin, qui peut leur chuchoter de garder l'objet pour l'échange.
 
 Sur le site (lot R3a) : « Copier pour le jeu » donne RRG sur Roster (FRG sur Forever Roster ; `GET /api/sync/frg` suit la même règle), l'onglet Compo d'un raid de Roster donne RRR et des macros `/inv Prénom-Royaume`, et le Ctrl+V de Roster n'accepte que des bilans RRB (rencontres gardées dans `raid_logs.encounters`, difficulté dans `raid_logs.difficulty`, migration 0031). Un texte d'un addon collé sur le site de l'autre jeu est refusé avec l'adresse à utiliser. Roster Companion ne gère pas encore Roster.

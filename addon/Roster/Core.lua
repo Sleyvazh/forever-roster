@@ -55,7 +55,7 @@ end
 -- Contrôle de chargement : chaque module doit avoir défini ses fonctions (sinon une erreur l'a arrêté en route)
 local MODULES = {
   { "Format" }, { "Comm", "AskVersions" }, { "Groups" }, { "Compo", "Invite" }, { "Recorder", "IsRecording" },
-  { "UI", "Show" }, { "Pages", "Build" }, { "Minimap", "Create" },
+  { "Loot", "Items" }, { "UI", "Show" }, { "Pages", "Build" }, { "LootUI", "ShowLoot" }, { "Test", "Start" }, { "Minimap", "Create" },
 }
 ns.on("ADDON_LOADED", function(name)
   if name ~= ns.name then return end
@@ -99,6 +99,9 @@ local HELP = {
   "/roster synchro | raids | enraid | compo | options : ouvrir directement un onglet",
   "/roster inviter : inviter les persos de la compo chargée ; /roster placer : les placer dans leurs groupes",
   "/roster versions : qui a l'addon dans le raid, et sa version",
+  "/roster butin : fenêtre du chef de butin (objets reçus, conseil, jets MS / OS, jet libre, garder)",
+  "/roster remettre : objets à remettre aux gagnants (échange, 2 h après le butin)",
+  "/roster test : raid d'essai seul, hors groupe, avec 9 joueurs fictifs, pour essayer la distribution du butin (ensuite : affiche ou masque son panneau) ; /roster test fin : l'arrêter",
   "Synchro rapide : ta touche (Échap > Options > Raccourcis > AddOns > Roster), le clic droit sur le bouton de la minicarte ou sur Roster dans la liste des addons de la minicarte",
   "/roster minicarte : afficher ou masquer le bouton de la minicarte",
   "/roster habillage : passer de l'habillage du jeu à celui du site, et inversement (recharge l'interface)",
@@ -106,9 +109,11 @@ local HELP = {
 
 local TABS = { synchro = "synchro", raids = "raids", enraid = "enraid", compo = "compo", options = "options" }
 
+local STOP = { fin = true, stop = true, arret = true, ["arrêt"] = true, quitter = true }
+
 local function run(msg)
-  local cmd = strtrim(msg or ""):match("^(%S*)") or ""
-  cmd = cmd:lower()
+  local cmd, rest = strtrim(msg or ""):match("^(%S*)%s*(.-)$")
+  cmd, rest = (cmd or ""):lower(), (rest or ""):lower()
   if cmd == "" then
     call("UI", "Toggle")
   elseif TABS[cmd] then
@@ -119,6 +124,12 @@ local function run(msg)
     call("Compo", "Arrange")
   elseif cmd == "versions" then
     call("Comm", "AskVersions")
+  elseif cmd == "butin" then
+    call("LootUI", "ShowLoot")
+  elseif cmd == "remettre" then
+    call("LootUI", "ShowHandover")
+  elseif cmd == "test" or cmd == "essai" then
+    if STOP[rest] then call("Test", "Stop") else call("Test", "Toggle") end
   elseif cmd == "minicarte" then
     call("Minimap", "Toggle")
   elseif cmd == "habillage" then

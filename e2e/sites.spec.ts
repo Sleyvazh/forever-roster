@@ -193,10 +193,17 @@ test.describe("Roster en accès anticipé", () => {
       await page.getByRole("group", { name: "Difficulté" }).getByRole("button", { name: "Héroïque" }).click();
       await expect(page.locator("#gr-size")).toHaveValue("20");
       await page.fill("#gr-size", "25");
+      // Butin (R3b) : journal ou conseil (distribution par l'addon Roster), pas de soft reserve
+      const loot = page.getByRole("radiogroup", { name: "Butin" });
+      await expect(loot.getByRole("radio")).toHaveText(["Journal", "Conseil (distribution par Roster)"]);
+      await loot.getByRole("radio", { name: "Conseil (distribution par Roster)" }).click();
+      await expect(page.locator(".gr-sum")).toContainText("Héroïque · 25 joueurs · Conseil (distribution par Roster)");
       await page.getByRole("button", { name: "Créer le raid" }).click();
       await expect(page.getByRole("heading", { name: "Flèche du Vide" })).toBeVisible();
       await expect(page.locator(".rp-meta")).toContainText("Héroïque · 25 joueurs");
-      await expect(page.getByRole("tab", { name: "Butin" })).toHaveCount(0);
+      await expect(page.locator(".rp-meta .tag.gold")).toHaveText("Conseil");
+      await expect(page.getByRole("tab", { name: "Butin" })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Préparation" })).toHaveCount(0);
       await page.getByRole("tab", { name: /Inscriptions/ }).click();
       await page.selectOption("#su-spec", "Mistweaver");
       await page.getByRole("group", { name: "Mon statut" }).getByRole("button", { name: "Présent" }).click();
@@ -219,6 +226,28 @@ test.describe("Roster en accès anticipé", () => {
       await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Brumelune-Hyjal");
     });
 
+    await test.step("onglet Butin : mode et conseil choisi pour le raid, sans soft reserve", async () => {
+      await page.getByRole("tab", { name: "Butin" }).click();
+      const mode = page.getByRole("radiogroup", { name: "Butin" });
+      await expect(mode.getByRole("radio", { name: "Conseil (distribution par Roster)" })).toHaveAttribute("aria-checked", "true");
+      await expect(mode.getByRole("radio", { name: "Soft reserve" })).toHaveCount(0);
+      const council = page.getByRole("region", { name: "Conseil du butin" });
+      await expect(council).toContainText("Par défaut : les officiers du groupe.");
+      const me = council.getByRole("checkbox", { name: /Officière/ });
+      await expect(me).toBeChecked();
+      // Choisi pour ce raid : la ligne L du texte pour l'addon
+      // Case enregistrée tout de suite, cochée d'après la réponse du serveur
+      await me.click();
+      await expect(me).not.toBeChecked();
+      await expect(council.getByRole("button", { name: "Revenir aux officiers" })).toBeVisible();
+      await me.click();
+      await expect(me).toBeChecked();
+      await expect(council).toContainText("Choisi pour ce raid");
+      await expect(page.getByText("Le chef de butin reçoit les objets grâce à l'addon Roster")).toBeVisible();
+      if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/roster-butin.png", fullPage: true });
+      await page.getByRole("tab", { name: "Compo" }).click();
+    });
+
     await test.step("page Addon de Roster : zip de l'addon Roster, « Copier pour le jeu » en RRG", async () => {
       const raidUrl = page.url();
       const [, groupId, raidId] = raidUrl.match(/\/groups\/([0-9a-f-]{36})\/raids\/([0-9a-f-]{36})/) ?? [];
@@ -234,8 +263,9 @@ test.describe("Roster en accès anticipé", () => {
       expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
       await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
       await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+      // R3b : conseil par défaut (O), conseil choisi pour ce raid (L), objets reçus (N), hors du compte de END
       expect(await page.evaluate(() => navigator.clipboard.readText()))
-        .toMatch(new RegExp(`^RRG;1;${groupId};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;journal\nEND;1$`));
+        .toMatch(new RegExp(`^RRG;1;${groupId};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:0\nEND;1$`));
       // Téléphone : onglet Addon en bas, pas de défilement horizontal
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.locator(".tabbar").getByRole("link", { name: "Addon" })).toBeVisible();
@@ -253,6 +283,9 @@ test.describe("Roster en accès anticipé", () => {
         `A;Brumelune-Hyjal;${start};${end};180`,
         `A;Inconnue-Ysondre;${start + 600};${start + 1200};10`,
         `L;249321;Brumelune-Hyjal;${start + 1800};Imperator Averzian;;;;Lame du Vide hurlant`,
+        // R3b : objets distribués par Roster (conseil BiS : compte ; jet OS : ne compte pas)
+        `L;249400;Brumelune-Hyjal;${start + 1900};Imperator Averzian;council;bis;3 votes;Heaume du Vide`,
+        `L;249401;Brumelune-Hyjal;${start + 2000};Imperator Averzian;roll;;OS 54;Bottes du Vide`,
         `E;3176;Imperator Averzian;${start + 1500};0`,
         `E;3176;Imperator Averzian;${start + 1750};1`,
       ];
@@ -272,9 +305,9 @@ test.describe("Roster en accès anticipé", () => {
       await dialog.getByRole("button", { name: "Fermer" }).click();
       await paste(rrb);
       await expect(dialog).toContainText("Bilan de Flèche du Vide");
-      await expect(dialog).toContainText("2 présents · 1 objet · 1 boss vaincu · relevé par Brumelune-Hyjal");
+      await expect(dialog).toContainText("2 présents · 3 objets · 1 boss vaincu · relevé par Brumelune-Hyjal");
       await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
-      await expect(dialog).toContainText("Bilan de Flèche du Vide : enregistré · 2 présents, 1 objet, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
+      await expect(dialog).toContainText("Bilan de Flèche du Vide : enregistré · 2 présents, 3 objets, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
       await dialog.getByRole("button", { name: "Fermer" }).click();
       await page.goto(raidUrl);
       await page.getByRole("tab", { name: "Bilan" }).click();
@@ -286,13 +319,33 @@ test.describe("Roster en accès anticipé", () => {
       await expect(bilan.getByRole("row", { name: /Inconnue-Ysondre.*sans fiche/ })).toBeVisible();
       // Nom de l'objet donné par l'addon (le site n'a pas la base des objets de Retail)
       await expect(bilan.getByRole("link", { name: "Lame du Vide hurlant" })).toHaveAttribute("href", "https://www.wowhead.com/fr/item=249321");
-      await expect(bilan.getByRole("button", { name: "Ne pas compter" })).toHaveCount(0);
+      // R3b : méthode de chaque objet distribué, ce qui compte dans « Reçus », exclusion par l'officière
+      await expect(bilan.getByRole("row", { name: /Heaume du Vide.*Conseil : BiS · 3 votes/ })).toBeVisible();
+      await expect(bilan.getByRole("row", { name: /Bottes du Vide.*Jet OS 54.*ne compte pas · jet OS/ })).toBeVisible();
+      await expect(bilan.getByRole("button", { name: "Ne pas compter" })).toHaveCount(2);
+      const lame = bilan.getByRole("row", { name: /Lame du Vide hurlant/ });
+      await lame.getByRole("button", { name: "Ne pas compter" }).click();
+      await expect(lame.getByRole("button", { name: "Compter" })).toBeVisible();
+      await expect(lame).toContainText("ne compte pas");
       if (process.env.SHOTS) await bilan.screenshot({ path: "test-results/shots/roster-bilan.png" });
       await page.getByRole("link", { name: "Retour au groupe" }).click();
       await expect(page.getByRole("tab", { name: "Artisans" })).toHaveCount(0);
       await page.getByRole("tab", { name: "Présence & butin" }).click();
       await expect(page).toHaveURL(/\/presence$/);
-      await expect(page.getByRole("row", { name: /Brumelune.*1\/1.*Lame du Vide hurlant/ })).toBeVisible();
+      // Reçus : le Heaume (conseil BiS) ; pas les Bottes (jet OS) ni la Lame (sortie du compte)
+      const table = page.locator("table.rl-att");
+      await expect(table.getByRole("columnheader", { name: "Reçus · saison" })).toBeVisible();
+      await expect(table.getByRole("row", { name: /Brumelune.*1\/1.*Bottes du Vide/ })).toBeVisible();
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r.num")).toHaveText("1");
+      // Administration → Butin : période du compte (pas de réglages de soft reserve sur Roster)
+      await page.getByRole("tab", { name: "Administration" }).click();
+      await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
+      await expect(page.getByRole("heading", { name: "Objets reçus" })).toBeVisible();
+      await expect(page.locator("#lt-count")).toHaveCount(0);
+      await page.selectOption("#lt-cm", "raids");
+      await expect(page.getByRole("status").filter({ hasText: "Enregistré." })).toBeVisible();
+      await page.getByRole("tab", { name: "Présence & butin" }).click();
+      await expect(table.getByRole("columnheader", { name: "Reçus · 5 raids" })).toBeVisible();
       await page.goto(raidUrl);
     });
 
