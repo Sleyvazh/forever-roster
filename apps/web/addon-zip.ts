@@ -66,7 +66,13 @@ function addonFiles(name: AddonName = "ForeverRoster") {
   const shared = filesIn(SHARED_DIR, /\.lua$/, name).filter(f => !own.some(o => o.name === f.name));
   const fonts = filesIn(path.join(SHARED_DIR, "Fonts"), /\.(ttf|txt)$/, `${name}/Fonts`);
   const media = filesIn(path.join(dir, "Media"), /\.(tga|blp)$/, `${name}/Media`);
-  return [...own, ...shared, ...fonts, ...media].sort((a, b) => a.name.localeCompare(b.name));
+  const files = [...own, ...shared, ...fonts, ...media].sort((a, b) => a.name.localeCompare(b.name));
+  // Un fichier du .toc absent du zip (dossier addon/shared oublié dans l'image Docker…) : la construction échoue
+  // plutôt que de servir un addon qui plante en jeu
+  const missing = tocOf(name).split(/\r?\n/).map(l => l.trim()).filter(l => /\.(lua|xml)$/.test(l) && !l.startsWith("#"))
+    .filter(f => !files.some(x => x.name === `${name}/${f}`));
+  if (missing.length) throw new Error(`Addon ${name} incomplet : ${missing.join(", ")} introuvable(s) dans addon/${name} et addon/shared.`);
+  return files;
 }
 
 /** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */

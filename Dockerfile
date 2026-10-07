@@ -13,8 +13,10 @@ FROM deps AS build
 COPY tsconfig.base.json ./
 COPY packages packages
 COPY apps apps
-# Le site sert le zip de l'addon (construit avec le front)
+# Le site sert les zips des addons (construits avec le front) : Forever Roster, Roster (WoW Retail) et leur code commun
 COPY addon/ForeverRoster addon/ForeverRoster
+COPY addon/Roster addon/Roster
+COPY addon/shared addon/shared
 RUN npm run build
 
 # Dépendances de production de l'API uniquement
