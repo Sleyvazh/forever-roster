@@ -218,6 +218,13 @@
       "when": 1791384143530,
       "tag": "0030_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791389298637,
+      "tag": "0031_raid_log_encounters",
+      "breakpoints": true
     }
   ]
 }

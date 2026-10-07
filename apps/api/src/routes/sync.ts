@@ -7,7 +7,7 @@ import { sha256 } from "../lib/crypto";
 import { currentDevice, deviceAuth } from "../lib/device-auth";
 import { parse } from "../lib/http";
 import { currentUser } from "../lib/session";
-import { siteOf } from "../lib/site";
+import { otherSite, siteOf } from "../lib/site";
 import { allGroupsExport } from "./addon";
 
 /**
@@ -16,8 +16,8 @@ import { allGroupsExport } from "./addon";
  */
 const key = z.string().trim().min(3).max(100);
 
-/** Empreinte du FRG sans ses dates de génération : change seulement quand les données changent. */
-export const frgEtag = (text: string) => sha256(text.replace(/^(FRG;\d+;[^;\n]*;)\d+;/gm, "$1;")).slice(0, 32);
+/** Empreinte du FRG (RRG sur Roster) sans ses dates de génération : change seulement quand les données changent. */
+export const frgEtag = (text: string) => sha256(text.replace(/^((?:FRG|RRG);\d+;[^;\n]*;)\d+;/gm, "$1;")).slice(0, 32);
 
 export async function syncRoutes(app: FastifyInstance) {
   const { db, cfg } = app.ctx;
@@ -50,8 +50,9 @@ export async function syncRoutes(app: FastifyInstance) {
       /** Envoi demandé par le joueur dans l'appli (bilan qui n'est pas celui du chef) : remplace, comme un Ctrl+V. */
       manual: z.boolean().default(false),
     }), req.body);
+    const site = siteOf(cfg, req);
     const r = await importAddonText(db, u, body.text, {
-      game: siteOf(cfg, req).game, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual,
+      game: site.game, otherHost: otherSite(cfg, site)?.host, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual,
     });
     if (r.results.length) await synced(d.id);
     return r;

@@ -80,6 +80,8 @@ export async function signUpDiscordGuest(db: Db, raidId: string, who: { discordU
 
 export interface SignupView {
   id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;
+  /** Royaume du perso (Roster : nom en jeu « Prénom-Royaume » de l'export pour l'addon). */
+  characterRealm: string | null;
   cls: string; spec: string; role: string | null; status: SignupStatus; note: string; createdAt: Date;
 }
 
@@ -87,7 +89,7 @@ export interface SignupView {
 export async function listSignups(db: Db, raidId: string): Promise<SignupView[]> {
   const rows = await db.select({
     id: raidSignups.id, userId: raidSignups.userId, discordUserId: raidSignups.discordUserId, displayName: raidSignups.displayName, characterId: raidSignups.characterId,
-    characterName: characters.name, cls: raidSignups.cls, spec: raidSignups.spec, status: raidSignups.status, note: raidSignups.note, createdAt: raidSignups.createdAt,
+    characterName: characters.name, characterRealm: characters.realm, cls: raidSignups.cls, spec: raidSignups.spec, status: raidSignups.status, note: raidSignups.note, createdAt: raidSignups.createdAt,
   }).from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
     .where(eq(raidSignups.raidId, raidId)).orderBy(asc(raidSignups.createdAt));
   return rows.map(r => ({ ...r, role: r.spec ? roleOf(r.spec) : null }));

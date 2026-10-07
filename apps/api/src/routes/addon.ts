@@ -1,4 +1,4 @@
-import { dpsType, groupAddonExport, IMPORT_PARTS, specDef, type Game, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
+import { buildRRG, dpsType, groupAddonExport, IMPORT_PARTS, specDef, type Game, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
 import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -11,7 +11,7 @@ import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
 import { currentUser, requireAuth } from "../lib/session";
-import { siteOf } from "../lib/site";
+import { otherSite, siteOf } from "../lib/site";
 import { importAddonText } from "../lib/addon-import";
 
 /** Raids envoyés à l'addon : à venir (ou commencés depuis moins de 3 h), puis ceux sans date. */
@@ -25,8 +25,10 @@ const MAX_GROUPS = 10;
  * et objets BiS que ces persos n'ont pas encore.
  */
 export async function groupExport(db: Db, groupId: string, userId: string) {
-  const [g] = await db.select({ id: groups.id, name: groups.name }).from(groups).where(eq(groups.id, groupId));
+  const [g] = await db.select({ id: groups.id, name: groups.name, game: groups.game }).from(groups).where(eq(groups.id, groupId));
   if (!g) throw notFound("Groupe introuvable.");
+  // Roster (WoW Retail) : format RRG de l'addon Roster
+  if (g.game === "retail") return rosterGroupExport(db, g, userId);
 
   const now = Date.now();
   const raidRows = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt, lootMode: raids.lootMode, srHidden: raids.srHidden, prep: raids.prep, council: raids.council }).from(raids)
@@ -120,6 +122,27 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
 }
 
+/**
+ * Données d'un groupe de Roster pour l'addon Roster (format RRG v1, docs/addon-format.md) : raids à venir (mêmes raids
+ * que FRG) avec leur difficulté et leur effectif, mon inscription et mon perso (« Prénom-Royaume »).
+ */
+async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId: string) {
+  const now = Date.now();
+  const raidRows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, difficulty: raids.difficulty, size: raids.size, lootMode: raids.lootMode }).from(raids)
+    .where(and(eq(raids.groupId, g.id), or(gte(raids.scheduledAt, new Date(now - RECENT_MS)), isNull(raids.scheduledAt))))
+    .orderBy(asc(raids.scheduledAt), asc(raids.name)).limit(MAX_RAIDS);
+  const mine = raidRows.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, name: characters.name, realm: characters.realm })
+    .from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
+    .where(and(eq(raidSignups.userId, userId), inArray(raidSignups.raidId, raidRows.map(r => r.id)))) : [];
+  const myByRaid = new Map(mine.map(m => [m.raidId, m]));
+  const text = buildRRG(g, Math.floor(now / 1000), raidRows.map(r => {
+    const m = myByRaid.get(r.id);
+    return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, difficulty: r.difficulty, size: r.size,
+      status: m?.status ?? null, character: m?.name ? { name: m.name, realm: m.realm } : null, lootMode: r.lootMode };
+  }));
+  return { text, name: g.name, raids: raidRows.length, patterns: 0, bis: 0 };
+}
+
 export async function addonRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
   app.addHook("preHandler", requireAuth);
@@ -132,7 +155,7 @@ export async function addonRoutes(app: FastifyInstance) {
     return { text, raids: r, patterns, bis };
   });
 
-  /** Tous mes groupes d'un coup (page Addon du site) : un bloc FRG par groupe. */
+  /** Tous mes groupes d'un coup (« Copier pour le jeu ») : un bloc FRG par groupe, RRG sur Roster. */
   app.get("/addon/export", async (req) => {
     const u = currentUser(req);
     return allGroupsExport(db, u.id, siteOf(app.ctx.cfg, req).game);
@@ -150,14 +173,15 @@ export async function addonRoutes(app: FastifyInstance) {
       targets: z.record(z.string().max(100), z.union([z.uuid(), z.literal("new"), z.literal("skip")])).refine(r => Object.keys(r).length <= 60).optional(),
       skipLogs: z.array(z.uuid()).max(10).optional(),
     }), req.body);
+    const site = siteOf(app.ctx.cfg, req);
     return importAddonText(db, u, body.text, {
-      game: siteOf(app.ctx.cfg, req).game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
-      skipLogs: new Set(body.skipLogs ?? []), unknown: "create",
+      game: site.game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
+      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host,
     });
   });
 }
 
-/** Tous les groupes du joueur dans ce jeu, un bloc FRG chacun (page Addon, Roster Companion). */
+/** Tous les groupes du joueur dans ce jeu, un bloc FRG chacun (RRG pour Roster) : « Copier pour le jeu », Roster Companion. */
 export async function allGroupsExport(db: Db, userId: string, game: Game) {
   const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .where(and(eq(groupMembers.userId, userId), eq(groups.game, game))).limit(MAX_GROUPS);

@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="ROSTER_SYNC" header="ROSTER" category="ADDONS">
+		Roster_Sync()
+	</Binding>
+	<Binding name="ROSTER_TOGGLE" category="ADDONS">
+		Roster_Toggle()
+	</Binding>
+</Bindings>

@@ -128,7 +128,7 @@ export function parseCharacterExports(text: string): { ok: true; data: Character
   let inChar = false; // un bilan de raid (FRB) peut suivre les persos : ses lignes ne leur appartiennent pas
   for (const line of lines) {
     if (line.trim().startsWith("FRC;")) { blocks.push([line]); inChar = true; }
-    else if (/^\s*FR[A-Z];/.test(line)) inChar = false;
+    else if (/^\s*(FR|RR)[A-Z];/.test(line)) inChar = false;
     else if (inChar) blocks.at(-1)!.push(line);
   }
   if (!blocks.length) return parseCharacterExport(text) as { ok: false; error: string };

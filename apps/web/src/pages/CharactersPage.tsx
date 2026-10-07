@@ -80,8 +80,9 @@ export function CharactersPage() {
   // Roster (WoW Retail) : création à la main par un petit formulaire (royaume obligatoire), fiche légère
   const retail = useSite().game === "retail";
   const [creating, setCreating] = useState(false);
-  // R2b : retour de Battle.net (?bnet=import, error ou session), gardé quand l'adresse passe sur un perso
-  const [bnet, setBnet] = useState<string | null>(() => (retail ? new URLSearchParams(window.location.search).get("bnet") : null));
+  // R2b : retour de Battle.net (?bnet=import, error ou session), gardé quand l'adresse passe sur un perso. Lu même si
+  // /api/site n'a pas encore répondu (retail encore faux au premier rendu) ; le panneau ne s'affiche que sur Roster.
+  const [bnet, setBnet] = useState<string | null>(() => new URLSearchParams(window.location.search).get("bnet"));
 
   // Garde la copie locale (en cours d'édition) des persos déjà affichés, ajoute/retire ceux qui ont changé côté serveur.
   // Le groupe (et main / alt) vient toujours du serveur : il change hors de la fiche (glisser, page du groupe, inscription)

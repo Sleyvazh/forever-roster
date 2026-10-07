@@ -1,6 +1,6 @@
 /**
- * Paquet de l'addon servi par le site : à la construction, addon/ForeverRoster est compressé en
- * dist/downloads/ForeverRoster.zip (format ZIP « deflate », sans dépendance). La version vient du .toc.
+ * Paquets des addons servis par le site : à la construction, addon/ForeverRoster (et addon/Roster, s'il existe), avec
+ * addon/shared, sont compressés en dist/downloads/<nom>.zip (format ZIP « deflate », sans dépendance). La version vient du .toc.
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -9,10 +9,16 @@ import { createHash } from "node:crypto";
 import { crc32, deflateRawSync } from "node:zlib";
 import type { Plugin } from "vite";
 
-const ADDON_DIR = fileURLToPath(new URL("../../addon/ForeverRoster", import.meta.url));
+/** Forever Roster (WoW Forever) et Roster (WoW Retail, lot R3) : un dossier et un zip chacun, code commun dans addon/shared. */
+export type AddonName = "ForeverRoster" | "Roster";
+const ADDONS_DIR = fileURLToPath(new URL("../../addon", import.meta.url));
+const SHARED_DIR = path.join(ADDONS_DIR, "shared");
+const addonDir = (name: AddonName) => path.join(ADDONS_DIR, name);
+const tocOf = (name: AddonName) => readFileSync(path.join(addonDir(name), `${name}.toc`), "utf8");
+const hasAddon = (name: AddonName) => { try { tocOf(name); return true; } catch { return false; } };
 
-export function addonVersion() {
-  try { return readFileSync(path.join(ADDON_DIR, "ForeverRoster.toc"), "utf8").match(/^## Version:\s*(\S+)/m)?.[1] ?? "?"; } catch { return "?"; }
+export function addonVersion(name: AddonName = "ForeverRoster") {
+  try { return tocOf(name).match(/^## Version:\s*(\S+)/m)?.[1] ?? "?"; } catch { return "?"; }
 }
 
 /** ZIP minimal : un en-tête local par fichier, puis le répertoire central. */
@@ -45,28 +51,28 @@ export function zip(files: { name: string; data: Buffer }[], date = new Date(202
   return Buffer.concat([...locals, ...central, end]);
 }
 
-function addonFiles() {
-  const top = readdirSync(ADDON_DIR).filter(f => /\.(lua|toc|xml)$/.test(f)).sort()
-    .map(f => ({ name: `ForeverRoster/${f}`, data: readFileSync(path.join(ADDON_DIR, f)) }));
-  // Police des titres (habillage « site ») et sa licence (SIL OFL, à distribuer avec la police)
-  const fontsDir = path.join(ADDON_DIR, "Fonts");
-  let fonts: { name: string; data: Buffer }[] = [];
+/**
+ * Fichiers d'un addon : les siens (addon/<nom>), puis ceux communs aux deux addons (addon/shared : boîte à outils,
+ * police des titres et sa licence SIL OFL, à distribuer avec la police), et son logo (Media, texture TGA).
+ */
+function filesIn(dir: string, re: RegExp, prefix: string) {
   try {
-    fonts = readdirSync(fontsDir).filter(f => /\.(ttf|txt)$/.test(f)).sort()
-      .map(f => ({ name: `ForeverRoster/Fonts/${f}`, data: readFileSync(path.join(fontsDir, f)) }));
-  } catch { /* pas de polices */ }
-  // Logo de l'addon (texture TGA : liste des addons, fenêtres, minicarte)
-  let media: { name: string; data: Buffer }[] = [];
-  try {
-    media = readdirSync(path.join(ADDON_DIR, "Media")).filter(f => /\.(tga|blp)$/.test(f)).sort()
-      .map(f => ({ name: `ForeverRoster/Media/${f}`, data: readFileSync(path.join(ADDON_DIR, "Media", f)) }));
-  } catch { /* pas de textures */ }
-  return [...top, ...fonts, ...media];
+    return readdirSync(dir).filter(f => re.test(f)).sort().map(f => ({ name: `${prefix}/${f}`, data: readFileSync(path.join(dir, f)) }));
+  } catch { return []; }
+}
+function addonFiles(name: AddonName = "ForeverRoster") {
+  const dir = addonDir(name);
+  const own = filesIn(dir, /\.(lua|toc|xml)$/, name);
+  const shared = filesIn(SHARED_DIR, /\.lua$/, name).filter(f => !own.some(o => o.name === f.name));
+  const fonts = filesIn(path.join(SHARED_DIR, "Fonts"), /\.(ttf|txt)$/, `${name}/Fonts`);
+  const media = filesIn(path.join(dir, "Media"), /\.(tga|blp)$/, `${name}/Media`);
+  return [...own, ...shared, ...fonts, ...media].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */
-export function addonSha256() {
-  try { return createHash("sha256").update(zip(addonFiles())).digest("hex"); } catch { return ""; }
+export function addonSha256(name: AddonName = "ForeverRoster") {
+  if (!hasAddon(name)) return "";
+  try { return createHash("sha256").update(zip(addonFiles(name))).digest("hex"); } catch { return ""; }
 }
 
 export function addonZip(): Plugin {
@@ -76,16 +82,19 @@ export function addonZip(): Plugin {
     apply: "build",
     configResolved(c) { outDir = path.resolve(c.root, c.build.outDir); },
     closeBundle() {
-      const data = zip(addonFiles());
       mkdirSync(path.join(outDir, "downloads"), { recursive: true });
-      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip"), data);
-      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.zip.sha256"), `${createHash("sha256").update(data).digest("hex")}  ForeverRoster.zip\n`);
-      // Roster Companion (lot K1) : version et empreinte lues par l'appli pour installer ou mettre à jour l'addon
-      const toc = readFileSync(path.join(ADDON_DIR, "ForeverRoster.toc"), "utf8");
-      writeFileSync(path.join(outDir, "downloads", "ForeverRoster.json"), `${JSON.stringify({
-        name: "ForeverRoster", file: "ForeverRoster.zip", version: addonVersion(),
-        interface: toc.match(/^## Interface:\s*(.+)$/m)?.[1]?.trim() ?? "", sha256: createHash("sha256").update(data).digest("hex"), size: data.length,
-      }, null, 2)}\n`);
+      for (const name of ["ForeverRoster", "Roster"] as const) {
+        if (!hasAddon(name)) continue;
+        const data = zip(addonFiles(name));
+        const sha = createHash("sha256").update(data).digest("hex");
+        writeFileSync(path.join(outDir, "downloads", `${name}.zip`), data);
+        writeFileSync(path.join(outDir, "downloads", `${name}.zip.sha256`), `${sha}  ${name}.zip\n`);
+        // Roster Companion (lot K1) : version et empreinte lues par l'appli pour installer ou mettre à jour l'addon
+        writeFileSync(path.join(outDir, "downloads", `${name}.json`), `${JSON.stringify({
+          name, file: `${name}.zip`, version: addonVersion(name),
+          interface: tocOf(name).match(/^## Interface:\s*(.+)$/m)?.[1]?.trim() ?? "", sha256: sha, size: data.length,
+        }, null, 2)}\n`);
+      }
     },
   };
 }

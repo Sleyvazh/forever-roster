@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, groupCharacters, lootCorrections, lootExclusions, raidLogs, raids, raidSignups, users, type RaidLogLoot } from "../db/schema";
 import { groupLootSettings } from "./loot";
+import { groupGame, nameIndex } from "./log-names";
 
 /**
  * Compte des objets reçus (lot I), montré au conseil du butin (addon) et dans l'onglet Présence.
@@ -60,11 +61,11 @@ async function windowLogs(db: Db, groupId: string, s: LootSettings, now: Date) {
 export async function groupLootCounts(db: Db, groupId: string, settings?: LootSettings, now = new Date()) {
   const s = settings ?? await groupLootSettings(db, groupId);
   const { logs, since } = await windowLogs(db, groupId, s, now);
-  const chars = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, userId: characters.userId, owner: users.displayName, isMain: groupCharacters.isMain })
+  const chars = await db.select({ id: characters.id, name: characters.name, realm: characters.realm, cls: characters.cls, userId: characters.userId, owner: users.displayName, isMain: groupCharacters.isMain })
     .from(characters).innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, groupId)))
     .innerJoin(users, eq(users.id, characters.userId));
-  const byName = new Map<string, typeof chars>();
-  for (const c of chars) byName.set(key(c.name), [...(byName.get(key(c.name)) ?? []), c]);
+  // Noms relevés : prénom (Forever) ou « Prénom-Royaume » (Roster)
+  const find = nameIndex(await groupGame(db, groupId), chars);
 
   const ids = logs.map(l => l.raidId);
   const excluded = new Set(ids.length ? (await db.select().from(lootExclusions).where(inArray(lootExclusions.raidId, ids)))
@@ -77,7 +78,7 @@ export async function groupLootCounts(db: Db, groupId: string, settings?: LootSe
   for (const l of logs) {
     for (const x of l.loot) {
       if (!countsHere(l.raidId, x, excluded)) continue;
-      const list = byName.get(key(x.name)) ?? [];
+      const list = find(x.name);
       // Même prénom pour deux persos du groupe : celui inscrit au raid
       const c = list.find(c => signed.has(`${l.raidId}:${c.id}`)) ?? list[0];
       if (c) add(c.id, 1);

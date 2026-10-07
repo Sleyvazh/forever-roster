@@ -4,6 +4,9 @@ ns.name = ADDON
 -- Logo de Forever Roster (infini et épée), dans la liste des addons, les fenêtres et le bouton de la minicarte
 ns.LOGO = "Interface\\AddOns\\" .. (ADDON or "ForeverRoster") .. "\\Media\\Logo"
 
+-- Sauvegarde de l'addon, pour la boîte à outils commune avec Roster (addon/shared/Kit.lua : habillage, tailles des fenêtres)
+function ns.db() return ForeverRosterDB end
+
 local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 ns.version = meta and meta(ADDON, "Version") or "?"
 

@@ -99,7 +99,7 @@ export async function lootRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const p = parse(rid, req.params);
     await requireRole(db, p.id, u.id, "officer");
-    const body = parse(z.object({ itemId: z.int().min(1), name: z.string().trim().min(1).max(40), at: z.int().min(0), excluded: z.boolean() }), req.body);
+    const body = parse(z.object({ itemId: z.int().min(1), name: z.string().trim().min(1).max(64), at: z.int().min(0), excluded: z.boolean() }), req.body);
     const r = await loadRaid(p.id, p.raidId);
     const [log] = await db.select({ loot: raidLogs.loot }).from(raidLogs).where(eq(raidLogs.raidId, r.id));
     const recipient = gameName(body.name).toLowerCase();

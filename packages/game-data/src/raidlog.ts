@@ -21,7 +21,11 @@ import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from
  */
 
 export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
-export interface RaidLogLoot { itemId: number; name: string; at: number; boss: string; method?: LootMethod; response?: LootResponse; detail?: string }
+export interface RaidLogLoot {
+  itemId: number; name: string; at: number; boss: string; method?: LootMethod; response?: LootResponse; detail?: string;
+  /** Roster (RRB) : nom de l'objet s'il est donné en fin de ligne (le site n'a pas la base des objets de Retail). */
+  itemName?: string;
+}
 export interface RaidLogExport {
   raidId: string; start: number; end: number; recorder: string; raidName: string;
   /** Version 2 : instance où le relevé a été fait (nom du jeu). */
@@ -96,7 +100,8 @@ export function parseRaidLogs(text: string): { data: RaidLogExport[]; errors: st
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (line.startsWith("FRB;")) { current = [line]; blocks.push(current); }
-    else if (/^FR[A-Z];/.test(line)) current = null;
+    // Un autre bloc (de Forever, ou de l'addon Roster de Retail) termine le bilan
+    else if (/^(FR|RR)[A-Z];/.test(line)) current = null;
     else if (current && line) current.push(line);
   }
   const data: RaidLogExport[] = [], errors: string[] = [];

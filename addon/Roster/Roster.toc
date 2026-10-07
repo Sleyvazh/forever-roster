@@ -1,0 +1,21 @@
+## Interface: 120100, 120105
+## Title: Roster
+## Notes: Compo de raid, invitations, présence et bilan du site Roster (WoW Retail).
+## Author: Sleyvazh
+## Version: 0.1.0
+## SavedVariables: RosterDB
+## IconTexture: Interface\AddOns\Roster\Media\Logo
+## AddonCompartmentFunc: Roster_OnCompartmentClick
+## AddonCompartmentFuncOnEnter: Roster_OnCompartmentEnter
+## AddonCompartmentFuncOnLeave: Roster_OnCompartmentLeave
+
+Core.lua
+Kit.lua
+Format.lua
+Comm.lua
+Groups.lua
+Compo.lua
+Recorder.lua
+UI.lua
+Pages.lua
+Minimap.lua

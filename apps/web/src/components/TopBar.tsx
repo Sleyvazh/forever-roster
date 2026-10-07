@@ -107,24 +107,24 @@ export function TopBar() {
             <nav className="nav" aria-label="Navigation principale">
               <NavLink to="/persos">Mes persos</NavLink>
               <NavLink to="/groups">Groupes</NavLink>
-              {site.game === "forever" && <NavLink to="/addon">Addon</NavLink>}
+              <NavLink to="/addon">Addon</NavLink>
             </nav>
           ) : <span />}
           <div className="bar-right">
             {site.preview && <span className="tag warn" title="Roster n'est pas encore ouvert : ton compte y a accès en avance, pour tester.">Accès anticipé</span>}
-            {app && site.game === "forever" && <CopyForGame />}
+            {app && <CopyForGame />}
             {site.game === "forever" && <LaunchPill />}
             {app && site.game === "forever" && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>
       </header>
-      {app && site.game === "forever" && <PasteImport />}
+      {app && <PasteImport />}
       {app && (
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
           <NavLink to="/groups">{TAB_ICONS.groupes}Groupes</NavLink>
-          {site.game === "forever" && <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>}
+          <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
         </nav>
       )}
     </>

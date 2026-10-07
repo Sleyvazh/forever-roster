@@ -32,12 +32,18 @@ jobs:
       - name: Tests de l'addon (Lua 5.1, la version du jeu)
         run: |
           sudo apt-get install -y -qq lua5.1 > /dev/null
-          for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
-          python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('addon/ForeverRoster/Bindings.xml')"
+          for f in addon/ForeverRoster/*.lua addon/Roster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
+          for x in addon/ForeverRoster/Bindings.xml addon/Roster/Bindings.xml; do python3 -c "import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])" "$x"; done
           lua5.1 addon/tests/format_test.lua
           lua5.1 addon/tests/wow_sim.lua
-          git diff --exit-code addon/tests/sample.frc
+          # Roster (WoW Retail, lot R3) : formats, jeu simulé, fenêtre
+          lua5.1 addon/tests/roster_format_test.lua
+          lua5.1 addon/tests/roster_sim.lua
+          lua5.1 addon/tests/roster_ui_test.lua
+          git diff --exit-code addon/tests/sample.frc addon/tests/sample.rrb
       - run: npm test
+      # Textes du site relus par le test Lua de Roster : ils ne doivent pas changer sans que l'addon le sache
+      - run: git diff --exit-code addon/tests/sample.rrg addon/tests/sample.rrr
       - run: npm run build
 
   # Parcours complet dans un vrai navigateur, sur le site construit comme en production

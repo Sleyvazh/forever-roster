@@ -1,4 +1,4 @@
-import type { BnetCharacter, Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
+import type { BnetCharacter, Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -525,14 +525,17 @@ export const raidSignups = pgTable("raid_signups", {
 ]);
 
 /**
- * Bilan d'un raid relevé par l'addon (bloc FRB collé sur le site) : présence (qui était dans le groupe de raid,
- * de quand à quand) et butin noté pendant la soirée. Un bilan par raid ; un nouveau collage le remplace.
+ * Bilan d'un raid relevé par l'addon (bloc FRB collé sur le site, ou RRB de l'addon Roster sur WoW Retail) : présence
+ * (qui était dans le groupe de raid, de quand à quand) et butin noté pendant la soirée. Un bilan par raid ; un nouveau
+ * collage le remplace. Sur Roster, les noms sont en « Prénom-Royaume » et les rencontres de boss sont notées.
  */
 export interface RaidLogAttendee { name: string; first: number; last: number; samples: number }
 export interface RaidLogLoot {
   itemId: number; name: string; at: number; boss: string;
   /** Bilan v2 : comment l'objet a été attribué, réponse du joueur au conseil, détail (votes, jet). */
   method?: LootMethod; response?: LootResponse; detail?: string;
+  /** Roster : nom de l'objet donné par l'addon (le site n'a pas la base des objets de Retail). */
+  itemName?: string;
 }
 export const raidLogs = pgTable("raid_logs", {
   raidId: uuid("raid_id").primaryKey().references(() => raids.id, { onDelete: "cascade" }),
@@ -547,6 +550,10 @@ export const raidLogs = pgTable("raid_logs", {
   consumableCall: jsonb("consumable_call").$type<RaidLogExport["consumableCall"] | null>(),
   /** Lot K1 : relevé par le chef de raid (il menait le raid ou distribuait le butin). Un envoi automatique ne le remplace pas. */
   lead: boolean("lead").notNull().default(false),
+  /** Roster (lot R3a, lignes E du bilan RRB) : fin de chaque rencontre de boss, vaincu ou non. Vide pour Forever. */
+  encounters: jsonb("encounters").$type<RaidLogEncounter[]>().notNull().default([]),
+  /** Roster : difficulté relevée en jeu (d'après l'instance), null si inconnue ou pour Forever. */
+  difficulty: text("difficulty").$type<RetailDifficulty | null>(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
 

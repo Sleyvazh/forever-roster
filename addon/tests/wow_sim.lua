@@ -113,8 +113,14 @@ setmetatable(_G, { __index = BLIZZARD, __newindex = function(t, k, v)
   rawset(t, k, v)
 end })
 local ns = {}
+-- Fichiers du .toc : ceux de l'addon, sinon ceux communs avec Roster (addon/shared, copiés dans le zip)
+local function addonFile(line)
+  local own = "addon/ForeverRoster/" .. line
+  local f = io.open(own) if f then f:close() return own end
+  return "addon/shared/" .. line
+end
 for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
-  if line:match("%.lua$") then assert(loadfile("addon/ForeverRoster/" .. line))("ForeverRoster", ns) end
+  if line:match("%.lua$") then assert(loadfile(addonFile(line)))("ForeverRoster", ns) end
 end
 -- Déclenche ADDON_LOADED par le gestionnaire enregistré
 fire("ADDON_LOADED", "ForeverRoster")

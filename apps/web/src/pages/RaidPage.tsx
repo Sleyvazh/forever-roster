@@ -238,8 +238,8 @@ export function RaidPage() {
   const tabs: [RaidTab, string][] = [
     ...(canEdit ? [["compo", "Compo"] as [RaidTab, string], ["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string]]
       : [["inscriptions", `Inscriptions (${raidQ.data.signups.filter(x => x.status !== "absent").length})`] as [RaidTab, string], ["compo", "Compo"] as [RaidTab, string]]),
-    // Roster (WoW Retail) : préparation, butin et bilan passent par l'addon, prévu avec l'addon Retail (R3)
-    ...(gt.game === "retail" ? [] : [["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"]] as [RaidTab, string][]), ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
+    // Roster (WoW Retail) : le bilan vient de l'addon Roster (R3a) ; préparation et butin viendront avec R3b et R3c
+    ...(gt.game === "retail" ? [["bilan", "Bilan"]] : [["preparation", "Préparation"], ["butin", "Butin"], ["bilan", "Bilan"]]) as [RaidTab, string][], ...(canEdit ? [["reglages", "Réglages"] as [RaidTab, string]] : []),
   ];
   const tab: RaidTab = tabs.some(([k]) => k === tabParam) ? tabParam as RaidTab : tabs[0]![0];
   const setTab = (k: RaidTab) => nav(`/groups/${groupId}/raids/${raidId}${k === tabs[0]![0] ? "" : `/${k}`}`, { replace: true });
@@ -357,7 +357,7 @@ export function RaidPage() {
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })} {...hoverProps(c)}>
                         <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, (c.cls && gt.specOrClass(c.cls, c.spec)) || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
                         {su && su.status !== "present" && <span className="tag">{SIGNUP_LABEL[su.status]}</span>}
-                        {!c.guest && "characterId" in c.ref && chars.get(c.ref.characterId) && !chars.get(c.ref.characterId)!.addonSyncedAt && <span className="rp-nosync" title="Jamais synchronisé avec l'addon">⚠</span>}
+                        {gt.game !== "retail" && !c.guest && "characterId" in c.ref && chars.get(c.ref.characterId) && !chars.get(c.ref.characterId)!.addonSyncedAt && <span className="rp-nosync" title="Jamais synchronisé avec l'addon">⚠</span>}
                       </button>
                       <button type="button" className="btn sm ghost" title="Placer à la première place libre" aria-label={`Ajouter ${c.name} au raid`} onClick={() => addToRaid(c)}>+</button>
                     </div>
@@ -407,7 +407,7 @@ export function RaidPage() {
           </div>
         </aside>
       </div>
-            {gt.game !== "retail" && <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when }} slots={slots} chars={chars} signups={raidQ.data.signups} />}
+            <RaidExport raid={{ id: raidId, name: name || raidQ.data.raid.name, scheduledAt: when, difficulty: r.difficulty, size }} slots={slots} chars={chars} signups={raidQ.data.signups} retail={gt.game === "retail"} />
           </>}
 
           {tab === "inscriptions" && <>

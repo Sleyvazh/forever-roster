@@ -243,3 +243,65 @@ ForeverRosterData = { v = 1, at = <unix>, app = "0.1.0",
 « Synchroniser » (onglet Synchro), sa touche ou `/fr synchroniser` rechargent l'interface (hors combat) : la sauvegarde est écrite (l'appli envoie au site dans les secondes qui suivent) et les données de l'appli rechargées, sans limite. Pendant que le jeu tourne, l'appli relève le site toutes les minutes. Les dossiers sont créés avec `ForeverRoster_Data` : le jeu ne voit un nouveau dossier d'addon qu'après avoir été relancé. Dans la liste des addons du jeu, les copies sont rangées sous l'en-tête repliable « Roster Companion » (`## Category`), « Copie 01 » à « Copie 20 » (appli 0.2.1).
 
 **Fichiers servis par le site** : `/downloads/ForeverRoster.zip` et `/downloads/ForeverRoster.json` (`name`, `file`, `version`, `interface`, `sha256`, `size`), lus par l'appli pour installer ou mettre à jour l'addon.
+
+# Roster : l'addon pour WoW Retail (lot R3)
+
+Addon à part (`addon/Roster`, titre « Roster », sauvegarde `RosterDB`, commande `/roster`), servi par roster.sleyvazh.fr (`/downloads/Roster.zip` et `Roster.json`). Il partage avec Forever Roster la boîte à outils `addon/shared` (fenêtres, listes, habillages, police des titres), copiée dans chaque zip à la construction du site. Interfaces annoncées : `120100, 120105` (12.1.0 et 12.1.5).
+
+Mêmes principes que les formats de Forever (une information par ligne, `;`, aucun `|`, version en tête, `END` qui compte les lignes, ajouts en fin de ligne ou nouveaux types de ligne). Les en-têtes commencent par `RR` : un texte de Roster collé dans Forever Roster (ou l'inverse) est reconnu et refusé avec un message clair, jamais mal lu.
+
+**Noms en jeu** : toujours `Prénom-Royaume`, royaume normalisé comme le jeu (`GetNormalizedRealmName`) : nom du royaume sans espaces, tirets ni points, apostrophes gardées (« Conseil des Ombres » → `ConseildesOmbres`, « Kael'Thas » → `Kael'Thas`). Pour comparer, l'addon et le site ignorent la casse, les accents, les apostrophes, les espaces, les tirets et les points du royaume (le premier tiret sépare le prénom du royaume). Le site génère ces noms avec `normalizedRealm()` et `fullName()` (`packages/game-data/src/roster-addon.ts`), l'addon avec `ns.Format.FullName` (`addon/Roster/Format.lua`).
+
+**Classes** : jetons du jeu `WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `DEATHKNIGHT`, `SHAMAN`, `MAGE`, `WARLOCK`, `MONK`, `DRUID`, `DEMONHUNTER`, `EVOKER`. **Spés** : clé anglaise du site (`Beast Mastery`, `Devourer`…). **Difficultés** : `normal`, `heroic`, `mythic`.
+
+## RRG, version 1 : données des groupes (site → jeu)
+
+« Copier pour le jeu » sur Roster (barre du haut), collé dans l'onglet Synchro de l'addon (ou sa synchro rapide). Un bloc par groupe de WoW Retail, à la suite.
+
+```
+RRG;1;<groupe>;<généré le unix>;<nom du groupe>
+R;<raid>;<date unix, 0 : à définir>;<nom>;<difficulté>;<effectif>;<mon statut>;<mon perso Prénom-Royaume>;<mode de butin>
+END;<nombre de lignes R>
+```
+
+Mêmes raids que FRG (à venir ou commencés depuis moins de 3 h, puis sans date ; 15 au plus). `mon statut` et `mon perso` vides si je ne suis pas inscrit. Mode de butin : `journal`, `council` ou `softres` (utilisé à partir de R3b). Les lignes ajoutées plus tard (soft reserve, conseil, fiches) viendront après les `R`, hors du compte de `END`.
+
+## RRR, version 1 : compo d'un raid (site → jeu)
+
+« Export pour le jeu » de l'onglet Compo d'un raid de Roster, collé dans l'onglet Synchro (ou Compo) de l'addon.
+
+```
+RRR;1;<raid>;<date unix, 0 si non fixée>;<nom du raid>;<difficulté>;<effectif>
+M;<Prénom-Royaume>;<CLASSE>;<rôle>;<spé>;<groupe>;<place>;<statut>;<source>
+END;<nombre de lignes M>
+```
+
+Comme FRR : `rôle` `Tank`, `Heal`, `DPS` ou vide ; `groupe` 1–8 et `place` 1–5 (`0;0` : inscrit pas encore placé) ; `statut` `present`, `late`, `tentative`, `alt`, `bench` ou vide ; `source` `site` ou `discord` (pour `discord`, le nom est le pseudo Discord, à inviter à la main). Ordre : placés par groupe et place, puis non placés par nom. Les macros d'invitation du site utilisent `/inv Prénom-Royaume`.
+
+## RRB, version 1 : bilan d'un raid (jeu → site)
+
+Relevé par l'addon pendant un raid chargé (même fenêtre que FRB : heure prévue passée depuis moins de 3 h, ou dans moins de 2 h ; un relevé commencé continue tant que le joueur reste dans le groupe de raid, jusqu'à 6 h après l'heure prévue). Il part avec la synchro rapide (onglet Synchro), collé sur Roster (Ctrl+V n'importe où), enregistré par un officier du groupe ou le créateur du raid.
+
+```
+RRB;1;<raid>;<début unix>;<fin unix>;<relevé par Prénom-Royaume>;<nom du raid>;<instance>;<chef 1|0>;<difficulté du jeu>
+A;<Prénom-Royaume>;<vu la 1re fois unix>;<vu la dernière fois unix>;<nombre de relevés>
+L;<objet>;<reçu par Prénom-Royaume>;<heure unix>;<boss>;<méthode>;<réponse>;<détail>;<nom de l'objet>
+E;<rencontre>;<nom du boss>;<heure de fin unix>;<1 vaincu | 0 échec>
+END;<nombre de lignes A, L et E>
+```
+
+- `A` : présence, un relevé par minute (comme FRB).
+- `L` : objet vu dans le chat (« … reçoit le butin », `CHAT_MSG_LOOT`, plus secret depuis 12.0.7) à partir de la qualité réglée dans l'addon (épique par défaut) ; nom de l'objet tel que le lien le montre (le site n'a pas la base des objets de Retail). En R3a `méthode`, `réponse` et `détail` sont vides (butin de groupe du jeu) ; R3b y mettra conseil, soft reserve ou jets.
+- `E` : chaque fin de rencontre (`ENCOUNTER_END`) : identifiant de la rencontre, nom du boss, heure, vaincu ou non.
+- `chef` : 1 si celui qui a relevé menait le raid au moins la moitié des relevés.
+- `difficulté du jeu` : `normal`, `heroic`, `mythic` (d'après l'instance), vide si inconnue.
+
+## Messages entre addons Roster
+
+Préfixe `RosterRT`, champs séparés par `;`, canal du raid (ou du groupe ; `INSTANCE_CHAT` pour un groupe formé par la recherche de groupe). Pendant une rencontre de boss, le jeu bloque les messages d'addon (`SendAddonMessage` renvoie `AddOnMessageLockdown`, 12.0) : ils attendent dans une file et partent à la fin du combat, quand le jeu lève la restriction (`ADDON_RESTRICTION_STATE_CHANGED`), ou au nouvel essai suivant, au rythme permis (10 messages d'affilée par préfixe, puis 1 par seconde).
+
+| Message | Sens | Contenu |
+|---|---|---|
+| `VQ` / `VR;<version>` | tous | Qui a l'addon : question à l'arrivée dans un raid (ou « Redemander »), chacun répond avec sa version. Ceux qui ne répondent pas sont signalés au chef de raid, qui peut leur chuchoter d'un clic d'installer l'addon Roster (le nom seulement, sans lien). |
+
+Sur le site (lot R3a) : « Copier pour le jeu » donne RRG sur Roster (FRG sur Forever Roster ; `GET /api/sync/frg` suit la même règle), l'onglet Compo d'un raid de Roster donne RRR et des macros `/inv Prénom-Royaume`, et le Ctrl+V de Roster n'accepte que des bilans RRB (rencontres gardées dans `raid_logs.encounters`, difficulté dans `raid_logs.difficulty`, migration 0031). Un texte d'un addon collé sur le site de l'autre jeu est refusé avec l'adresse à utiliser. Roster Companion ne gère pas encore Roster.

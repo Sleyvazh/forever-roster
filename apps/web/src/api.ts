@@ -113,6 +113,8 @@ export interface Member { userId: string; displayName: string; battletag: string
 
 export interface RaidSignup {
   id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;
+  /** Royaume du perso inscrit (Roster : « Prénom-Royaume » de l'export pour l'addon). */
+  characterRealm?: string | null;
   cls: string; spec: string; role: "Tank" | "Heal" | "DPS" | null; status: import("@forever/game-data").SignupStatus; note: string; createdAt: string; mine: boolean;
 }
 /** Place dans la compo : un perso du site ou un inscrit sans compte (inscription libre depuis Discord). */

@@ -69,8 +69,8 @@ export function GroupPage() {
   );
 
   const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"],
-    // Roster (WoW Retail) : métiers et relevés de l'addon viendront avec l'addon Retail (R3)
-    ...(site.game === "retail" ? [] : [["crafters", "Artisans"], ["presence", "Présence & butin"]] as [GroupTab, string][]), ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
+    // Roster (WoW Retail) : présence relevée par l'addon Roster (R3a) ; les métiers (Artisans) viendront plus tard
+    ...(site.game === "retail" ? [["presence", "Présence & butin"]] : [["crafters", "Artisans"], ["presence", "Présence & butin"]]) as [GroupTab, string][], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
   // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
   const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
   const tab: GroupTab = tabs.some(([k]) => k === wanted) ? wanted : "raids";

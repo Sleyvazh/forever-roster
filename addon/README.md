@@ -63,10 +63,14 @@ Télécharger le zip sur la page **Addon** du site, puis copier le dossier `Fore
 - **Placement :** chef du raid ou assistant, hors combat. Un déplacement à la fois, au rythme des mises à jour du raid.
 - **À vérifier sur le client de Forever (1.0) :** butin de maître (`GiveMasterLoot`), messages entre addons, délai d'échange de 2 h, début de combat (`ENCOUNTER_START`) et PNJ des boss. Sans ces API, la fonction concernée ne fait rien ; les jets, eux, passent toujours par le chat.
 
+## Code commun avec Roster
+
+La boîte à outils des fenêtres (`Kit.lua` : fenêtres, boutons, listes, tableaux, habillages, infobulles d'objets, icônes de rôle) et la police des titres (`Fonts/`) sont dans `addon/shared`, communs avec l'addon Roster de WoW Retail (`addon/Roster`). Le site les copie dans chaque zip : le dossier `ForeverRoster` installé en jeu reste complet. Pour essayer l'addon depuis le dépôt sans passer par le zip, copier aussi `addon/shared/Kit.lua` et `addon/shared/Fonts` dans le dossier de l'addon.
+
 ## Tests hors jeu
 
 ```bash
-for f in addon/ForeverRoster/*.lua; do luac5.1 -p "$f"; done
+for f in addon/ForeverRoster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
 lua5.1 addon/tests/format_test.lua   # formats d'échange avec le site
 lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'addon et commandes
 ```

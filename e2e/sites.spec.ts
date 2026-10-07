@@ -138,7 +138,10 @@ test.describe("Roster en accès anticipé", () => {
       expect(out).toContain("accès anticipé à Roster donné");
       await page.reload();
       await expect(page.getByText("Accès anticipé")).toBeVisible();
-      await expect(page.getByRole("link", { name: "Addon" })).toHaveCount(0);
+      // R3a : l'addon Roster (page Addon, « Copier pour le jeu ») ; pas encore de nouveautés ni de compte à rebours
+      await expect(page.getByRole("link", { name: "Addon" }).first()).toBeVisible();
+      await expect(page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ })).toBeVisible();
+      await expect(page.locator(".topnav").getByRole("button", { name: /Nouveautés/ })).toHaveCount(0);
     });
 
     await test.step("perso créé à la main : classe et spé en français (navigateur en français)", async () => {
@@ -205,6 +208,92 @@ test.describe("Roster en accès anticipé", () => {
       await expect(page.getByText("Toucher mystique")).toBeVisible();
       await expect(page.locator(".rgroup")).toHaveCount(5);
       if (process.env.SHOTS) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: "test-results/shots/roster-raid.png", fullPage: true }); }
+    });
+
+    await test.step("addon Roster : export de la compo (RRR) et macros /inv Prénom-Royaume", async () => {
+      await expect(page.getByText("Enregistré.", { exact: true })).toBeVisible();
+      await page.getByText("Export pour le jeu").click();
+      const text = await page.locator("#ex-addon").inputValue();
+      expect(text).toMatch(/^RRR;1;[0-9a-f-]{36};0;Flèche du Vide;heroic;25\nM;Brumelune-Hyjal;MONK;Heal;Mistweaver;1;1;present;site\nEND;1$/);
+      await expect(page.getByText("Texte pour l'addon Roster (format RRR v1)")).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Brumelune-Hyjal");
+    });
+
+    await test.step("page Addon de Roster : zip de l'addon Roster, « Copier pour le jeu » en RRG", async () => {
+      const raidUrl = page.url();
+      const [, groupId, raidId] = raidUrl.match(/\/groups\/([0-9a-f-]{36})\/raids\/([0-9a-f-]{36})/) ?? [];
+      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+      await page.getByRole("link", { name: "Addon" }).first().click();
+      await expect(page.getByRole("heading", { name: "Le jeu et le site" })).toBeVisible();
+      await expect(page.getByText("Addon Roster", { exact: true })).toBeVisible();
+      await expect(page.locator(".addon-steps")).toContainText("World of Warcraft\\_retail_\\Interface\\AddOns\\");
+      await expect(page.getByText(/Roster Companion, l'appli qui fait la synchro toute seule, n'est pas encore disponible pour Roster/)).toBeVisible();
+      await expect(page.getByRole("link", { name: /Télécharger l'addon Roster/ })).toHaveAttribute("href", "/downloads/Roster.zip");
+      const zip = await page.request.get(`${RETAIL}/downloads/Roster.zip`);
+      expect(zip.status()).toBe(200);
+      expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
+      await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
+      await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+      expect(await page.evaluate(() => navigator.clipboard.readText()))
+        .toMatch(new RegExp(`^RRG;1;${groupId};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;journal\nEND;1$`));
+      // Téléphone : onglet Addon en bas, pas de défilement horizontal
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.locator(".tabbar").getByRole("link", { name: "Addon" })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      await page.setViewportSize({ width: 1280, height: 720 });
+      if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/roster-addon.png", fullPage: true });
+      await page.goto(raidUrl);
+    });
+
+    await test.step("bilan RRB collé (Ctrl+V) par l'officière : onglets Bilan et Présence & butin", async () => {
+      const raidUrl = page.url();
+      const raidId = raidUrl.match(/\/raids\/([0-9a-f-]{36})/)![1]!;
+      const start = Math.floor(Date.now() / 1000) - 3 * 3600, end = start + 3 * 3600;
+      const lines = [
+        `A;Brumelune-Hyjal;${start};${end};180`,
+        `A;Inconnue-Ysondre;${start + 600};${start + 1200};10`,
+        `L;249321;Brumelune-Hyjal;${start + 1800};Imperator Averzian;;;;Lame du Vide hurlant`,
+        `E;3176;Imperator Averzian;${start + 1500};0`,
+        `E;3176;Imperator Averzian;${start + 1750};1`,
+      ];
+      const rrb = [`RRB;1;${raidId};${start};${end};Brumelune-Hyjal;Flèche du Vide;The Voidspire;1;heroic`, ...lines, `END;${lines.length}`].join("\n");
+      const paste = (text: string) => page.evaluate(t => {
+        const dt = new DataTransfer();
+        dt.setData("text/plain", t);
+        (document.activeElement as HTMLElement | null)?.blur();
+        document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+      }, text);
+      await page.getByRole("link", { name: "Mes persos" }).first().click();
+      // Un texte de l'addon Forever Roster est refusé sur Roster
+      await paste("FRC;2;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;1.5.4\nEND;0");
+      const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
+      await expect(dialog).toContainText("Texte de l'autre addon");
+      await expect(dialog).toContainText("Ce texte vient de l'addon Forever Roster : colle-le sur localhost:4173.");
+      await dialog.getByRole("button", { name: "Fermer" }).click();
+      await paste(rrb);
+      await expect(dialog).toContainText("Bilan de Flèche du Vide");
+      await expect(dialog).toContainText("2 présents · 1 objet · 1 boss vaincu · relevé par Brumelune-Hyjal");
+      await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
+      await expect(dialog).toContainText("Bilan de Flèche du Vide : enregistré · 2 présents, 1 objet, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
+      await dialog.getByRole("button", { name: "Fermer" }).click();
+      await page.goto(raidUrl);
+      await page.getByRole("tab", { name: "Bilan" }).click();
+      const bilan = page.getByRole("region", { name: "Bilan du raid" });
+      await expect(bilan).toContainText("Héroïque");
+      await expect(bilan).toContainText("1 vaincu sur 1 tenté");
+      await expect(bilan.getByRole("row", { name: /Imperator Averzian.*2.*Vaincu à/ })).toBeVisible();
+      await expect(bilan.getByRole("row", { name: /Brumelune.*Présent/ })).toBeVisible();
+      await expect(bilan.getByRole("row", { name: /Inconnue-Ysondre.*sans fiche/ })).toBeVisible();
+      // Nom de l'objet donné par l'addon (le site n'a pas la base des objets de Retail)
+      await expect(bilan.getByRole("link", { name: "Lame du Vide hurlant" })).toHaveAttribute("href", "https://www.wowhead.com/fr/item=249321");
+      await expect(bilan.getByRole("button", { name: "Ne pas compter" })).toHaveCount(0);
+      if (process.env.SHOTS) await bilan.screenshot({ path: "test-results/shots/roster-bilan.png" });
+      await page.getByRole("link", { name: "Retour au groupe" }).click();
+      await expect(page.getByRole("tab", { name: "Artisans" })).toHaveCount(0);
+      await page.getByRole("tab", { name: "Présence & butin" }).click();
+      await expect(page).toHaveURL(/\/presence$/);
+      await expect(page.getByRole("row", { name: /Brumelune.*1\/1.*Lame du Vide hurlant/ })).toBeVisible();
+      await page.goto(raidUrl);
     });
 
     await test.step("noms en anglais au choix du compte", async () => {

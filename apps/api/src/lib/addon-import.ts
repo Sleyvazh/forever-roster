@@ -2,11 +2,13 @@
  * Import d'un export de l'addon (lot K1) : blocs FRC (persos) et FRB (bilans de raid), appliqués côté serveur.
  * Sert au Ctrl+V du site (choix de la fiche par perso) et à Roster Companion (synchro automatique).
  * L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
+ * Roster (WoW Retail, lot R3a) : seulement les bilans RRB de l'addon Roster (les persos viennent de Battle.net) ;
+ * le texte de l'autre addon est refusé avec un message clair sur chaque site.
  */
 import {
-  addonKeyOf, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseRaidLogs,
-  PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, withoutCurrent,
-  type CharacterExport, type Game, type ImportPart, type ImportResult, type RaidLogExport,
+  addonKeyOf, foreignAddonErrors, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseRaidLogs,
+  parseRRB, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, withoutCurrent,
+  type CharacterExport, type Game, type ImportPart, type ImportResult, type RaidLogExport, type RosterRaidLog,
 } from "@forever/game-data";
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
@@ -35,6 +37,8 @@ export interface ImportOptions {
   ignore?: ReadonlySet<string>;
   /** Perso inconnu sans réponse : « ask » (statut unknown, l'appli demande) ou « create ». */
   unknown?: "ask" | "create";
+  /** Adresse de l'autre site (message quand on y colle le texte de l'autre addon). */
+  otherHost?: string;
 }
 
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
@@ -191,20 +195,26 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
   return out;
 }
 
-/** Bilans de raid (FRB) : après les persos, pour que le BiS reçu soit coché sur la fiche à jour. */
-export async function importRaidLogs(db: Db, user: User, logs: RaidLogExport[], opts: { auto?: boolean } = {}): Promise<ImportResult[]> {
+/**
+ * Bilans de raid (FRB, ou RRB sur Roster) : après les persos, pour que le BiS reçu soit coché sur la fiche à jour.
+ * game : jeu du site où le bilan arrive ; le bilan d'un raid de l'autre jeu est refusé.
+ */
+export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | RosterRaidLog)[], opts: { auto?: boolean; game?: Game } = {}): Promise<ImportResult[]> {
   const out: ImportResult[] = [];
   for (const l of logs) {
     const name = `Bilan de ${l.raidName || "raid"}`;
-    const base = { key: `frb:${l.raidId}`, kind: "raidlog" as const, name, raidId: l.raidId };
+    const roster = "encounters" in l;
+    const base = { key: `${roster ? "rrb" : "frb"}:${l.raidId}`, kind: "raidlog" as const, name, raidId: l.raidId };
     try {
       const body = logInput.parse({
         raidId: l.raidId, start: l.start, end: l.end, recorder: l.recorder, instance: l.instance, lead: l.lead,
         attendees: l.attendees, loot: l.loot, consumableCall: l.consumableCall,
+        ...(roster && { encounters: l.encounters, difficulty: l.difficulty }),
       });
       const r = await saveRaidLog(db, user.id, body, opts);
       if (r.status === "kept") { out.push({ ...base, status: "kept", message: "le bilan du chef de raid est déjà enregistré" }); continue; }
-      out.push({ ...base, status: "updated", message: `enregistré · ${plural(r.attendees, "présent")}, ${plural(r.loot, "objet")}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
+      const kills = roster ? new Set(l.encounters.filter(e => e.killed).map(e => e.encounterId || e.boss)).size : 0;
+      out.push({ ...base, status: "updated", message: `enregistré · ${plural(r.attendees, "présent")}, ${plural(r.loot, "objet")}${roster ? `, ${kills} boss vaincu${kills > 1 ? "s" : ""}` : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
     } catch (e) {
       const refused = e instanceof HttpError && e.status === 403;
       out.push({ ...base, status: refused ? "refused" : "error", message: refused ? "pas officier du groupe" : errorText(e, "enregistrement impossible") });
@@ -216,6 +226,15 @@ export async function importRaidLogs(db: Db, user: User, logs: RaidLogExport[], 
 /** Texte collé ou envoyé : persos puis bilans. Les blocs abîmés sont signalés sans bloquer les autres. */
 export async function importAddonText(db: Db, user: User, text: string, opts: ImportOptions & { skipLogs?: ReadonlySet<string>; auto?: boolean }) {
   const errors: string[] = [];
+  // Roster : bilans RRB seulement (les persos viennent de Battle.net ou se créent à la main) ; un texte de Forever Roster est refusé
+  if (opts.game === "retail") {
+    const rrb = parseRRB(text, { otherHost: opts.otherHost });
+    errors.push(...rrb.errors.map(x => (x.startsWith("Ce texte vient") ? x : `Bilan ignoré : ${x}`)));
+    const results = await importRaidLogs(db, user, rrb.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "retail" });
+    return { results, errors };
+  }
+  // Forever Roster : un texte de l'addon Roster (WoW Retail) est refusé, jamais mal lu
+  errors.push(...foreignAddonErrors(text, "forever", opts.otherHost));
   const raid = parseRaidLogs(text);
   errors.push(...raid.errors.map(x => `Bilan ignoré : ${x}`));
   let blocks: CharacterExport[] = [];
@@ -225,7 +244,7 @@ export async function importAddonText(db: Db, user: User, text: string, opts: Im
   }
   const results = [
     ...await importCharacters(db, user, blocks, opts),
-    ...await importRaidLogs(db, user, raid.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto }),
+    ...await importRaidLogs(db, user, raid.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "forever" }),
   ];
   return { results, errors };
 }
