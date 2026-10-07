@@ -800,6 +800,11 @@ mod tests {
         assert!(gs.data_needs_write(&data, 30, false));
         gs.data_written(&data, 30);
         assert!(!gs.data_needs_write(&data, 40, true));
+        let newer = DataFile {
+            app: "9.9.9".into(),
+            ..data.clone()
+        };
+        assert!(gs.data_needs_write(&newer, 40, true), "nouvelle version de l'appli : .toc réécrits");
         assert!(gs.data_needs_write(&data, 30 + 13 * 3600, true), "réécrit au moins toutes les 12 h");
         dismiss_manual(&mut gs, "inconnu", 50);
         assert!(gs.data_needs_write(&gs.data_file("0.1.0", 50), 50, true) == (gs.data_file("0.1.0", 50).body() != data.body()));

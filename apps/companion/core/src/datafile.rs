@@ -113,7 +113,12 @@ pub fn data_addon_dirs() -> Vec<String> {
         .collect()
 }
 
+/// En-tête repliable de la liste des addons du jeu (directive `## Category`, clients 11.1 et suivants, Forever compris) :
+/// les copies y sont rangées dans l'ordre, « Copie 01 » à « Copie 20 » (choix de Flo, la liste était encombrée).
+pub const COPIES_CATEGORY: &str = "Roster Companion";
+
 /// .toc de l'addon de données (`slot` 0) ou d'une copie chargée à la demande (`slot` 1 à 20).
+/// Le numéro de version de l'appli est dans `Data.lua` : une nouvelle version de l'appli réécrit donc les .toc.
 pub fn data_toc(interface: &str, app_version: &str, slot: u32) -> String {
     if slot == 0 {
         return format!(
@@ -121,7 +126,7 @@ pub fn data_toc(interface: &str, app_version: &str, slot: u32) -> String {
         );
     }
     format!(
-        "## Interface: {interface}\n## Title: Forever Roster (données, actualisation {slot})\n## Notes: Copie des données de Roster Companion, chargée par l'addon Forever Roster pour actualiser sans /reload. Ne pas modifier.\n## Author: Sleyvazh\n## Version: {app_version}\n## LoadOnDemand: 1\n## X-Generated-By: Roster Companion\n\nData.lua\n"
+        "## Interface: {interface}\n## Title: Copie {slot:02}\n## Notes: Copie des données de Roster Companion, chargée par l'addon Forever Roster pour actualiser sans /reload. Ne pas modifier.\n## Category: {COPIES_CATEGORY}\n## Author: Sleyvazh\n## Version: {app_version}\n## LoadOnDemand: 1\n## X-Generated-By: Roster Companion\n\nData.lua\n"
     )
 }
 
@@ -283,7 +288,8 @@ mod tests {
         for i in 1..=SLOTS {
             let name = format!("ForeverRoster_Data{i}");
             let toc = fs::read_to_string(addons.join(&name).join(format!("{name}.toc"))).unwrap();
-            assert!(toc.contains("## LoadOnDemand: 1") && toc.contains(&format!("actualisation {i}")));
+            assert!(toc.contains("## LoadOnDemand: 1") && toc.contains(&format!("## Title: Copie {i:02}\n")));
+            assert!(toc.contains("## Category: Roster Companion\n"), "rangées sous un en-tête repliable");
             assert_eq!(fs::read_to_string(addons.join(&name).join("Data.lua")).unwrap(), data);
         }
         // Une copie supprimée : signalée, puis remise (et le jeu devra être relancé pour la voir)

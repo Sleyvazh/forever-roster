@@ -6,7 +6,9 @@
 -- Le jeu lit leurs fichiers au moment du chargement : chaque copie donne une actualisation, une seule fois par session
 -- (le /reload remet tout à zéro). Le jeu ne voit pas les fichiers créés après son lancement (vérifié sur Forever) :
 -- l'addon ne peut pas savoir quand l'appli a du nouveau, il charge donc aux moments utiles (1.5) : ouverture de la
--- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid ; et à la demande (bouton, touche, /fr actualiser).
+-- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, et au moins toutes les heures (1.5.1) ; et à la demande
+-- (bouton, touche, /fr actualiser). Les 20 copies utilisées : le jeu interdit à un addon de recharger l'interface tout
+-- seul (il faut un clic ou une touche), l'addon le propose donc dans une fenêtre, au plus une fois par heure.
 -- Sans l'appli, rien ne change : la synchro rapide et le copier-coller restent là.
 local _, ns = ...
 local C = {}
@@ -16,11 +18,13 @@ local ACTIVE_DAYS = 3
 local SLOTS = 20           -- ForeverRoster_Data1 à 20 (9 avec l'appli 0.1.0 : les autres sont simplement absentes)
 local AUTO_GAP = 2 * 60    -- actualisation toute seule seulement si la dernière (ou la connexion) date d'au moins 2 min
 local RAID_MOMENTS = { 30, 5 } -- minutes avant un raid
+local HOURLY = 3600        -- mode passif : au moins une actualisation par heure, et la proposition de recharger au plus une fois par heure
 local dead = {}            -- copies absentes ou refusées pendant cette session
 local refreshedAt = 0      -- connexion ou dernière actualisation (cette session)
 local afterCombat = false
 local momentsDone = {}     -- moments « avant le raid » déjà passés (cette session)
 local exhaustedSaid = false
+local reloadOfferedAt = 0
 
 -- Données déposées par l'appli (format 1, docs/addon-format.md), ou nil
 function C.Data()
@@ -164,9 +168,12 @@ end
 function C.AutoRefresh(reason)
   if not C.Active() or time() - refreshedAt < AUTO_GAP then return false end
   if C.SlotsLeft() == 0 then
-    if not exhaustedSaid and reason ~= "window" then
-      exhaustedSaid = true
-      ns.print("plus d'actualisation automatique dans cette session : « Synchroniser » (onglet Synchro) ou /reload pour repartir.")
+    if reason ~= "window" then
+      if not exhaustedSaid then
+        exhaustedSaid = true
+        ns.print("les 20 actualisations sans /reload de cette session sont utilisées : « Synchroniser » (onglet Synchro) ou /reload pour repartir.")
+      end
+      C.OfferReload()
     end
     return false
   end
@@ -180,8 +187,11 @@ end
 
 -- Moments « avant le raid » : 30 et 5 min avant chaque raid chargé (fenêtre de 2 min, vérifiée toutes les 30 s)
 function C.Tick()
-  if not C.Active() or not ns.Group or not ns.Group.Raids then return end
+  if not C.Active() then return end
   local now = time()
+  -- Mode passif : au moins une actualisation par heure
+  if now - refreshedAt >= HOURLY then C.AutoRefresh("hourly") end
+  if not ns.Group or not ns.Group.Raids then return end
   for _, e in ipairs(ns.Group.Raids()) do
     local t = tonumber(e.raid.time) or 0
     if t > now then
@@ -201,6 +211,26 @@ function C.RefreshCommand()
   local _, msg = C.Refresh()
   ns.print(msg)
   if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+end
+
+-- Les 20 copies utilisées : fenêtre « Recharger / Plus tard » (le clic permet le rechargement), hors combat, au plus
+-- une fois par heure
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs.FOREVERROSTER_RELOAD = {
+  text = "Forever Roster : les 20 actualisations sans /reload de cette session sont utilisées.\nRecharger l'interface pour recevoir les nouveautés du site (et envoyer tes persos) ?",
+  button1 = "Recharger",
+  button2 = "Plus tard",
+  OnAccept = function() C.Reload() end,
+  timeout = 0,
+  whileDead = true,
+  hideOnEscape = true,
+  preferredIndex = 3,
+}
+function C.OfferReload()
+  if InCombatLockdown() or time() - reloadOfferedAt < HOURLY or not StaticPopup_Show then return false end
+  reloadOfferedAt = time()
+  StaticPopup_Show("FOREVERROSTER_RELOAD")
+  return true
 end
 
 -- Bouton « Synchroniser », sa touche et /fr synchroniser : le rechargement de l'interface écrit la sauvegarde

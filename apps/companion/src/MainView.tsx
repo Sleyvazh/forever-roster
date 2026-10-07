@@ -103,11 +103,11 @@ function Forever({ s, g }: { s: Status; g: GameView }) {
             {g.groups.map(gr => <li key={gr.name}><span className="ck">✓</span><span>Groupe {gr.name} : {gr.raids} raid{gr.raids > 1 ? "s" : ""}, {gr.patterns} patron{gr.patterns > 1 ? "s" : ""} suivi{gr.patterns > 1 ? "s" : ""}, {gr.bis} BiS</span></li>)}
           </ul>
         ) : <p className="hint">{g.hasFrg ? "Aucun groupe sur le site pour ce jeu." : "Données des groupes pas encore relevées."}</p>}
-        {atLeast(i?.addonVersion, "1.5")
-          ? <p className="hint">Chargé à la connexion, puis tout seul sans <code>/reload</code> : à l'ouverture de la fenêtre de l'addon, 30 et 5 min avant un raid, à l'appel et en entrant en raid. À la demande : « Charger les nouveautés » ou sa touche (20 fois par session).</p>
+        {atLeast(i?.addonVersion, "1.5.1")
+          ? <p className="hint">Chargé à la connexion, puis tout seul sans <code>/reload</code> : à l'ouverture de la fenêtre de l'addon, 30 et 5 min avant un raid, à l'appel, en entrant en raid et au moins toutes les heures. À la demande : « Charger les nouveautés » ou sa touche. 20 fois par session, puis l'addon propose de recharger l'interface.</p>
           : atLeast(i?.addonVersion, "1.4")
-            ? <p className="hint">Chargé à la connexion. En jeu, sans <code>/reload</code> : « Charger les nouveautés » dans l'onglet Synchro de l'addon (ou <code>/fr actualiser</code>). L'addon 1.5 charge aussi tout seul aux moments utiles.</p>
-            : <p className="hint">Chargé à la prochaine connexion ou au prochain <code>/reload</code>. Avec l'addon 1.5, les nouveautés arrivent sans <code>/reload</code>.</p>}
+            ? <p className="hint">Chargé à la connexion, et sans <code>/reload</code> avec « Charger les nouveautés » (onglet Synchro de l'addon). Mets l'addon à jour (1.5.1) pour que ça se fasse tout seul.</p>
+            : <p className="hint">Chargé à la prochaine connexion ou au prochain <code>/reload</code>. Avec l'addon 1.5.1, les nouveautés arrivent toutes seules, sans <code>/reload</code>.</p>}
       </Box>
       <Box title="Addon">
         <ul className="lines">
