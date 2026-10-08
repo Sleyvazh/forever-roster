@@ -790,6 +790,15 @@ advance(1)
 local pt = {}
 for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;77002;bis;230001:626;$") then pt[S.sent[i].target] = true end end
 assert(pt["Tharok-Hyjal"] and pt["Brumelune-Ysondre"], "réponse au chef de butin et au conseil")
+addon("Vex-Kael'Thas", "LA;77002;upgrade;242111:630;sans données;Brumelune-Ysondre;r", "RAID")
+assert(not Lo.Council("77002").cands[2], "relais d'un autre que le chef de butin ignoré")
+addon("Tharok-Hyjal", "LA;77002;upgrade;242111:630;sans données;Vex-Kael'Thas;r", "RAID")
+addon("Tharok-Hyjal", "LA;77002;bis;;chuchoté;Mordak-Ysondre", "WHISPER")
+local rc = Lo.Council("77002")
+local rvex, rmor
+for _, x in ipairs(rc.cands) do if x.name == "Vex-Kael'Thas" then rvex = x elseif x.name == "Mordak-Ysondre" then rmor = x end end
+assert(rvex and rvex.response == "upgrade" and rvex.note == "sans données" and not rvex.whispered and rvex.gear[1].ilvl == 630, "réponse relayée par le chef de butin : note et objet porté gardés")
+assert(rmor and rmor.whispered and rmor.note == "", "réponse chuchotée relayée")
 addon("Brumelune-Ysondre", "LV;77002;Kaeldra-Hyjal", "WHISPER")
 assert(Lo.Council("77002").cands[1].votes == 1 and not Lo.AwardCouncil("77002", "Kaeldra-Hyjal"), "vote reçu ; seul le chef de butin donne")
 addon("Tharok-Hyjal", "LC;77002;Kaeldra-Hyjal")
@@ -896,9 +905,15 @@ for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;") then targets[S.sent[i
 assert(targets["Tharok-Hyjal"] and targets["Brumelune-Ysondre"] and not targets["Kaeldra-Hyjal"] and not targets["Vex-Kael'Thas"], "LA au conseil seulement")
 assert(offers[1].answered and #Lo.Offers() == 1 and LU.state.offer.session == nil, "répondu : fenêtre de réponse fermée")
 -- Réponses des autres : Tharok (addon), Vex (addon, Off-spec), Mordak chuchote « BIS » (sans addon)
+mark = #S.sent
 addon("Tharok-Hyjal", "LA;" .. sid .. ";bis;242111:636;BiS pour moi", "WHISPER")
 addon("Vex-Kael'Thas", "LA;" .. sid .. ";off;;", "WHISPER")
 addon("Orvane-Hyjal", "LA;" .. sid .. ";super;;", "WHISPER")
+advance(1)
+-- Chef de butin : chaque réponse relayée au raid (le joueur sans les données du site ne connaît pas le conseil)
+local rt, rv = sentMsg("^LA;" .. sid .. ";bis;242111:636;BiS pour moi;Tharok%-Hyjal;r$", mark + 1), sentMsg("^LA;" .. sid .. ";off;;;Vex%-Kael'Thas;r$", mark + 1)
+assert(rt and rt.dist == "RAID" and rv and rv.dist == "RAID" and not sentMsg("^LA;" .. sid .. ";super", mark + 1), "réponses relayées au raid par le chef de butin")
+addon("Kaeldra-Hyjal", rt.msg, "RAID") -- mon relais revenu par le canal du raid : ignoré
 mark = #S.sent
 fire("CHAT_MSG_WHISPER", " BIS ", "Mordak-Ysondre", "", "", "Mordak-Ysondre")
 fire("CHAT_MSG_WHISPER", "salut", "Sylvane-Hyjal", "", "", "Sylvane-Hyjal")

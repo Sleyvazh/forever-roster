@@ -759,17 +759,25 @@ function L.Answer(session, response, note)
   return true
 end
 
-Cm.On("LA", function(sender, f)
+Cm.On("LA", function(sender, f, dist)
+  if echo(sender, dist) then return end
   local c = L.councils[F.txt(f[2], 20)]
   if not c or c.closed or not L.RESPONSES[f[3] or ""] then return end
-  local who, whispered = sender, false
-  -- Réponse chuchotée par un joueur sans addon, relayée par le chef de butin (6e champ : le joueur)
+  local who, whispered, relayed = sender, false, false
+  -- Réponse relayée par le chef de butin (6e champ : le joueur) : chuchotée par un joueur sans addon, ou (7e champ
+  -- « r ») venue de l'addon d'un joueur qui n'a pas les données du site (il ne connaît pas le conseil)
   if (f[6] or "") ~= "" then
     if not same(sender, c.master) then return end
-    who, whispered = F.FullName(F.txt(f[6], 60)), true
+    who, relayed = F.FullName(F.txt(f[6], 60)), true
     if not who then return end
+    whispered = f[7] ~= "r"
   end
   c.cands[F.Fold(who)] = { name = who, response = f[3], gear = F.Gear(f[4]), note = whispered and "" or F.txt(f[5], 60), whispered = whispered, at = time() }
+  -- Chef de butin : chaque réponse reçue d'un joueur est relayée au raid ; seuls les membres du conseil (qui ont ce
+  -- conseil) la gardent. Un joueur sans les données du site ne l'envoie qu'au chef de butin.
+  if not relayed and not L.test and same(c.master, me()) and not same(sender, me()) then
+    send("LA;" .. c.session .. ";" .. f[3] .. ";" .. F.clean(f[4] or "") .. ";" .. F.cut(F.clean(F.txt(f[5], 60)), 60) .. ";" .. who .. ";r")
+  end
   refresh()
 end)
 
