@@ -16,9 +16,9 @@
   },
   "devDependencies": {
     "@forever/game-data": "*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.1",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }
