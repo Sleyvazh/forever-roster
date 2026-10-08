@@ -20,19 +20,19 @@
     "@node-rs/argon2": "^2.2.1",
     "drizzle-orm": "^0.45.3",
     "fastify": "^5.12.5",
-    "nodemailer": "^10.0.10",
-    "pg": "^8.23.0",
+    "nodemailer": "^10.0.14",
+    "pg": "^8.23.1",
     "sharp": "^0.35.5",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@forever/game-data": "*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.1",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }
