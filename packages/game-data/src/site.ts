@@ -11,10 +11,10 @@ export interface SiteInfo {
   name: string;
   /** Pied des e-mails, après le nom. */
   tagline: string;
-  /** Le site est ouvert (sinon : accueil et comptes seulement, « bientôt » une fois connecté). */
+  /** Le site est ouvert (sinon : accueil et comptes seulement, « bientôt » une fois connecté, sauf accès anticipé). Roster ouvert à tous le 08/10. */
   open: boolean;
 }
 export const SITE_INFO: Record<Game, SiteInfo> = {
   forever: { game: "forever", name: "Forever Roster", tagline: "gestion de personnages et de raids pour WoW Forever", open: true },
-  retail: { game: "retail", name: "Roster", tagline: "raids, soft reserve et conseil du butin pour ta guilde WoW", open: false },
+  retail: { game: "retail", name: "Roster", tagline: "raids, compo et conseil du butin pour ta guilde WoW", open: true },
 };

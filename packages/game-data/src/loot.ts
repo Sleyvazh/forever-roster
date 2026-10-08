@@ -155,3 +155,43 @@ export function lootCountLabel(s: Pick<LootSettings, "countMode" | "countRaids" 
   const [y, m, d] = s.seasonStart.split("-");
   return `depuis le ${d}/${m}/${y}`;
 }
+
+/**
+ * Historique de butin d'avant le site (liste collée par un officier, Administration → Butin) : un joueur par bloc,
+ * « Nom - BiS 3, Spé 1 4 (total 7) » puis ses objets en « - objet ». Une ligne de titre « … (Season 2) » donne le nom
+ * de l'historique. Chaque joueur reconnu dans le groupe reçoit une correction du compte des objets reçus.
+ */
+export interface LootHistoryEntry { name: string; bis: number | null; ms: number | null; total: number; items: string[] }
+export interface LootHistory { label: string | null; entries: LootHistoryEntry[]; ignored: string[] }
+export const LOOT_HISTORY_MAX = 200;
+
+const HISTORY_HEAD = /^(.+?)\s+[-–—:]\s+BiS\s+(\d+)\s*[,;]\s*Sp[ée]\s*1\s+(\d+)(?:\s*\(\s*total\s+(\d+)\s*\))?\s*$/i;
+const HISTORY_TOTAL = /^(.+?)\s+[-–—:]\s+(?:total\s+)?(\d+)\s+(?:objets?|items?)\s*$/i;
+const HISTORY_ITEM = /^[-•*·]\s*(.+)$/;
+const HISTORY_TITLE = /\(([^()]{1,40})\)\s*$/;
+
+export function parseLootHistory(text: string): LootHistory {
+  const out: LootHistory = { label: null, entries: [], ignored: [] };
+  let cur: LootHistoryEntry | null = null;
+  for (const raw of text.replace(/\r/g, "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const item = HISTORY_ITEM.exec(line);
+    if (item && cur) { if (cur.items.length < 100) cur.items.push(item[1]!.trim().slice(0, 120)); continue; }
+    const head = HISTORY_HEAD.exec(line);
+    const tot = head ? null : HISTORY_TOTAL.exec(line);
+    if (head || tot) {
+      const name = (head ?? tot)![1]!.trim().slice(0, 64);
+      const bis = head ? Number(head[2]) : null, ms = head ? Number(head[3]) : null;
+      const total = head ? (head[4] !== undefined ? Number(head[4]) : bis! + ms!) : Number(tot![2]);
+      cur = { name, bis, ms, total, items: [] };
+      if (out.entries.length < LOOT_HISTORY_MAX) out.entries.push(cur);
+      continue;
+    }
+    // Titre (« Season loot count - 64 items (Season 2) ») : avant le premier joueur
+    const title = !out.entries.length && !out.label ? HISTORY_TITLE.exec(line) : null;
+    if (title) { out.label = title[1]!.trim(); continue; }
+    if (out.ignored.length < 10) out.ignored.push(line.slice(0, 120));
+  }
+  return out;
+}

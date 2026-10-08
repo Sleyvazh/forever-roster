@@ -1,4 +1,4 @@
-import { gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings, RETAIL_NO_SOFTRES } from "@forever/game-data";
+import { fullName, gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings, parseLootHistory, RETAIL_NO_SOFTRES } from "@forever/game-data";
 import { and, asc, count, desc, eq, gte, ilike } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -9,7 +9,7 @@ import { ensureInGroup } from "../lib/group-characters";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { checkLootMode, groupLootSettings, softReserveView, srClosesAt } from "../lib/loot";
-import { groupGame } from "../lib/log-names";
+import { groupGame, nameIndex } from "../lib/log-names";
 import { groupLootCounts, seasonStartDate } from "../lib/loot-count";
 import { currentUser, requireAuth } from "../lib/session";
 import { likeContains } from "./gamedata";
@@ -93,6 +93,65 @@ export async function lootRoutes(app: FastifyInstance) {
     await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: p.id, meta: { removed: p.correctionId } });
     bus.group({ t: "group", g: p.id });
     return { ok: true };
+  });
+
+  /**
+   * Officiers : historique de butin d'avant le site (liste collée, parseLootHistory). Chaque joueur reconnu parmi les
+   * persos du groupe (nom, avec ou sans royaume) reçoit une correction « Historique <nom> : 3 BiS, 4 Spé 1 ». Une
+   * liste recollée n'ajoute rien à un perso qui a déjà sa correction de ce nom. `apply: false` : aperçu seulement.
+   */
+  app.post("/:id/loot-history", async (req, reply) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const body = parse(z.object({ text: z.string().max(30000), label: z.string().trim().max(40).optional(), apply: z.boolean().default(false) }), req.body);
+    const h = parseLootHistory(body.text);
+    if (!h.entries.length) throw badRequest("Aucun joueur reconnu dans la liste : une ligne par joueur, « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ».");
+    const label = (body.label || h.label || "").replace(/[;|\r\n]/g, " ").trim();
+    const prefix = label ? `Historique ${label}` : "Historique";
+    const game = await groupGame(db, id);
+    const chars = await db.select({ id: characters.id, name: characters.name, realm: characters.realm, owner: users.displayName })
+      .from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId)).innerJoin(users, eq(users.id, groupCharacters.userId))
+      .where(eq(groupCharacters.groupId, id));
+    const find = nameIndex(game, chars);
+    const done = new Set((await db.select({ characterId: lootCorrections.characterId, note: lootCorrections.note }).from(lootCorrections)
+      .where(eq(lootCorrections.groupId, id))).filter(r => r.note.startsWith(`${prefix} :`)).map(r => r.characterId));
+    type Row = { name: string; total: number; bis: number | null; ms: number | null; items: number; status: "new" | "exists" | "unknown" | "ambiguous" | "empty";
+      character?: { id: string; name: string; owner: string }; candidates?: string[] };
+    const rows: Row[] = [];
+    const seen = new Set<string>();
+    for (const e of h.entries) {
+      const base = { name: e.name, total: e.total, bis: e.bis, ms: e.ms, items: e.items.length };
+      const found = find(e.name);
+      if (found.length > 1) { rows.push({ ...base, status: "ambiguous", candidates: found.map(c => game === "retail" ? fullName(c.name, c.realm) : c.name).sort() }); continue; }
+      const c = found[0];
+      if (!c) { rows.push({ ...base, status: "unknown" }); continue; }
+      const character = { id: c.id, name: game === "retail" ? fullName(c.name, c.realm) : c.name, owner: c.owner };
+      const status = e.total <= 0 ? "empty" : done.has(c.id) || seen.has(c.id) ? "exists" : "new";
+      seen.add(c.id);
+      rows.push({ ...base, status, character });
+    }
+    let created = 0;
+    if (body.apply) {
+      const [me] = await db.select({ name: users.displayName }).from(users).where(eq(users.id, u.id));
+      const values: (typeof lootCorrections.$inferInsert)[] = [];
+      for (const r of rows) {
+        if (r.status !== "new" || !r.character) continue;
+        const note = `${prefix} : ${r.bis !== null && r.ms !== null ? `${r.bis} BiS, ${r.ms} Spé 1` : `${r.total} objet${r.total > 1 ? "s" : ""}`}`.slice(0, 120);
+        // Une correction va de -20 à +20 : au-delà, en plusieurs
+        for (let left = Math.min(r.total, 200); left > 0; left -= 20) {
+          values.push({ groupId: id, characterId: r.character.id, delta: Math.min(20, left), note, createdBy: u.id, createdByName: me?.name ?? "?" });
+        }
+        r.status = "exists";
+        created++;
+      }
+      if (values.length) {
+        await db.insert(lootCorrections).values(values);
+        await audit(db, req, "loot_history_imported", { userId: u.id, groupId: id, meta: { label: prefix, players: created } });
+        bus.group({ t: "group", g: id });
+      }
+    }
+    return reply.code(body.apply && created ? 201 : 200).send({ label: prefix, rows, created, ignored: h.ignored });
   });
 
   /** Officiers : sortir un objet du bilan du compte (ou l'y remettre). Repéré par objet, receveur et heure. */

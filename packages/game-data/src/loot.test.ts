@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   instanceKey, lootCountLabel, lootCounts, lootCountShort, lootModeHint, lootModeLabel, lootModesOf, lootSettings, lootSkipReason, retailLootHow, retailLootMode,
-  srPlusBonus,
+  parseLootHistory, srPlusBonus,
 } from "./loot";
 
 describe("butin", () => {
@@ -69,5 +69,32 @@ describe("butin sur Roster (lot R3b)", () => {
     expect(lootSkipReason({ method: "ml", detail: "gardé" })).toBe("gardé");
     expect(lootCounts({ method: "ml", detail: "gardé" })).toBe(false);
     expect(retailLootHow({})).toBeNull();
+  });
+});
+
+describe("historique de butin collé (avant le site)", () => {
+  const text = `Season loot count - 64 items (Season 2)
+
+Quinlan - BiS 3, Spé 1 4 (total 7)
+  - Crochet de malveillance ombreuse
+  - Crispins roussis par le venin
+
+Hellcîde - BiS 3, Spé 1 1 (total 4)
+  - Couronne du crochet éternel
+Slehvaz - BiS 2, Spe 1 0
+Påndora : 3 objets
+ligne au hasard`;
+  it("lit le titre, les joueurs, leurs comptes et leurs objets", () => {
+    const h = parseLootHistory(text);
+    expect(h.label).toBe("Season 2");
+    expect(h.entries.map(e => [e.name, e.bis, e.ms, e.total, e.items.length])).toEqual([
+      ["Quinlan", 3, 4, 7, 2], ["Hellcîde", 3, 1, 4, 1], ["Slehvaz", 2, 0, 2, 0], ["Påndora", null, null, 3, 0],
+    ]);
+    expect(h.entries[0]!.items[1]).toBe("Crispins roussis par le venin");
+    expect(h.ignored).toEqual(["ligne au hasard"]);
+  });
+  it("texte vide ou sans joueur", () => {
+    expect(parseLootHistory("").entries).toEqual([]);
+    expect(parseLootHistory("- objet sans joueur").ignored).toEqual(["- objet sans joueur"]);
   });
 });

@@ -37,7 +37,7 @@ const EVENT_LABEL: Record<string, string> = {
   raid_template_created: "a créé un raid récurrent", raid_template_updated: "a modifié un raid récurrent", raid_template_deleted: "a supprimé un raid récurrent",
   raid_roster_published: "a publié une compo sur Discord", raid_roster_unpublished: "a retiré une compo de Discord",
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
-  group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin",
+  group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin", loot_history_imported: "a importé un historique de butin",
   group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
   group_feedback_linked: "a relié les avis d'un serveur Discord", group_feedback_unlinked: "a retiré les avis d'un serveur Discord",
 };

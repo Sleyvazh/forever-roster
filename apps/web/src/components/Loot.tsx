@@ -4,7 +4,7 @@ import {
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ApiError, del, get, put, type Character } from "../api";
+import { ApiError, del, get, post, put, type Character } from "../api";
 import { useSite } from "../site";
 
 /**
@@ -228,9 +228,89 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
       </div>
       <p className="small muted" style={{ margin: 0 }}>Compte actuel : objets reçus {lootCountLabel(s)}{s.countBy === "player" ? ", main et alts ensemble" : ", perso par perso"}.</p>
       {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
+      <LootHistoryImport groupId={groupId} />
       {retail
         ? <p className="hint" style={{ margin: 0 }}>Conseil : les officiers du groupe le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).</p>
         : <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>}
     </section>
+  );
+}
+
+/* ---------- Historique d'avant le site (Administration → Butin) ---------- */
+
+interface HistoryRow {
+  name: string; total: number; bis: number | null; ms: number | null; items: number;
+  status: "new" | "exists" | "unknown" | "ambiguous" | "empty";
+  character?: { id: string; name: string; owner: string }; candidates?: string[];
+}
+interface HistoryResult { label: string; rows: HistoryRow[]; created: number; ignored: string[] }
+const HISTORY_STATUS: Record<HistoryRow["status"], [string, string]> = {
+  new: ["à ajouter", "tag ok"], exists: ["déjà importé", "tag"], unknown: ["pas dans le groupe", "tag warn"],
+  ambiguous: ["plusieurs persos", "tag warn"], empty: ["rien à compter", "tag"],
+};
+const HISTORY_SAMPLE = "Season loot count - 64 items (Season 2)\n\nQuinlan - BiS 3, Spé 1 4 (total 7)\n  - Crochet de malveillance ombreuse\n  - Crispins roussis par le venin\n…";
+
+/** Liste d'objets reçus avant le site (autre outil, tableur) : une correction du compte par joueur reconnu. */
+function LootHistoryImport({ groupId }: { groupId: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [label, setLabel] = useState("");
+  const [res, setRes] = useState<HistoryResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const run = async (apply: boolean) => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await post<HistoryResult>(`/groups/${groupId}/loot-history`, { text, label: label.trim() || undefined, apply });
+      setRes(r);
+      if (apply) setMsg({ ok: true, text: r.created ? `${r.created} joueur${r.created > 1 ? "s" : ""} ajouté${r.created > 1 ? "s" : ""} au compte (${r.label}).` : "Rien de nouveau : ces joueurs ont déjà leur correction." });
+    } catch (e) { setRes(null); setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Import impossible." }); }
+    finally { setBusy(false); }
+  };
+  const toAdd = res?.rows.filter(r => r.status === "new").length ?? 0;
+  if (!open) {
+    return (
+      <div className="row" style={{ alignItems: "center" }}>
+        <button type="button" className="btn sm" onClick={() => setOpen(true)}>Importer un historique</button>
+        <span className="small muted">Objets reçus avant le site (autre outil, tableur) : ajoutés au compte de chaque joueur.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="lt-add stack" style={{ gap: 8 }}>
+      <div className="lt-sub">Importer un historique</div>
+      <p className="hint" style={{ margin: 0 }}>
+        Colle la liste telle quelle : une ligne par joueur « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ».
+        Chaque joueur reconnu parmi les persos du groupe (nom, avec ou sans royaume) reçoit une correction du total, visible sur sa fiche.
+        Un joueur pas encore dans le groupe : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.
+      </p>
+      <textarea rows={8} value={text} onChange={e => { setText(e.target.value); setRes(null); }} placeholder={HISTORY_SAMPLE} aria-label="Liste des objets reçus" />
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-hl">Nom de l'historique</label>
+          <input id="lt-hl" value={label} maxLength={40} onChange={e => { setLabel(e.target.value); setRes(null); }} placeholder="Season 2 (lu dans la liste)" /></div>
+        <button type="button" className="btn sm" disabled={busy || !text.trim()} onClick={() => void run(false)}>Vérifier</button>
+        {res && toAdd > 0 && <button type="button" className="btn sm primary" disabled={busy} onClick={() => void run(true)}>Ajouter {toAdd} joueur{toAdd > 1 ? "s" : ""}</button>}
+        <button type="button" className="btn sm ghost" onClick={() => { setOpen(false); setRes(null); setMsg(null); }}>Fermer</button>
+      </div>
+      {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} role={msg.ok ? "status" : "alert"}>{msg.text}</div>}
+      {res && <>
+        <p className="small muted" style={{ margin: 0 }}>Motif des corrections : « {res.label} : … ». Elles comptent tant que la période du compte inclut aujourd'hui (Saison : laisse le début de saison avant aujourd'hui).</p>
+        <div style={{ overflowX: "auto" }}>
+          <table className="data">
+            <thead><tr><th>Dans la liste</th><th>Objets</th><th>Perso du groupe</th><th>État</th></tr></thead>
+            <tbody>{res.rows.map((r, i) => (
+              <tr key={i}>
+                <td>{r.name}</td>
+                <td>{r.total}{r.bis !== null && r.ms !== null && <span className="small muted"> · {r.bis} BiS, {r.ms} Spé 1</span>}</td>
+                <td>{r.character ? <>{r.character.name} <span className="small muted">({r.character.owner})</span></> : r.candidates ? <span className="small muted">{r.candidates.join(", ")}</span> : <span className="small muted">—</span>}</td>
+                <td><span className={HISTORY_STATUS[r.status][1]}>{HISTORY_STATUS[r.status][0]}</span></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        {res.rows.some(r => r.status === "ambiguous") && <p className="small muted" style={{ margin: 0 }}>Plusieurs persos de ce nom : écris « Nom-Royaume » dans la liste pour choisir.</p>}
+        {res.ignored.length > 0 && <p className="small muted" style={{ margin: 0 }}>Lignes ignorées : {res.ignored.slice(0, 3).join(" · ")}{res.ignored.length > 3 ? "…" : ""}</p>}
+      </>}
+    </div>
   );
 }

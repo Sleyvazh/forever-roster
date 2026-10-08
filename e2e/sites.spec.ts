@@ -1,5 +1,4 @@
 import { expect, test as base, type Page } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -25,7 +24,6 @@ const test = base.extend<{ page: Page }>({
 const FOREVER = "http://localhost:4173";
 const RETAIL = "http://127.0.0.1:4173";
 const LOG = path.resolve("test-results/api.log");
-const E2E_DB = process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e";
 
 /** Dernier e-mail de confirmation journalisé pour cette adresse : lien et texte. */
 function lastVerifyMail(email: string) {
@@ -61,7 +59,7 @@ test("accueil public propre à chaque adresse", async ({ page }) => {
   });
 });
 
-test("même compte sur les deux adresses, Roster pas encore ouvert", async ({ page }) => {
+test("même compte sur les deux adresses", async ({ page }) => {
   const email = `e2e-sites-${Date.now()}@example.test`;
   const password = "une phrase de passe pour les deux sites";
 
@@ -82,18 +80,16 @@ test("même compte sur les deux adresses, Roster pas encore ouvert", async ({ pa
     await expect(page.getByText("Adresse confirmée")).toBeVisible();
   });
 
-  await test.step("connexion sur Roster : seulement le compte pour l'instant", async () => {
+  await test.step("connexion sur Roster : ouvert à tous depuis le 08/10", async () => {
     await page.goto(`${RETAIL}/login`);
     await page.fill("#email", email);
     await page.fill("#password", password);
     await page.getByRole("button", { name: /se connecter/i }).click();
-    await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toBeVisible();
-    await expect(page.locator(".soon a", { hasText: "Forever Roster" })).toHaveAttribute("href", FOREVER);
-    await expect(page.getByRole("link", { name: "Mes persos" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+    await expect(page.locator(".brand")).toHaveAccessibleName(/^Roster/);
+    await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toHaveCount(0);
+    await expect(page.getByText("Accès anticipé")).toHaveCount(0);
     await page.goto(`${RETAIL}/groups`);
-    await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toBeVisible();
-    await page.getByRole("link", { name: "Compte et sécurité" }).click();
-    await expect(page).toHaveURL(`${RETAIL}/account`);
     await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toHaveCount(0);
     // Accueil public : un visiteur connecté file vers le site
     await page.goto(`${RETAIL}/`);
@@ -111,14 +107,14 @@ test("même compte sur les deux adresses, Roster pas encore ouvert", async ({ pa
   });
 });
 
-test.describe("Roster en accès anticipé", () => {
+test.describe("Roster (WoW Retail)", () => {
   test.use({ locale: "fr-FR" });
 
   test("persos et raid de WoW Retail, noms en français ou en anglais", async ({ page }) => {
     const email = `e2e-retail-${Date.now()}@example.test`;
     const password = "une phrase de passe pour Roster";
 
-    await test.step("compte créé sur Roster, puis accès anticipé donné sur le serveur", async () => {
+    await test.step("compte créé sur Roster, tout de suite utilisable", async () => {
       await page.goto(`${RETAIL}/register`);
       await page.fill("#dn", "Officière");
       await page.fill("#em", email);
@@ -132,12 +128,8 @@ test.describe("Roster en accès anticipé", () => {
       await page.fill("#email", email);
       await page.fill("#password", password);
       await page.getByRole("button", { name: /se connecter/i }).click();
-      await expect(page.getByRole("heading", { name: "Roster arrive bientôt" })).toBeVisible();
-      // Commande du serveur (docs/operations.md) : node dist/roster-preview.js add <e-mail>
-      const out = execFileSync("node", ["apps/api/dist/roster-preview.js", "add", email], { env: { ...process.env, DATABASE_URL: E2E_DB }, encoding: "utf8" });
-      expect(out).toContain("accès anticipé à Roster donné");
-      await page.reload();
-      await expect(page.getByText("Accès anticipé")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+      await expect(page.getByText("Accès anticipé")).toHaveCount(0);
       // R3a : l'addon Roster (page Addon, « Copier pour le jeu ») ; pas encore de nouveautés ni de compte à rebours
       await expect(page.getByRole("link", { name: "Addon" }).first()).toBeVisible();
       await expect(page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ })).toBeVisible();
@@ -342,6 +334,24 @@ test.describe("Roster en accès anticipé", () => {
       await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
       await expect(page.getByRole("heading", { name: "Objets reçus" })).toBeVisible();
       await expect(page.locator("#lt-count")).toHaveCount(0);
+      // Historique d'avant le site, collé tel quel : une correction par joueur reconnu
+      await page.getByRole("button", { name: "Importer un historique" }).click();
+      await page.getByRole("textbox", { name: "Liste des objets reçus" }).fill([
+        "Season loot count - 9 items (Season 2)", "", "Brumelune - BiS 1, Spé 1 1 (total 2)", "  - Crochet de malveillance ombreuse", "  - Idole tissée de venin",
+        "Quinlan - BiS 3, Spé 1 4 (total 7)", "  - Chaîne vitriolique de sentinelle",
+      ].join("\n"));
+      await page.getByRole("button", { name: "Vérifier" }).click();
+      const hist = page.locator("table.data").filter({ hasText: "Dans la liste" });
+      await expect(hist.getByRole("row", { name: /Brumelune.*2.*Brumelune-Hyjal.*à ajouter/ })).toBeVisible();
+      await expect(hist.getByRole("row", { name: /Quinlan.*7.*pas dans le groupe/ })).toBeVisible();
+      if (process.env.SHOTS) await page.locator(".lt-add").screenshot({ path: "test-results/shots/roster-historique.png" });
+      await page.getByRole("button", { name: "Ajouter 1 joueur" }).click();
+      await expect(page.getByRole("status").filter({ hasText: "1 joueur ajouté au compte (Historique Season 2)." })).toBeVisible();
+      await expect(hist.getByRole("row", { name: /Brumelune.*déjà importé/ })).toBeVisible();
+      await page.getByRole("tab", { name: "Présence & butin" }).click();
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r.num")).toHaveText("3");
+      await page.getByRole("tab", { name: "Administration" }).click();
+      await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
       await page.selectOption("#lt-cm", "raids");
       await expect(page.getByRole("status").filter({ hasText: "Enregistré." })).toBeVisible();
       await page.getByRole("tab", { name: "Présence & butin" }).click();

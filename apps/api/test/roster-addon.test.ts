@@ -331,3 +331,53 @@ describe("Roster : conseil du butin et objets reçus (RRG O, L, N)", () => {
       .toEqual([[250004, "jet OS"], [250005, "jet libre"]]);
   });
 });
+
+describe("Historique de butin d'avant le site (Administration → Butin)", () => {
+  it("aperçu, import des corrections, sans doublon ; homonymes et inconnus signalés", async () => {
+    const s = await scene("H");
+    const url = `/api/groups/${s.g.id}/loot-history`;
+    const text = [
+      "Season loot count - 36 items (Season 2)", "",
+      "Kaeldra - BiS 1, Spé 1 2 (total 3)", "  - Crochet de malveillance ombreuse", "  - Idole tissée de venin", "  - Icône tissée de venin", "",
+      "Tharok - BiS 1, Spé 1 0 (total 1)", "  - Couronne du crochet éternel",
+      "Tharok-Ysondre - BiS 0, Spé 1 25 (total 25)",
+      "Quinlan - BiS 3, Spé 1 4 (total 7)", "  - Chaîne vitriolique de sentinelle",
+    ].join("\n");
+    expect((await s.mem.r.post(url, { text })).statusCode).toBe(403);
+    expect((await s.off.r.post(url, { text: "rien de lisible" })).statusCode).toBe(400);
+
+    type HRow = { name: string; status: string; total: number; character?: { name: string }; candidates?: string[] };
+    const view = (r: { rows: HRow[] }) => r.rows.map(x => [x.name, x.status, x.total, x.character?.name ?? x.candidates?.join(" | ") ?? null]);
+    const preview = (await s.off.r.post(url, { text })).json();
+    expect(preview).toMatchObject({ label: "Historique Season 2", created: 0 });
+    expect(view(preview)).toEqual([
+      ["Kaeldra", "new", 3, "Kaeldra-Hyjal"],
+      ["Tharok", "ambiguous", 1, "Tharok-ConseildesOmbres | Tharok-Ysondre"],
+      ["Tharok-Ysondre", "new", 25, "Tharok-Ysondre"],
+      ["Quinlan", "unknown", 7, null],
+    ]);
+
+    const done = await s.off.r.post(url, { text, apply: true });
+    expect(done.statusCode).toBe(201);
+    expect(done.json().created).toBe(2);
+    const counts = (await s.mem.r.get(`/api/groups/${s.g.id}/loot-counts`)).json();
+    const own = Object.fromEntries(counts.rows.map((x: { name: string; realm: string; own: number }) => [`${x.name}-${x.realm}`, x.own]));
+    expect(own).toMatchObject({ "Kaeldra-Hyjal": 3, "Tharok-Ysondre": 25, "Tharok-Conseil des Ombres": 0 });
+    // Au-delà de 20 : deux corrections (20 + 5), motif lisible
+    expect(counts.corrections.map((c: { name: string; delta: number; note: string }) => [c.name, c.delta, c.note]).sort()).toEqual([
+      ["Kaeldra", 3, "Historique Season 2 : 1 BiS, 2 Spé 1"],
+      ["Tharok", 20, "Historique Season 2 : 0 BiS, 25 Spé 1"],
+      ["Tharok", 5, "Historique Season 2 : 0 BiS, 25 Spé 1"],
+    ]);
+
+    // Liste recollée (avec un nouveau venu) : seuls les nouveaux sont ajoutés
+    const again = (await s.off.r.post(url, { text, apply: true })).json();
+    expect(again.created).toBe(0);
+    expect(view(again).filter(r => r[1] === "exists").map(r => r[0])).toEqual(["Kaeldra", "Tharok-Ysondre"]);
+    // Un autre nom d'historique : une nouvelle correction
+    expect((await s.off.r.post(url, { text: "Kaeldra - BiS 1, Spé 1 0", label: "Saison 1", apply: true })).json().created).toBe(1);
+    // Journal du groupe
+    const events = (await s.off.r.get(`/api/groups/${s.g.id}/audit`)).json().events as { type: string }[];
+    expect(events.filter(e => e.type === "loot_history_imported")).toHaveLength(2);
+  });
+});

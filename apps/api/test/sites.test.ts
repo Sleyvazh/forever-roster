@@ -19,7 +19,7 @@ describe("un site, deux adresses", () => {
     const f = await new Client(env).get("/api/site");
     expect(f.json()).toMatchObject({ game: "forever", name: "Forever Roster", open: true, other: { game: "retail", name: "Roster", origin: RETAIL } });
     const r = await new RetailClient(env).get("/api/site");
-    expect(r.json()).toMatchObject({ game: "retail", name: "Roster", open: false, origin: RETAIL, other: { game: "forever" } });
+    expect(r.json()).toMatchObject({ game: "retail", name: "Roster", open: true, origin: RETAIL, other: { game: "forever" } });
   });
 
   it("chaque adresse n'accepte que son origine (CSRF)", async () => {
@@ -71,7 +71,7 @@ describe("un site, deux adresses", () => {
     await new RetailClient(env).post("/api/auth/forgot-password", { email });
     const mail = env.mailer.outbox.filter(m => m.to === email).at(-1)!;
     expect(mail.text).toContain(`${RETAIL}/reset-password#${tokenFrom(mail.text)}`);
-    expect(mail.text).toContain("Roster — raids, soft reserve et conseil du butin");
+    expect(mail.text).toContain("Roster — raids, compo et conseil du butin");
     expect(mail.html).not.toContain("Forever Roster");
     expect(mail.fromName).toBe("Roster");
 

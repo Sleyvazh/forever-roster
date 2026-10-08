@@ -43,7 +43,7 @@ export function ComingSoon() {
     <div className="soon panel lift pad stack">
       <div className="eyebrow">{site.name}</div>
       <h1>{site.name} arrive bientôt</h1>
-      <p>Ton compte est prêt. Les raids, la soft reserve et le conseil du butin pour WoW Retail arrivent ici très vite : tu n'auras rien à refaire.</p>
+      <p>Ton compte est prêt. Les raids, la compo et le conseil du butin pour WoW Retail arrivent ici très vite : tu n'auras rien à refaire.</p>
       {site.other && <p>En attendant, ce même compte marche déjà sur <a href={site.other.origin}>{site.other.name}</a> (même e-mail, même mot de passe).</p>}
       <p className="small muted"><Link to="/account">Compte et sécurité</Link> : mot de passe, liaison Discord, image du compte.</p>
     </div>

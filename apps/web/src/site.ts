@@ -21,7 +21,7 @@ export interface SiteData {
 const guess = (): SiteData => {
   const retail = typeof location !== "undefined" && location.hostname.split(".")[0] === "roster";
   return retail
-    ? { game: "retail", name: "Roster", open: false, origin: location.origin, other: null }
+    ? { game: "retail", name: "Roster", open: true, origin: location.origin, other: null }
     : { game: "forever", name: "Forever Roster", open: true, origin: typeof location !== "undefined" ? location.origin : "", other: null };
 };
 
