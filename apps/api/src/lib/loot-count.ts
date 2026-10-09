@@ -1,4 +1,7 @@
-import { gameName, LOOT_COUNT_DAYS, lootCountLabel, lootCountShort, lootSkipReason, zonedParts, zonedTime, type LootSettings } from "@forever/game-data";
+import {
+  gameName, LOOT_CATEGORIES, LOOT_COUNT_DAYS, lootCategory, lootCountLabel, lootCountShort, lootSkipReason, zonedParts, zonedTime,
+  type LootCategory, type LootCategoryCounts, type LootSettings,
+} from "@forever/game-data";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, groupCharacters, lootCorrections, lootExclusions, raidLogs, raids, raidSignups, users, type RaidLogLoot } from "../db/schema";
@@ -10,6 +13,8 @@ import { groupGame, nameIndex } from "./log-names";
  * Période choisie par les officiers : saison (depuis une date), 30 derniers jours ou X derniers raids relevés.
  * Comptent les objets de spé principale (lootSkipReason), sauf ceux que les officiers ont exclus,
  * plus les corrections manuelles datées dans la période. Total par perso, et par joueur (ses persos du groupe).
+ * Détail du total (retours du raid de test) : conseil BiS, conseil Upgrade, jets MS (lootCategory), plus les corrections
+ * de ces catégories ; le reste (chef de butin, objet noté, soft reserve, correction sans catégorie) est dans le total seulement.
  */
 
 const key = (name: string) => gameName(name).toLowerCase();
@@ -35,6 +40,8 @@ export interface LootCountRow {
   own: number; player: number;
   /** Le compte retenu par le groupe (par joueur ou par perso). */
   count: number;
+  /** Détail du compte retenu (même période, par joueur ou par perso) : BiS, Upgrade, jets MS ; le reste est dans count seulement. */
+  bis: number; upgrade: number; ms: number;
 }
 export interface LootCountSummary {
   mode: LootSettings["countMode"]; by: LootSettings["countBy"];
@@ -75,26 +82,41 @@ export async function groupLootCounts(db: Db, groupId: string, settings?: LootSe
   const signed = new Set(ids.length ? (await db.select({ raidId: raidSignups.raidId, characterId: raidSignups.characterId }).from(raidSignups).where(inArray(raidSignups.raidId, ids)))
     .flatMap(x => (x.characterId ? [`${x.raidId}:${x.characterId}`] : [])) : []);
 
-  const own = new Map<string, number>();
-  const add = (id: string, n: number) => own.set(id, (own.get(id) ?? 0) + n);
+  // Par perso : total et détail (BiS, Upgrade, jets MS)
+  type Tally = { n: number } & LootCategoryCounts;
+  const zero = (): Tally => ({ n: 0, bis: 0, upgrade: 0, ms: 0 });
+  const own = new Map<string, Tally>();
+  const add = (id: string, n: number, kind: LootCategory | null) => {
+    const t = own.get(id) ?? zero();
+    t.n += n;
+    if (kind) t[kind] += n;
+    own.set(id, t);
+  };
   for (const l of logs) {
     for (const x of l.loot) {
       if (!countsHere(l.raidId, x, excluded)) continue;
       const list = find(x.name);
       // Même prénom pour deux persos du groupe : celui inscrit au raid
       const c = list.find(c => signed.has(`${l.raidId}:${c.id}`)) ?? list[0];
-      if (c) add(c.id, 1);
+      if (c) add(c.id, 1, lootCategory(x));
     }
   }
-  const corrections = await db.select({ characterId: lootCorrections.characterId, delta: lootCorrections.delta }).from(lootCorrections)
+  // Une correction avec une catégorie compte dans le total et dans sa catégorie
+  const corrections = await db.select({ characterId: lootCorrections.characterId, delta: lootCorrections.delta, kind: lootCorrections.kind }).from(lootCorrections)
     .where(and(eq(lootCorrections.groupId, groupId), ...(since ? [gte(lootCorrections.createdAt, since)] : [])));
-  for (const c of corrections) add(c.characterId, c.delta);
+  for (const c of corrections) add(c.characterId, c.delta, c.kind);
 
-  const perUser = new Map<string, number>();
-  for (const c of chars) perUser.set(c.userId, (perUser.get(c.userId) ?? 0) + (own.get(c.id) ?? 0));
+  const perUser = new Map<string, Tally>();
+  for (const c of chars) {
+    const t = perUser.get(c.userId) ?? zero(), o = own.get(c.id);
+    if (o) for (const k of ["n", ...LOOT_CATEGORIES] as const) t[k] += o[k];
+    perUser.set(c.userId, t);
+  }
   const rows: LootCountRow[] = chars.map(c => {
-    const o = own.get(c.id) ?? 0, p = perUser.get(c.userId) ?? 0;
-    return { characterId: c.id, userId: c.userId, name: c.name, realm: c.realm, cls: c.cls, owner: c.owner, isMain: c.isMain, own: o, player: p, count: s.countBy === "player" ? p : o };
+    const o = own.get(c.id) ?? zero(), p = perUser.get(c.userId) ?? zero();
+    const kept = s.countBy === "player" ? p : o;
+    return { characterId: c.id, userId: c.userId, name: c.name, realm: c.realm, cls: c.cls, owner: c.owner, isMain: c.isMain,
+      own: o.n, player: p.n, count: kept.n, bis: kept.bis, upgrade: kept.upgrade, ms: kept.ms };
   });
   const summary: LootCountSummary = { mode: s.countMode, by: s.countBy, label: lootCountLabel(s), short: lootCountShort(s), since, raids: logs.length };
   return { summary, rows };

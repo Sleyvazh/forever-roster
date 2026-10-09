@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  instanceKey, lootCountLabel, lootCounts, lootCountShort, lootModeHint, lootModeLabel, lootModesOf, lootSettings, lootSkipReason, retailLootHow, retailLootMode,
-  parseLootHistory, srPlusBonus,
+  instanceKey, LOOT_CATEGORIES, LOOT_CATEGORY_LABEL, lootCategory, lootCategoryText, lootCountLabel, lootCounts, lootCountShort, lootModeHint, lootModeLabel,
+  lootModesOf, lootSettings, lootSkipReason, retailLootHow, retailLootMode, parseLootHistory, srPlusBonus,
 } from "./loot";
 
 describe("butin", () => {
@@ -69,6 +69,36 @@ describe("butin sur Roster (lot R3b)", () => {
     expect(lootSkipReason({ method: "ml", detail: "gardé" })).toBe("gardé");
     expect(lootCounts({ method: "ml", detail: "gardé" })).toBe(false);
     expect(retailLootHow({})).toBeNull();
+  });
+
+  it("détail des objets reçus : BiS, Upgrade, jets MS ; jamais pour un objet qui ne compte pas", () => {
+    expect(lootCategory({ method: "council", response: "bis", detail: "3 votes" })).toBe("bis");
+    expect(lootCategory({ method: "council", response: "upgrade" })).toBe("upgrade");
+    expect(lootCategory({ method: "roll", detail: "MS 87" })).toBe("ms");
+    expect(lootCategory({ method: "roll", detail: " ms 12" })).toBe("ms");
+    // Comptent, mais sans catégorie (dans le total seulement)
+    expect(lootCategory({ method: "council" })).toBeNull();
+    expect(lootCategory({ method: "ml" })).toBeNull();
+    expect(lootCategory({ method: "sr", detail: "61 +20 = 81" })).toBeNull();
+    expect(lootCategory({})).toBeNull();
+    expect(lootCategory({ method: "roll", detail: "87" })).toBeNull();
+    expect(lootCategory({ method: "roll", detail: "MSG 87" })).toBeNull();
+    // Ne comptent pas : jamais de catégorie
+    for (const l of [
+      { method: "council", response: "off" }, { method: "council", response: "transmo" }, { method: "roll", detail: "OS 54" },
+      { method: "roll", detail: "jet 54" }, { method: "ml", detail: "gardé" },
+    ] as const) {
+      expect(lootSkipReason(l)).not.toBeNull();
+      expect(lootCategory(l)).toBeNull();
+    }
+    // Un détail qui ne compte pas l'emporte sur la réponse
+    expect(lootCategory({ method: "ml", response: "bis", detail: "gardé" })).toBeNull();
+    expect(LOOT_CATEGORIES).toEqual(["bis", "upgrade", "ms"]);
+    expect(LOOT_CATEGORY_LABEL.ms).toBe("Jet MS");
+    expect(lootCategoryText({ bis: 2, upgrade: 3, ms: 1 })).toBe("2 BiS · 3 Up · 1 MS");
+    expect(lootCategoryText({ bis: 0, upgrade: 0, ms: 1 })).toBe("1 MS");
+    expect(lootCategoryText({ bis: 0, upgrade: 0, ms: 0 })).toBe("");
+    expect(lootCategoryText({})).toBe("");
   });
 });
 

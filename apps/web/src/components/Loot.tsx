@@ -1,6 +1,6 @@
 import {
-  classColor, CLASSES, itemLinks, LOOT_COUNT_DAYS, lootCountLabel, lootModeHint, lootModeLabel, lootModesOf, retailLootMode,
-  type ClassName, type LootCountBy, type LootCountMode, type LootMode, type LootSettings,
+  classColor, CLASSES, itemLinks, lootCategoryText, LOOT_COUNT_DAYS, lootCountLabel, lootModeHint, lootModeLabel, lootModesOf, retailLootMode,
+  type ClassName, type LootCategoryCounts, type LootCountBy, type LootCountMode, type LootMode, type LootSettings,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -44,6 +44,12 @@ export function LootModeTag({ mode }: { mode: LootMode }) {
   const game = useSite().game;
   const m = game === "retail" ? retailLootMode(mode) : mode;
   return m === "journal" ? null : <span className="tag gold">{lootModeLabel(m, game, true)}</span>;
+}
+
+/** Détail des objets reçus, après le total : « 2 BiS · 3 Up · 1 MS » ; rien si tout est à 0. Classe « lc-det ». */
+export function LootDetail({ detail }: { detail: LootCategoryCounts | undefined }) {
+  const text = detail ? lootCategoryText(detail) : "";
+  return text ? <span className="lc-det" title="Conseil BiS · conseil Upgrade · jets MS (le reste compte dans le total seulement)">{text}</span> : null;
 }
 
 /* ---------- Soft reserve d'un raid ---------- */
@@ -207,8 +213,8 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
       </div>}
       <h4 className="gm-sec" style={{ marginTop: 6 }}>Objets reçus</h4>
       {retail
-        ? <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (colonne « Reçus » de l'addon Roster) et dans l'onglet Présence &amp; butin, d'après les bilans des raids. Comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés ; pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
-        : <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>}
+        ? <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (colonne « Reçus » de l'addon Roster) et dans l'onglet Présence &amp; butin, d'après les bilans des raids. Comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés ; pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
+        : <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>}
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-cm">Période</label>
           <select id="lt-cm" value={s.countMode} onChange={e => setS2({ ...s, countMode: e.target.value as LootCountMode })}>
@@ -281,7 +287,7 @@ function LootHistoryImport({ groupId }: { groupId: string }) {
       <div className="lt-sub">Importer un historique</div>
       <p className="hint" style={{ margin: 0 }}>
         Colle la liste telle quelle : une ligne par joueur « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ».
-        Chaque joueur reconnu parmi les persos du groupe (nom, avec ou sans royaume) reçoit une correction du total, visible sur sa fiche.
+        Chaque joueur reconnu parmi les persos du groupe (nom, avec ou sans royaume) reçoit une correction BiS et une correction Upgrade (« Spé 1 »), visibles sur sa fiche ; sans ce détail, une correction du total.
         Un joueur pas encore dans le groupe : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.
       </p>
       <textarea rows={8} value={text} onChange={e => { setText(e.target.value); setRes(null); }} placeholder={HISTORY_SAMPLE} aria-label="Liste des objets reçus" />

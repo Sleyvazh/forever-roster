@@ -10,7 +10,7 @@ import type { Game } from "./site";
  * section « Roster : l'addon pour WoW Retail ». Mêmes principes que les formats de Forever (une information par ligne,
  * champs séparés par « ; », aucun « | », version en tête, END qui compte les lignes), en-têtes en « RR » :
  *
- *   RRG (site → jeu) : données des groupes (raids à venir, mon inscription ; R3b : conseil du butin et objets reçus),
+ *   RRG (site → jeu) : données des groupes (raids à venir, mon inscription ; R3b : conseil du butin et objets reçus, avec leur détail),
  *     « Copier pour le jeu » ;
  *   RRR (site → jeu) : compo d'un raid, « Export pour le jeu » de l'onglet Compo ;
  *   RRB (jeu → site) : bilan d'un raid (présence, butin, rencontres), collé sur le site (Ctrl+V).
@@ -77,16 +77,19 @@ export interface RosterGroupRaid {
   council?: RosterCharacterName[] | null;
 }
 
-/** Lot R3b : lignes O et N du bloc RRG (après les R, hors du compte de END). */
+/** Lot R3b : lignes O, N et D du bloc RRG (après les R, hors du compte de END). */
 export interface RosterGroupExtra {
   /** O : persos joués dans le groupe par le propriétaire et les officiers (conseil du butin par défaut). */
   council?: RosterCharacterName[];
   /**
    * N : objets reçus sur la période du groupe (colonne « Reçus » du conseil) : libellé court et complet, puis une entrée
    * par joueur (ses persos du groupe, main d'abord, qui partagent le compte) ou par perso.
+   * D (retours du raid de test) : détail de chaque entrée, BiS, Upgrade et jets MS (lootCategory), dans le même ordre.
    */
-  counts?: { short: string; label: string; entries: { names: RosterCharacterName[]; n: number }[] };
+  counts?: { short: string; label: string; entries: RosterCountEntry[] };
 }
+/** Entrée des lignes N et D : persos qui partagent le compte, total, et son détail (absent : 0). */
+export interface RosterCountEntry { names: RosterCharacterName[]; n: number; bis?: number; upgrade?: number; ms?: number }
 
 /** Nom d'un perso dans une liste (O, L, N) : « Prénom-Royaume », sans les séparateurs des listes (« , », « : », « + »). */
 const listName = (c: RosterCharacterName) => fullName(c.name, c.realm).replace(/[,:+]/g, "");
@@ -105,19 +108,24 @@ const nameList = (list: RosterCharacterName[]) => uniqueNames(list).sort((a, b) 
 
 /**
  * Bloc RRG d'un groupe : raids à venir avec mon inscription ; lot R3b : conseil par défaut (O), conseil choisi pour
- * chaque raid (L) et objets reçus (N). Spécification : docs/addon-format.md (RRG, version 1).
+ * chaque raid (L) et objets reçus (N) ; addon 0.3 : détail des objets reçus (D). Spécification : docs/addon-format.md (RRG, version 1).
  */
 export function buildRRG(group: { id: string; name: string }, generatedAt: number, raids: RosterGroupRaid[], extra: RosterGroupExtra = {}): string {
   const lines = raids.map(r => ["R", r.id, Math.max(0, Math.floor(r.at)), clean(r.name), r.difficulty ?? "", Math.max(0, Math.round(r.size)),
     r.status ?? "", r.character ? fullName(r.character.name, r.character.realm) : "", r.lootMode ? retailLootMode(r.lootMode) : ""].join(";"));
   // Lot R3b, après les R et hors du compte de END : un addon 0.1 les ignore sans signaler de texte incomplet
   const council = nameList(extra.council ?? []);
-  const counts = (extra.counts?.entries ?? []).map(e => ({ names: uniqueNames(e.names).join("+"), n: Math.round(e.n) }))
-    .filter(e => e.names).map(e => `${e.names}:${e.n}`).join(",");
+  const entries = (extra.counts?.entries ?? []).map(e => ({
+    names: uniqueNames(e.names).join("+"), n: Math.round(e.n), detail: [e.bis, e.upgrade, e.ms].map(x => Math.round(x ?? 0)),
+  })).filter(e => e.names);
+  const counts = entries.map(e => `${e.names}:${e.n}`).join(",");
+  // D : mêmes entrées que N, dans le même ordre (BiS:Upgrade:MS), celles à 0:0:0 omises ; un addon 0.2 l'ignore
+  const detail = entries.filter(e => e.detail.some(x => x !== 0)).map(e => `${e.names}:${e.detail.join(":")}`).join(",");
   const after = [
     ...(council ? [`O;${council}`] : []),
     ...raids.flatMap(r => { const l = nameList(r.council ?? []); return l ? [`L;${r.id};${l}`] : []; }),
     ...(extra.counts && counts ? [["N", clean(extra.counts.short), clean(extra.counts.label), counts].join(";")] : []),
+    ...(extra.counts && detail ? [`D;${detail}`] : []),
   ];
   return [`RRG;${ROSTER_FORMAT_VERSION};${group.id};${Math.floor(generatedAt)};${clean(group.name)}`, ...lines, ...after, `END;${lines.length}`].join("\n");
 }

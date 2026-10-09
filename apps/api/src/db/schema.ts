@@ -1,4 +1,4 @@
-import type { BnetCharacter, Game, GameLangPref, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
+import type { BnetCharacter, Game, GameLangPref, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -745,12 +745,15 @@ export const lootCorrections = pgTable("loot_corrections", {
   characterId: uuid("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
   delta: smallint("delta").notNull(),
   note: text("note").notNull(),
+  /** Catégorie du détail (BiS, Upgrade, jet MS) : la correction compte aussi dans celle-ci ; null : dans le total seulement. */
+  kind: text("kind").$type<LootCategory>(),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdByName: text("created_by_name").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   index("loot_corrections_group_idx").on(t.groupId, t.createdAt),
   check("loot_corrections_delta_chk", sql`${t.delta} between -20 and 20 and ${t.delta} <> 0`),
+  check("loot_corrections_kind_chk", sql`${t.kind} IN ('bis', 'upgrade', 'ms')`),
 ]);
 
 /* ---------- Roster Companion (lot K1) ---------- */

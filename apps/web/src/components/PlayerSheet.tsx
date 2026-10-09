@@ -1,4 +1,7 @@
-import { classColor, ATTENDANCE_LABEL, CLASSES, itemLinks, retailItemLink, type AttendanceStatus, type ClassName, type GearStats } from "@forever/game-data";
+import {
+  classColor, ATTENDANCE_LABEL, CLASSES, itemLinks, LOOT_CATEGORIES, LOOT_CATEGORY_LABEL, retailItemLink,
+  type AttendanceStatus, type ClassName, type GearStats, type LootCategory, type LootCategoryCounts,
+} from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -8,6 +11,7 @@ import { ApiError, del, get, post, type GroupRole } from "../api";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { absenceLabel } from "./Absences";
+import { LootDetail } from "./Loot";
 
 /** Fiche d'un joueur dans le groupe (lot D1) : persos joués ici, présence, banc, butin reçu. Classes CSS « ps- ». */
 
@@ -17,11 +21,13 @@ interface Sheet {
   attendance: { raids: number; attended: number; benched: number; cells: { raidId: string; name: string; scheduledAt: string; status: AttendanceStatus | null }[] };
   absences: { startDate: string | null; endDate: string | null; weekdays: number[]; reason: string }[];
   loot: { itemId: number; name: string; quality: number; character: string; boss: string; raidName: string; raidId: string; at: number; bis: boolean; skip: string | null; excluded: boolean }[];
-  /** Lot I : objets reçus sur la période du groupe, et corrections des officiers. */
+  /** Lot I : objets reçus sur la période du groupe, et corrections des officiers (avec leur catégorie : BiS, Upgrade, jet MS). */
   lootCount: {
     label: string; short: string; by: "player" | "character"; player: number;
+    /** Détail du total du joueur : BiS, Upgrade, jets MS. */
+    detail: LootCategoryCounts;
     characters: { characterId: string; name: string; own: number }[];
-    corrections: { id: string; characterId: string; delta: number; note: string; by: string; at: string; inPeriod: boolean }[];
+    corrections: { id: string; characterId: string; delta: number; kind: LootCategory | null; note: string; by: string; at: string; inPeriod: boolean }[];
   };
 }
 
@@ -54,7 +60,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
       <div className="ps-kpis">
         <div><b className="num">{a.raids ? `${a.attended}/${a.raids}` : "—"}</b><span>raids venus</span></div>
         <div><b className="num">{a.benched}</b><span>fois sur le banc</span></div>
-        <div title={`Objets de spé principale reçus ${data.lootCount.label}${data.lootCount.by === "player" ? ", main et alts ensemble" : ""}`}><b className="num">{data.lootCount.player}</b><span>objet{data.lootCount.player > 1 ? "s" : ""} · {data.lootCount.short}</span></div>
+        <div title={`Objets de spé principale reçus ${data.lootCount.label}${data.lootCount.by === "player" ? ", main et alts ensemble" : ""}`}><b className="num">{data.lootCount.player}</b><span>objet{data.lootCount.player > 1 ? "s" : ""} · {data.lootCount.short}</span><LootDetail detail={data.lootCount.detail} /></div>
         {gt.game !== "retail" && <div><b className="num">{bis ? `${bis.got}/${bis.total}` : "—"}</b><span>BiS du main</span></div>}
       </div>
       <div className="ps-cols">
@@ -112,11 +118,15 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
   );
 }
 
-/** Objets reçus sur la période du groupe (lot I) : total, détail par perso, corrections des officiers (± avec motif). */
+/**
+ * Objets reçus sur la période du groupe (lot I) : total et son détail (BiS, Upgrade, jets MS), total par perso,
+ * corrections des officiers (± avec motif, catégorie facultative).
+ */
 function LootCount({ groupId, userId, count, officer }: { groupId: string; userId: string; count: Sheet["lootCount"]; officer: boolean }) {
   const qc = useQueryClient();
   const [charId, setCharId] = useState(count.characters[0]?.characterId ?? "");
   const [delta, setDelta] = useState(1);
+  const [kind, setKind] = useState<LootCategory | "">("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const nameOf = new Map(count.characters.map(c => [c.characterId, c.name]));
@@ -125,11 +135,12 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
     setError(null);
     try { await fn(); await refresh(); } catch (e) { setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); }
   };
-  const add = () => run(async () => { await post(`/groups/${groupId}/loot-corrections`, { characterId: charId, delta, note }); setNote(""); });
+  const add = () => run(async () => { await post(`/groups/${groupId}/loot-corrections`, { characterId: charId, delta, note, kind: kind || null }); setNote(""); });
   return (
     <div>
       <div className="lc-sum">
         <span><b className="num">{count.player}</b> objet{count.player > 1 ? "s" : ""} {count.label}</span>
+        <LootDetail detail={count.detail} />
         {count.characters.length > 1 && <span className="muted small">{count.by === "player" ? "main et alts ensemble : " : "par perso : "}{count.characters.map(c => `${c.name} ${c.own}`).join(" · ")}</span>}
       </div>
       {count.corrections.length > 0 && (
@@ -137,6 +148,7 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
           {count.corrections.map(c => (
             <li key={c.id} className={c.inPeriod ? undefined : "out"} title={c.inPeriod ? undefined : "Avant le début de la période : ne compte plus"}>
               <span className={`d num ${c.delta > 0 ? "plus" : "minus"}`}>{c.delta > 0 ? `+${c.delta}` : c.delta}</span>
+              {c.kind && <span className="lc-kind">{LOOT_CATEGORY_LABEL[c.kind]}</span>}
               <span>{nameOf.get(c.characterId) ?? "?"} · {c.note} <span className="muted small">· {c.by}, {day.format(new Date(c.at))}</span></span>
               {officer && <button type="button" className="btn ghost xs" onClick={() => void run(() => del(`/groups/${groupId}/loot-corrections/${c.id}`))} aria-label={`Retirer la correction ${c.note}`}>Retirer</button>}
             </li>
@@ -149,6 +161,10 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
             <select id="lc-char" value={charId} onChange={e => setCharId(e.target.value)}>{count.characters.map(c => <option key={c.characterId} value={c.characterId}>{c.name}</option>)}</select></div>}
           <div className="fld"><label htmlFor="lc-delta">Correction</label>
             <select id="lc-delta" value={delta} onChange={e => setDelta(Number(e.target.value))}>{[3, 2, 1, -1, -2, -3].map(n => <option key={n} value={n}>{n > 0 ? `+${n}` : n}</option>)}</select></div>
+          <div className="fld"><label htmlFor="lc-kind">Catégorie</label>
+            <select id="lc-kind" value={kind} onChange={e => setKind(e.target.value as LootCategory | "")}>
+              <option value="">Aucune</option>{LOOT_CATEGORIES.map(k => <option key={k} value={k}>{LOOT_CATEGORY_LABEL[k]}</option>)}
+            </select></div>
           <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="lc-note">Motif</label>
             <input id="lc-note" type="text" maxLength={120} required minLength={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex. objet donné hors addon" /></div>
           <button type="submit" className="btn sm">Corriger le compte</button>

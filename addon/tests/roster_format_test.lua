@@ -80,6 +80,29 @@ check(v and F.CountFor(v.counts, "vex-kaelthas").n == 0 and F.CountFor(v.counts,
 check(g3 and #g3[2].officers == 1, "ligne O après END")
 check(F.ParseRRG("RRG;1;g;0;G\nN;30 j;sur 30 jours;A-B:x,C-D:2,:4\nEND;0")[1].counts.entries[1].names[1] == "C-D", "ligne N abîmée : entrées illisibles ignorées")
 
+-- RRG, addon 0.3 : détail des objets reçus (D) après N, rattaché aux entrées de N par le premier nom
+local RRGD = table.concat({
+  "RRG;1;g1;1791000000;Les Veilleurs",
+  "R;r1;1791100000;Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "N;saison;depuis le 05/11/2026;Tharok-Hyjal+Grumbar-Hyjal:5,Vex-Kael'Thas:2,Brumelune-Ysondre:0",
+  "D;tharok-hyjal+Grumbar-Hyjal:2:1:1,Mordak-Ysondre:1:0:2,Abîmé:1:2,:1:1:1",
+  "END;1",
+}, "\n")
+local gd = F.ParseRRG(RRGD)
+local cd = gd and gd[1].counts
+local th = cd and F.CountFor(cd, "Grumbar-Hyjal")
+check(th and th.n == 5 and th.bis == 2 and th.up == 1 and th.ms == 1, "ligne D : BiS, Upgrade, MS de l'entrée N (même premier nom)")
+local vx = cd and F.CountFor(cd, "Vex-Kael'Thas")
+check(vx and vx.n == 2 and vx.bis == 0 and vx.up == 0 and vx.ms == 0, "entrée N sans D : 0")
+local mo = cd and F.CountFor(cd, "Mordak-Ysondre")
+check(mo and mo.n == 3 and mo.bis == 1 and mo.ms == 2 and #cd.entries == 4, "ligne D sans entrée N : entrée créée, total = somme ; entrées abîmées ignorées")
+local before = F.ParseRRG("RRG;1;g;0;G\nD;A-Hyjal:1:2:3\nN;saison;depuis;A-Hyjal:9\nEND;0")
+check(before and F.CountFor(before[1].counts, "A-Hyjal").n == 9 and F.CountFor(before[1].counts, "A-Hyjal").up == 2, "ligne D avant N : rattachée quand même")
+local onlyD = F.ParseRRG("RRG;1;g;0;G\nEND;0\nD;A-Hyjal:1:0:0")
+check(onlyD and F.CountFor(onlyD[1].counts, "A-Hyjal").n == 1, "ligne D seule, après END")
+local plain = { entries = { { names = { "A-Hyjal" }, n = 2 } } }
+check(F.CountFor(plain, "A-Hyjal").bis == 0 and F.CountFor(plain, "A-Hyjal").ms == 0, "CountFor : 0 si absents (raid d'essai)")
+
 -- RRR v1 : compo d'un raid
 local RRR = table.concat({
   "RRR;1;4a1e43ea-54e8-4b49-888f-5e19b5754f61;1794513600;Faille de Sporefall;heroic;20",
@@ -194,7 +217,14 @@ if siteRRG then
     local function full(n) return n:find("^[^%-]+%-.+$") ~= nil end
     for _, n in ipairs(grp.officers or {}) do check(full(n), "officier Prénom-Royaume : " .. n) end
     for raidId, l in pairs(grp.council or {}) do for _, n in ipairs(l) do check(full(n), "conseil du raid " .. raidId .. " : " .. n) end end
-    for _, e in ipairs(grp.counts and grp.counts.entries or {}) do for _, n in ipairs(e.names) do check(full(n), "objets reçus : " .. n) end end
+    -- (addon 0.3 : les entrées de la ligne D sans entrée N sont ajoutées à la liste, mêmes noms « Prénom-Royaume »)
+    for _, e in ipairs(grp.counts and grp.counts.entries or {}) do
+      for _, n in ipairs(e.names) do check(full(n), "objets reçus : " .. n) end
+      check(type(e.bis) == "number" and type(e.up) == "number" and type(e.ms) == "number", "détail des objets reçus : " .. e.names[1])
+    end
+    -- Ligne D du site : rattachée à l'entrée N du même joueur (persos joints par « + »)
+    local k = F.CountFor(grp.counts, "Vex-Kael'Thas")
+    if k then check(k.n >= k.bis + k.up + k.ms and k.bis + k.up + k.ms > 0, "ligne D de sample.rrg rattachée au joueur (Kaeldra + Vex)") end
   end
 end
 local siteRRR = read("addon/tests/sample.rrr")

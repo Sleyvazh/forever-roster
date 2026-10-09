@@ -2,10 +2,21 @@
 -- désigne) prend chaque objet du butin de groupe, les autres addons passent ; entre les pulls, il décide (conseil du
 -- butin, jets MS / OS, jet libre, garder), l'annonce dans le raid et le chuchote au gagnant, puis lui échange l'objet
 -- (2 h, joueurs présents au butin). Messages entre addons : docs/addon-format.md (section Roster, ML à LW).
+-- Retours du raid de test (0.3) :
+--   - échange : dès qu'une fenêtre d'échange s'ouvre avec un gagnant (qu'il l'ait ouverte ou non), ses objets sont posés
+--     (6 au plus) ; remis quand ils ont quitté les sacs à la fermeture. « Échanger » sans fenêtre : message du jeu ou marche
+--     à suivre (L.Trade, L.OnTradeShow, L.FillTrade, L.OnTradeClosed, L.Handover) ;
+--   - objets portables : BiS, Upgrade, Off-spec seulement sur ce qu'on peut porter (L.CanUse : armure du type exact de la
+--     classe, sinon infobulle du jeu) ; chez le chef de butin et le conseil, la règle de l'armure fait d'une telle réponse
+--     d'un autre joueur une réponse Transmo (L.CanUseClass) ;
+--   - tout au conseil d'un coup, numéroté (L.StartAllCouncils, L.Councils) ; « bis 2 » chuchoté vise l'objet 2 ;
+--   - colonne « Reçus » détaillée : BiS · Upgrade · Jets MS (ligne D du site, L.Category, L.Received).
 -- WoW 12.x : messages d'addon et chat bloqués pendant une rencontre de boss (file de Comm.lua), textes du chat
 -- (jets, chuchotements) secrets pendant le verrou du chat : jamais comparés ni gardés.
 -- Raid d'essai (Test.lua) : ns.Loot.test remplace le raid, ses membres, les messages, le chat et l'échange ; rien n'est
--- écrit dans le bilan ni dans la sauvegarde.
+-- écrit dans le bilan ni dans la sauvegarde. Crochets : send, say, trade(entry), reroll, et facultatifs tradeShow(partner,
+-- objets) (échange ouvert par un gagnant fictif) et armorRule (true : la règle de l'armure s'applique aussi aux réponses
+-- des joueurs fictifs) ; counts (objets reçus, avec bis / up / ms par entrée si voulu).
 local _, ns = ...
 local L = {}
 ns.Loot = L
@@ -36,6 +47,9 @@ end
 local function minQuality() return (ns.Recorder and ns.Recorder.MinQuality and ns.Recorder.MinQuality()) or 4 end
 local seq = 0
 local function nextSeq() seq = seq + 1 return seq end
+local order = 0 -- ordre de proposition des conseils
+local function nextOrder() order = order + 1 return order end
+local function num(v) return type(v) == "number" and not secret(v) and v or nil end
 
 -- Réponses au conseil (libellés choisis par Flo) et ordre d'affichage
 L.RESPONSES = { bis = "BiS", upgrade = "Upgrade", off = "Off-spec", transmo = "Transmo", pass = "Passer" }
@@ -179,6 +193,23 @@ local function announce(text)
   return sendChat(text, ch)
 end
 L.announce = announce
+-- Messages du chat de 255 octets au plus, liens compris : morceaux { texte, séparateur } joints tant qu'ils tiennent,
+-- jamais coupés (un lien coupé ne s'afficherait pas)
+L.CHAT_MAX = 255
+function L.ChatLines(pieces, max)
+  max = max or L.CHAT_MAX
+  local out, cur = {}, nil
+  for _, p in ipairs(pieces) do
+    local text, sep = p[1] or "", p[2] or ""
+    if cur and #cur + #sep + #text <= max then cur = cur .. sep .. text
+    else
+      if cur then out[#out + 1] = cur end
+      cur = text
+    end
+  end
+  if cur then out[#out + 1] = cur end
+  return out
+end
 local function chatLocked() return not L.test and Cm.ChatLocked() end
 local LOCKED = "pas pendant un combat de boss : réessaie juste après le combat."
 
@@ -336,11 +367,13 @@ local function newEntry(link, expires)
 end
 
 -- Place de l'objet dans les sacs (sacs 0 à 4) : même lien d'abord (bonus compris), sinon même objet ; jamais une
--- place déjà prise par un autre objet de la liste
-function L.FindInBags(e)
+-- place déjà prise par un autre objet de la liste, ni une place de « exclude » (« sac:case » → true : déjà posée
+-- dans l'échange)
+function L.FindInBags(e, exclude)
   local C = C_Container
   if not (C and C.GetContainerNumSlots and C.GetContainerItemLink) then return nil end
   local claimed = {}
+  for k in pairs(exclude or {}) do claimed[k] = true end
   for _, o in ipairs(list()) do
     if o ~= e and o.bag and o.status ~= "traded" and o.status ~= "kept" then claimed[o.bag .. ":" .. o.slot] = true end
   end
@@ -636,8 +669,9 @@ end
 --------------------------------------------------------------------------------------------------------------------
 -- Conseil du butin : LO (proposé au raid), LA (réponses au conseil), LV (votes), LC (terminé)
 --------------------------------------------------------------------------------------------------------------------
-L.councils = {} -- session → { session, key, itemId, itemString, link, name, ilvl, master, cands[clé] = {…}, votes[clé du votant] = { voter, cand }, closed, winner, at }
-L.offers = {}   -- { session, itemString, itemId, link, name, from, at, answered, response, closed }
+L.councils = {} -- session → { session, num, order, key, itemId, itemString, link, name, ilvl, master, cands[clé] = {…}, votes[clé du votant] = { voter, cand }, closed, winner, at }
+L.offers = {}   -- { session, num, itemString, itemId, link, name, from, at, answered, response, closed, usable, reason }
+L.COUNCIL_KEEP = 2 * 3600 -- conseils listés (L.Councils) : ceux de moins de 2 h
 
 -- Conseil : choisi pour le raid (RRG L), sinon les officiers (O), présents dans le raid
 function L.CouncilNames()
@@ -672,6 +706,63 @@ end
 
 local function newSession() return string.format("%d%02d", time() % 1000000, nextSeq() % 100) end
 
+-- Conseils ouverts par moi (chef de butin), par numéro. Numéro d'un nouveau conseil : le suivant des conseils ouverts ;
+-- aucun conseil ouvert : la numérotation repart de 1 (nouveau lot : les rappels chuchotés repartent aussi)
+L.batch = 0
+local reminded = {} -- clé du joueur → true : rappel « précise le numéro » déjà chuchoté dans ce lot
+local function openCouncils()
+  local out = {}
+  for _, c in pairs(L.councils) do if c.key and not c.closed and same(c.master, me()) then out[#out + 1] = c end end
+  table.sort(out, function(a, b) return (a.num or 0) < (b.num or 0) end)
+  return out
+end
+local function nextNum()
+  local open = openCouncils()
+  if #open == 0 then L.batch, reminded = L.batch + 1, {} return 1 end
+  return (open[#open].num or #open) + 1
+end
+
+-- Objet proposé au conseil : LO au raid (et traité chez moi), sans annonce ; renvoie la session et le numéro
+local function propose(e)
+  L.Cancel(e.key, true)
+  local sid, n = newSession(), nextNum()
+  local itemString = F.ItemString(e.link) or ("item:" .. e.itemId)
+  e.status, e.session = "council", sid
+  L.councils[sid] = { session = sid, num = n, order = nextOrder(), key = e.key, itemId = e.itemId, itemString = itemString, link = e.link,
+    name = e.name, ilvl = e.ilvl, master = me(), cands = {}, votes = {}, at = time() }
+  -- Nom joint : affiché chez les autres tant que leur jeu ne connaît pas l'objet ; message de 255 caractères au plus
+  local head = "LO;" .. sid .. ";" .. itemString .. ";"
+  broadcast(head .. F.cut(F.clean(e.name or ""), math.max(0, 250 - #head)), true)
+  return sid, n
+end
+
+-- Annonce au raid des objets proposés ({ num, link }) : un seul conseil ouvert, forme courte ; sinon numérotée, avec la
+-- forme du chuchotement (« bis 2 »), en plusieurs messages si besoin
+local HINT = "Réponds dans la fenêtre de Roster, ou chuchote-moi bis, up, os ou transmo"
+local function announceCouncils(list)
+  if #list == 1 and #openCouncils() == 1 then
+    announce("Roster : conseil du butin pour " .. list[1].link .. ". " .. HINT .. ".")
+    return
+  end
+  local tail = { HINT .. " suivi du numéro (« bis " .. (list[2] or list[1]).num .. " »).", " " }
+  local pieces
+  if #list == 1 then
+    pieces = { { "Roster : conseil du butin, objet " .. list[1].num .. " : " .. list[1].link .. "." }, tail }
+  else
+    pieces = { { "Roster : conseil du butin, " .. #list .. " objets :" } }
+    for i, x in ipairs(list) do pieces[#pieces + 1] = { x.num .. " " .. x.link .. (i == #list and "." or ""), i == 1 and " " or ", " } end
+    pieces[#pieces + 1] = tail
+  end
+  for _, line in ipairs(L.ChatLines(pieces)) do announce(line) end
+end
+
+local function canPropose()
+  if not L.IsMaster() then ns.print("seul le chef de butin lance le conseil.") return false end
+  if not L.test and not Cm.Channel() then ns.print("il faut être en groupe ou en raid.") return false end
+  if chatLocked() then ns.print(LOCKED) return false end
+  return true
+end
+
 function L.StartCouncil(key)
   if not L.IsMaster() then ns.print("seul le chef de butin lance le conseil.") return false end
   local e = L.Find(key)
@@ -681,21 +772,42 @@ function L.StartCouncil(key)
     return true, e.session
   end
   if e.status ~= "new" then ns.print("objet déjà attribué : " .. e.link .. ".") return false end
-  if not L.test and not Cm.Channel() then ns.print("il faut être en groupe ou en raid.") return false end
-  if chatLocked() then ns.print(LOCKED) return false end
-  L.Cancel(key, true)
-  local sid = newSession()
-  local itemString = F.ItemString(e.link) or ("item:" .. e.itemId)
-  e.status, e.session = "council", sid
-  L.councils[sid] = { session = sid, key = e.key, itemId = e.itemId, itemString = itemString, link = e.link, name = e.name, ilvl = e.ilvl,
-    master = me(), cands = {}, votes = {}, at = time() }
-  -- Nom joint : affiché chez les autres tant que leur jeu ne connaît pas l'objet ; message de 255 caractères au plus
-  local head = "LO;" .. sid .. ";" .. itemString .. ";"
-  broadcast(head .. F.cut(F.clean(e.name or ""), math.max(0, 250 - #head)), true)
-  announce("Roster : conseil du butin pour " .. e.link .. ". Réponds dans la fenêtre de Roster, ou chuchote-moi bis, up, os ou transmo.")
+  if not canPropose() then return false end
+  local sid, n = propose(e)
+  announceCouncils({ { num = n, link = e.link } })
   ui("ShowCouncil", sid)
   refresh()
   return true, sid
+end
+
+-- Tout au conseil d'un coup : chaque objet à distribuer (dans l'ordre de la liste) a son LO et son numéro, une seule
+-- annonce au raid. Renvoie le nombre d'objets proposés et leurs sessions.
+function L.StartAllCouncils()
+  local todo = {}
+  for _, e in ipairs(L.Items()) do if e.status == "new" then todo[#todo + 1] = e end end
+  if #todo == 0 then
+    if L.IsMaster() then ns.print("aucun objet à proposer au conseil.") end
+    return 0, {}
+  end
+  if not canPropose() then return 0, {} end
+  local sessions, shown = {}, {}
+  for _, e in ipairs(todo) do
+    local sid, n = propose(e)
+    sessions[#sessions + 1] = sid
+    shown[#shown + 1] = { num = n, link = e.link }
+  end
+  announceCouncils(shown)
+  ui("ShowCouncil", sessions[1])
+  refresh()
+  return #sessions, sessions
+end
+
+-- Numéro d'une proposition reçue : comme le chef de butin (le suivant des propositions ouvertes, 1 s'il n'y en a pas) ;
+-- le format LO ne le porte pas
+local function nextOfferNum()
+  local max = 0
+  for _, o in ipairs(L.offers) do if not o.closed and (o.num or 0) > max then max = o.num end end
+  return max + 1
 end
 
 Cm.On("LO", function(sender, f, dist)
@@ -709,16 +821,34 @@ Cm.On("LO", function(sender, f, dist)
   local name = F.txt(f[4], 80)
   local c = L.councils[sid]
   local link = (c and c.link) or L.LinkFor(itemString, name ~= "" and name or nil)
-  L.offers[#L.offers + 1] = { session = sid, itemString = itemString, itemId = id, link = link, name = name, from = sender, at = time(), answered = false }
+  local o = { session = sid, num = (c and c.num) or nextOfferNum(), itemString = itemString, itemId = id, link = link, name = name, from = sender,
+    at = time(), answered = false }
+  -- Puis-je le porter ? (nil : objet pas encore connu du jeu, recalculé à son arrivée)
+  o.usable, o.reason = L.CanUse(itemString)
+  L.offers[#L.offers + 1] = o
   -- Raid d'essai : la proposition d'un chef de butin fictif te met côté joueur (pas de conseil chez toi)
   if not c and not L.test and L.IsCouncil(sender) then
-    L.councils[sid] = { session = sid, itemId = id, itemString = itemString, link = link, name = name, ilvl = ilvlOf(itemString),
-      master = sender, cands = {}, votes = {}, at = time() }
+    L.councils[sid] = { session = sid, num = o.num, order = nextOrder(), itemId = id, itemString = itemString, link = link, name = name,
+      ilvl = ilvlOf(itemString), master = sender, cands = {}, votes = {}, at = time() }
     ui("ShowCouncil", sid)
   end
   ui("ShowOffer", sid)
   refresh()
 end)
+
+-- Objet arrivé dans le cache du jeu : « puis-je le porter ? » recalculé pour les propositions encore sans réponse sûre
+local function itemArrived(id)
+  local changed = false
+  for _, o in ipairs(L.offers) do
+    if not o.closed and o.usable == nil and (secret(id) or not num(id) or o.itemId == id) then
+      o.usable, o.reason = L.CanUse(o.itemString)
+      if o.usable ~= nil then changed = true end
+    end
+  end
+  if changed then refresh() end
+end
+ns.on("GET_ITEM_INFO_RECEIVED", function(id) ns.safe("butin", itemArrived, id) end)
+ns.on("ITEM_DATA_LOAD_RESULT", function(id) ns.safe("butin", itemArrived, id) end)
 
 -- Objets portés au même emplacement (pour comparer) : { { id, ilvl, link } }, deux au plus
 local SLOTS = {
@@ -739,6 +869,112 @@ function L.Equipped(item)
   return out
 end
 
+--------------------------------------------------------------------------------------------------------------------
+-- Objets portables (retours du raid de test) : BiS, Upgrade et Off-spec seulement sur ce qu'on peut porter
+--------------------------------------------------------------------------------------------------------------------
+-- Armure (Enum.ItemClass.Armor = 4) aux emplacements d'armure : le type exact de la classe (choix de Flo). La cape (tissu)
+-- est pour tous : elle n'est pas dans cette liste.
+local ARMOR_SLOTS = { INVTYPE_HEAD = true, INVTYPE_SHOULDER = true, INVTYPE_CHEST = true, INVTYPE_ROBE = true, INVTYPE_WAIST = true,
+  INVTYPE_LEGS = true, INVTYPE_FEET = true, INVTYPE_WRIST = true, INVTYPE_HAND = true }
+-- Sous-classe d'armure (Enum.ItemArmorSubclass) : 1 tissu, 2 cuir, 3 mailles, 4 plaques
+L.ARMOR_OF = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DEMONHUNTER = 2, DRUID = 2, MONK = 2, ROGUE = 2, EVOKER = 3, HUNTER = 3, SHAMAN = 3,
+  DEATHKNIGHT = 4, PALADIN = 4, WARRIOR = 4 }
+local ARMOR_NAME = { "tissu", "cuir", "mailles", "plaques" }
+
+-- Identifiant, emplacement, classe et sous-classe d'un objet, sans demander le serveur (nil : objet inconnu)
+local function itemInfo(item)
+  if not usable(item) and type(item) ~= "number" then return nil end
+  local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  local ok, id, _, _, loc, _, classID, subID = call(info, item)
+  if not ok or not num(id) then return nil end
+  return id, usable(loc) and loc or "", num(classID), num(subID)
+end
+-- Armure soumise à la règle du type : sous-classe (1 à 4), sinon nil
+local function armorType(item)
+  local id, loc, classID, subID = itemInfo(item)
+  if not id or classID ~= 4 or not ARMOR_SLOTS[loc] or not ARMOR_NAME[subID or 0] then return nil, id end
+  return subID, id
+end
+local function myClass()
+  local ok, _, token = call(UnitClass, "player")
+  return ok and usable(token) and token or nil
+end
+L.MyClass = myClass
+
+-- Règle de l'armure seule, pour la réponse d'un autre joueur : false (pas son type), true, nil (pas une armure, classe
+-- ou objet inconnus)
+function L.CanUseClass(item, class)
+  local sub = armorType(item)
+  local want = usable(class) and L.ARMOR_OF[class:upper()] or nil
+  if not (sub and want) then return nil end
+  return sub == want
+end
+
+-- Couleur rouge d'une ligne d'infobulle (texte « pas pour toi » du jeu : arme non maniée, classes d'un jeton…)
+local function red(c)
+  if type(c) ~= "table" or secret(c) then return false end
+  local r, g, b = num(c.r), num(c.g), num(c.b)
+  return r ~= nil and g ~= nil and b ~= nil and r > 0.9 and g < 0.3 and b < 0.3
+end
+local function plain(s) return F.trim((s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))) end
+local tipCache = {} -- chaîne de l'objet → { usable, reason } (résultats sûrs seulement)
+-- Infobulle du jeu (C_TooltipInfo.GetHyperlink) : une ligne en rouge, à gauche ou à droite, dit que l'objet n'est pas
+-- pour moi. Objet pas encore connu du jeu : nil (l'infobulle serait incomplète), chargement demandé.
+local function tooltipCheck(item, id)
+  local str = F.ItemString(item) or ("item:" .. id)
+  local hit = tipCache[str]
+  if hit then return hit[1], hit[2] end
+  if not (C_TooltipInfo and C_TooltipInfo.GetHyperlink) then return nil end
+  local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+  local okI, name = call(getInfo, str)
+  if not (okI and usable(name)) then
+    if C_Item and C_Item.RequestLoadItemDataByID then call(C_Item.RequestLoadItemDataByID, id) end
+    return nil
+  end
+  local ok, data = pcall(C_TooltipInfo.GetHyperlink, str)
+  if not ok or type(data) ~= "table" or secret(data) or type(data.lines) ~= "table" then return nil end
+  local seen = false
+  for _, line in ipairs(data.lines) do
+    if type(line) == "table" and not secret(line) then
+      seen = true
+      for _, side in ipairs({ { line.leftText, line.leftColor }, { line.rightText, line.rightColor } }) do
+        local text = usable(side[1]) and plain(side[1]) or ""
+        if text ~= "" and red(side[2]) then
+          if text == RETRIEVING_ITEM_INFO then return nil end -- « Récupération des informations… »
+          tipCache[str] = { false, F.cut(text, 80) }
+          return false, tipCache[str][2]
+        end
+      end
+    end
+  end
+  if not seen then return nil end
+  tipCache[str] = { true }
+  return true
+end
+
+-- Puis-je porter cet objet ? usable (true, false, nil si inconnu : on laisse tout), raison (texte court). Mon perso :
+-- classe du jeu (UnitClass, raid d'essai compris). Un objet que je porte déjà (même identifiant) est portable.
+function L.CanUse(item)
+  local ok, usableNow, reason = pcall(function()
+    local id, loc = itemInfo(item)
+    if not id then
+      local want = F.ItemId(item)
+      if want and C_Item and C_Item.RequestLoadItemDataByID then call(C_Item.RequestLoadItemDataByID, want) end
+      return nil
+    end
+    local sub = armorType(item)
+    if sub then
+      local want = L.ARMOR_OF[myClass() or ""]
+      if not want then return nil end
+      if sub == want then return true end
+      return false, "armure en " .. ARMOR_NAME[sub] .. " : pas ton type d'armure"
+    end
+    return tooltipCheck(item, id)
+  end)
+  if not ok then return nil end
+  return usableNow, reason
+end
+
 local function findOffer(sid) for _, o in ipairs(L.offers) do if o.session == sid then return o end end return nil end
 function L.Offers()
   local out = {}
@@ -746,9 +982,20 @@ function L.Offers()
   return out
 end
 
+-- Ma réponse (changeable tant que le conseil est ouvert) : BiS, Upgrade et Off-spec refusés sur un objet que je ne peux
+-- pas porter (renvoie false et le message)
+local GEAR = { bis = true, upgrade = true, off = true }
 function L.Answer(session, response, note)
   local o = findOffer(session)
   if not o or o.closed or not L.RESPONSES[response] then return false end
+  if GEAR[response] then
+    local can, why = L.CanUse(o.itemString)
+    if can == false then
+      local msg = "tu ne peux pas porter " .. o.link .. (why and (" (" .. why .. ")") or "") .. " : réponds Transmo ou Passer."
+      ns.print(msg)
+      return false, msg
+    end
+  end
   local gear = F.GearText(L.Equipped(o.itemString))
   local msg = "LA;" .. session .. ";" .. response .. ";" .. gear .. ";" .. F.cut(F.trim(F.clean(note or "")), 60)
   toCouncil(msg, o.from)
@@ -757,6 +1004,21 @@ function L.Answer(session, response, note)
   ui("ShowOffer")
   refresh()
   return true
+end
+
+-- Règle de l'armure sur la réponse d'un autre joueur (chef de butin et conseil) : BiS, Upgrade ou Off-spec sur une
+-- armure qui n'est pas du type de sa classe devient Transmo. Raid d'essai : seulement si test.armorRule.
+local function armorRuleOn() return not L.test or L.test.armorRule == true end
+local function classOf(name)
+  local m = member(name)
+  if m and usable(m.class) then return m.class end
+  if same(name, me()) then return myClass() end
+  return nil
+end
+local function checked(c, who, response)
+  if not (GEAR[response] and armorRuleOn()) or same(who, me()) then return response, nil end
+  if L.CanUseClass(c.itemString, classOf(who)) == false then return "transmo", false end
+  return response, nil
 end
 
 Cm.On("LA", function(sender, f, dist)
@@ -772,29 +1034,58 @@ Cm.On("LA", function(sender, f, dist)
     if not who then return end
     whispered = f[7] ~= "r"
   end
-  c.cands[F.Fold(who)] = { name = who, response = f[3], gear = F.Gear(f[4]), note = whispered and "" or F.txt(f[5], 60), whispered = whispered, at = time() }
+  local response, canUse = checked(c, who, f[3])
+  c.cands[F.Fold(who)] = { name = who, response = response, asked = response ~= f[3] and f[3] or nil, canUse = canUse, gear = F.Gear(f[4]),
+    note = whispered and "" or F.txt(f[5], 60), whispered = whispered, at = time() }
   -- Chef de butin : chaque réponse reçue d'un joueur est relayée au raid ; seuls les membres du conseil (qui ont ce
   -- conseil) la gardent. Un joueur sans les données du site ne l'envoie qu'au chef de butin.
   if not relayed and not L.test and same(c.master, me()) and not same(sender, me()) then
-    send("LA;" .. c.session .. ";" .. f[3] .. ";" .. F.clean(f[4] or "") .. ";" .. F.cut(F.clean(F.txt(f[5], 60)), 60) .. ";" .. who .. ";r")
+    send("LA;" .. c.session .. ";" .. response .. ";" .. F.clean(f[4] or "") .. ";" .. F.cut(F.clean(F.txt(f[5], 60)), 60) .. ";" .. who .. ";r")
   end
   refresh()
 end)
 
--- Réponse chuchotée au chef de butin (« bis », « up », « os », « transmo », « passe ») pendant un conseil
+-- Réponse chuchotée au chef de butin (« bis », « up », « os », « transmo », « passe »), suivie ou précédée du numéro de
+-- l'objet (« bis 2 », « 2 bis ») ; sans numéro, valable s'il n'y a qu'un conseil ouvert, sinon rappel chuchoté (une fois
+-- par lot de conseils)
 local WHISPERED = { bis = "bis", up = "upgrade", upgrade = "upgrade", os = "off", off = "off", offspec = "off", ["off-spec"] = "off",
   transmo = "transmo", transmog = "transmo", pass = "pass", passe = "pass", ["je passe"] = "pass" }
+function L.ParseWhisper(text)
+  if not usable(text) then return nil end
+  local s = F.trim(text):lower()
+  local word, n = s:match("^(.-)%s*#?(%d+)$")
+  if not (word and word ~= "") then n, word = s:match("^#?(%d+)%s*(.-)$") end
+  if not (word and word ~= "") then word, n = s, nil end
+  local r = WHISPERED[F.trim(word)]
+  return r, r and tonumber(n) or nil
+end
+L.REMIND = "Précise le numéro de l'objet, par exemple « bis 2 »."
+L.REMIND_UNKNOWN = "Pas d'objet n° %d au conseil : réponds avec un numéro de l'annonce, par exemple « bis 2 »."
+local function remind(who, text)
+  local k = fold(who)
+  if not k or reminded[k] or chatLocked() then return false end
+  if sendChat(text, "WHISPER", who) then reminded[k] = true end
+  return true
+end
 function L.OnWhisper(text, sender)
   if not (usable(text) and usable(sender)) or not L.IsMaster() then return end
-  local r = WHISPERED[F.trim(text):lower()]
+  local r, n = L.ParseWhisper(text)
   if not r then return end
-  local c
-  for _, x in pairs(L.councils) do if not x.closed and x.key and same(x.master, me()) and (not c or x.at > c.at) then c = x end end
   local who = F.FullName(sender)
-  if not (c and who) then return end
+  local open = openCouncils()
+  if not who or #open == 0 then return end
+  local c
+  if n then for _, x in ipairs(open) do if x.num == n then c = x end end
+  elseif #open == 1 then c = open[1] end
+  if not c then remind(who, n and string.format(L.REMIND_UNKNOWN, n) or L.REMIND) return end
+  -- Règle de l'armure appliquée avant le relais : le conseil (même avec un addon 0.2) reçoit déjà Transmo
+  local asked = r
+  r = checked(c, who, r)
   local msg = "LA;" .. c.session .. ";" .. r .. ";;chuchoté;" .. who
   toCouncil(msg, me())
   Cm.Deliver(me(), msg, "SELF")
+  local x = r ~= asked and c.cands[F.Fold(who)]
+  if x then x.asked, x.canUse = asked, false end
 end
 ns.on("CHAT_MSG_WHISPER", function(text, sender) ns.safe("conseil du butin", L.OnWhisper, text, sender) end)
 
@@ -843,21 +1134,62 @@ function L.Counts(l)
   return true
 end
 L.KEPT = "gardé"
+-- Catégorie d'un objet reçu, détail de la colonne « Reçus » (BiS · Upgrade · Jets MS) : "bis" (conseil BiS), "up"
+-- (conseil Upgrade), "ms" (jet dont le détail commence par « MS »), nil (les autres, qui comptent ou non)
+function L.Category(l)
+  if type(l) ~= "table" then return nil end
+  if l.method == "council" then
+    if l.response == "bis" then return "bis" end
+    if l.response == "upgrade" then return "up" end
+    return nil
+  end
+  if l.method == "roll" and F.trim(l.detail):find("^MS") then return "ms" end
+  return nil
+end
+
+-- Objets reçus d'un joueur : compte du site (N), ce soir (bilan en cours), l'objet N du site, et le détail
+-- { bis, up, ms } = site (ligne D) + ce soir (L.Category)
 function L.Received(name)
   local c = L.test and L.test.counts or ns.Groups.Counts(ns.Groups.LootRaid())
   local entry = F.CountFor(c, name)
   local names = entry and entry.names or { name }
   local log = L.test and L.testLog or ns.Recorder.Current()
   local tonight = 0
+  local detail = { bis = tonumber(entry and entry.bis) or 0, up = tonumber(entry and entry.up) or 0, ms = tonumber(entry and entry.ms) or 0 }
   -- Objets du chef de butin pas encore distribués (ramassés, sans méthode) : pas les siens
   local holder = L.Enabled() and L.Master()
   for _, l in ipairs(log and log.loot or {}) do
     local waiting = holder and (l.method or "") == "" and same(l.who, holder)
     if not waiting and L.Counts(l) then
-      for _, n in ipairs(names) do if same(l.who, n) then tonight = tonight + 1 break end end
+      for _, n in ipairs(names) do
+        if same(l.who, n) then
+          tonight = tonight + 1
+          local cat = L.Category(l)
+          if cat then detail[cat] = detail[cat] + 1 end
+          break
+        end
+      end
     end
   end
-  return entry and entry.n or 0, tonight, c
+  return entry and entry.n or 0, tonight, c, detail
+end
+
+-- Conseils de moins de 2 h, dans l'ordre de proposition (bande d'objets des fenêtres) : { session, num, link, name,
+-- ilvl, itemId, master, closed, winner, answers, waiting, myVote, isMaster }
+function L.Councils()
+  local list, now, members, mine = {}, time(), L.Members(), fold(me())
+  for _, c in pairs(L.councils) do if now - (c.at or 0) < L.COUNCIL_KEEP then list[#list + 1] = c end end
+  table.sort(list, function(a, b) return (a.order or 0) < (b.order or 0) end)
+  local out = {}
+  for _, c in ipairs(list) do
+    local answers, waiting = 0, 0
+    for _ in pairs(c.cands) do answers = answers + 1 end
+    for _, m in ipairs(members) do if not c.cands[m.key] then waiting = waiting + 1 end end
+    local v = mine and c.votes[mine]
+    out[#out + 1] = { session = c.session, num = c.num, link = c.link, name = c.name, ilvl = c.ilvl, itemId = c.itemId, master = c.master,
+      closed = c.closed == true, winner = c.winner, answers = answers, waiting = waiting, myVote = v and v.cand or nil, isMaster = same(c.master, me()) }
+  end
+  return out
 end
 
 function L.Council(session)
@@ -869,18 +1201,25 @@ function L.Council(session)
     if ck then voters[ck] = voters[ck] or {} table.insert(voters[ck], v.voter) end
     if k == fold(me()) then myVote = v.cand end
   end
-  local out = { session = c.session, key = c.key, itemId = c.itemId, link = c.link, name = c.name, ilvl = c.ilvl, master = c.master,
+  local out = { session = c.session, num = c.num, key = c.key, itemId = c.itemId, link = c.link, name = c.name, ilvl = c.ilvl, master = c.master,
     closed = c.closed == true, winner = c.winner, myVote = myVote, cands = {}, waiting = {}, council = L.CouncilNames(), isMaster = same(c.master, me()) }
   local _, _, counts = L.Received(me())
   out.counts = counts
+  -- Classes des membres (règle de l'armure), lues une fois
+  local members, classes, rule = L.Members(), {}, armorRuleOn()
+  for _, m in ipairs(members) do if usable(m.class) then classes[m.key] = m.class end end
   for k, x in pairs(c.cands) do
     local vs = voters[k] or {}
     table.sort(vs)
     local gear = {}
     for _, g in ipairs(x.gear or {}) do gear[#gear + 1] = { id = g.id, ilvl = g.ilvl, link = L.LinkFor(g.id) } end
-    local site, tonight = L.Received(x.name)
-    out.cands[#out.cands + 1] = { name = x.name, response = x.response, gear = gear, note = x.note or "", whispered = x.whispered,
-      received = site + tonight, receivedSite = site, receivedTonight = tonight, votes = #vs, voters = vs }
+    local site, tonight, _, d = L.Received(x.name)
+    -- Peut-il le porter ? false : la règle de l'armure dit non pour sa classe (réponse devenue Transmo s'il voulait BiS…)
+    local canUse = x.canUse
+    if canUse == nil and rule then canUse = L.CanUseClass(c.itemString, classes[k] or (same(x.name, me()) and myClass() or nil)) end
+    out.cands[#out.cands + 1] = { name = x.name, response = x.response, asked = x.asked, canUse = canUse, gear = gear, note = x.note or "",
+      whispered = x.whispered, received = site + tonight, receivedSite = site, receivedTonight = tonight,
+      receivedBis = d.bis, receivedUp = d.up, receivedMs = d.ms, votes = #vs, voters = vs }
   end
   table.sort(out.cands, function(a, b)
     local ra, rb = RANK[a.response] or 9, RANK[b.response] or 9
@@ -888,7 +1227,7 @@ function L.Council(session)
     if a.votes ~= b.votes then return a.votes > b.votes end
     return a.name < b.name
   end)
-  for _, m in ipairs(L.Members()) do if not c.cands[m.key] then out.waiting[#out.waiting + 1] = m.name end end
+  for _, m in ipairs(members) do if not c.cands[m.key] then out.waiting[#out.waiting + 1] = m.name end end
   table.sort(out.waiting)
   return out
 end
@@ -1118,12 +1457,47 @@ end)
 function L.Keep(key) return L.Award(key, me(), "ml", nil, L.KEPT) end
 
 --------------------------------------------------------------------------------------------------------------------
--- Échange au gagnant : demande d'échange (InitiateTrade), objet posé à l'ouverture de la fenêtre, fin détectée
+-- Échange au gagnant. Dès qu'une fenêtre d'échange s'ouvre (TRADE_SHOW) avec un joueur à qui des objets sont attribués,
+-- qu'il l'ait ouverte lui-même ou que le chef de butin ait cliqué « Échanger » (InitiateTrade), ses objets sont posés
+-- dans les cases libres (6 au plus) ; à la fermeture, chaque objet dont le nombre d'exemplaires dans les sacs a baissé
+-- est remis. « Échanger » sans fenêtre au bout de 4 s : le message d'erreur du jeu (UI_ERROR_MESSAGE) s'il y en a un,
+-- sinon la marche à suivre (le gagnant ouvre l'échange). Jamais en combat.
 --------------------------------------------------------------------------------------------------------------------
+L.TRADE_WAIT = 4      -- secondes : fenêtre d'échange attendue après « Échanger »
+L.TRADE_DELAY = 0.3   -- secondes : la fenêtre d'échange doit être prête avant d'y poser les objets
+L.TRADE_STEP = 0.2    -- secondes entre deux objets posés
+L.trading = nil       -- échange ouvert : { partner, at, placed = { { key, itemId, bag, slot, tradeSlot, count } }, closing }
+L.tradeAsk = nil      -- « Échanger » en attente de la fenêtre : { winner, at, errors }
+local tradeOpen = false
+
 local function countOf(id)
   local getCount = (C_Item and C_Item.GetItemCount) or GetItemCount
   local ok, n = call(getCount, id)
   if ok and type(n) == "number" and not secret(n) then return n end
+  return nil
+end
+local function inCombat() local ok, v = call(InCombatLockdown) return ok and not secret(v) and v == true end
+local function links(entries) local out = {} for _, e in ipairs(entries) do out[#out + 1] = e.link end return table.concat(out, ", ") end
+-- Cases d'échange du joueur (MAX_TRADABLE_ITEMS : 6 ; la 7e est « ne sera pas échangé »)
+local function tradeSlots()
+  local n = num(MAX_TRADABLE_ITEMS) or 6
+  return math.max(1, math.min(6, n))
+end
+
+-- Objets attribués à un gagnant, pas encore remis (dans l'ordre de la liste)
+function L.Handover(name)
+  local out = {}
+  if not name then return out end
+  for _, e in ipairs(list()) do if e.status == "awarded" and e.winner and same(e.winner, name) then out[#out + 1] = e end end
+  return out
+end
+local function anyAwarded() for _, e in ipairs(list()) do if e.status == "awarded" then return true end end return false end
+
+-- Partenaire de l'échange ouvert : « Prénom-Royaume » (UnitFullName("npc"), sinon UnitName("npc")), nil si illisible
+local function tradePartner()
+  local ok, name, realm = call(UnitFullName, "npc")
+  if not (ok and usable(name) and name ~= "") then ok, name, realm = call(UnitName, "npc") end
+  if ok and usable(name) and name ~= "" then return F.FullName(name, usable(realm) and realm or nil) end
   return nil
 end
 
@@ -1134,51 +1508,178 @@ function L.Trade(key)
     if L.test.trade then ns.safe("raid d'essai", L.test.trade, e) end
     return true
   end
-  if InCombatLockdown and InCombatLockdown() then ns.print("pas d'échange en combat : réessaie juste après.") return false end
+  local who = F.Display(e.winner)
+  if inCombat() then ns.print("pas d'échange en combat : réessaie juste après.") return false end
   local m = member(e.winner)
-  if not (m and m.unit) then ns.print(F.Display(e.winner) .. " n'est pas dans le groupe.") return false end
+  if not (m and m.unit) then ns.print(who .. " n'est pas dans le groupe.") return false end
+  -- Trop loin seulement si le jeu le dit vraiment (false) : ni valeur secrète, ni nil
   local okD, near = call(CheckInteractDistance, m.unit, 2)
-  if okD and near == false then ns.print(F.Display(e.winner) .. " est trop loin pour échanger : rapproche-toi.") return false end
-  L.trading = { key = e.key, winner = e.winner, at = time(), count = countOf(e.itemId) }
-  if not call(InitiateTrade, m.unit) then
-    L.trading = nil
-    ns.print("le jeu n'a pas permis d'ouvrir l'échange avec " .. F.Display(e.winner) .. ".")
+  if okD and not secret(near) and near == false then ns.print(who .. " est trop loin pour échanger : rapproche-toi.") return false end
+  -- Fenêtre déjà ouverte : avec le gagnant, ses objets y sont (re)posés ; avec un autre, à fermer d'abord
+  if tradeOpen then
+    local t = L.trading
+    if t and same(t.partner, e.winner) then L.FillTrade(e.winner) return true end
+    ns.print("un échange est déjà ouvert" .. (t and (" avec " .. F.Display(t.partner)) or "") .. " : ferme-le d'abord.")
     return false
   end
-  ns.print("échange demandé à " .. F.Display(e.winner) .. " : l'objet sera posé tout seul dans la fenêtre d'échange.")
+  local ask = { winner = e.winner, at = time(), errors = {} }
+  L.tradeAsk = ask
+  if not call(InitiateTrade, m.unit) then
+    L.tradeAsk = nil
+    ns.print("le jeu n'a pas permis d'ouvrir l'échange avec " .. who .. ".")
+    return false
+  end
+  ns.print("échange demandé à " .. who .. " : ses objets seront posés tout seuls dans la fenêtre d'échange.")
+  if C_Timer and C_Timer.After then C_Timer.After(L.TRADE_WAIT, function() ns.safe("échange", L.TradeTimeout, ask) end) end
   return true
 end
 
--- Fenêtre d'échange ouverte avec le gagnant : l'objet est posé dans la première case
-function L.OnTradeShow()
-  local t = L.trading
-  if not t or time() - t.at > 120 then return end
-  local e = L.Find(t.key)
-  if not e then return end
-  local okN, name, realm = call(UnitFullName or UnitName, "npc") -- le partenaire de l'échange
-  if okN and usable(name) and not same(F.FullName(name, usable(realm) and realm or nil), t.winner) then return end
-  local bag, slot = L.FindInBags(e)
-  if not bag then ns.print("objet introuvable dans tes sacs : " .. e.link .. ".") return end
-  t.count = t.count or countOf(e.itemId)
-  call(ClearCursor)
-  call(C_Container and C_Container.PickupContainerItem, bag, slot)
-  call(ClickTradeButton, 1)
-  t.placed = true
+L.NO_WINDOW = "demande-lui d'ouvrir l'échange avec toi (clic droit sur ton portrait › Échanger), l'objet sera posé tout seul."
+-- Pas de fenêtre d'échange 4 s après « Échanger » : ce que le jeu a dit, sinon la marche à suivre
+function L.TradeTimeout(ask)
+  if L.tradeAsk ~= ask then return end -- fenêtre ouverte entre-temps, ou nouvelle demande
+  L.tradeAsk = nil
+  local who = F.Display(ask.winner)
+  local err = ask.errors[#ask.errors]
+  if err then ns.print("pas de fenêtre d'échange avec " .. who .. ". Le jeu dit : « " .. err .. " » Sinon, " .. L.NO_WINDOW)
+  else ns.print("pas de fenêtre d'échange avec " .. who .. " : " .. L.NO_WINDOW) end
 end
--- Fenêtre fermée : l'objet a quitté les sacs, il est remis
+ns.on("UI_ERROR_MESSAGE", function(_, message)
+  local ask = L.tradeAsk
+  if not ask or not usable(message) or #ask.errors >= 5 then return end
+  local text = plain(message)
+  if text ~= "" then ask.errors[#ask.errors + 1] = F.cut(text, 120) end
+end)
+
+-- Fenêtre d'échange ouverte, par n'importe qui : les objets attribués au partenaire y seront posés. Raid d'essai : pas de
+-- vrai échange ; Test.lua peut simuler un échange ouvert par un gagnant fictif (partner) : crochet test.tradeShow, sinon
+-- test.trade pour chaque objet.
+function L.OnTradeShow(partner)
+  if L.test then
+    local full = F.FullName(partner)
+    local items = L.Handover(full)
+    if #items == 0 then return end
+    ns.print("objets posés dans l'échange avec " .. F.Display(full) .. " (raid d'essai) : " .. links(items) .. ".")
+    if L.test.tradeShow then ns.safe("raid d'essai", L.test.tradeShow, full, items)
+    elseif L.test.trade then for _, e in ipairs(items) do ns.safe("raid d'essai", L.test.trade, e) end end
+    return
+  end
+  tradeOpen = true
+  L.tradeAsk = nil -- une fenêtre s'est ouverte : plus d'attente
+  if L.trading and not L.trading.closing then L.trading = nil end -- fin d'un échange précédent jamais vue
+  local full = tradePartner()
+  if not full then
+    if anyAwarded() then ns.print("échange : le jeu ne donne pas le nom du partenaire, pose les objets à la main.") end
+    return
+  end
+  if #L.Handover(full) == 0 then return end
+  L.trading = { partner = full, at = time(), placed = {} }
+  if C_Timer and C_Timer.After then C_Timer.After(L.TRADE_DELAY, function() ns.safe("échange", L.FillTrade, full) end)
+  else L.FillTrade(full) end
+end
+
+-- Pose les objets attribués au partenaire dans les cases libres de l'échange ouvert ; jamais deux fois la même case des
+-- sacs, ni un objet déjà dans l'échange. Dit dans le chat ce qui a été posé, et ce qui ne l'a pas été (et pourquoi).
+function L.FillTrade(full)
+  if L.test or not tradeOpen then return false end
+  local t = L.trading
+  if not (t and not t.closing and same(t.partner, full)) then return false end
+  local items = L.Handover(full)
+  if #items == 0 then return false end
+  local who = F.Display(full)
+  if inCombat() then ns.print("en combat : pose les objets de " .. who .. " à la main, ou rouvre l'échange après le combat.") return false end
+  local max = tradeSlots()
+  -- Cases déjà prises, et objets déjà dans l'échange (posés à la main, ou par un premier passage)
+  local taken, inTrade = {}, {}
+  for i = 1, max do
+    local ok, link = call(GetTradePlayerItemLink, i)
+    if ok and secret(link) then taken[i] = true
+    elseif ok and usable(link) and link ~= "" then
+      taken[i] = true
+      local id = F.ItemId(link)
+      if id then inTrade[id] = (inTrade[id] or 0) + 1 end
+    end
+  end
+  local done, used = {}, {}
+  for _, p in ipairs(t.placed) do
+    done[p.key] = true
+    if p.bag then used[p.bag .. ":" .. p.slot] = true end
+    if p.tradeSlot then taken[p.tradeSlot] = true end -- case réservée (objet peut-être pas encore posé)
+    if p.itemId and (inTrade[p.itemId] or 0) > 0 then inTrade[p.itemId] = inTrade[p.itemId] - 1 end
+  end
+  local placed, missed, steps, free = {}, {}, {}, 1
+  for _, e in ipairs(items) do
+    if not done[e.key] then
+      if (inTrade[e.itemId] or 0) > 0 then
+        inTrade[e.itemId] = inTrade[e.itemId] - 1
+        t.placed[#t.placed + 1] = { key = e.key, itemId = e.itemId, count = countOf(e.itemId) }
+        placed[#placed + 1] = e.link
+      elseif e.expires and time() > e.expires then
+        missed[#missed + 1] = e.link .. " (délai d'échange passé)"
+      else
+        while free <= max and taken[free] do free = free + 1 end
+        local bag, slot
+        if free <= max then bag, slot = L.FindInBags(e, used) end
+        if free > max then missed[#missed + 1] = e.link .. " (plus de case libre dans l'échange)"
+        elseif not bag then missed[#missed + 1] = e.link .. " (introuvable dans tes sacs)"
+        else
+          used[bag .. ":" .. slot] = true
+          e.bag, e.slot = bag, slot
+          taken[free] = true
+          t.placed[#t.placed + 1] = { key = e.key, itemId = e.itemId, bag = bag, slot = slot, tradeSlot = free, count = countOf(e.itemId) }
+          steps[#steps + 1] = { bag = bag, slot = slot, tradeSlot = free, itemId = e.itemId }
+          placed[#placed + 1] = e.link
+        end
+      end
+    end
+  end
+  -- Un objet à la fois (le serveur traite chaque case) : prendre dans le sac, poser dans la case d'échange
+  for i, s in ipairs(steps) do
+    local function put()
+      if not tradeOpen or L.trading ~= t or inCombat() then return end
+      local okL, link = call(C_Container and C_Container.GetContainerItemLink, s.bag, s.slot)
+      if not (okL and usable(link) and F.ItemId(link) == s.itemId) then return end -- sacs changés entre-temps
+      call(ClearCursor)
+      call(C_Container and C_Container.PickupContainerItem, s.bag, s.slot)
+      call(ClickTradeButton, s.tradeSlot)
+    end
+    if i == 1 or not (C_Timer and C_Timer.After) then put()
+    else C_Timer.After((i - 1) * L.TRADE_STEP, function() ns.safe("échange", put) end) end
+  end
+  if #placed > 0 then ns.print("objets posés dans l'échange avec " .. who .. " : " .. table.concat(placed, ", ") .. ". Vérifie, puis valide l'échange.") end
+  if #missed > 0 then ns.print("pas posé pour " .. who .. " : " .. table.concat(missed, ", ") .. ".") end
+  refresh()
+  return #placed > 0
+end
+
+-- Fenêtre fermée : chaque objet posé qui a quitté les sacs (moins d'exemplaires qu'avant) est remis ; échange annulé :
+-- rien ne change
 function L.OnTradeClosed()
+  tradeOpen = false
   local t = L.trading
   if not t or t.closing then return end
   t.closing = true
   local function check()
-    L.trading = nil
-    local e = L.Find(t.key)
-    if not e then return end
-    local n = countOf(e.itemId)
-    if t.count and n and n < t.count then
-      e.status, e.tradedAt = "traded", time()
-      ns.print("objet remis à " .. F.Display(e.winner) .. " : " .. e.link .. ".")
+    if L.trading == t then L.trading = nil end
+    -- Exemplaires partis, par objet (deux exemplaires du même objet : deux de moins)
+    local before, gone = {}, {}
+    for _, p in ipairs(t.placed) do
+      if p.count and (not before[p.itemId] or p.count > before[p.itemId]) then before[p.itemId] = p.count end
     end
+    for id, n in pairs(before) do
+      local now = countOf(id)
+      gone[id] = now and (n - now) or 0
+    end
+    local given = {}
+    for _, p in ipairs(t.placed) do
+      local e = (gone[p.itemId] or 0) > 0 and L.Find(p.key)
+      if e and e.status == "awarded" then
+        e.status, e.tradedAt, e.bag, e.slot = "traded", time(), nil, nil
+        given[#given + 1] = e.link
+        gone[p.itemId] = gone[p.itemId] - 1
+      end
+    end
+    if #given > 0 then ns.print("remis à " .. F.Display(t.partner) .. " : " .. table.concat(given, ", ") .. ".") end
     refresh()
   end
   if C_Timer and C_Timer.After then C_Timer.After(1, function() ns.safe("échange", check) end) else check() end
@@ -1198,7 +1699,8 @@ end)
 function L.StopTest()
   L.test = nil
   L.testItems, L.testNotPassed, L.testLog = {}, {}, { loot = {} }
-  L.councils, L.offers, L.rollSessions, L.activeRoll, L.trading = {}, {}, {}, nil, nil
+  L.councils, L.offers, L.rollSessions, L.activeRoll, L.trading, L.tradeAsk = {}, {}, {}, nil, nil, nil
+  reminded = {}
   ui("Close")
   refresh()
 end

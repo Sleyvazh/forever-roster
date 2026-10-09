@@ -206,11 +206,14 @@ export async function raidLogRoutes(app: FastifyInstance) {
       });
       const got = logs.flatMap(l => l.loot.filter(x => sameLogName(game, x.name, c)).map(x => ({ ...x, raidName: l.name }))).sort((a, b) => b.at - a.at);
       const last = got[0];
+      const kept = countOf.get(c.id);
       return {
         id: c.id, name: c.name, cls: c.cls, owner: c.owner, userId: c.userId, cells,
         attended: cells.filter(s => s && ATTENDED.includes(s)).length,
         loot: got.length,
-        counted: countOf.get(c.id)?.count ?? 0,
+        counted: kept?.count ?? 0,
+        // Détail du compte (BiS, Upgrade, jets MS), même période et même façon de compter
+        detail: { bis: kept?.bis ?? 0, upgrade: kept?.upgrade ?? 0, ms: kept?.ms ?? 0 },
         lastItem: last ? { id: last.itemId, name: itemOf.get(last.itemId)?.name ?? last.itemName ?? `Objet ${last.itemId}`, quality: itemOf.get(last.itemId)?.quality ?? 4, raidName: last.raidName } : null,
       };
     }).filter(c => c.cells.some(s => s) || c.loot > 0 || c.counted !== 0)
@@ -261,7 +264,9 @@ export async function raidLogRoutes(app: FastifyInstance) {
       .map(e => exclusionKey(e.raidId, e.itemId, e.recipient, e.at))) : new Set<string>();
     const counts = await groupLootCounts(db, p.id);
     const myCounts = counts.rows.filter(r => r.userId === p.userId);
-    const corrections = myCounts.length ? await db.select({ id: lootCorrections.id, characterId: lootCorrections.characterId, delta: lootCorrections.delta, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt })
+    // Détail du compte du joueur : par joueur, la ligne de n'importe lequel de ses persos ; par perso, leur somme (comme player)
+    const sum = (k: "bis" | "upgrade" | "ms") => (counts.summary.by === "player" ? myCounts[0]?.[k] ?? 0 : myCounts.reduce((n, r) => n + r[k], 0));
+    const corrections = myCounts.length ? await db.select({ id: lootCorrections.id, characterId: lootCorrections.characterId, delta: lootCorrections.delta, kind: lootCorrections.kind, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt })
       .from(lootCorrections).where(and(eq(lootCorrections.groupId, p.id), inArray(lootCorrections.characterId, myCounts.map(r => r.characterId))))
       .orderBy(desc(lootCorrections.createdAt)).limit(30) : [];
     const items = got.length && game !== "retail" ? await db.select({ id: gameItems.id, name: gameItems.name, quality: gameItems.quality }).from(gameItems).where(inArray(gameItems.id, [...new Set(got.map(g => g.itemId))])) : [];
@@ -282,6 +287,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
       lootCount: {
         ...counts.summary,
         player: myCounts[0]?.player ?? 0,
+        detail: { bis: sum("bis"), upgrade: sum("upgrade"), ms: sum("ms") },
         characters: myCounts.map(r => ({ characterId: r.characterId, name: r.name, own: r.own })),
         corrections: corrections.map(c => ({ ...c, inPeriod: !counts.summary.since || c.at >= counts.summary.since })),
       },

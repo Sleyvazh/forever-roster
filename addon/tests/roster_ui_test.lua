@@ -1,9 +1,11 @@
 -- Simulation de l'API de WoW Retail pour l'addon Roster : charge les fichiers du .toc dans l'ordre, puis la fenêtre,
 -- les commandes /roster, les onglets dans les deux habillages, la synchro rapide, les options, la minicarte, la
--- liste des addons de la minicarte et le raid d'essai de la distribution du butin (R3b), de bout en bout.
+-- liste des addons de la minicarte et le raid d'essai de la distribution du butin (R3b, retours du test 0.3 : tout au
+-- conseil, bandes d'objets, objets portables, détail des reçus), de bout en bout, dans les deux habillages.
 -- lua5.1 addon/tests/roster_ui_test.lua (depuis la racine du dépôt).
 -- Les fichiers de jeu (Format, Comm, Groups, Compo, Recorder, Loot, Pages, LootUI) absents sont remplacés par des
--- doublures qui respectent le contrat ; présents, ce sont eux qui servent.
+-- doublures qui respectent le contrat ; présents, ce sont eux qui servent. Fonctions du contrat 0.3 absentes du moteur :
+-- doublures aussi (« Loot 0.3 » dans le message final).
 local printed = {}
 function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") end
 
@@ -127,13 +129,18 @@ local realSends, realChat = 0, 0
 C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function() realSends = realSends + 1 return 0 end,
   InChatMessagingLockdown = function() return false end, SendChatMessage = function() realChat = realChat + 1 end }
 function SendChatMessage() realChat = realChat + 1 end
--- Objets portés (raid d'essai) : liens avec bonus, niveau d'objet, emplacement
-local WORN = { [1] = { 237101, "Heaume du veilleur", "INVTYPE_HEAD" }, [3] = { 237103, "Spallières de l'aube", "INVTYPE_SHOULDER" },
-  [5] = { 237105, "Cuirasse des cimes", "INVTYPE_CHEST" }, [7] = { 237107, "Jambières runiques", "INVTYPE_LEGS" },
-  [11] = { 237111, "Anneau de braise", "INVTYPE_FINGER" }, [12] = { 237112, "Anneau de givre", "INVTYPE_FINGER" },
-  [16] = { 237116, "Lame du crépuscule", "INVTYPE_WEAPON" } }
-local LOC = {}
-for _, w in pairs(WORN) do LOC[w[1]] = w[3] end
+-- Objets portés (raid d'essai) : liens avec bonus, niveau d'objet, emplacement, classe et sous-classe d'objet (4 armure :
+-- 1 tissu, 2 cuir, 3 mailles, 4 plaques, 0 divers ; 2 arme). Le joueur est druide (cuir) : il ne peut pas porter les
+-- spallières (plaques) ni la cuirasse (tissu).
+local WORN = { [1] = { 237101, "Heaume du veilleur", "INVTYPE_HEAD", 4, 2 }, [3] = { 237103, "Spallières de l'aube", "INVTYPE_SHOULDER", 4, 4 },
+  [5] = { 237105, "Cuirasse des cimes", "INVTYPE_CHEST", 4, 1 }, [7] = { 237107, "Jambières runiques", "INVTYPE_LEGS", 4, 2 },
+  [11] = { 237111, "Anneau de braise", "INVTYPE_FINGER", 4, 0 }, [12] = { 237112, "Anneau de givre", "INVTYPE_FINGER", 4, 0 },
+  [16] = { 237116, "Lame du crépuscule", "INVTYPE_WEAPON", 2, 7 } }
+-- Objets de secours du raid d'essai, et ceux d'une autre armure (côté joueur : mailles 18817, cuir 16901)
+local ITEM = { [19019] = { "INVTYPE_WEAPON", 2, 7 }, [17076] = { "INVTYPE_2HWEAPON", 2, 8 }, [18814] = { "INVTYPE_NECK", 4, 0 },
+  [16901] = { "INVTYPE_LEGS", 4, 2 }, [18817] = { "INVTYPE_HEAD", 4, 3 }, [32837] = { "INVTYPE_WEAPON", 2, 9 } }
+for _, w in pairs(WORN) do ITEM[w[1]] = { w[3], w[4], w[5] } end
+local SUBTYPE = { [0] = "Divers", "Tissu", "Cuir", "Mailles", "Plaques" }
 local naked = false
 function GetInventoryItemLink(unit, slot)
   local w = unit == "player" and not naked and WORN[slot]
@@ -141,7 +148,13 @@ function GetInventoryItemLink(unit, slot)
 end
 C_Item = { GetItemInfo = function() return nil end, GetItemQualityByID = function() return 4 end, RequestLoadItemDataByID = function() end,
   GetDetailedItemLevelInfo = function(item) return tostring(item):find("item:2371") and 678 or 671, false, 650 end,
-  GetItemInfoInstant = function(item) local id = tonumber(tostring(item):match("(%d+)")) return id, "Armure", "Plaques", LOC[id] or "INVTYPE_HEAD", 0, 4, 4 end }
+  GetItemIconByID = function(id) return 134400 + id % 100 end,
+  GetItemInfoInstant = function(item)
+    local s = tostring(item)
+    local id = tonumber(s:match("item:(%d+)") or s:match("^(%d+)$"))
+    local it = ITEM[id] or { "INVTYPE_HEAD", 4, 4 }
+    return id, it[2] == 2 and "Arme" or "Armure", it[2] == 2 and "Épée" or SUBTYPE[it[3]], it[1], 0, it[2], it[3]
+  end }
 Enum = { ItemQuality = { Rare = 3, Epic = 4, Legendary = 5 } }
 -- Raccourcis clavier
 local BINDS = {}
@@ -414,6 +427,99 @@ local function lootStub()
 end
 if ns.Loot == nil then ns.Loot = lootStub() stub.Loot = true end
 install("LootUI", { ShowLoot = function() end, ShowCouncil = function() end, ShowOffer = function() end, ShowHandover = function() end, Refresh = function() end })
+
+-- Contrat des retours du raid de test (moteur 0.3, fait à part) : doublures posées seulement là où le moteur ne l'a pas
+-- encore. L.CanUseClass (règle de l'armure), L.CanUse (le joueur est druide), L.StartAllCouncils, L.Councils (numéro =
+-- ordre de proposition) ; et, seulement sans ce contrat : L.Council complété (num ; par candidat canUse, receivedBis,
+-- receivedUp, receivedMs : site et ce soir) et L.OnWhisper qui lit « bis 2 » (règle de l'armure du chef de butin).
+local Lo = ns.Loot
+local NEW = Lo.StartAllCouncils ~= nil and Lo.Councils ~= nil and Lo.CanUseClass ~= nil
+local function stubNew(fn, impl) if Lo[fn] == nil then Lo[fn] = impl stub["Loot 0.3"] = true end end
+local ARMOR = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DEMONHUNTER = 2, DRUID = 2, MONK = 2, ROGUE = 2, EVOKER = 3, HUNTER = 3, SHAMAN = 3,
+  DEATHKNIGHT = 4, PALADIN = 4, WARRIOR = 4 }
+local ARMOR_NAME = { "tissu", "cuir", "mailles", "plaques" }
+local ARMOR_SLOT = { INVTYPE_HEAD = true, INVTYPE_SHOULDER = true, INVTYPE_CHEST = true, INVTYPE_ROBE = true, INVTYPE_WAIST = true,
+  INVTYPE_LEGS = true, INVTYPE_FEET = true, INVTYPE_WRIST = true, INVTYPE_HAND = true }
+stubNew("CanUseClass", function(item, class)
+  local _, _, _, loc, _, cls, sub = C_Item.GetItemInfoInstant(item or "")
+  if not (cls == 4 and ARMOR_SLOT[loc or ""] and ARMOR_NAME[sub or 0] and ARMOR[class or ""]) then return nil end
+  if ARMOR[class] == sub then return true end
+  return false, "armure en " .. ARMOR_NAME[sub]
+end)
+stubNew("CanUse", function(item) local _, class = UnitClass("player") return Lo.CanUseClass(item, class) end)
+local function rawCouncils()
+  local list = {}
+  for _, c in pairs(Lo.councils or {}) do if time() - (c.at or 0) < 7200 then list[#list + 1] = c end end
+  table.sort(list, function(a, b)
+    if (a.at or 0) ~= (b.at or 0) then return (a.at or 0) < (b.at or 0) end
+    return (tonumber(a.session) or 0) < (tonumber(b.session) or 0)
+  end)
+  return list
+end
+local engineCouncil = Lo.Council
+stubNew("Councils", function()
+  local out = {}
+  for i, raw in ipairs(rawCouncils()) do
+    local c = engineCouncil(raw.session)
+    out[i] = { session = raw.session, num = i, link = c.link, name = c.name, ilvl = c.ilvl, itemId = c.itemId, master = c.master,
+      closed = c.closed, winner = c.winner, answers = #c.cands, waiting = #c.waiting, myVote = c.myVote }
+  end
+  return out
+end)
+stubNew("StartAllCouncils", function()
+  local sessions, fresh = {}, {}
+  for _, e in ipairs(Lo.Items()) do if e.status == "new" then fresh[#fresh + 1] = e end end
+  for _, e in ipairs(fresh) do
+    local ok, sid = Lo.StartCouncil(e.key)
+    if not ok then break end
+    sessions[#sessions + 1] = (type(ok) == "string" and ok) or sid or e.session
+  end
+  if sessions[1] and ns.LootUI.ShowCouncil then ns.LootUI.ShowCouncil(sessions[1]) end
+  return #sessions, sessions
+end)
+if not NEW then
+  local F = ns.Format
+  local function numOf(session) for i, raw in ipairs(rawCouncils()) do if raw.session == session then return i end end end
+  -- Détail des objets reçus : entrée du site (D) et objets de ce soir (conseil BiS / Upgrade, jet MS)
+  local function detail(name)
+    local e = Lo.test and F.CountFor(Lo.test.counts, name)
+    local bis, up, ms = e and e.bis or 0, e and e.up or 0, e and e.ms or 0
+    for _, l in ipairs(Lo.test and Lo.testLog.loot or {}) do
+      for _, nm in ipairs(e and e.names or { name }) do
+        if F.SameName(l.who, nm) then
+          if l.method == "council" and l.response == "bis" then bis = bis + 1
+          elseif l.method == "council" and l.response == "upgrade" then up = up + 1
+          elseif l.method == "roll" and tostring(l.detail):find("^MS") then ms = ms + 1 end
+          break
+        end
+      end
+    end
+    return bis, up, ms
+  end
+  Lo.Council = function(session)
+    local c = engineCouncil(session)
+    if not c then return nil end
+    local raw = Lo.councils[session]
+    if c.num == nil then c.num = numOf(session) end
+    for _, x in ipairs(c.cands) do
+      local m = Lo.Member(x.name)
+      if x.canUse == nil and raw and m and m.class then x.canUse = Lo.CanUseClass(raw.itemString, m.class) end
+      if x.receivedBis == nil then x.receivedBis, x.receivedUp, x.receivedMs = detail(x.name) end
+    end
+    return c
+  end
+  local onWhisper = Lo.OnWhisper
+  local WH = { bis = "bis", up = "upgrade", upgrade = "upgrade", os = "off", off = "off", transmo = "transmo", pass = "pass", passe = "pass" }
+  Lo.OnWhisper = function(text, sender)
+    local word, num = tostring(text or ""):lower():match("^%s*(%S+)%s+(%d+)%s*$")
+    if not (word and WH[word]) then return onWhisper and onWhisper(text, sender) end
+    local r, who, m = WH[word], F.FullName(sender), Lo.Member(sender)
+    local raw = rawCouncils()[tonumber(num)]
+    if not (raw and who) or raw.closed then return end
+    if (r == "bis" or r == "upgrade" or r == "off") and m and Lo.CanUseClass(raw.itemString, m.class) == false then r = "transmo" end
+    ns.Comm.Deliver(ns.Comm.Me(), "LA;" .. raw.session .. ";" .. r .. ";;chuchoté;" .. who, "SELF")
+  end
+end
 -- Espions : appels du contrat comptés, vers la doublure ou le vrai fichier
 local calls, lastArgs = {}, {}
 local function spy(mod, fn)
@@ -699,9 +805,12 @@ for _, name in ipairs(UISpecialFrames) do esc[name] = true end
 assert(esc.RosterMain and esc.RosterQuick, "Échap ferme les fenêtres")
 assert(errors() == baseErrors and failures == 0, "habillage du jeu sans erreur")
 
--- 8. Distribution du butin (R3b) : commandes, puis le raid d'essai de bout en bout (moteur de Loot.lua ou sa doublure).
--- Minuteurs différés : les joueurs fictifs répondent, votent et lancent leurs dés quand le temps avance (advance).
+
+-- 8. Distribution du butin (R3b, retours du raid de test 0.3) : commandes, puis le raid d'essai de bout en bout (moteur de
+-- Loot.lua ou sa doublure). Minuteurs différés : les joueurs fictifs répondent, votent et lancent leurs dés quand le temps
+-- avance (advance).
 local Lt, T, F = ns.Loot, ns.Test, ns.Format
+local U = ns.LootUI
 local function entries()
   local list, out = Lt.Items() or {}, {}
   if #list > 0 then for _, e in ipairs(list) do out[#out + 1] = e end
@@ -720,6 +829,24 @@ local function offerOf(s) for _, o in ipairs(Lt.Offers() or {}) do if tostring(o
 local function said(from, pattern)
   for i = from + 1, #printed do if printed[i]:find("^|cff9aa3b6%[essai%]|r ") and printed[i]:find(pattern) then return printed[i] end end
 end
+-- Fenêtres du butin : bande d'objets (boutons affichés), lignes du tableau du conseil et leurs boutons, réponses
+local function win(kind) return ns.LootUI.Windows()[kind] end
+local function chips(w) local out = {} for _, b in ipairs(w.band.chips) do if b:IsShown() then out[#out + 1] = b end end return out end
+local function rows(w) local out = {} for k = 1, w.grid.n do out[k] = w.grid.rows[k] end return out end
+local function rowOf(w, who) for _, r in ipairs(rows(w)) do if r.cells[1]:GetText():find(who, 1, true) then return r end end end
+local function rowButton(r, label) for _, b in ipairs(r and r.buttons or {}) do if b:IsShown() and b:GetText() == label then return b end end end
+local function give(w, who) script(assert(rowButton(assert(rowOf(w, who), "ligne de " .. who), "Donner"), "« Donner » pour " .. who), "OnClick") end
+-- Donner au premier joueur fictif qui le veut (pas toi)
+local function giveFirst(w)
+  for _, r in ipairs(rows(w)) do
+    local b = rowButton(r, "Donner")
+    if b and not r.cells[1]:GetText():find("Tournicoti", 1, true) then script(b, "OnClick") return end
+  end
+  error("personne à qui donner")
+end
+local function answer(key) script(win("offer").buttons[key], "OnClick") end
+local function respOf(s) local o = offerOf(s) return o and o.answered and o.response end
+local function hasCheck(text) return tostring(text):find("ReadyCheck-Ready", 1, true) ~= nil end
 run("butin")
 assert(n("LootUI.ShowLoot") == 1, "/roster butin : fenêtre du butin")
 run("remettre")
@@ -742,12 +869,14 @@ for _, m in ipairs(members) do
   if m.addon == false then noAddon = noAddon + 1 end
 end
 assert(noAddon == 1 and type(Lt.test.send) == "function" and type(Lt.test.say) == "function" and type(Lt.test.trade) == "function", "crochets du moteur")
+local kd = F.CountFor(Lt.test.counts, "Kaeldra-Hyjal")
+assert(kd and kd.n == 3 and kd.bis == 1 and kd.up == 1 and kd.ms == 1, "objets reçus sur la saison, avec le détail (D)")
 run("test")
 assert(T.active and not T.panel:IsShown(), "/roster test : panneau masqué, essai en cours")
 run("test")
 assert(T.panel:IsShown(), "/roster test : panneau réaffiché")
 
--- Étape 1 : trois objets portés par le joueur, délai d'échange 1 h 52 (et 25 min pour l'un)
+-- Étape 1 : trois objets portés par le joueur, délai d'échange 1 h 52 (et 25 min pour l'un) ; « Tout au conseil (3) »
 local loots = n("LootUI.ShowLoot")
 click("Recevoir 3 objets")
 local its, late = entries(), 0
@@ -758,46 +887,131 @@ for _, e in ipairs(its) do
   if left <= 25 * 60 then late = late + 1 else assert(left >= 110 * 60, "1 h 52 pour l'échange") end
 end
 assert(late == 1, "un objet à 25 min (en orange)")
+assert(U.state.loot.fresh == 3 and TEXTS["Tout au conseil (3)"] and TEXTS["Tout au conseil (3)"]:IsShown(), "fenêtre du butin : « Tout au conseil (3) »")
 tick()
 
--- Étape 2 : conseil ; réponses (dont une chuchotée sans l'addon), votes de Tharok et Brumelune, ton vote, « Donner »
+-- Étape 2 : tout au conseil ; chacun répond à chaque objet selon son armure (le heaume est en cuir, les spallières en
+-- plaques, la cuirasse en tissu), Orvane chuchote « bis 1 », Tharok et Brumelune votent sur chaque objet
 local before = #printed
-click("Lancer le conseil")
-local e1 = entries()[1]
-local s1 = e1.session
-assert(e1.status == "council" and s1 and tostring(lastArgs["LootUI.ShowCouncil"][1]) == tostring(s1), "conseil lancé, fenêtre du conseil")
+click("Tout au conseil")
+its = entries()
+local s1, s2, s3 = its[1].session, its[2].session, its[3].session
+assert(byStatus("council") == 3 and s1 and s2 and s3, "les 3 objets au conseil d'un coup")
+assert(tostring(lastArgs["LootUI.ShowCouncil"][1]) == tostring(s1) and U.state.council.session == s1, "fenêtre du conseil sur le premier objet")
+local cw = win("council")
+assert(#U.state.council.band == 3 and #chips(cw) == 3 and U.state.council.band[1].num == 1 and U.state.council.band[3].num == 3, "bande du conseil : 3 objets numérotés")
 advance(20)
 local c1 = Lt.Council(s1)
 assert(c1 and #c1.cands >= 9, "les 9 joueurs répondent")
-local kael, orv = cand(c1, "Kaeldra-Hyjal"), cand(c1, "Orvane-Hyjal")
+local kael, orv, tharok = cand(c1, "Kaeldra-Hyjal"), cand(c1, "Orvane-Hyjal"), cand(c1, "Tharok-Hyjal")
 local function wears(x, id)
   if type(x.gear) ~= "table" then return tostring(x.gear):find(id, 1, true) ~= nil end
   for _, g in ipairs(x.gear) do if tostring(g.id) == id then return true end end
   return false
 end
 assert(kael and kael.response == "bis" and kael.note == "2e pièce" and wears(kael, "237101"), "réponse, objet porté et note")
-assert(orv and orv.response == "bis" and said(before, "Orvane%-Hyjal.* te chuchote : bis"), "réponse chuchotée par le joueur sans l'addon")
-assert(votesOf(kael) == 1 and votesOf(cand(c1, "Lysenn-Dalaran")) == 1, "Tharok et Brumelune votent")
-assert(offerOf(s1), "fenêtre de réponse chez le chef de butin aussi (son message, reçu comme en jeu)")
-Lt.Answer(s1, "upgrade", "pour voir")
-advance(1)
-assert(cand(Lt.Council(s1), ns.Comm.Me()) and cand(Lt.Council(s1), ns.Comm.Me()).response == "upgrade", "ta réponse au conseil")
-Lt.Vote(s1, "Kaeldra-Hyjal")
+assert(tharok and tharok.response == "transmo" and tharok.note == "", "règle de l'armure : un guerrier répond Transmo sur du cuir")
+assert(orv and orv.response == "transmo" and said(before, "Orvane%-Hyjal.* te chuchote : bis 1"), "« bis 1 » chuchoté sans l'addon, Transmo (armure) chez le chef de butin")
+assert(votesOf(kael) == 1 and votesOf(cand(c1, "Vex-Kael'Thas")) == 1, "Tharok et Brumelune votent pour deux joueurs différents")
+local c2 = Lt.Council(s2)
+for _, s in ipairs({ s2, s3 }) do
+  local c, wanted, nv = Lt.Council(s), false, 0
+  assert(#c.cands >= 8, "chacun répond à chaque objet")
+  for _, x in ipairs(c.cands) do
+    nv = nv + votesOf(x)
+    if x.response == "bis" or x.response == "upgrade" or x.response == "off" then wanted = true end
+  end
+  assert(nv == (wanted and 2 or 0), "Tharok et Brumelune votent sur chaque objet")
+end
+for _, nm in ipairs({ "Kaeldra-Hyjal", "Brumelune-Ysondre", "Vex-Kael'Thas", "Lysenn-Dalaran", "Mirwen-Hyjal" }) do
+  local x = cand(c2, nm)
+  assert(x and (x.response == "transmo" or x.response == "pass"), "plaques : " .. nm .. " répond Transmo ou Passer")
+end
+
+-- Ta réponse (chef de butin) : bande de 3 objets, réponse, objet suivant tout seul ; objet pas portable : Transmo, Passer
+local ow = win("offer")
+assert(offerOf(s1) and ow and ow:IsShown() and U.state.offer.session == s1, "fenêtre de réponse chez le chef de butin aussi, sur le premier objet")
+assert(#U.state.offer.band == 3 and #chips(ow) == 3 and #U.state.offer.buttons == 5, "bande de 3 objets ; objet portable : cinq réponses")
+ow.note:SetText("pour voir")
+answer("upgrade")
+assert(respOf(s1) == "upgrade" and U.state.offer.session == s2, "réponse envoyée, objet suivant tout seul")
+local mine = cand(Lt.Council(s1), ns.Comm.Me())
+assert(mine and mine.response == "upgrade" and mine.note == "pour voir", "ta réponse au conseil, avec la note")
+assert(U.state.offer.usable == false and table.concat(U.state.offer.buttons, ",") == "transmo,pass", "objet pas portable : seulement Transmo et Passer")
+assert(not ow.buttons.bis:IsShown() and not ow.buttons.upgrade:IsShown() and not ow.buttons.off:IsShown() and ow.buttons.transmo:IsShown() and ow.buttons.pass:IsShown(), "boutons BiS, Upgrade et Off-spec masqués")
+assert(ow.warn:IsShown() and ow.warn:GetText():find("Tu ne peux pas porter cet objet", 1, true), "raison affichée")
+assert(ow.note:GetText() == "" and not ow.close:IsShown(), "note propre à chaque objet")
+answer("transmo")
+assert(U.state.offer.session == s3 and not U.state.offer.done, "objet suivant sans réponse")
+answer("pass")
+assert(U.state.offer.done and U.state.offer.session == s3 and ow:IsShown() and ow.close:IsShown(), "tout répondu : la fenêtre reste ouverte, « Fermer »")
+assert(ow.done:GetText():find("Tes réponses", 1, true), "tes réponses résumées")
+for i, r in ipairs({ "upgrade", "transmo", "pass" }) do
+  local b = U.state.offer.band[i]
+  assert(b.answered and b.response == r and hasCheck(b.text), "bande : coche et initiale de la réponse")
+end
+ns.LootUI.ShowOffer(s2)
+assert(U.state.offer.session == s2, "U.ShowOffer(session) choisit cet objet")
+script(chips(ow)[1], "OnClick")
+assert(U.state.offer.session == s1 and ow.note:GetText() == "pour voir", "bande : retour au premier objet, avec sa note")
+answer("bis")
+assert(respOf(s1) == "bis" and cand(Lt.Council(s1), ns.Comm.Me()).response == "bis" and U.state.offer.session == s1, "réponse changée tant que le conseil est ouvert")
+
+-- Conseil : ton vote départage, « Donner », puis le conseil suivant tout seul
+cw = win("council")
+assert(U.state.council.session == s1, "conseil du premier objet")
+script(assert(rowButton(rowOf(cw, "Kaeldra"), "Voter"), "« Voter »"), "OnClick")
 advance(1)
 assert(votesOf(cand(Lt.Council(s1), "Kaeldra-Hyjal")) == 2, "ton vote départage")
 before = #printed
-Lt.Award(e1.key, "Kaeldra-Hyjal", "council", "bis", "2 votes")
+give(cw, "Kaeldra")
 advance(1)
-e1 = entries()[1]
-assert(e1.status == "awarded" and F.SameName(e1.winner, "Kaeldra-Hyjal"), "objet donné")
+local e1 = entries()[1]
+assert(e1.status == "awarded" and F.SameName(e1.winner, "Kaeldra-Hyjal") and e1.response == "bis", "objet donné (conseil : BiS)")
 assert(said(before, "%] .*Kaeldra.* reçoit ") and said(before, "^|cff9aa3b6%[essai%]|r À Kaeldra"), "annonce au raid et chuchotement, dans ta fenêtre seulement")
-assert(not offerOf(s1) or offerOf(s1).closed, "conseil terminé : fenêtre de réponse fermée")
+assert(U.state.council.session == s2, "« Donner » : conseil ouvert suivant")
+assert(U.state.council.band[1].closed and hasCheck(U.state.council.band[1].text) and U.state.council.band[1].text:find("Kaeldra", 1, true), "bande : coche et gagnant")
+assert(U.state.council.band[2].text:find("^|cff%x+%d+/10|r$"), "bande : réponses sur joueurs (« 9/10 »)")
+-- Spallières en plaques : Kaeldra ne peut pas les porter ; colonne « Reçus » : total et détail
+local kr = rowOf(cw, "Kaeldra")
+assert(kr.cells[1]:GetText():find("ne peut pas le porter", 1, true) and kr.cells[2]:GetText():find("^|cff9aa3b6"), "ne peut pas le porter : réponse grisée, mention")
+assert(not rowOf(cw, "Tharok").cells[1]:GetText():find("ne peut pas", 1, true), "un guerrier peut porter des plaques")
+assert(kr.cells[5]:GetText():find("^|cffffffff%d+|r") and kr.cells[5]:GetText():find("\n|cff9aa3b6%d+ BiS · %d+ Up · %d+ MS|r$"), "Reçus : total, puis BiS · Up · MS")
+GameTooltip.lines = {}
+GameTooltip.AddLine = function(self, text) self.lines[#self.lines + 1] = text end
+script(kr.hover[5], "OnEnter")
+local tipText = table.concat(GameTooltip.lines, "\n")
+assert(tipText:find("sur le site", 1, true) and tipText:find("ce soir", 1, true) and tipText:find("Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés.", 1, true), "infobulle des reçus : site, ce soir, ce qui compte")
+GameTooltip.AddLine = nil
+-- Tri par objets reçus (en-tête), le moins servi d'abord, ceux qui passent en bas ; puis retour au tri du moteur
+script(cw.sort, "OnClick")
+assert(U.state.council.byReceived and cw.grid.head[5]:GetText():find("(tri)", 1, true), "tri par objets reçus")
+local prev, passing = -1, false
+for _, r in ipairs(rows(cw)) do
+  local recv = tonumber(r.cells[5]:GetText():match("^|cffffffff(%d+)"))
+  if r.cells[2]:GetText():find("Passer", 1, true) then passing = true
+  else assert(recv and not passing and recv >= prev, "tri : le moins servi d'abord, ceux qui passent en bas") prev = recv end
+end
+script(cw.sort, "OnClick")
+assert(not U.state.council.byReceived, "retour au tri par réponse, puis votes")
+giveFirst(cw)
+advance(1)
+assert(U.state.council.session == s3 and entries()[2].status == "awarded", "conseil suivant après « Donner »")
+giveFirst(cw)
+advance(1)
+assert(byStatus("council") == 0 and U.state.council.session == s3, "plus de conseil ouvert : le dernier reste affiché")
+for _, b in ipairs(U.state.council.band) do assert(b.closed and hasCheck(b.text), "bande : conseils terminés, cochés") end
+script(chips(cw)[1], "OnClick")
+assert(U.state.council.session == s1, "bande : clic sur le premier objet")
+ns.LootUI.ShowCouncil(s2)
+assert(U.state.council.session == s2, "U.ShowCouncil(session) choisit ce conseil")
+assert(not ow:IsShown(), "conseils terminés : fenêtre de réponse fermée")
 
--- Étape 3 : jets MS / OS, égalité à 87, relance des ex æquo
+-- Étape 3 : jets MS / OS (plus rien à distribuer : un objet de plus arrive), égalité à 87, relance des ex æquo
 before = #printed
 click("Lancer les jets MS / OS")
-local e2 = entries()[2]
-assert(e2.status == "roll", "jets ouverts")
+local e2 = entries()[4]
+assert(#entries() == 4 and e2.status == "roll" and said(before, "tu reçois le butin"), "un objet de plus arrive, jets ouverts")
 advance(4.2)
 local r2 = Lt.Rolls(e2.key)
 assert(r2 and r2.tie, "égalité à 87")
@@ -812,7 +1026,7 @@ Lt.Award(e2.key, "Vex-Kael'Thas", "roll", nil, "MS 71")
 
 -- Étape 4 : jet libre
 click("Lancer le jet libre")
-local e3 = entries()[3]
+local e3 = entries()[5]
 advance(5)
 local r3 = Lt.Rolls(e3.key)
 assert(e3.status == "roll" and r3 and not r3.tie and F.SameName(nameOf(r3.winners[1]), "Mirwen-Hyjal"), "jet libre : Mirwen l'emporte")
@@ -821,14 +1035,15 @@ Lt.Award(e3.key, "Mirwen-Hyjal", "roll", nil, "jet 88")
 -- Étape 5 : garder (plus d'objet à attribuer : un de plus arrive)
 click("Garder le suivant")
 its = entries()
-assert(#its == 4 and its[4].status == "kept", "objet gardé")
+assert(#its == 6 and its[6].status == "kept", "objet gardé")
 
 -- Étape 6 : objets à remettre, minicarte, échange simulé
 local handovers = n("LootUI.ShowHandover")
 click("Objets à remettre")
-assert(n("LootUI.ShowHandover") == handovers + 1 and byStatus("awarded") == 3, "objets à remettre")
+assert(n("LootUI.ShowHandover") == handovers + 1 and byStatus("awarded") == 5, "objets à remettre")
+assert(win("handover").hintText:GetText():find("posés tout seuls", 1, true), "échange : objets posés tout seuls")
 M.Update()
-assert(M.handover == 3, "minicarte : 3 objets à remettre")
+assert(M.handover == 5, "minicarte : 5 objets à remettre")
 script(M.button, "OnEnter")
 IsShiftKeyDown = function() return true end
 script(M.button, "OnClick", "LeftButton")
@@ -838,7 +1053,7 @@ T.Refresh()
 before = #printed
 click("Échanger")
 advance(3)
-assert(byStatus("traded") == 1 and byStatus("awarded") == 2 and said(before, "échange réussi"), "échange simulé réussi")
+assert(byStatus("traded") == 1 and byStatus("awarded") == 4 and said(before, "échange réussi"), "échange simulé réussi")
 
 -- Étape 7 : joueur sans l'addon qui n'a pas passé, chuchotement
 before = #printed
@@ -849,30 +1064,76 @@ assert(found and said(before, "Orvane%-Hyjal.* reçoit le butin"), "joueur sans 
 click("Chuchoter à Orvane")
 assert(said(before, "^|cff9aa3b6%[essai%]|r À Orvane"), "chuchoté à Orvane, dans ta fenêtre seulement")
 
--- Étape 8 : côté joueur, Tharok propose un objet ; ta réponse, puis fin de son conseil
+-- Étape 8 : côté joueur, Tharok propose deux objets (le second en mailles : pas pour un druide) ; un troisième arrive
+-- pendant ta réponse ; réponse changée ; Tharok termine ses conseils après ta dernière réponse
 before = #printed
-click("Recevoir une proposition")
-assert(tostring(lastArgs["LootUI.ShowOffer"][1]) == "901" and offerOf("901") and not offerOf("901").closed, "fenêtre de réponse du joueur")
-Lt.Answer("901", "bis", "")
-advance(3)
-assert((not offerOf("901") or offerOf("901").closed) and said(before, "Tharok%-Hyjal.* : .*reçoit"), "réponse envoyée, conseil fermé par le chef fictif")
+click("Recevoir 2 propositions")
+assert(tostring(lastArgs["LootUI.ShowOffer"][1]) == "901" and offerOf("901") and offerOf("902"), "deux objets proposés")
+assert(ow:IsShown() and U.state.offer.session == "901" and #U.state.offer.band == 2 and #U.state.offer.buttons == 5, "bande de 2 objets, le premier choisi")
+ns.Comm.Deliver("Tharok-Hyjal", "LO;903;item:237107::::::::90:577::6:2:12251:1540;Jambières runiques", "RAID")
+assert(#U.state.offer.band == 3 and #chips(ow) == 3 and U.state.offer.session == "901", "un nouvel objet s'ajoute à la bande sans voler la sélection")
+answer("bis")
+assert(respOf("901") == "bis" and U.state.offer.session == "902", "objet suivant tout seul")
+assert(U.state.offer.usable == false and table.concat(U.state.offer.buttons, ",") == "transmo,pass" and U.state.offer.band[2].text == "", "objet d'une autre armure : seulement Transmo et Passer")
+answer("transmo")
+assert(U.state.offer.session == "903", "objet suivant sans réponse")
+script(chips(ow)[1], "OnClick")
+answer("pass")
+assert(respOf("901") == "pass" and U.state.offer.session == "903", "réponse changée, puis l'objet encore sans réponse")
+answer("upgrade")
+assert(U.state.offer.done and ow.close:IsShown(), "tout répondu")
+advance(8)
+assert(not offerOf("901") and not offerOf("902") and offerOf("903") and ow:IsShown() and #U.state.offer.band == 1 and U.state.offer.session == "903", "Tharok termine ses deux conseils ; le troisième reste")
+assert(said(before, "Tharok%-Hyjal.* : Kaeldra.* reçoit .*Heaume") and said(before, "Tournicoti reçoit .*%(conseil : Transmo%)"), "réponse changée prise en compte")
+script(ow.close, "OnClick")
+assert(not ow:IsShown(), "« Fermer »")
+ns.Comm.Deliver("Tharok-Hyjal", "LC;903;Kaeldra-Hyjal", "RAID")
+assert(not offerOf("903") and not ow:IsShown(), "dernier conseil terminé : la fenêtre reste fermée")
+ns.Comm.Deliver("Tharok-Hyjal", "LO;904;item:237101::::::::90:577::6:2:12251:1540;Heaume du veilleur", "RAID")
+assert(ow:IsShown() and U.state.offer.session == "904" and #U.state.offer.band == 1, "un seul objet proposé")
+answer("off")
+assert(respOf("904") == "off" and not ow:IsShown(), "un seul objet : fenêtre fermée après la réponse (comme en 0.2)")
+ns.Comm.Deliver("Tharok-Hyjal", "LC;904;Kaeldra-Hyjal", "RAID")
+assert(not offerOf("904") and not ow:IsShown(), "conseil terminé")
 tick()
--- Conseil suivant (cinq réponses au hasard) sur un anneau : deux objets portés par réponse ; jets MS / OS au hasard
+
+-- Conseils suivants : six objets ; « Tout au conseil (6) » de la fenêtre du butin, moteur sans L.StartAllCouncils (repli :
+-- un conseil par objet) ; anneau : deux objets portés par réponse ; bande trop longue : flèches ; jets au hasard
 click("Recevoir 3 objets")
-click("Lancer le conseil")
-local e5 = entries()[5]
-advance(20)
-local c5, pair = Lt.Council(e5.session), false
-assert(e5.status == "council" and e5.link:find("Anneau de givre", 1, true) and #c5.cands >= 5, "conseil suivant : réponses au hasard")
+click("Recevoir 3 objets")
+assert(U.state.loot.fresh == 6 and TEXTS["Tout au conseil (6)"]:IsShown(), "« Tout au conseil (6) »")
+local all = Lt.StartAllCouncils
+Lt.StartAllCouncils = nil
+click("Tout au conseil (6)")
+Lt.StartAllCouncils = all
+assert(byStatus("council") == 6 and U.state.council.session == entries()[7].session, "repli : un conseil par objet, fenêtre sur le premier")
+advance(30)
+local ring
+for _, e in ipairs(entries()) do if e.status == "council" and e.link:find("Anneau de givre", 1, true) then ring = e end end
+local c5, pair = Lt.Council(ring.session), false
+assert(#c5.cands >= 8, "conseil suivant : chacun répond")
 for _, x in ipairs(c5.cands) do
   local g = x.gear
   if type(g) == "table" and #g == 2 and g[1].id == 237111 and g[2].id == 237112 and g[1].ilvl and g[2].ilvl then pair = true end
   if type(g) == "string" and g:find("^237111:%d+,237112:%d+$") then pair = true end
 end
 assert(pair, "anneau : les deux anneaux portés")
+assert(ow:IsShown() and #U.state.offer.band == 6, "ta réponse : 6 objets dans la bande")
+for _, b in ipairs(ow.band.chips) do b.num.GetStringWidth = function() return 150 end end -- boutons larges
+ow.band.Layout()
+assert(#chips(ow) < 6 and ow.band.next:IsShown() and not ow.band.prev:IsShown(), "bande trop longue : flèche")
+script(ow.band.next, "OnClick")
+assert(ow.band.first == 2 and ow.band.prev:IsShown(), "flèche : objets suivants")
+local last = chips(ow)[#chips(ow)]
+script(last, "OnClick")
+local visible = false
+for _, b in ipairs(chips(ow)) do if b.entry.key == U.state.offer.session then visible = true end end
+assert(U.state.offer.session == last.entry.key and visible, "objet choisi dans la bande, toujours visible")
+for _, b in ipairs(ow.band.chips) do b.num.GetStringWidth = nil end
 click("Lancer les jets MS / OS")
 advance(10)
-assert(#Lt.Rolls(entries()[6].key).rows >= 4, "jets suivants au hasard")
+its = entries()
+assert(its[#its].status == "roll" and #Lt.Rolls(its[#its].key).rows >= 4, "jets suivants au hasard")
 
 -- Tout est resté local : aucun message d'addon ni ligne de chat envoyés, rien de relevé pour le site
 assert(realSends == sends0 and realChat == chat0, "rien n'est parti au raid ni aux joueurs")
@@ -881,6 +1142,7 @@ assert(errors() == baseErrors and failures == 0, "raid d'essai sans erreur")
 -- Recommencer, quitter, /roster test fin ; rejoindre un groupe arrête l'essai
 click("Recommencer")
 assert(T.active and Lt.test and #entries() == 0, "recommencé : plus d'objets")
+assert(not win("council"):IsShown() and not ow:IsShown(), "fenêtres du butin fermées")
 click("Quitter l'essai")
 assert(not T.active and Lt.test == nil and not T.panel:IsShown(), "essai quitté")
 run("test")
@@ -888,7 +1150,7 @@ run("test fin")
 assert(not T.active and Lt.test == nil, "/roster test fin")
 run("test")
 click("Recevoir 3 objets")
-click("Lancer le conseil")
+click("Tout au conseil")
 IsInGroup = function() return true end
 fire("GROUP_ROSTER_UPDATE")
 IsInGroup = function() return false end
@@ -917,23 +1179,50 @@ ns.UI.Show("options")
 local offered = false
 for text in pairs(TEXTS) do if type(text) == "string" and text:find("appliqué après rechargement", 1, true) then offered = true end end
 assert(not ns.UI.site() and offered, "rechargement proposé")
--- Raid d'essai dans l'habillage du site, sans objet porté : objets de secours
+-- Raid d'essai et fenêtres du butin dans l'habillage du site, sans objet porté (objets de secours) ni icône (nom court)
 RosterDB.skin = "site"
 naked = true
+local iconByID = C_Item.GetItemIconByID
+C_Item.GetItemIconByID = nil
+assert(loadfile("addon/Roster/LootUI.lua"))("Roster", ns)
 assert(loadfile("addon/Roster/Test.lua"))("Roster", ns)
-T = ns.Test
+T, U = ns.Test, ns.LootUI
 deferred = true
 run("test")
 assert(T.active and T.panel:IsShown(), "raid d'essai (site)")
 click("Recevoir 3 objets")
 its = entries()
 assert(#its == 3 and its[1].link:find("|Hitem:19019:", 1, true) and its[1].link:find("[Objet d'essai 1]", 1, true), "objets de secours")
-click("Lancer le conseil")
+assert(win("loot"):IsShown() and U.state.loot.fresh == 3, "fenêtre du butin (site) : « Tout au conseil (3) »")
+click("Tout au conseil")
 advance(20)
 assert(#Lt.Council(entries()[1].session).cands >= 9, "réponses du conseil (site)")
+ow = win("offer")
+assert(ow:IsShown() and #chips(ow) == 3 and U.state.offer.band[1].text:find("Objet d'essai", 1, true), "bande (site) : nom court sans icône")
+answer("bis") answer("upgrade") answer("pass")
+assert(U.state.offer.done and ow.close:IsShown(), "tout répondu (site)")
+script(ow.close, "OnClick")
+assert(not ow:IsShown(), "« Fermer » (site)")
+cw = win("council")
+assert(cw:IsShown() and #chips(cw) == 3, "bande du conseil (site)")
+script(cw.sort, "OnClick")
+assert(U.state.council.byReceived, "tri par objets reçus (site)")
+giveFirst(cw)
+advance(1)
+assert(U.state.council.session == entries()[2].session, "conseil suivant (site)")
+giveFirst(cw) advance(1) giveFirst(cw) advance(1)
+assert(byStatus("council") == 0 and byStatus("awarded") == 3, "trois objets donnés (site)")
+click("Recevoir 2 propositions")
+assert(ow:IsShown() and #U.state.offer.band == 2, "côté joueur (site) : deux objets")
+answer("bis")
+assert(U.state.offer.usable == false and table.concat(U.state.offer.buttons, ",") == "transmo,pass", "autre armure (site) : Transmo et Passer")
+answer("transmo")
+advance(8)
+assert(not ow:IsShown(), "conseils de Tharok terminés (site)")
 run("test fin")
 advance(30)
 deferred, naked, RosterDB.skin = false, false, nil
+C_Item.GetItemIconByID = iconByID
 assert(not T.active and Lt.test == nil, "essai arrêté (site)")
 assert(errors() == baseErrors and failures == 0, "habillage du site sans erreur")
 

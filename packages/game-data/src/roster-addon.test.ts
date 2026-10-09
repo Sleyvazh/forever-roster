@@ -28,7 +28,8 @@ const BRUMELUNE = { name: "Brumelune", realm: "Ysondre" }, VEX = { name: "Vex", 
 
 /**
  * Lot R3b : un raid en journal, un en conseil avec un conseil choisi (L), un en conseil avec le conseil par défaut (O) ;
- * objets reçus par joueur (N : Kaeldra et son alt Vex partagent le compte).
+ * objets reçus par joueur (N : Kaeldra et son alt Vex partagent le compte) et leur détail (D : BiS, Upgrade, jets MS ;
+ * Brumelune, à 0:0:0, n'y est pas ; Tharok a un objet sans catégorie, donné par le chef de butin).
  */
 const SAMPLE_RRG = () => buildRRG(GROUP, GENERATED, [
   { id: RAID, name: "Flèche du Vide", at: 1_794_513_600, difficulty: "heroic", size: 20, status: "present", character: KAELDRA, lootMode: "journal" },
@@ -36,7 +37,9 @@ const SAMPLE_RRG = () => buildRRG(GROUP, GENERATED, [
   { id: RAID3, name: "Déliement de Kith'ix", at: 0, difficulty: "normal", size: 25, status: "tentative", character: VEX, lootMode: "council", council: null },
 ], {
   council: [THAROK, KAELDRA, BRUMELUNE],
-  counts: { short: "saison", label: "depuis le 05/10/2026", entries: [{ names: [KAELDRA, VEX], n: 3 }, { names: [THAROK], n: 1 }, { names: [BRUMELUNE], n: 0 }] },
+  counts: { short: "saison", label: "depuis le 05/10/2026", entries: [
+    { names: [KAELDRA, VEX], n: 3, bis: 1, upgrade: 1, ms: 1 }, { names: [THAROK], n: 2, bis: 1 }, { names: [BRUMELUNE], n: 0, bis: 0, upgrade: 0, ms: 0 },
+  ] },
 });
 
 const MEMBERS: RosterExportMember[] = [
@@ -80,7 +83,7 @@ describe("noms en jeu (Prénom-Royaume)", () => {
 });
 
 describe("RRG : données des groupes (site → jeu)", () => {
-  it("un raid par ligne, mon perso en Prénom-Royaume ; O, L et N (R3b) après les R, hors du compte de END", () => {
+  it("un raid par ligne, mon perso en Prénom-Royaume ; O, L, N (R3b) et D (0.3) après les R, hors du compte de END", () => {
     const text = SAMPLE_RRG();
     expect(text.split("\n")).toEqual([
       `RRG;1;${GROUP.id};${GENERATED};Pasta e Basta`,
@@ -89,7 +92,8 @@ describe("RRG : données des groupes (site → jeu)", () => {
       `R;${RAID3};0;Déliement de Kith'ix;normal;25;tentative;Vex-Kael'Thas;council`,
       "O;Brumelune-Ysondre,Kaeldra-Hyjal,Tharok-ConseildesOmbres",
       `L;${RAID2};Brumelune-Ysondre,Kaeldra-Hyjal`,
-      "N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:1,Brumelune-Ysondre:0",
+      "N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:2,Brumelune-Ysondre:0",
+      "D;Kaeldra-Hyjal+Vex-Kael'Thas:1:1:1,Tharok-ConseildesOmbres:1:0:0",
       "END;3",
     ]);
     expect(buildRRG({ id: GROUP.id, name: "A;B|C" }, 1, [])).toBe(`RRG;1;${GROUP.id};1;A B C\nEND;0`);
@@ -114,6 +118,25 @@ describe("RRG : données des groupes (site → jeu)", () => {
     ]);
     // Sans persos d'officiers ni compte : ni O, ni N
     expect(buildRRG(GROUP, 1, [], { council: [], counts: { short: "saison", label: "depuis le début", entries: [] } })).toBe(`RRG;1;${GROUP.id};1;Pasta e Basta\nEND;0`);
+  });
+
+  it("ligne D : mêmes entrées, noms et ordre que N, entrées à 0:0:0 omises, pas de ligne si tout est à 0", () => {
+    const text = buildRRG(GROUP, 1, [], {
+      counts: { short: "30 j", label: "sur les 30 derniers jours", entries: [
+        { names: [], n: 4, bis: 4 },
+        { names: [THAROK, { name: "Tha,rok:+", realm: "Ysondre" }, THAROK], n: 5, bis: 2, upgrade: 0.6, ms: 1 },
+        { names: [BRUMELUNE], n: 1 },
+        { names: [KAELDRA], n: 2, ms: 2 },
+      ] },
+    });
+    expect(text.split("\n").slice(1)).toEqual([
+      "N;30 j;sur les 30 derniers jours;Tharok-ConseildesOmbres+Tharok-Ysondre:5,Brumelune-Ysondre:1,Kaeldra-Hyjal:2",
+      "D;Tharok-ConseildesOmbres+Tharok-Ysondre:2:1:1,Kaeldra-Hyjal:0:0:2",
+      "END;0",
+    ]);
+    // Tout à 0 (ou détail inconnu) : N seulement
+    const none = buildRRG(GROUP, 1, [], { counts: { short: "saison", label: "depuis le début", entries: [{ names: [KAELDRA], n: 3 }, { names: [THAROK], n: 0, bis: 0, upgrade: 0, ms: 0 }] } });
+    expect(none.split("\n").slice(1)).toEqual(["N;saison;depuis le début;Kaeldra-Hyjal:3,Tharok-ConseildesOmbres:0", "END;0"]);
   });
 });
 

@@ -143,6 +143,31 @@ export function lootSkipReason(l: { method?: LootMethod | null; response?: LootR
   return null;
 }
 
+/**
+ * Détail des objets reçus (retours du raid de test, choix de Flo : « BiS · Upgrade · Jets MS ») : conseil BiS, conseil
+ * Upgrade, jet MS. Les autres objets qui comptent (chef de butin, objet seulement noté, soft reserve, conseil sans
+ * réponse) sont dans le total seulement. Une correction du compte peut aussi avoir une de ces catégories.
+ */
+export const LOOT_CATEGORIES = ["bis", "upgrade", "ms"] as const;
+export type LootCategory = (typeof LOOT_CATEGORIES)[number];
+export const LOOT_CATEGORY_LABEL: Record<LootCategory, string> = { bis: "BiS", upgrade: "Upgrade", ms: "Jet MS" };
+/** Libellés courts du détail : « 2 BiS · 3 Up · 1 MS ». */
+export const LOOT_CATEGORY_SHORT: Record<LootCategory, string> = { bis: "BiS", upgrade: "Up", ms: "MS" };
+export type LootCategoryCounts = Record<LootCategory, number>;
+
+/** Catégorie d'un objet reçu ; null s'il ne compte pas (lootSkipReason) ou s'il compte sans catégorie. */
+export function lootCategory(l: { method?: LootMethod | null; response?: LootResponse | null; detail?: string | null }): LootCategory | null {
+  if (lootSkipReason(l) !== null) return null;
+  if (l.method === "council") return l.response === "bis" ? "bis" : l.response === "upgrade" ? "upgrade" : null;
+  if (l.method === "roll" && /^MS\b/i.test((l.detail ?? "").trim())) return "ms";
+  return null;
+}
+
+/** Détail court « 2 BiS · 3 Up · 1 MS » (catégories à 0 omises) ; vide si tout est à 0. */
+export function lootCategoryText(c: Partial<LootCategoryCounts>): string {
+  return LOOT_CATEGORIES.filter(k => (c[k] ?? 0) !== 0).map(k => `${c[k]} ${LOOT_CATEGORY_SHORT[k]}`).join(" · ");
+}
+
 /** Libellé court de la période du compte : « saison », « 30 j », « 5 raids » (en-têtes de colonne, addon). */
 export function lootCountShort(s: Pick<LootSettings, "countMode" | "countRaids">): string {
   return s.countMode === "days" ? `${LOOT_COUNT_DAYS} j` : s.countMode === "raids" ? `${s.countRaids} raids` : "saison";

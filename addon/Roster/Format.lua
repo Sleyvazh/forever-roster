@@ -1,5 +1,6 @@
 -- Formats d'échange de Roster (WoW Retail) avec roster.sleyvazh.fr (docs/addon-format.md, section Roster, lot R3) :
---   RRG v1 : données des groupes (site → jeu) ; RRR v1 : compo d'un raid (site → jeu) ; RRB v1 : bilan d'un raid (jeu → site).
+--   RRG v1 : données des groupes (site → jeu ; lignes O, L, N, et D depuis l'addon 0.3) ; RRR v1 : compo d'un raid
+--   (site → jeu) ; RRB v1 : bilan d'un raid (jeu → site).
 -- Noms en jeu « Prénom-Royaume », royaume normalisé comme le jeu (GetNormalizedRealmName). Pour comparer : casse, accents
 -- et apostrophes ignorés. Ce fichier n'utilise du jeu que le royaume du joueur : il est testé hors jeu (roster_format_test.lua).
 local _, ns = ...
@@ -163,38 +164,77 @@ local function names(field, max)
 end
 F.names = names
 
+-- Persos d'une entrée « Perso+Perso » (12 au plus)
+local function entryNames(list)
+  local out = {}
+  for name in list:gmatch("[^+]+") do
+    name = txt(name, 60)
+    if name ~= "" and #out < 12 then out[#out + 1] = name end
+  end
+  return out
+end
 -- Objets reçus (ligne N) : « Perso+Perso:3,Autre:0 » ; les persos d'un même joueur partagent le compte
 local function counts(f)
   local c = { short = txt(f[2], 20), label = txt(f[3], 60), entries = {} }
   for part in tostring(f[4] or ""):gmatch("[^,]+") do
     local list, n = part:match("^(.-):(%-?%d+)%s*$")
     if list and #c.entries < 200 then
-      local e = { names = {}, n = tonumber(n) or 0 }
-      for name in list:gmatch("[^+]+") do
-        name = txt(name, 60)
-        if name ~= "" and #e.names < 12 then e.names[#e.names + 1] = name end
-      end
+      local e = { names = entryNames(list), n = tonumber(n) or 0, bis = 0, up = 0, ms = 0 }
       if #e.names > 0 then c.entries[#c.entries + 1] = e end
     end
   end
   return c
 end
--- Entrée d'un perso dans les objets reçus (N) : { names, n } ou nil
+-- Détail des objets reçus (ligne D, addon 0.3) : « Perso+Perso:BiS:Upgrade:MS,… » → { { names, bis, up, ms } }
+local function details(field)
+  local out = {}
+  for part in tostring(field or ""):gmatch("[^,]+") do
+    local list, b, u, m = part:match("^(.-):(%-?%d+):(%-?%d+):(%-?%d+)%s*$")
+    if list and #out < 200 then
+      local d = { names = entryNames(list), bis = tonumber(b) or 0, up = tonumber(u) or 0, ms = tonumber(m) or 0 }
+      if #d.names > 0 then out[#out + 1] = d end
+    end
+  end
+  return out
+end
+-- Ligne D rattachée aux entrées de N (même premier nom) ; sans entrée N, une entrée est créée (total = la somme)
+local function mergeDetails(g, list)
+  if not list then return end
+  g.counts = g.counts or { short = "", label = "", entries = {} }
+  local entries = g.counts.entries
+  for _, d in ipairs(list) do
+    local e
+    for _, x in ipairs(entries) do if F.SameName(x.names[1], d.names[1]) then e = x break end end
+    if not e and #entries < 200 then
+      e = { names = d.names, n = d.bis + d.up + d.ms }
+      entries[#entries + 1] = e
+    end
+    if e then e.bis, e.up, e.ms = d.bis, d.up, d.ms end
+  end
+end
+-- Entrée d'un perso dans les objets reçus (N) : { names, n, bis, up, ms } (0 si absents) ou nil
 function F.CountFor(c, name)
   if not (c and c.entries) then return nil end
   for _, e in ipairs(c.entries) do
-    for _, n in ipairs(e.names) do if F.SameName(n, name) then return e end end
+    for _, n in ipairs(e.names or {}) do
+      if F.SameName(n, name) then
+        e.bis, e.up, e.ms = tonumber(e.bis) or 0, tonumber(e.up) or 0, tonumber(e.ms) or 0
+        return e
+      end
+    end
   end
   return nil
 end
 
 -- RRG v1 : un ou plusieurs groupes à la suite. Les lignes ajoutées plus tard (après les R) sont hors du compte de END.
 -- Lot R3b : O (conseil par défaut : officiers et propriétaire), L (conseil choisi pour un raid), N (objets reçus).
+-- Addon 0.3 : D (détail des objets reçus : BiS, Upgrade, jets MS), rattaché aux entrées de N.
 function F.ParseRRG(text)
-  local groups, cur, count, n = {}, nil, nil, 0
+  local groups, cur, count, n, detail = {}, nil, nil, 0, nil
   local function close()
     if not cur then return true end
     if count ~= n then return false end
+    mergeDetails(cur, detail)
     groups[#groups + 1] = cur
     return true
   end
@@ -203,7 +243,7 @@ function F.ParseRRG(text)
     if f[1] == "RRG" then
       if not close() then return nil, F.INCOMPLETE end
       if tonumber(f[2]) ~= 1 then return nil, newer(f[2]) end
-      cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {} }, nil, 0
+      cur, count, n, detail = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {} }, nil, 0, nil
     elseif cur and f[1] == "R" and count == nil then
       n = n + 1
       if #cur.raids < 30 then
@@ -222,6 +262,8 @@ function F.ParseRRG(text)
       end
     elseif cur and f[1] == "N" then
       cur.counts = counts(f)
+    elseif cur and f[1] == "D" then
+      detail = details(f[2])
     elseif cur and f[1] == "END" then
       count = tonumber(f[2])
     end

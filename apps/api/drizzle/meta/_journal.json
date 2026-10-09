@@ -232,6 +232,13 @@
       "when": 1791391340800,
       "tag": "0032_feedback_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791531206722,
+      "tag": "0033_loot_correction_kind",
+      "breakpoints": true
     }
   ]
 }

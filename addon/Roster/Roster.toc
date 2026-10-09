@@ -2,7 +2,7 @@
 ## Title: Roster
 ## Notes: Compo de raid, invitations, présence, bilan et distribution du butin (conseil, jets) du site Roster (WoW Retail).
 ## Author: Sleyvazh
-## Version: 0.2.1
+## Version: 0.3.0
 ## SavedVariables: RosterDB
 ## IconTexture: Interface\AddOns\Roster\Media\Logo
 ## AddonCompartmentFunc: Roster_OnCompartmentClick

@@ -3,8 +3,9 @@
 -- (Core.lua, UI.lua, Minimap.lua) absents sont remplacés par une version minimale du contrat entre les deux moitiés de l'addon ;
 -- Test.lua (raid d'essai) absent est ignoré.
 -- Scénario : données du site, invitations, placement, versions, file des messages pendant un boss, relevé du raid, bilan,
--- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), pages et
--- fenêtres dans les deux habillages, valeurs secrètes. Échoue au premier problème.
+-- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), retours
+-- du raid de test (section 10 : échange ouvert par le gagnant, objets portables, tout au conseil, détail des reçus), pages
+-- et fenêtres dans les deux habillages, valeurs secrètes. Échoue au premier problème.
 local printed = {}
 local verbose = os.getenv("ROSTER_SIM_VERBOSE") -- messages de l'addon affichés au fil de l'eau
 function print(...)
@@ -14,7 +15,7 @@ function print(...)
   if verbose then io.stderr:write(printed[#printed], "\n") end
 end
 local function errors() local n = 0 for _, l in ipairs(printed) do if l:find("erreur") then n = n + 1 end end return n end
-local function lastPrinted(pattern) for i = #printed, 1, -1 do if printed[i]:find(pattern) then return printed[i] end end return nil end
+local function lastPrinted(pattern, init, plain) for i = #printed, 1, -1 do if printed[i]:find(pattern, init, plain) then return printed[i] end end return nil end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Horloge et minuteurs (C_Timer) : le temps avance à la demande
@@ -88,6 +89,9 @@ local S = {
   instance = nil, quality = {},
   -- Butin (R3b) : jets du butin de groupe en cours, sacs, objets portés, échange
   loot = {}, rollCalls = {}, confirms = {}, bags = { [0] = {}, {}, {}, {}, {} }, equipped = {}, tradeLeft = {}, items = {}, ilvl = {}, equipLoc = {},
+  -- Objets portables (0.3) : sous-classe d'armure (1 tissu… 4 plaques ; sinon objet divers), ligne rouge de l'infobulle,
+  -- objets que le jeu ne connaît pas du tout
+  armor = {}, redLine = {}, unknownItem = {},
 }
 local function fullOf(m) return m.name .. "-" .. m.realm end
 local function findMember(full) for i, m in ipairs(S.members) do if fullOf(m) == full then return m, i end end end
@@ -187,7 +191,12 @@ local BLIZZARD = {
   C_Item = {
     GetItemQualityByID = function(id) return LOOT_Q[id] end,
     GetDetailedItemLevelInfo = function(item) local id = idOf(item) return id and (S.ilvl[id] or 639) or nil end,
-    GetItemInfoInstant = function(item) local id = idOf(item) if not id then return nil end return id, "Armure", "Plaques", S.equipLoc[id] or "", 1234, 4, 4 end,
+    GetItemInfoInstant = function(item)
+      local id = idOf(item)
+      if not id or S.unknownItem[id] then return nil end
+      local a = S.armor[id]
+      return id, a and "Armure" or "Divers", a and ({ "Tissu", "Cuir", "Mailles", "Plaques" })[a] or "Divers", S.equipLoc[id] or "", 1234, a and 4 or 15, a or 0
+    end,
     GetItemInfo = function(item)
       local link = S.items[idOf(item) or 0]
       if not link then return nil end
@@ -217,7 +226,11 @@ local BLIZZARD = {
   C_Container = {
     GetContainerNumSlots = function(bag) return (bag >= 0 and bag <= 4) and 16 or 0 end,
     GetContainerItemLink = function(bag, slot) return S.bags[bag] and S.bags[bag][slot] end,
-    PickupContainerItem = function(bag, slot) assert(not S.combat, "objet pris en combat") S.cursor = S.bags[bag][slot] S.picked = { bag, slot } end,
+    PickupContainerItem = function(bag, slot)
+      assert(not S.combat, "objet pris en combat")
+      S.cursor = S.bags[bag][slot] S.picked = { bag, slot }
+      S.picks = S.picks or {} S.picks[#S.picks + 1] = bag .. ":" .. slot
+    end,
   },
   C_TooltipInfo = {
     GetBagItem = function(bag, slot)
@@ -227,10 +240,30 @@ local BLIZZARD = {
       if S.tradeLeft[link] then lines[#lines + 1] = { leftText = "|cff00ccff" .. BIND_TRADE_TIME_REMAINING:gsub("%%s", S.tradeLeft[link]) .. "|r" } end
       return { type = 0, lines = lines }
     end,
+    -- Infobulle d'un lien : nom (violet), type d'objet, et la ligne rouge du jeu (arme non maniée, jeton d'autres classes…)
+    GetHyperlink = function(link)
+      local id = idOf(link)
+      local known = id and S.items[id]
+      if not known then return { type = 0, lines = { { leftText = "Récupération des informations sur l'objet", leftColor = { r = 1, g = 0.125, b = 0.125 } } } } end
+      local white = { r = 1, g = 1, b = 1 }
+      local lines = { { leftText = known:match("|h%[(.-)%]|h"), leftColor = { r = 0.64, g = 0.21, b = 0.93 } }, { leftText = "Lié quand ramassé", leftColor = white } }
+      local redLine = S.redLine[id]
+      if redLine then
+        lines[#lines + 1] = { leftText = redLine.left or "Deux mains", leftColor = redLine.left and { r = 1, g = 0.125, b = 0.125 } or white,
+          rightText = redLine.right, rightColor = redLine.right and { r = 1, g = 0.125, b = 0.125 } or nil }
+      end
+      return { type = 0, lines = lines }
+    end,
   },
+  RETRIEVING_ITEM_INFO = "Récupération des informations sur l'objet",
   ClearCursor = function() S.cursor = nil end,
-  ClickTradeButton = function(i) S.tradeSlots = S.tradeSlots or {} S.tradeSlots[i] = S.cursor S.cursor = nil end,
-  CheckInteractDistance = function(unit) return S.far ~= unit end,
+  ClickTradeButton = function(i) assert(not S.combat, "échange en combat") S.tradeSlots = S.tradeSlots or {} assert(not S.tradeSlots[i], "case d'échange déjà prise") S.tradeSlots[i] = S.cursor S.cursor = nil end,
+  GetTradePlayerItemLink = function(i) return S.tradeSlots and S.tradeSlots[i] end,
+  CheckInteractDistance = function(unit)
+    if S.distance == "secret" then return secretValue("CheckInteractDistance") end
+    if S.distance == "nil" then return nil end
+    return S.far ~= unit
+  end,
   InitiateTrade = function(unit) assert(not S.combat, "échange en combat") S.tradeWith = unit end,
   C_PartyInfo = {
     InviteUnit = function(name) assert(type(name) == "string" and name:find("^[^%-]+%-.+$"), "invitation par « Prénom-Royaume »") S.invites[#S.invites + 1] = name end,
@@ -1029,20 +1062,25 @@ S.far = nil
 assert(Lo.Trade(legs.key) and S.tradeWith == "raid2", "échange demandé à Tharok (raid2)")
 S.tradePartner = findMember("Vex-Kael'Thas")
 fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
 assert(not S.tradeSlots, "échange avec un autre joueur : rien posé")
 fire("TRADE_CLOSED")
 advance(2)
 assert(Lo.Trade(legs.key), "échange redemandé")
 S.tradePartner = findMember("Tharok-Hyjal")
 fire("TRADE_SHOW")
-assert(S.tradeSlots and S.tradeSlots[1] == LEGS and S.picked[1] == 0 and S.picked[2] == 3, "objet posé dans la première case")
-S.bags[0][3], S.tradeSlots = nil, nil -- échange accepté des deux côtés
+assert(not S.tradeSlots, "objets posés un instant après l'ouverture (fenêtre prête)")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+-- Tharok a gagné les jambières et la fiole : les deux sont posées
+assert(S.tradeSlots and S.tradeSlots[1] == LEGS and S.tradeSlots[2] == TRINKET and S.picked[1] == 1 and S.picked[2] == 5, "objets posés dans les deux premières cases")
+assert(lastPrinted("objets posés dans l'échange avec Tharok : " .. LEGS .. ", " .. TRINKET, 1, true), "objets posés : dit dans le chat")
+S.bags[0][3], S.bags[1][5], S.tradeSlots = nil, nil, nil -- échange accepté des deux côtés
 fire("TRADE_CLOSED")
 fire("TRADE_CLOSED")
 advance(2)
-assert(legs.status == "traded" and lastPrinted("objet remis à Tharok"), "échange terminé : remis")
+assert(legs.status == "traded" and trinket.status == "traded" and lastPrinted("remis à Tharok : "), "échange terminé : remis")
 LU.ShowHandover()
-assert(LU.state.handover.items == 2, "restent la fiole et la cape")
+assert(LU.state.handover.items == 1, "reste la cape")
 assert(Lo.MarkTraded(cloak.key) and cloak.status == "traded", "remis à la main")
 
 -- 9i. Pendant une rencontre de boss : attributions et jets refusés, LR gardé puis envoyé
@@ -1112,6 +1150,468 @@ assert(#S.rollCalls == realCalls, "essai : pas de RollOnLoot")
 Lo.StopTest()
 assert(Lo.test == nil and #Lo.Items() == realItems and #Lo.testItems == 0, "fin de l'essai : vraie liste")
 assert(errors() == 0, "essai sans erreur : " .. tostring(lastPrinted("erreur")))
+
+--------------------------------------------------------------------------------------------------------------------
+-- 10. Retours du raid de test (0.3) : échange ouvert par le gagnant, objets portables, tout au conseil, détail des reçus
+--------------------------------------------------------------------------------------------------------------------
+-- Dans une fonction : le bloc principal approche la limite de 200 variables locales de Lua 5.1
+local function feedback()
+-- Objets retirés un à un (la liste change pendant le retrait)
+local function clearItems() while #Lo.Items() > 0 do Lo.Remove(Lo.Items()[1].key) end end
+clearItems()
+findMember("Sylvane-Hyjal").class, findMember("Orvane-Hyjal").class, findMember("Brumelune-Ysondre").class = "HUNTER", "EVOKER", "DRUID"
+local function unitOf(full) local _, i = findMember(full) return "raid" .. i end
+local function cand(c, name) for _, x in ipairs(c and c.cands or {}) do if x.name == name then return x end end end
+local function offerOf(session) for _, o in ipairs(Lo.Offers()) do if o.session == session then return o end end end
+local function whisper(text, from) fire("CHAT_MSG_WHISPER", text, from, "", "", from) end
+-- Objet reçu par le chef de butin, rangé dans les sacs à la place donnée
+local function receive(link, bag, slot, left)
+  S.bags[bag][slot] = link
+  if left then S.tradeLeft[link] = left end
+  fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. link .. ".", "", "", "", "")
+  local all = Lo.Items()
+  return all[#all]
+end
+
+-- 10a. Échange ouvert par le gagnant : ses objets posés sans « Échanger », remis à la fermeture
+local BRACERS, GLOVES, BELT = item(242410, "Brassards de la Faille"), item(242411, "Gantelets de Kith'ix"), item(242412, "Ceinture des spores")
+local b1, b2, b3 = receive(BRACERS, 4, 1, "1 h 30 min"), receive(GLOVES, 4, 2, "1 h 30 min"), receive(BELT, 4, 3, "1 h 30 min")
+assert(b1.bag == 4 and b1.slot == 1 and b3.slot == 3 and #Lo.Items() == 3, "trois objets rangés")
+assert(Lo.Award(b1.key, "Vex-Kael'Thas", "ml") and Lo.Award(b2.key, "Vex-Kael'Thas", "ml") and Lo.Award(b3.key, "Sylvane-Hyjal", "ml"), "objets attribués")
+local hv = Lo.Handover("Vex-Kael'Thas")
+assert(#hv == 2 and hv[1] == b1 and hv[2] == b2 and #Lo.Handover("Sylvane-Hyjal") == 1 and #Lo.Handover("Tharok-Hyjal") == 0, "L.Handover : objets d'un gagnant")
+pmark = #printed
+S.tradeSlots, S.tradeWith, S.picks = {}, nil, {}
+S.tradePartner = findMember("Vex-Kael'Thas") -- Vex ouvre l'échange lui-même
+fire("TRADE_SHOW")
+assert(not S.tradeSlots[1], "rien avant que la fenêtre soit prête")
+advance(0.4)
+assert(S.tradeSlots[1] == BRACERS and not S.tradeSlots[2], "un objet à la fois")
+advance(0.6)
+assert(S.tradeWith == nil and S.tradeSlots[1] == BRACERS and S.tradeSlots[2] == GLOVES and not S.tradeSlots[3], "objets de Vex posés dans les cases libres")
+assert(S.picks[1] == "4:1" and S.picks[2] == "4:2" and #S.picks == 2 and S.cursor == nil, "pris dans les sacs, curseur vide")
+assert(printedSince(pmark, "objets posés dans l'échange avec Vex-Kael'Thas : " .. BRACERS .. ", " .. GLOVES .. "."), "posés : dit dans le chat")
+S.bags[4][1], S.bags[4][2], S.tradeSlots = nil, nil, nil -- échange accepté
+fire("TRADE_CLOSED")
+fire("TRADE_CLOSED")
+advance(2)
+assert(b1.status == "traded" and b2.status == "traded" and printedSince(pmark, "remis à Vex-Kael'Thas : " .. BRACERS .. ", " .. GLOVES .. "."), "remis à Vex")
+-- Échange annulé : rien ne change
+pmark = #printed
+S.tradeSlots, S.tradePartner = {}, findMember("Sylvane-Hyjal")
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(S.tradeSlots[1] == BELT, "ceinture posée pour Sylvane")
+S.tradeSlots = nil -- annulé : la ceinture reste dans les sacs
+fire("TRADE_CLOSED")
+advance(2)
+assert(b3.status == "awarded" and not printedSince(pmark, "remis à Sylvane"), "échange annulé : rien ne change")
+-- Objet déjà dans l'échange (posé à la main) : pas posé deux fois, remis quand même
+pmark, S.picks = #printed, {}
+S.tradeSlots = { [3] = BELT }
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(#S.picks == 0 and not S.tradeSlots[1] and printedSince(pmark, "objets posés dans l'échange avec Sylvane : " .. BELT), "déjà dans l'échange : rien de plus")
+S.bags[4][3], S.tradeSlots = nil, nil
+fire("TRADE_CLOSED")
+advance(2)
+assert(b3.status == "traded" and printedSince(pmark, "remis à Sylvane : " .. BELT), "remis à Sylvane")
+-- Deux exemplaires du même objet pour Orvane, sacs triés depuis (places notées périmées) : deux places différentes
+local SHARD = item(242413, "Fragment de la Faille")
+local t1, t2 = receive(SHARD, 3, 5), receive(SHARD, 3, 6)
+assert(t1.slot == 5 and t2.slot == 6, "deux exemplaires, deux places")
+Lo.Award(t1.key, "Orvane-Hyjal", "ml") Lo.Award(t2.key, "Orvane-Hyjal", "ml")
+S.bags[3][5], S.bags[3][6], S.bags[2][8], S.bags[2][9] = nil, nil, SHARD, SHARD
+S.tradeSlots, S.tradePartner, S.picks = {}, findMember("Orvane-Hyjal"), {}
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(#S.picks == 2 and S.picks[1] ~= S.picks[2] and S.picks[1] == "2:8" and S.picks[2] == "2:9" and S.tradeSlots[2] == SHARD, "jamais deux fois la même case des sacs")
+S.bags[2][8], S.bags[2][9], S.tradeSlots = nil, nil, nil
+fire("TRADE_CLOSED")
+advance(2)
+assert(t1.status == "traded" and t2.status == "traded", "deux exemplaires remis")
+-- Objet introuvable, délai d'échange passé, plus de case libre : pas posés, avec la raison
+local CHARM, ORB, IDOL = item(242414, "Breloque de la Faille"), item(242415, "Orbe de Kith'ix"), item(242416, "Idole des spores")
+local ch, orb, idol = receive(CHARM, 4, 4), receive(ORB, 4, 5, "10 min"), receive(IDOL, 4, 6)
+for _, e in ipairs({ ch, orb, idol }) do Lo.Award(e.key, "Zephyra-Hyjal", "ml") end
+S.bags[4][4] = nil -- vendue par erreur
+orb.expires = time() - 5
+pmark, S.picks = #printed, {}
+S.tradeSlots, S.tradePartner = { "a", "b", "c", "d", "e", "f" }, findMember("Zephyra-Hyjal")
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(#S.picks == 0 and printedSince(pmark, IDOL .. " (plus de case libre dans l'échange)") and printedSince(pmark, ORB .. " (délai d'échange passé)"), "échange plein, délai passé")
+S.tradeSlots = nil
+fire("TRADE_CLOSED")
+advance(2)
+pmark = #printed
+S.tradeSlots = {}
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(printedSince(pmark, "pas posé pour Zephyra : " .. CHARM .. " (introuvable dans tes sacs)") and S.tradeSlots[1] == IDOL, "introuvable : dit ; l'idole posée")
+S.tradeSlots = nil
+fire("TRADE_CLOSED")
+advance(2)
+-- En combat : rien n'est pris dans les sacs
+pmark, S.picks = #printed, {}
+S.tradeSlots, S.combat = {}, true
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(#S.picks == 0 and printedSince(pmark, "en combat : pose les objets"), "combat : rien posé")
+S.combat, S.tradeSlots = false, nil
+fire("TRADE_CLOSED")
+advance(2)
+-- Partenaire illisible (valeur secrète) : rien posé, dit
+pmark, S.picks = #printed, {}
+S.tradePartner = { name = "Zephyra", realm = "Hyjal", secretName = true }
+fire("TRADE_SHOW")
+advance(1) -- objets posés un à un (0,3 s, puis 0,2 s entre deux)
+assert(#S.picks == 0 and printedSince(pmark, "le jeu ne donne pas le nom du partenaire"), "partenaire secret : rien posé")
+fire("TRADE_CLOSED")
+advance(2)
+
+-- 10b. « Échanger » sans fenêtre : message du jeu (UI_ERROR_MESSAGE), sinon la marche à suivre
+local RELIC = item(242417, "Relique de la Faille")
+local relic = receive(RELIC, 4, 7)
+Lo.Award(relic.key, "Mordak-Ysondre", "ml")
+pmark = #printed
+assert(Lo.Trade(relic.key) and S.tradeWith == unitOf("Mordak-Ysondre"), "échange demandé à Mordak")
+fire("UI_ERROR_MESSAGE", 51, secretValue("UI_ERROR_MESSAGE"))
+fire("UI_ERROR_MESSAGE", 50, "Mordak est occupé.")
+advance(3)
+assert(not printedSince(pmark, "pas de fenêtre"), "on attend la fenêtre 4 s")
+advance(2)
+assert(printedSince(pmark, "pas de fenêtre d'échange avec Mordak-Ysondre. Le jeu dit : « Mordak est occupé. » Sinon, demande-lui d'ouvrir l'échange"), "sans fenêtre : message du jeu")
+pmark = #printed
+assert(Lo.Trade(relic.key), "échange redemandé")
+advance(5)
+assert(printedSince(pmark, "pas de fenêtre d'échange avec Mordak-Ysondre : demande-lui d'ouvrir l'échange avec toi (clic droit sur ton portrait › Échanger), l'objet sera posé tout seul."), "sans fenêtre ni message : la marche à suivre")
+fire("UI_ERROR_MESSAGE", 50, "Trop tard.") -- après l'attente : sans effet
+-- Distance : refus seulement si le jeu dit vraiment « non » (false), pas pour nil ni une valeur secrète
+S.distance = "nil"
+assert(Lo.Trade(relic.key), "distance inconnue (nil) : pas de refus")
+S.distance = "secret"
+assert(Lo.Trade(relic.key), "distance secrète : pas de refus")
+S.distance, S.far = nil, unitOf("Mordak-Ysondre")
+assert(not Lo.Trade(relic.key) and lastPrinted("trop loin"), "trop loin (false)")
+S.far = nil
+-- Fenêtre ouverte pendant l'attente : pas de message, objet posé
+advance(5)
+pmark = #printed
+assert(Lo.Trade(relic.key), "échange demandé")
+S.tradeSlots, S.tradePartner = {}, findMember("Mordak-Ysondre")
+fire("TRADE_SHOW")
+advance(5)
+assert(S.tradeSlots[1] == RELIC and not printedSince(pmark, "pas de fenêtre"), "fenêtre ouverte : objet posé, pas de message")
+local picked = #S.picks
+assert(Lo.Trade(relic.key) and #S.picks == picked and not S.tradeSlots[2], "fenêtre déjà ouverte avec lui : rien de plus")
+S.tradeSlots = nil
+fire("TRADE_CLOSED")
+advance(2)
+assert(relic.status == "awarded", "annulé : toujours à remettre")
+
+-- 10c. Objets portables : armure du type de la classe, cape pour tous, infobulle (ligne rouge), objet inconnu
+local PLATE, CLOTH, CAPE = item(242420, "Cuirasse de la Faille"), item(242421, "Capuche des spores"), item(242422, "Cape des spores")
+local POLEARM, CLASSTOKEN = item(242423, "Hallebarde de Kith'ix"), item(242424, "Jeton de Kith'ix")
+local UNKNOWN = "|cnIQ4:|Hitem:242425::::::::90:::::|h[Objet pas encore connu]|h|r"
+S.armor[242420], S.armor[242421], S.armor[242422] = 4, 1, 1
+S.equipLoc[242420], S.equipLoc[242421], S.equipLoc[242422], S.equipLoc[242423] = "INVTYPE_CHEST", "INVTYPE_HEAD", "INVTYPE_CLOAK", "INVTYPE_2HWEAPON"
+S.redLine[242423] = { right = "Arme d'hast" }
+S.redLine[242424] = { left = "|cffff2020Classes : Guerrier, Paladin, Chevalier de la mort|r" }
+local can, why = Lo.CanUse(PLATE)
+assert(can == false and why == "armure en plaques : pas ton type d'armure", "prêtre : pas de plaques (" .. tostring(why) .. ")")
+assert(Lo.CanUse(CLOTH) == true and Lo.CanUse(CAPE) == true and Lo.CanUse(RING) == true, "tissu, cape, anneau : portables")
+can, why = Lo.CanUse(POLEARM)
+assert(can == false and why == "Arme d'hast", "arme non maniée : ligne rouge à droite")
+can, why = Lo.CanUse(CLASSTOKEN)
+assert(can == false and why == "Classes : Guerrier, Paladin, Chevalier de la mort", "jeton d'autres classes : ligne rouge à gauche")
+assert(Lo.CanUse(UNKNOWN) == nil, "objet pas encore connu du jeu : nil")
+S.unknownItem[242426] = true
+assert(Lo.CanUse("item:242426") == nil and Lo.CanUse(nil) == nil, "objet inconnu : nil")
+S.equipped[5] = PLATE
+assert(Lo.CanUse(PLATE) == false, "règle de l'armure, même pour un objet porté (le jeu ne laisse pas un prêtre porter des plaques)")
+S.equipped[5] = nil
+S.members[1].class = secretValue("UnitClass")
+assert(Lo.CanUse(PLATE) == nil, "classe secrète : nil")
+S.members[1].class = "PRIEST"
+assert(Lo.CanUseClass(PLATE, "WARRIOR") == true and Lo.CanUseClass(PLATE, "HUNTER") == false and Lo.CanUseClass(CLOTH, "mage") == true, "règle de l'armure d'un autre joueur")
+assert(Lo.CanUseClass(CAPE, "WARRIOR") == nil and Lo.CanUseClass(POLEARM, "PRIEST") == nil and Lo.CanUseClass(PLATE, nil) == nil and Lo.CanUseClass(PLATE, "INCONNU") == nil, "règle de l'armure : sans avis")
+
+-- 10d. Ma réponse : BiS / Upgrade / Off-spec refusés sur ce que je ne peux pas porter ; réponse changée
+local plate = receive(PLATE, 2, 10, "1 h 50 min")
+local _, psid = Lo.StartCouncil(plate.key)
+local po = offerOf(psid)
+assert(po and po.usable == false and po.reason == "armure en plaques : pas ton type d'armure" and po.num == 1, "proposition : pas portable, avec la raison")
+local okA, amsg = Lo.Answer(psid, "bis", "")
+assert(okA == false and amsg:find("tu ne peux pas porter " .. PLATE, 1, true) and lastPrinted("réponds Transmo ou Passer"), "BiS refusé")
+assert(not Lo.Answer(psid, "upgrade", "") and not Lo.Answer(psid, "off", "") and #Lo.Council(psid).cands == 0, "Upgrade et Off-spec refusés, rien d'envoyé")
+assert(Lo.Answer(psid, "transmo", "pour le look") and cand(Lo.Council(psid), "Kaeldra-Hyjal").response == "transmo", "Transmo accepté")
+assert(Lo.Answer(psid, "pass", "") and cand(Lo.Council(psid), "Kaeldra-Hyjal").response == "pass" and #Lo.Council(psid).cands == 1, "réponse changée")
+-- Proposition d'un objet pas encore connu : nil, recalculé quand le jeu le reçoit
+local unk = receive(UNKNOWN, 2, 11)
+local _, usid = Lo.StartCouncil(unk.key)
+assert(offerOf(usid).usable == nil and offerOf(usid).num == 2, "objet inconnu : on laisse tout")
+fire("GET_ITEM_INFO_RECEIVED", secretValue("itemID"), true)
+assert(offerOf(usid).usable == nil, "toujours inconnu")
+S.items[242425] = UNKNOWN
+fire("GET_ITEM_INFO_RECEIVED", 242425, true)
+assert(offerOf(usid).usable == true, "objet arrivé : portable")
+Lo.Cancel(unk.key)
+
+-- 10e. Règle de l'armure sur les réponses des autres (chef de butin et conseil) : BiS d'un chasseur sur des plaques → Transmo
+mark = #S.sent
+whisper("bis", "Sylvane-Hyjal")
+advance(1)
+local xs = cand(Lo.Council(psid), "Sylvane-Hyjal")
+assert(xs and xs.response == "transmo" and xs.asked == "bis" and xs.canUse == false and xs.whispered, "chuchoté « bis » d'un chasseur sur des plaques : Transmo")
+assert(sentMsg("^LA;" .. psid .. ";transmo;;chuchoté;Sylvane%-Hyjal$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
+whisper("os", "Tharok-Hyjal")
+local xt = cand(Lo.Council(psid), "Tharok-Hyjal")
+assert(xt.response == "off" and xt.canUse == true and not xt.asked, "guerrier : plaques, Off-spec gardé")
+mark = #S.sent
+addon("Orvane-Hyjal", "LA;" .. psid .. ";upgrade;;vieil addon", "WHISPER") -- addon 0.2 : pas de règle chez lui
+advance(1)
+local xo = cand(Lo.Council(psid), "Orvane-Hyjal")
+assert(xo.response == "transmo" and xo.asked == "upgrade" and xo.canUse == false and xo.note == "vieil addon", "addon 0.2 : Upgrade d'un évocateur sur des plaques → Transmo, note gardée")
+assert(sentMsg("^LA;" .. psid .. ";transmo;;vieil addon;Orvane%-Hyjal;r$", mark + 1, "RAID"), "relayé au raid en Transmo")
+addon("Zephyra-Hyjal", "LA;" .. psid .. ";transmo;;", "WHISPER")
+assert(cand(Lo.Council(psid), "Zephyra-Hyjal").response == "transmo" and cand(Lo.Council(psid), "Zephyra-Hyjal").canUse == false, "Transmo d'un druide : inchangé, signalé")
+-- Membre du conseil (Tharok chef de butin) : la réponse relayée est jugée chez moi aussi
+assert(Lo.SetMaster("Tharok-Hyjal"), "Tharok chef de butin")
+addon("Tharok-Hyjal", "LO;88001;" .. F.ItemString(PLATE) .. ";Cuirasse de la Faille")
+assert(Lo.Council("88001") and offerOf("88001").num == 2, "conseil de Tharok : numéro chez moi")
+addon("Tharok-Hyjal", "LA;88001;bis;;chuchoté;Sylvane-Hyjal", "WHISPER")
+addon("Tharok-Hyjal", "LA;88001;bis;;;Mordak-Ysondre;r", "RAID")
+local mc = Lo.Council("88001")
+assert(cand(mc, "Sylvane-Hyjal").response == "transmo" and cand(mc, "Mordak-Ysondre").response == "bis", "conseil : règle de l'armure appliquée chez moi aussi")
+addon("Tharok-Hyjal", "LC;88001;Mordak-Ysondre")
+assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
+Lo.Cancel(plate.key)
+advance(2)
+
+-- 10f. Tout au conseil : un LO par objet, une seule annonce (découpée si longue), numéros, chuchotements « bis 2 »
+clearItems()
+local long = {}
+for i = 1, 4 do
+  long[i] = receive(item(242430 + i, "Objet au nom vraiment très long de la Faille de Sporefall n° " .. i, "4:6652:10354:10373:1540"), 1, 10 + i, "1 h 40 min")
+end
+local keep = receive(item(242435, "Bague de la Faille"), 1, 15)
+keep.status = "kept" -- déjà gardée : pas proposée
+mark, wmark = #S.sent, #S.whispers
+local nAll, sessions = Lo.StartAllCouncils()
+advance(15) -- file des messages : 10 d'affilée, puis 1 par seconde
+assert(nAll == 4 and #sessions == 4 and long[1].session == sessions[1] and long[4].session == sessions[4] and keep.status == "kept", "tout au conseil : 4 objets")
+local los = 0
+for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LO;") and S.sent[i].dist == "RAID" then los = los + 1 end end
+assert(los == 4, "un LO par objet : " .. los)
+local ann = {}
+for i = wmark + 1, #S.whispers do if S.whispers[i].chatType == "RAID" then ann[#ann + 1] = S.whispers[i].msg end end
+local whole = table.concat(ann, " ")
+assert(#ann >= 2, "annonce longue découpée : " .. #ann .. " messages")
+for _, m in ipairs(ann) do assert(#m <= 255, "message de 255 octets au plus : " .. #m) end
+assert(ann[1]:find("^Roster : conseil du butin, 4 objets : 1 |cnIQ4:") and whole:find("1 " .. long[1].link, 1, true) and whole:find("4 " .. long[4].link .. ".", 1, true)
+  and ann[#ann]:find("chuchote%-moi bis, up, os ou transmo suivi du numéro %(« bis 2 »%)%.$"), "une seule annonce numérotée : " .. whole)
+local nlinks = 0
+for _ in whole:gmatch("|Hitem:") do nlinks = nlinks + 1 end
+assert(nlinks == 4 and not whole:find("Bague", 1, true), "chaque lien entier, une fois")
+assert(LU.state.council.session == sessions[1], "fenêtre du conseil sur le premier objet")
+local offs = Lo.Offers()
+assert(#offs == 4 and offs[1].num == 1 and offs[4].num == 4 and offs[2].session == sessions[2], "propositions numérotées chez moi")
+-- Chuchotements avec numéro
+whisper("up 2", "Tharok-Hyjal")
+whisper("3 BIS", "Mordak-Ysondre")
+whisper("os #4", "Vex-Kael'Thas")
+whisper("bis4", "Zephyra-Hyjal")
+assert(cand(Lo.Council(sessions[2]), "Tharok-Hyjal").response == "upgrade" and cand(Lo.Council(sessions[3]), "Mordak-Ysondre").response == "bis", "« up 2 », « 3 bis »")
+assert(cand(Lo.Council(sessions[4]), "Vex-Kael'Thas").response == "off" and cand(Lo.Council(sessions[4]), "Zephyra-Hyjal").response == "bis", "« os #4 », « bis4 »")
+assert(not cand(Lo.Council(sessions[1]), "Tharok-Hyjal") and not cand(Lo.Council(sessions[3]), "Tharok-Hyjal"), "seul l'objet visé")
+-- Sans numéro, plusieurs conseils : rappel chuchoté une fois par lot ; numéro inconnu : rappel aussi
+wmark = #S.whispers
+whisper("bis", "Brumelune-Ysondre")
+whisper("transmo", "Brumelune-Ysondre")
+local reminders = 0
+for i = wmark + 1, #S.whispers do if S.whispers[i].target == "Brumelune-Ysondre" then reminders = reminders + 1 assert(S.whispers[i].msg == Lo.REMIND and S.whispers[i].chatType == "WHISPER") end end
+assert(reminders == 1, "rappel une fois : " .. reminders)
+for i = 1, 4 do assert(not cand(Lo.Council(sessions[i]), "Brumelune-Ysondre"), "sans numéro : pas de réponse") end
+whisper("bis 9", "Sylvane-Hyjal")
+assert(said("Pas d'objet n° 9 au conseil", wmark + 1).target == "Sylvane-Hyjal", "numéro inconnu : rappel")
+whisper("salut 2", "Orvane-Hyjal")
+assert(not cand(Lo.Council(sessions[2]), "Orvane-Hyjal") and (not said("Précise", wmark + 1) or said("Précise", wmark + 1).target ~= "Orvane-Hyjal"), "pas une réponse : ignoré")
+-- Pendant le verrou du chat : pas de rappel (et pas noté : il partira au chuchotement suivant)
+S.lockdown = true
+whisper("bis", "Orvane-Hyjal")
+S.lockdown = false
+advance(4)
+assert(not said("Précise", wmark + 1) or said("Précise", wmark + 1).target ~= "Orvane-Hyjal", "verrou du chat : pas de rappel")
+whisper("bis", "Orvane-Hyjal")
+assert(said("Précise", wmark + 1).target == "Orvane-Hyjal", "rappel après le verrou")
+-- Liste des conseils (bande d'objets) et mon vote
+assert(Lo.Vote(sessions[2], "Tharok-Hyjal"), "vote")
+-- Conseils de moins de 2 h (les précédents, terminés ou annulés, compris), dans l'ordre de proposition
+local all, cl = Lo.Councils(), {}
+for pos, x in ipairs(all) do for i, sid in ipairs(sessions) do if x.session == sid then cl[i], x.pos = x, pos end end end
+assert(#all == 7 and all[1].session == psid and all[1].closed and all[2].session == usid and all[3].session == "88001" and not all[3].isMaster, "Councils : tous ceux de moins de 2 h")
+assert(cl[1].pos == 4 and cl[4].pos == 7 and cl[1].num == 1 and cl[4].num == 4 and cl[2].link == long[2].link, "Councils : ordre de proposition et numéros")
+assert(cl[2].answers == 1 and cl[2].waiting == #Lo.Members() - 1 and cl[2].myVote == "Tharok-Hyjal" and not cl[2].closed and cl[2].isMaster and cl[1].myVote == nil, "Councils : réponses, attente, mon vote")
+assert(Lo.Council(sessions[3]).num == 3, "Council : numéro")
+-- Un conseil de plus : numéro suivant, annonce numérotée
+local ring2 = receive(item(242436, "Anneau de Kith'ix"), 1, 16)
+wmark = #S.whispers
+local _, s5 = Lo.StartCouncil(ring2.key)
+assert(Lo.Council(s5).num == 5 and said("Roster : conseil du butin, objet 5 : " .. ring2.link .. ". Réponds dans la fenêtre de Roster, ou chuchote-moi bis, up, os ou transmo suivi du numéro (« bis 5 »).", wmark + 1), "conseil de plus : n° 5")
+-- Un conseil terminé garde son numéro ; plus aucun conseil ouvert : la numérotation repart de 1, les rappels aussi
+assert(Lo.AwardCouncil(sessions[2], "Tharok-Hyjal") and Lo.Councils()[cl[2].pos].closed and Lo.Councils()[cl[2].pos].winner == "Tharok-Hyjal", "conseil 2 terminé")
+whisper("bis 3", "Sylvane-Hyjal")
+assert(cand(Lo.Council(sessions[3]), "Sylvane-Hyjal") and cand(Lo.Council(sessions[3]), "Sylvane-Hyjal").response == "bis", "les autres numéros ne bougent pas")
+for _, e in ipairs({ long[1], long[3], long[4], ring2 }) do Lo.Cancel(e.key) end
+assert(#Lo.Offers() == 0, "tout annulé")
+wmark = #S.whispers
+local _, s1 = Lo.StartCouncil(long[1].key)
+assert(Lo.Council(s1).num == 1 and said("Roster : conseil du butin pour " .. long[1].link .. ". Réponds dans la fenêtre de Roster, ou chuchote-moi bis, up, os ou transmo.", wmark + 1), "repart de 1, forme courte")
+whisper("transmo", "Brumelune-Ysondre")
+assert(cand(Lo.Council(s1), "Brumelune-Ysondre").response == "transmo", "un seul conseil : sans numéro, valable")
+Lo.StartCouncil(long[3].key)
+wmark = #S.whispers
+whisper("bis", "Brumelune-Ysondre")
+assert(said(Lo.REMIND, wmark + 1).target == "Brumelune-Ysondre", "nouveau lot : rappel de nouveau")
+-- Chef de butin seulement ; pas pendant le verrou du chat ; rien à proposer
+for _, e in ipairs({ long[1], long[3] }) do Lo.Cancel(e.key) end
+S.lockdown = true
+assert(select(1, Lo.StartAllCouncils()) == 0 and long[1].status == "new" and lastPrinted("pas pendant un combat de boss"), "verrou du chat : pas de conseil")
+S.lockdown = false
+advance(4)
+assert(Lo.SetMaster("Tharok-Hyjal") and select(1, Lo.StartAllCouncils()) == 0 and lastPrinted("seul le chef de butin lance le conseil") and long[1].status == "new", "pas chef de butin : pas de conseil")
+assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
+clearItems()
+assert(select(1, Lo.StartAllCouncils()) == 0 and lastPrinted("aucun objet à proposer"), "tout au conseil : plus rien")
+advance(2)
+
+-- 10g. Colonne « Reçus » : ligne D du site + ce soir (BiS · Upgrade · Jets MS) ; Off-spec, Transmo, OS, jet libre et
+-- objet gardé jamais comptés, par tous les chemins (chef de butin, LW, relevé sans méthode, butin de groupe, chuchoté)
+ok, msg = D.Load(table.concat({
+  "RRG;1;g1;" .. BASE .. ";Les Veilleurs",
+  "R;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "L;" .. RAID_ID .. ";Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre",
+  "N;saison;depuis le 05/11/2026;Tharok-Hyjal:5,Vex-Kael'Thas+Ilyra-Hyjal:2,Sylvane-Hyjal:1",
+  "D;Tharok-Hyjal:2:1:1,Mordak-Ysondre:1:0:2",
+  "END;1",
+}, "\n"))
+assert(ok, "données du site avec D : " .. tostring(msg))
+assert(Lo.Category({ method = "council", response = "bis" }) == "bis" and Lo.Category({ method = "council", response = "upgrade" }) == "up"
+  and Lo.Category({ method = "roll", detail = "MS 87" }) == "ms" and Lo.Category({ method = "council", response = "off" }) == nil
+  and Lo.Category({ method = "roll", detail = "OS 54" }) == nil and Lo.Category({ method = "ml" }) == nil and Lo.Category({}) == nil and Lo.Category(nil) == nil, "L.Category")
+local function recv(name) local s, t, _, d = Lo.Received(name) return s, t, d end
+local s0, n0, d0 = recv("Mordak-Ysondre")
+assert(s0 == 3 and d0.bis >= 1 and d0.ms >= 2, "ligne D sans entrée N : entrée créée (total = somme)")
+local sT, tT, dT = recv("Tharok-Hyjal")
+assert(sT == 5, "N : Tharok 5")
+local sV, _, dV = recv("Vex-Kael'Thas")
+assert(sV == 2 and dV.bis == 0 and dV.up == 0, "entrée N sans D : 0")
+-- Chemin 1 : attribution par le chef de butin
+local nextItem = 0
+local function won(name, method, response, detail)
+  local id = 242440 + nextItem
+  nextItem = nextItem + 1
+  local e = receive(item(id, "Objet " .. id), 0, 1)
+  S.bags[0][1] = nil
+  assert(e and Lo.Award(e.key, name, method, response, detail), "attribué : " .. tostring(detail))
+  return e
+end
+local s1b, t1b, d1b = recv("Brumelune-Ysondre")
+local mine0 = select(2, recv("Kaeldra-Hyjal"))
+won("Brumelune-Ysondre", "council", "off", "1 vote")
+won("Brumelune-Ysondre", "council", "transmo", "0 vote")
+won("Brumelune-Ysondre", "roll", nil, "OS 54")
+won("Brumelune-Ysondre", "roll", nil, "jet 54")
+assert(Lo.Keep(receive(item(242460, "Objet gardé"), 0, 2).key), "gardé")
+assert(select(2, recv("Brumelune-Ysondre")) == t1b and select(2, recv("Kaeldra-Hyjal")) == mine0, "Off-spec, Transmo, OS, jet libre, gardé : jamais comptés")
+local raw = receive(item(242461, "Pas encore distribué"), 0, 3)
+assert(select(2, recv("Kaeldra-Hyjal")) == mine0, "objet du chef de butin pas encore distribué : pas compté")
+won("Brumelune-Ysondre", "council", "bis", "2 votes")
+won("Brumelune-Ysondre", "council", "upgrade", "1 vote")
+won("Brumelune-Ysondre", "roll", nil, "MS 87")
+won("Brumelune-Ysondre", "ml", nil, "")
+local _, t1c, d1c = recv("Brumelune-Ysondre")
+assert(t1c == t1b + 4 and d1c.bis == d1b.bis + 1 and d1c.up == d1b.up + 1 and d1c.ms == d1b.ms + 1, "BiS, Upgrade, MS et choix du chef : comptés (" .. t1c - t1b .. ")")
+-- Réponse chuchotée « os » / « transmo » puis « Donner » : pas comptée
+local wo = receive(item(242462, "Objet chuchoté"), 0, 4)
+local _, wsid = Lo.StartCouncil(wo.key)
+whisper("os", "Brumelune-Ysondre")
+assert(Lo.AwardCouncil(wsid, "Brumelune-Ysondre") and wo.response == "off", "réponse chuchotée Off-spec donnée")
+local wt = receive(item(242463, "Objet chuchoté 2"), 0, 5)
+local _, wsid2 = Lo.StartCouncil(wt.key)
+whisper("transmo", "Brumelune-Ysondre")
+assert(Lo.AwardCouncil(wsid2, "Brumelune-Ysondre") and wt.response == "transmo", "réponse chuchotée Transmo donnée")
+assert(select(2, recv("Brumelune-Ysondre")) == t1c, "réponses chuchotées Off-spec / Transmo : pas comptées")
+-- Détail dans le conseil
+local wb = receive(item(242464, "Objet au conseil"), 0, 6)
+local _, bsid = Lo.StartCouncil(wb.key)
+whisper("bis", "Mordak-Ysondre")
+whisper("up", "Tharok-Hyjal")
+local xc = cand(Lo.Council(bsid), "Tharok-Hyjal")
+assert(xc.receivedBis == dT.bis and xc.receivedUp == dT.up and xc.receivedMs == dT.ms and xc.received == xc.receivedSite + xc.receivedTonight, "Council : détail des reçus")
+Lo.Cancel(wb.key)
+-- Chemin 2 : LW chez un autre relevé (Tharok chef de butin) ; objets du chef de butin pas encore distribués : pas comptés
+assert(Lo.SetMaster("Tharok-Hyjal"), "Tharok chef de butin")
+local _, tz0 = recv("Zephyra-Hyjal")
+local _, tth0 = recv("Tharok-Hyjal")
+for i, d in ipairs({ { "council", "off", "1 vote" }, { "council", "transmo", "" }, { "roll", "", "OS 12" }, { "roll", "", "jet 33" } }) do
+  fire("CHAT_MSG_LOOT", "Tharok-Hyjal reçoit le butin : " .. item(242470 + i, "Objet LW " .. i) .. ".", "", "", "", "")
+  assert(select(2, recv("Tharok-Hyjal")) == tth0, "ramassé par le chef de butin : pas compté")
+  addon("Tharok-Hyjal", "LW;k" .. i .. ";" .. (242470 + i) .. ";Zephyra-Hyjal;" .. d[1] .. ";" .. d[2] .. ";" .. d[3])
+end
+fire("CHAT_MSG_LOOT", "Tharok-Hyjal reçoit le butin : " .. item(242475, "Objet LW gardé") .. ".", "", "", "", "")
+addon("Tharok-Hyjal", "LW;k5;242475;Tharok-Hyjal;ml;;gardé")
+assert(select(2, recv("Zephyra-Hyjal")) == tz0 and select(2, recv("Tharok-Hyjal")) == tth0, "LW : Off-spec, Transmo, OS, jet libre, gardé jamais comptés")
+fire("CHAT_MSG_LOOT", "Tharok-Hyjal reçoit le butin : " .. item(242476, "Objet LW BiS") .. ".", "", "", "", "")
+addon("Tharok-Hyjal", "LW;k6;242476;Zephyra-Hyjal;council;bis;3 votes")
+local _, tz1, dz1 = recv("Zephyra-Hyjal")
+assert(tz1 == tz0 + 1 and dz1.bis >= 1, "LW : BiS compté")
+-- Chemin 3 : ligne du relevé sans méthode (objet seulement noté) : compte, sans catégorie
+local _, to0, do0 = recv("Orvane-Hyjal")
+fire("CHAT_MSG_LOOT", "Orvane-Hyjal reçoit le butin : " .. item(242477, "Objet noté") .. ".", "", "", "", "")
+local _, to1, do1 = recv("Orvane-Hyjal")
+assert(to1 == to0 + 1 and do1.bis == do0.bis and do1.up == do0.up and do1.ms == do0.ms, "objet seulement noté : compte, sans catégorie")
+assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
+-- Chemin 4 : objet gagné au butin de groupe par un joueur qui n'a pas passé : noté, compte (même règle que le site)
+local _, ts0 = recv("Sylvane-Hyjal")
+S.loot[40] = { link = item(242478, "Objet de groupe"), need = true }
+fire("START_LOOT_ROLL", 40, 120000)
+fire("CHAT_MSG_LOOT", "Sylvane-Hyjal reçoit le butin : " .. S.loot[40].link .. ".", "", "", "", "")
+assert(Lo.NotPassed()[#Lo.NotPassed()].name == "Sylvane-Hyjal" and select(2, recv("Sylvane-Hyjal")) == ts0 + 1, "butin de groupe gagné sans passer : compté comme objet noté")
+-- Raid d'essai : objets reçus avec détail, échange ouvert par un gagnant fictif, règle de l'armure en option
+Lo.Remove(raw.key)
+local shown = {}
+Lo.test = {
+  members = { { name = "Kaeldra-Hyjal", class = "PRIEST" }, { name = "Gorrak-Hyjal", class = "WARRIOR" }, { name = "Lyra-Hyjal", class = "MAGE" } },
+  counts = { short = "saison", label = "saison", entries = { { names = { "Gorrak-Hyjal" }, n = 4, bis = 2, up = 1, ms = 1 }, { names = { "Lyra-Hyjal" }, n = 1 } } },
+  send = function() return true end, say = function() end, trade = function() end,
+  tradeShow = function(partner, list) shown[#shown + 1] = { partner = partner, n = #list } end,
+}
+local sg, tg, _, dg = Lo.Received("Gorrak-Hyjal")
+local _, _, _, dl = Lo.Received("Lyra-Hyjal")
+assert(sg == 4 and tg == 0 and dg.bis == 2 and dg.up == 1 and dg.ms == 1 and dl.bis == 0 and dl.ms == 0, "essai : test.counts avec détail")
+local te3 = Lo.AddTestItem(PLATE, 3600)
+local _, tsid3 = Lo.StartCouncil(te3.key)
+Cm.Deliver("Lyra-Hyjal", "LA;" .. tsid3 .. ";bis;;", "WHISPER")
+assert(cand(Lo.Council(tsid3), "Lyra-Hyjal").response == "bis", "essai : règle de l'armure coupée par défaut")
+Lo.test.armorRule = true
+Cm.Deliver("Lyra-Hyjal", "LA;" .. tsid3 .. ";bis;;", "WHISPER")
+assert(cand(Lo.Council(tsid3), "Lyra-Hyjal").response == "transmo", "essai : règle de l'armure si test.armorRule")
+assert(Lo.Award(te3.key, "Gorrak-Hyjal", "council", "bis", "1 vote"), "essai : donné")
+S.picks = {}
+fire("TRADE_SHOW") -- vrai échange pendant l'essai : ignoré
+assert(#shown == 0 and #S.picks == 0, "essai : vrai échange ignoré")
+Lo.OnTradeShow("Gorrak-Hyjal")
+assert(#shown == 1 and shown[1].partner == "Gorrak-Hyjal" and shown[1].n == 1 and lastPrinted("objets posés dans l'échange avec Gorrak %(raid d'essai%)"), "essai : crochet tradeShow")
+assert(Lo.CanUse(PLATE) == false, "essai : ma classe du jeu (prêtre)")
+Lo.StopTest()
+fire("TRADE_CLOSED")
+clearItems()
+advance(2)
+assert(errors() == 0, "retours du raid de test sans erreur : " .. tostring(lastPrinted("erreur")))
+end
+feedback()
 
 --------------------------------------------------------------------------------------------------------------------
 -- 7. Valeurs secrètes renvoyées par le jeu : rien ne casse, rien n'est gardé

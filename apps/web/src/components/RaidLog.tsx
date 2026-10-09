@@ -1,12 +1,13 @@
 import {
   ATTENDANCE_LABEL, DIFFICULTY_LABEL, encounterSummary, itemLinks, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, retailItemLink, retailLootHow,
-  type AttendanceStatus, type LootMethod, type LootResponse, type RaidLogEncounter, type RetailDifficulty,
+  type AttendanceStatus, type LootCategoryCounts, type LootMethod, type LootResponse, type RaidLogEncounter, type RetailDifficulty,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, get, put } from "../api";
 import { useGameText } from "../gameText";
+import { LootDetail } from "./Loot";
 
 /* ---------- Bilan d'un raid (page du raid) ---------- */
 
@@ -152,6 +153,8 @@ export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogVi
 interface AttendanceResponse {
   raids: { id: string; name: string; scheduledAt: string }[];
   characters: { id: string; name: string; cls: string; owner: string; cells: (AttendanceStatus | null)[]; attended: number; loot: number; counted: number;
+    /** Détail du compte : BiS, Upgrade, jets MS. */
+    detail: LootCategoryCounts;
     lastItem: { id: number; name: string; quality: number; raidName: string } | null }[];
   /** Lot I : période et façon de compter les objets reçus (réglages du groupe). */
   count: { short: string; label: string; by: "player" | "character" };
@@ -194,7 +197,7 @@ export function AttendanceTab({ groupId }: { groupId: string }) {
                 <td><span style={{ color: clsColor(c.cls), fontWeight: 600 }}>{c.name}</span> <span className="muted small">{c.owner}</span></td>
                 <td className="nowrap"><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{c.attended}/{n}</span></td>
                 {c.cells.map((s, i) => <td key={i} className={`c rl-cell ${s ?? ""}`} title={s ? ATTENDANCE_LABEL[s] : "Ni inscrit ni vu"}>{s ? CELL[s] : ""}</td>)}
-                <td className="r num" title={`${c.loot} objet${c.loot > 1 ? "s" : ""} relevé${c.loot > 1 ? "s" : ""} au total`}>{c.counted}</td>
+                <td className="r" title={`${c.loot} objet${c.loot > 1 ? "s" : ""} relevé${c.loot > 1 ? "s" : ""} au total`}><span className="num">{c.counted}</span><LootDetail detail={c.detail} /></td>
                 <td>{c.lastItem ? <a className={`q${c.lastItem.quality}`} href={retail ? retailItemLink(c.lastItem.id, gt.lang) : itemLinks(c.lastItem.id).wowhead} target="_blank" rel="noopener noreferrer" title={c.lastItem.raidName}>{c.lastItem.name}</a> : <span className="muted">—</span>}</td>
               </tr>
             );

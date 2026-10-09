@@ -1,4 +1,7 @@
-import { fullName, gameName, instanceKey, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings, parseLootHistory, RETAIL_NO_SOFTRES } from "@forever/game-data";
+import {
+  fullName, gameName, instanceKey, LOOT_CATEGORIES, LOOT_COUNT_BY, LOOT_COUNT_MODES, LOOT_MODES, lootSettings, parseLootHistory, RETAIL_NO_SOFTRES,
+  type LootCategory,
+} from "@forever/game-data";
 import { and, asc, count, desc, eq, gte, ilike } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -58,14 +61,17 @@ export async function lootRoutes(app: FastifyInstance) {
     const { summary, rows } = await groupLootCounts(db, id);
     const corrections = await db.select({
       id: lootCorrections.id, characterId: lootCorrections.characterId, name: characters.name, userId: characters.userId,
-      delta: lootCorrections.delta, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt,
+      delta: lootCorrections.delta, kind: lootCorrections.kind, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt,
     }).from(lootCorrections).innerJoin(characters, eq(characters.id, lootCorrections.characterId))
       .where(and(eq(lootCorrections.groupId, id), ...(summary.since ? [gte(lootCorrections.createdAt, summary.since)] : [])))
       .orderBy(desc(lootCorrections.createdAt)).limit(200);
     return { summary, rows, corrections };
   });
 
-  /** Officiers : +n / −n sur le compte d'un perso du groupe, avec un motif (daté et signé). */
+  /**
+   * Officiers : +n / −n sur le compte d'un perso du groupe, avec un motif (daté et signé) ; catégorie facultative
+   * (BiS, Upgrade, jet MS) : la correction compte aussi dans le détail.
+   */
   app.post("/:id/loot-corrections", async (req, reply) => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
@@ -73,13 +79,15 @@ export async function lootRoutes(app: FastifyInstance) {
     const body = parse(z.object({
       characterId: z.uuid(), delta: z.int().min(-20).max(20).refine(n => n !== 0, "La correction ne peut pas être 0."),
       note: z.string().trim().min(2, "Indique le motif de la correction.").max(120),
+      kind: z.enum(LOOT_CATEGORIES).nullable().optional(),
     }), req.body);
     const [c] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
       .where(and(eq(groupCharacters.groupId, id), eq(groupCharacters.characterId, body.characterId)));
     if (!c) throw badRequest("Ce perso ne joue pas dans ce groupe.");
     const [me] = await db.select({ name: users.displayName }).from(users).where(eq(users.id, u.id));
-    const [row] = await db.insert(lootCorrections).values({ groupId: id, characterId: c.id, delta: body.delta, note: body.note, createdBy: u.id, createdByName: me?.name ?? "?" }).returning({ id: lootCorrections.id });
-    await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: id, meta: { characterId: c.id, delta: body.delta } });
+    const kind = body.kind ?? null;
+    const [row] = await db.insert(lootCorrections).values({ groupId: id, characterId: c.id, delta: body.delta, kind, note: body.note, createdBy: u.id, createdByName: me?.name ?? "?" }).returning({ id: lootCorrections.id });
+    await audit(db, req, "loot_count_corrected", { userId: u.id, groupId: id, meta: { characterId: c.id, delta: body.delta, ...(kind && { kind }) } });
     bus.group({ t: "group", g: id });
     return reply.code(201).send({ correction: { id: row!.id } });
   });
@@ -97,8 +105,9 @@ export async function lootRoutes(app: FastifyInstance) {
 
   /**
    * Officiers : historique de butin d'avant le site (liste collée, parseLootHistory). Chaque joueur reconnu parmi les
-   * persos du groupe (nom, avec ou sans royaume) reçoit une correction « Historique <nom> : 3 BiS, 4 Spé 1 ». Une
-   * liste recollée n'ajoute rien à un perso qui a déjà sa correction de ce nom. `apply: false` : aperçu seulement.
+   * persos du groupe (nom, avec ou sans royaume) reçoit une correction BiS « Historique <nom> : 3 BiS » et une correction
+   * Upgrade « Historique <nom> : 4 Spé 1 » (sans détail : une correction du total, sans catégorie). Une liste recollée
+   * n'ajoute rien à un perso qui a déjà une correction de ce nom. `apply: false` : aperçu seulement. `created` : joueurs ajoutés.
    */
   app.post("/:id/loot-history", async (req, reply) => {
     const u = currentUser(req);
@@ -137,10 +146,19 @@ export async function lootRoutes(app: FastifyInstance) {
       const values: (typeof lootCorrections.$inferInsert)[] = [];
       for (const r of rows) {
         if (r.status !== "new" || !r.character) continue;
-        const note = `${prefix} : ${r.bis !== null && r.ms !== null ? `${r.bis} BiS, ${r.ms} Spé 1` : `${r.total} objet${r.total > 1 ? "s" : ""}`}`.slice(0, 120);
-        // Une correction va de -20 à +20 : au-delà, en plusieurs
-        for (let left = Math.min(r.total, 200); left > 0; left -= 20) {
-          values.push({ groupId: id, characterId: r.character.id, delta: Math.min(20, left), note, createdBy: u.id, createdByName: me?.name ?? "?" });
+        // Détail connu : une correction BiS et une correction Upgrade (« Spé 1 »), une catégorie à 0 n'en a pas ; un total
+        // plus grand que BiS + Spé 1 garde le reste sans catégorie. Sinon, le total sans catégorie.
+        const rest = r.bis !== null && r.ms !== null ? r.total - r.bis - r.ms : 0;
+        const parts: { n: number; kind: LootCategory | null; text: string }[] = r.bis !== null && r.ms !== null
+          ? [{ n: r.bis, kind: "bis", text: `${r.bis} BiS` }, { n: r.ms, kind: "upgrade", text: `${r.ms} Spé 1` },
+            { n: rest, kind: null, text: `${rest} autre${rest > 1 ? "s" : ""} objet${rest > 1 ? "s" : ""}` }]
+          : [{ n: r.total, kind: null, text: `${r.total} objet${r.total > 1 ? "s" : ""}` }];
+        for (const p of parts) {
+          const note = `${prefix} : ${p.text}`.slice(0, 120);
+          // Une correction va de -20 à +20 : au-delà, en plusieurs
+          for (let left = Math.min(p.n, 200); left > 0; left -= 20) {
+            values.push({ groupId: id, characterId: r.character.id, delta: Math.min(20, left), kind: p.kind, note, createdBy: u.id, createdByName: me?.name ?? "?" });
+          }
         }
         r.status = "exists";
         created++;

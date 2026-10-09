@@ -52,6 +52,10 @@ describe("compte des objets reçus (lot I)", () => {
     expect(c.by["Greta Coulé"]).toMatchObject({ own: 2, player: 3, count: 3 });
     expect(c.by.Brindille).toMatchObject({ own: 1, player: 3, count: 3 });
     expect(c.by.Grumdal).toMatchObject({ own: 2, player: 2, count: 2 });
+    // Détail (BiS, Upgrade, jets MS) : conseil BiS, conseil Upgrade, jet MS ; soft reserve et objet noté dans le total seulement
+    expect(c.by["Greta Coulé"]).toMatchObject({ bis: 0, upgrade: 1, ms: 0 });
+    expect(c.by.Brindille).toMatchObject({ bis: 0, upgrade: 1, ms: 0 });
+    expect(c.by.Grumdal).toMatchObject({ bis: 1, upgrade: 0, ms: 1 });
 
     // Bilan du raid : ce qui ne compte pas d'office
     const view = (await p1.c.get(`/api/groups/${g.id}/raids/${recent.raid.id}`)).json().log;
@@ -76,19 +80,31 @@ describe("compte des objets reçus (lot I)", () => {
     const made = await gm.c.post(`/api/groups/${g.id}/loot-corrections`, corr);
     expect(made.statusCode).toBe(201);
     c = await counts();
-    expect(c.by["Greta Coulé"]).toMatchObject({ own: 2, player: 3 });
-    expect(c.corrections).toMatchObject([{ name: "Greta Coulé", delta: 1, note: "donné hors addon", by: "Comptable" }]);
+    expect(c.by["Greta Coulé"]).toMatchObject({ own: 2, player: 3, bis: 0, upgrade: 1, ms: 0 });
+    expect(c.corrections).toMatchObject([{ name: "Greta Coulé", delta: 1, kind: null, note: "donné hors addon", by: "Comptable" }]);
+    // Correction avec une catégorie : dans le total et dans le détail (catégorie inconnue refusée)
+    expect((await gm.c.post(`/api/groups/${g.id}/loot-corrections`, { ...corr, kind: "transmo" })).statusCode).toBe(400);
+    const bis = await gm.c.post(`/api/groups/${g.id}/loot-corrections`, { ...corr, note: "BiS donné hors addon", kind: "bis" });
+    expect(bis.statusCode).toBe(201);
+    c = await counts();
+    expect(c.by["Greta Coulé"]).toMatchObject({ own: 3, player: 4, bis: 1, upgrade: 1, ms: 0 });
+    expect(c.corrections[0]).toMatchObject({ delta: 1, kind: "bis", note: "BiS donné hors addon" });
+    expect((await gm.c.del(`/api/groups/${g.id}/loot-corrections/${bis.json().correction.id}`)).statusCode).toBe(200);
 
-    // Par perso : chacun son compte
+    // Par perso : chacun son compte, et son détail
     await gm.c.put(`/api/groups/${g.id}/loot-settings`, { countBy: "character" });
     c = await counts();
     expect([c.by["Greta Coulé"]!.count, c.by.Brindille!.count, c.by.Grumdal!.count]).toEqual([2, 1, 2]);
+    expect(c.by["Greta Coulé"]).toMatchObject({ bis: 0, upgrade: 0, ms: 0 });
+    expect(c.by.Brindille).toMatchObject({ bis: 0, upgrade: 1, ms: 0 });
 
     // 30 derniers jours, puis le dernier raid : le raid d'il y a 40 jours ne compte plus
     await gm.c.put(`/api/groups/${g.id}/loot-settings`, { countBy: "player", countMode: "days" });
     c = await counts();
     expect(c.summary).toMatchObject({ label: "sur les 30 derniers jours", short: "30 j", raids: 1 });
     expect([c.by["Greta Coulé"]!.count, c.by.Grumdal!.count]).toEqual([2, 1]);
+    // Même période pour le détail : le conseil BiS d'il y a 40 jours n'y est plus
+    expect(c.by.Grumdal).toMatchObject({ bis: 0, upgrade: 0, ms: 1 });
     await gm.c.put(`/api/groups/${g.id}/loot-settings`, { countMode: "raids", countRaids: 1 });
     c = await counts();
     expect(c.summary).toMatchObject({ label: "sur le dernier raid", short: "1 raids", raids: 1 });
@@ -114,7 +130,7 @@ describe("compte des objets reçus (lot I)", () => {
 
     // Fiche du joueur : compte, corrections, objets comptés ou non
     const sheet = (await p2.c.get(`/api/groups/${g.id}/members/${p1.user.id}/sheet`)).json();
-    expect(sheet.lootCount).toMatchObject({ player: 3, label: "depuis le début" });
+    expect(sheet.lootCount).toMatchObject({ player: 3, label: "depuis le début", detail: { bis: 0, upgrade: 1, ms: 0 } });
     expect(sheet.lootCount.corrections).toMatchObject([{ delta: 1, note: "donné hors addon", inPeriod: true }]);
     expect(sheet.loot.find((l: { itemId: number }) => l.itemId === 16834)).toMatchObject({ skip: "jet OS", excluded: false });
 
@@ -124,7 +140,7 @@ describe("compte des objets reçus (lot I)", () => {
     // Présence : colonne des objets comptés
     const att = (await p2.c.get(`/api/groups/${g.id}/attendance`)).json();
     expect(att.count).toMatchObject({ short: "saison" });
-    expect(att.characters.find((x: { name: string }) => x.name === "Grumdal")).toMatchObject({ counted: 2, loot: 3 });
+    expect(att.characters.find((x: { name: string }) => x.name === "Grumdal")).toMatchObject({ counted: 2, loot: 3, detail: { bis: 1, upgrade: 0, ms: 1 } });
     expect(old.raid.id).toBeTruthy();
   });
 });

@@ -1,0 +1,2 @@
+ALTER TABLE "loot_corrections" ADD COLUMN "kind" text;--> statement-breakpoint
+ALTER TABLE "loot_corrections" ADD CONSTRAINT "loot_corrections_kind_chk" CHECK ("loot_corrections"."kind" IN ('bis', 'upgrade', 'ms'));

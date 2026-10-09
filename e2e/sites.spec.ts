@@ -328,13 +328,15 @@ test.describe("Roster (WoW Retail)", () => {
       const table = page.locator("table.rl-att");
       await expect(table.getByRole("columnheader", { name: "Reçus · saison" })).toBeVisible();
       await expect(table.getByRole("row", { name: /Brumelune.*1\/1.*Bottes du Vide/ })).toBeVisible();
-      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r.num")).toHaveText("1");
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r .num")).toHaveText("1");
+      // Détail sous le total (retours du raid de test) : BiS, Upgrade, jets MS
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r .lc-det")).toHaveText("1 BiS");
       // Administration → Butin : période du compte (pas de réglages de soft reserve sur Roster)
       await page.getByRole("tab", { name: "Administration" }).click();
       await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
       await expect(page.getByRole("heading", { name: "Objets reçus" })).toBeVisible();
       await expect(page.locator("#lt-count")).toHaveCount(0);
-      // Historique d'avant le site, collé tel quel : une correction par joueur reconnu
+      // Historique d'avant le site, collé tel quel : une correction BiS et une correction Upgrade (« Spé 1 ») par joueur reconnu
       await page.getByRole("button", { name: "Importer un historique" }).click();
       await page.getByRole("textbox", { name: "Liste des objets reçus" }).fill([
         "Season loot count - 9 items (Season 2)", "", "Brumelune - BiS 1, Spé 1 1 (total 2)", "  - Crochet de malveillance ombreuse", "  - Idole tissée de venin",
@@ -349,7 +351,34 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(page.getByRole("status").filter({ hasText: "1 joueur ajouté au compte (Historique Season 2)." })).toBeVisible();
       await expect(hist.getByRole("row", { name: /Brumelune.*déjà importé/ })).toBeVisible();
       await page.getByRole("tab", { name: "Présence & butin" }).click();
-      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r.num")).toHaveText("3");
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r .num")).toHaveText("3");
+      await expect(table.getByRole("row", { name: /Brumelune/ }).locator("td.r .lc-det")).toHaveText("2 BiS · 1 Up");
+      if (process.env.SHOTS) await table.screenshot({ path: "test-results/shots/roster-recus-detail.png" });
+      // Fiche du joueur (onglet Membres) : total, détail, et les deux corrections de l'historique avec leur catégorie
+      await page.getByRole("tab", { name: "Membres" }).click();
+      await page.locator("table.mb-table").getByRole("button", { name: "Officière", exact: true }).click();
+      const fiche = page.locator(".ps");
+      await expect(fiche.locator(".lc-sum")).toContainText("3 objets depuis le début");
+      await expect(fiche.locator(".lc-sum .lc-det")).toHaveText("2 BiS · 1 Up");
+      const corr = fiche.getByRole("list", { name: "Corrections des officiers" });
+      await expect(corr.getByRole("listitem").filter({ hasText: "Historique Season 2 : 1 BiS" }).locator(".lc-kind")).toHaveText("BiS");
+      await expect(corr.getByRole("listitem").filter({ hasText: "Historique Season 2 : 1 Spé 1" }).locator(".lc-kind")).toHaveText("Upgrade");
+      // Correction manuelle avec une catégorie (Jet MS)
+      await page.selectOption("#lc-kind", "ms");
+      await page.fill("#lc-note", "Jet MS hors addon");
+      await page.getByRole("button", { name: "Corriger le compte" }).click();
+      await expect(corr.getByRole("listitem").filter({ hasText: "Jet MS hors addon" }).locator(".lc-kind")).toHaveText("Jet MS");
+      await expect(fiche.locator(".lc-sum .lc-det")).toHaveText("2 BiS · 1 Up · 1 MS");
+      // Téléphone : la fiche ne déborde pas
+      await page.setViewportSize({ width: 390, height: 844 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+      if (process.env.SHOTS) await fiche.screenshot({ path: "test-results/shots/roster-fiche-detail-mobile.png" });
+      await page.setViewportSize({ width: 1280, height: 720 });
+      // « Copier pour le jeu » : ligne D juste après N (BiS:Upgrade:MS), mêmes entrées
+      await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
+      await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+      expect(await page.evaluate(() => navigator.clipboard.readText()))
+        .toMatch(new RegExp(`^RRG;1;[0-9a-f-]{36};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:4\nD;Brumelune-Hyjal:2:1:1\nEND;1$`));
       await page.getByRole("tab", { name: "Administration" }).click();
       await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
       await page.selectOption("#lt-cm", "raids");

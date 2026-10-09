@@ -811,6 +811,11 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .lc-corr li.out { opacity: .6; }
 .lc-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 8px; }
 .lc-form .fld { margin: 0; }
+/* Retours du raid de test : détail des objets reçus (« 2 BiS · 3 Up · 1 MS ») et catégorie d'une correction */
+.lc-det { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.rl-att .lc-det { display: block; font-size: 11px; line-height: 1.3; }
+.ps-kpis .lc-det { white-space: normal; }
+.lc-kind { padding: 0 6px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 11px; font-weight: 600; white-space: nowrap; }
 .rl-att th.c, .rl-att td.c { text-align: center; width: 44px; }
 .rl-att th.c a { color: var(--ink-2); text-decoration: none; font-weight: 500; }
 .rl-cell { font-weight: 700; }

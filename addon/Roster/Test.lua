@@ -1,6 +1,7 @@
 -- Raid d'essai (/roster test) : seul et hors groupe, tu es chef de butin d'un raid fictif (toi et 9 joueurs) pour essayer
--- la distribution par Roster : objets reçus, conseil (réponses, objets portés, votes), jets MS / OS avec égalité, jet libre,
--- garder, échange, joueur sans l'addon qui n'a pas passé, et la fenêtre de réponse d'un joueur. Le moteur du butin
+-- la distribution par Roster : objets reçus, tout au conseil (réponses à chaque objet selon l'armure de chaque classe,
+-- objets portés, votes), jets MS / OS avec égalité, jet libre, garder, échange, joueur sans l'addon qui n'a pas passé, et
+-- la fenêtre de réponse d'un joueur (deux objets proposés, dont un qu'il ne peut pas porter). Le moteur du butin
 -- (Loot.lua) lit ns.Loot.test : membres fictifs, messages d'addon (T.send), chat (T.say) et échange (T.trade). Rien ne
 -- part au chat du raid, aux autres joueurs ni au site : les annonces s'affichent dans ta fenêtre de chat, après « [essai] ».
 local _, ns = ...
@@ -22,24 +23,34 @@ local PLAYERS = {
   { name = "Ashlen-Hyjal", class = "DEATHKNIGHT", role = "DPS", spec = "Unholy", subgroup = 2 },
 }
 local CHEF, NOADDON = "Tharok-Hyjal", "Orvane-Hyjal" -- chef de butin fictif (côté joueur), joueur sans l'addon
--- Objets reçus sur la saison (colonne « Reçus » du conseil, comme la ligne N des données du site)
-local RECEIVED = { ["Kaeldra-Hyjal"] = 3, ["Tharok-Hyjal"] = 1, ["Brumelune-Ysondre"] = 2, ["Thessaly-Ysondre"] = 0, ["Orvane-Hyjal"] = 1,
-  ["Vex-Kael'Thas"] = 4, ["Lysenn-Dalaran"] = 0, ["Mirwen-Hyjal"] = 2, ["Ashlen-Hyjal"] = 1 }
+-- Objets reçus sur la saison (colonne « Reçus » du conseil, comme les lignes N et D des données du site) : total, puis
+-- BiS, Upgrade et jets MS (les autres objets qui comptent sont dans le total seulement)
+local RECEIVED = { ["Kaeldra-Hyjal"] = { 3, 1, 1, 1 }, ["Tharok-Hyjal"] = { 1, 0, 1, 0 }, ["Brumelune-Ysondre"] = { 2, 1, 0, 0 },
+  ["Thessaly-Ysondre"] = { 0, 0, 0, 0 }, ["Orvane-Hyjal"] = { 1, 0, 0, 1 }, ["Vex-Kael'Thas"] = { 4, 1, 2, 0 },
+  ["Lysenn-Dalaran"] = { 0, 0, 0, 0 }, ["Mirwen-Hyjal"] = { 2, 0, 1, 1 }, ["Ashlen-Hyjal"] = { 1, 1, 0, 0 } }
 
--- Premier conseil : réponses écrites (nom, réponse, note, écart de niveau de l'objet porté) ; whisper : sans l'addon
+-- Premier conseil : souhaits écrits (nom, réponse, note, écart de niveau de l'objet porté) ; la règle de l'armure passe
+-- ensuite (Transmo ou Passer si ce n'est pas l'armure de la classe) ; whisper : sans l'addon, chuchoté avec le numéro de
+-- l'objet (« bis 1 ») et corrigé par le chef de butin. Tharok et Brumelune votent pour les deux premiers qui le veulent.
 local ANSWERS = {
   { "Kaeldra-Hyjal", "bis", "2e pièce", -13 }, { "Tharok-Hyjal", "upgrade", "petit gain", -6 },
   { NOADDON, "bis", whisper = true }, { "Lysenn-Dalaran", "upgrade", "", -9 },
-  { "Brumelune-Ysondre", "off", "pour la spé équilibre", -3 }, { "Vex-Kael'Thas", "transmo", "", 0 },
-  { "Ashlen-Hyjal", "upgrade", "+16 niveaux", -16 }, { "Mirwen-Hyjal", "pass", "", 0 }, { "Thessaly-Ysondre", "pass", "", 0 },
+  { "Brumelune-Ysondre", "off", "pour la spé équilibre", -3 }, { "Vex-Kael'Thas", "upgrade", "", -8 },
+  { "Ashlen-Hyjal", "upgrade", "+16 niveaux", -16 }, { "Mirwen-Hyjal", "bis", "", -11 }, { "Thessaly-Ysondre", "pass", "", 0 },
 }
-local VOTES = { { "Tharok-Hyjal", "Kaeldra-Hyjal" }, { "Brumelune-Ysondre", "Lysenn-Dalaran" } } -- égalité : à toi de départager
+-- Type d'armure de chaque classe (1 tissu, 2 cuir, 3 mailles, 4 plaques) et emplacements où il compte : règle locale si le
+-- moteur n'a pas L.CanUseClass
+local ARMOR = { MAGE = 1, PRIEST = 1, WARLOCK = 1, DEMONHUNTER = 2, DRUID = 2, MONK = 2, ROGUE = 2, EVOKER = 3, HUNTER = 3, SHAMAN = 3,
+  DEATHKNIGHT = 4, PALADIN = 4, WARRIOR = 4 }
+local ARMOR_SLOT = { INVTYPE_HEAD = true, INVTYPE_SHOULDER = true, INVTYPE_CHEST = true, INVTYPE_ROBE = true, INVTYPE_WAIST = true,
+  INVTYPE_LEGS = true, INVTYPE_FEET = true, INVTYPE_WRIST = true, INVTYPE_HAND = true }
 -- Premiers jets : MS (/roll 100) et OS (/roll 99), égalité à 87 puis relance ; jet libre
 local MSOS = { { "Ashlen-Hyjal", 87, 100 }, { "Mirwen-Hyjal", 42, 100 }, { "Vex-Kael'Thas", 87, 100 }, { "Lysenn-Dalaran", 95, 99 }, { "Thessaly-Ysondre", 61, 99 } }
 local REROLL = { ["Ashlen-Hyjal"] = 34, ["Vex-Kael'Thas"] = 71 }
 local FREE = { { "Tharok-Hyjal", 23 }, { "Mirwen-Hyjal", 88 }, { "Kaeldra-Hyjal", 54 } }
 local LABEL = { bis = "BiS", upgrade = "Upgrade", off = "Off-spec", transmo = "Transmo", pass = "Passer" }
 local TRADE, LATE = 112 * 60, 25 * 60 -- délai d'échange restant : 1 h 52, et 25 min pour le troisième objet (en orange)
+local CLOSE_AFTER = 6 -- secondes : Tharok termine ses conseils (côté joueur) une fois que tu as répondu à tout
 
 local function me() return (ns.Comm and ns.Comm.Me and ns.Comm.Me()) or "?" end
 local function show(name) return F.Display(name) end
@@ -65,9 +76,9 @@ end
 local function loot(fn, ...)
   local L = ns.Loot
   if not (L and L[fn]) then return nil end
-  local ok, res = pcall(L[fn], ...)
-  if ok then return res end
-  ns.print("|cffff6060erreur (butin, " .. fn .. ")|r " .. tostring(res))
+  local res = { pcall(L[fn], ...) }
+  if res[1] then return unpack(res, 2, table.maxn(res)) end
+  ns.print("|cffff6060erreur (butin, " .. fn .. ")|r " .. tostring(res[2]))
 end
 local function window(fn, ...) if ns.LootUI and ns.LootUI[fn] then ns.safe("butin", ns.LootUI[fn], ...) end end
 local function refresh()
@@ -89,6 +100,11 @@ local function items()
 end
 local function find(key) for _, e in ipairs(items()) do if e.key == key then return e end end end
 local function nextNew() for _, e in ipairs(items()) do if e.status == "new" then return e end end end
+-- Premier conseil encore ouvert (fenêtre du conseil), sinon le dernier lancé
+local function openCouncil()
+  for _, e in ipairs(items()) do if e.status == "council" and e.session then return e.session end end
+  return T.state and T.state.lastCouncil
+end
 local function size(t) local n = 0 if type(t) == "table" then for _ in pairs(t) do n = n + 1 end end return n end
 
 -- Objets de l'essai : ceux que tu portes (connus du jeu : infobulles et niveaux justes), sinon des objets connus de tous
@@ -98,11 +114,19 @@ local function wornLink(slot)
   local ok, link = pcall(GetInventoryItemLink, "player", slot)
   if ok and F.usable(link) and link:find("|Hitem:%d") then return link end
 end
-local function fallbackLink(id, i)
+local function fallbackLink(id, label)
   local ok, name, link = false, nil, nil
   if C_Item and C_Item.GetItemInfo then ok, name, link = pcall(C_Item.GetItemInfo, id) end
   if ok and F.usable(link) then return link end
-  return "|cffa335ee|Hitem:" .. id .. "::::::::::::::|h[" .. ((ok and F.usable(name)) and name or ("Objet d'essai " .. i)) .. "]|h|r"
+  return "|cffa335ee|Hitem:" .. id .. "::::::::::::::|h[" .. ((ok and F.usable(name)) and name or ("Objet d'essai " .. label)) .. "]|h|r"
+end
+-- Objet d'une autre armure que la tienne (côté joueur) : Couronne de destruction (mailles), ou Jambières de
+-- Rage-d'orage (cuir) pour une classe en mailles
+local MAIL, LEATHER = 18817, 16901
+local function myClass() local ok, _, class = pcall(UnitClass, "player") return ok and F.usable(class) and class or nil end
+local function otherArmorLink()
+  local mail = ARMOR[myClass() or ""] == 3
+  return fallbackLink(mail and LEATHER or MAIL, mail and "(cuir)" or "(mailles)")
 end
 local function links()
   local out, seen = {}, {}
@@ -114,7 +138,7 @@ local function links()
   T.worn = #out
   for i, id in ipairs(FALLBACK) do
     if #out >= 6 then break end
-    out[#out + 1] = fallbackLink(id, i)
+    out[#out + 1] = fallbackLink(id, tostring(i))
   end
   return out
 end
@@ -162,31 +186,74 @@ local function shuffled(list)
   for i = #out, 2, -1 do local j = math.random(i) out[i], out[j] = out[j], out[i] end
   return out
 end
--- Conseils suivants : cinq joueurs au hasard
-local function randomAnswers()
-  local out, pool = {}, shuffled(PLAYERS)
-  local kinds = { "bis", "upgrade", "upgrade", "off", "transmo", "pass" }
-  for i = 1, 5 do
-    local p = pool[i]
-    out[i] = p.noAddon and { p.name, "upgrade", whisper = true } or { p.name, kinds[math.random(#kinds)], "", -math.random(0, 20) }
+-- Règle de l'armure : le moteur (L.CanUseClass), sinon le type d'armure de la classe sur les emplacements d'armure
+local function wears(class, item)
+  local L = ns.Loot
+  if L and L.CanUseClass then
+    local ok, r = pcall(L.CanUseClass, item, class)
+    if ok then return r ~= false end
+  end
+  local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not (info and item and ARMOR[class or ""]) then return true end
+  local ok, _, _, _, loc, _, classID, subID = pcall(info, item)
+  if not ok or classID ~= 4 or not ARMOR_SLOT[loc or ""] or type(subID) ~= "number" or subID < 1 or subID > 4 then return true end
+  return ARMOR[class] == subID
+end
+local WANT = { bis = 1, upgrade = 2, off = 3 }
+-- Réponse permise : BiS, Upgrade ou Off-spec seulement sur son armure, sinon Transmo (Passer pour un Off-spec)
+local function fit(name, kind, item)
+  local p = player(name)
+  if p and WANT[kind] and not wears(p.class, item) then return kind == "off" and "pass" or "transmo", true end
+  return kind, false
+end
+-- Conseils suivants : chacun répond, au hasard dans ce que son armure permet ; Orvane chuchote sur le premier objet
+-- d'une annonce
+local KINDS = { "bis", "upgrade", "upgrade", "off", "transmo", "pass" }
+local function randomAnswers(item, firstOfBatch)
+  local out = {}
+  for _, p in ipairs(shuffled(PLAYERS)) do
+    if p.noAddon then
+      if firstOfBatch then out[#out + 1] = { p.name, "upgrade", whisper = true } end
+    else
+      local kind = KINDS[math.random(#KINDS)]
+      if WANT[kind] and not wears(p.class, item) then kind = math.random(2) == 1 and "transmo" or "pass" end
+      out[#out + 1] = { p.name, kind, "", -math.random(0, 20) }
+    end
   end
   return out
 end
-local function randomVotes(answers)
-  local wanted = {}
-  for _, a in ipairs(answers) do if a[2] ~= "pass" then wanted[#wanted + 1] = a[1] end end
-  if #wanted == 0 then return {} end
-  return { { "Tharok-Hyjal", wanted[math.random(#wanted)] }, { "Brumelune-Ysondre", wanted[math.random(#wanted)] } }
+-- Votes de Tharok et Brumelune pour ceux qui le veulent (BiS, puis Upgrade, puis Off-spec, après la règle de l'armure,
+-- aussi pour la réponse chuchotée) : premier conseil, les deux premiers (égalité : à toi de départager) ; ensuite au hasard
+local function votesFor(answers, item, first)
+  local list = {}
+  for i, a in ipairs(answers) do
+    local kind = fit(a[1], a[2], item)
+    if WANT[kind] then list[#list + 1] = { name = a[1], rank = WANT[kind], i = i } end
+  end
+  if #list == 0 then return {} end
+  table.sort(list, function(x, y) if x.rank ~= y.rank then return x.rank < y.rank end return x.i < y.i end)
+  if first then return { { "Tharok-Hyjal", list[1].name }, { "Brumelune-Ysondre", (list[2] or list[1]).name } } end
+  return { { "Tharok-Hyjal", list[math.random(#list)].name }, { "Brumelune-Ysondre", list[math.random(#list)].name } }
 end
--- Réponse chuchotée par un joueur sans l'addon (« bis », « up », « os », « transmo ») : le moteur la lit dans le chat
+-- Réponse chuchotée par un joueur sans l'addon, avec le numéro de l'objet (« bis 1 », « up 2 » ; sans numéro si le
+-- moteur ne numérote pas) : le moteur la lit dans le chat
 local WHISPERED = { bis = "bis", upgrade = "up", off = "os", transmo = "transmo" }
+local function councilNum(session)
+  local c = loot("Council", session)
+  if type(c) == "table" and c.num then return c.num end
+  local list = loot("Councils")
+  for _, x in ipairs(type(list) == "table" and list or {}) do if tostring(x.session) == session then return x.num end end
+  return nil
+end
 local function whisper(session, name, response)
-  local text = WHISPERED[response] or response
+  local num = councilNum(session)
+  local text = (WHISPERED[response] or response) .. (num and (" " .. num) or "")
   chat(colored(name) .. " te chuchote : " .. text)
   loot("OnWhisper", text, name)
 end
 
--- Objet proposé au conseil (LO) : chacun répond après quelques secondes, puis Tharok et Brumelune votent
+-- Objet proposé au conseil (LO) : chacun répond après quelques secondes (selon son armure), puis Tharok et Brumelune
+-- votent. Tout au conseil : un LO par objet, les réponses s'étalent d'un objet à l'autre.
 function T.OnCouncil(session, item)
   local s = T.state
   session = tostring(session or "")
@@ -194,23 +261,34 @@ function T.OnCouncil(session, item)
   s.councils[session], s.lastCouncil = true, session
   s.nCouncil = s.nCouncil + 1
   local first = s.nCouncil == 1
+  -- Objets proposés ensemble (au même instant) : chacun un peu après le précédent
+  local now = GetTime and GetTime() or 0
+  local batchFirst = not (s.lastLO and now - s.lastLO < 2)
+  s.lag, s.lastLO = batchFirst and 0 or (s.lag + 0.6), now
+  local lag = s.lag
   local c = loot("Council", session)
   local id = itemIdOf(item) or (type(c) == "table" and itemIdOf(c.link))
   local ilvl = type(c) == "table" and tonumber(c.ilvl) or levelOf(item)
-  local answers = first and ANSWERS or randomAnswers()
+  local answers = first and ANSWERS or randomAnswers(item, batchFirst)
   for i, a in ipairs(answers) do
-    after(0.8 + i * 0.5 + math.random() * 0.4, function()
+    local kind, changed = a[2], false
+    if not a.whisper then kind, changed = fit(a[1], a[2], item) end
+    local note = changed and "" or (a[3] or "")
+    after(lag + 0.8 + i * 0.5 + math.random() * 0.4, function()
       if a.whisper then whisper(session, a[1], a[2])
-      else deliver(a[1], "LA;" .. session .. ";" .. a[2] .. ";" .. gear(id, ilvl, a[4]) .. ";" .. (a[3] or ""), "WHISPER") end
+      else deliver(a[1], "LA;" .. session .. ";" .. kind .. ";" .. gear(id, ilvl, a[4]) .. ";" .. note, "WHISPER") end
     end)
   end
-  for i, v in ipairs(first and VOTES or randomVotes(answers)) do
-    after(1.5 + #answers * 0.6 + i * 0.9, function() deliver(v[1], "LV;" .. session .. ";" .. v[2], "WHISPER") end)
+  for i, v in ipairs(votesFor(answers, item, first)) do
+    after(lag + 1.5 + #answers * 0.6 + i * 0.9, function() deliver(v[1], "LV;" .. session .. ";" .. v[2], "WHISPER") end)
   end
-  after(0.3, function()
-    chat(first and "les joueurs répondent ; Orvane, sans l'addon, te chuchote sa réponse. Tharok et Brumelune votent pour deux joueurs différents : réponds si tu veux, vote pour départager, puis donne l'objet."
-      or "les joueurs répondent, puis Tharok et Brumelune votent.")
-  end)
+  if first or batchFirst then
+    after(0.3, function()
+      chat(first and ("les joueurs répondent à chaque objet (Transmo ou Passer si ce n'est pas l'armure de leur classe) ; Orvane, sans "
+        .. "l'addon, te chuchote sa réponse avec le numéro de l'objet. Tharok et Brumelune votent : départage, puis « Donner ».")
+        or "les joueurs répondent à chaque objet, puis Tharok et Brumelune votent.")
+    end)
+  end
 end
 
 -- Jets ouverts (RS) : les joueurs fictifs lancent leurs dés ; égalité : les ex æquo relancent
@@ -274,17 +352,29 @@ function T.OnRolls(id, kind)
   end)
 end
 
--- Côté joueur : ta réponse à l'objet proposé par Tharok (chef de butin fictif), puis la fin de son conseil (LC)
-function T.OnAnswer(session, response)
-  local o = T.state.offer
-  if not (o and o.session == tostring(session)) or o.answered then return end
-  o.answered = true
-  local mine = response ~= nil and response ~= "pass"
+-- Côté joueur : tes réponses aux objets proposés par Tharok (chef de butin fictif). Une réponse peut changer tant que son
+-- conseil est ouvert ; Tharok termine ses conseils (LC) quelques secondes après ta réponse au dernier objet proposé.
+local function closeOffer(o)
+  if o.closed then return end
+  o.closed = true
+  local r = o.response
+  local mine = r ~= nil and r ~= "pass"
   local winner = mine and me() or "Kaeldra-Hyjal"
-  after(1.5, function()
-    chat("[Raid] " .. colored(CHEF) .. " : " .. show(winner) .. " reçoit " .. o.link .. " (conseil : " .. (LABEL[mine and response or "bis"] or response) .. ")")
-    if mine then chat(colored(CHEF) .. " te chuchote : Tu reçois " .. o.link .. " : passe me voir pour l'échange") end
-    deliver(CHEF, "LC;" .. o.session .. ";" .. winner, "RAID")
+  chat("[Raid] " .. colored(CHEF) .. " : " .. show(winner) .. " reçoit " .. o.link .. " (conseil : " .. (LABEL[mine and r or "bis"] or r) .. ")")
+  if mine then chat(colored(CHEF) .. " te chuchote : Tu reçois " .. o.link .. " : passe me voir pour l'échange") end
+  deliver(CHEF, "LC;" .. o.session .. ";" .. winner, "RAID")
+end
+function T.OnAnswer(session, response)
+  local s = T.state
+  local o = s.offers[tostring(session)]
+  if not o or o.closed then return end
+  o.response, o.answered = response, true
+  for _, x in ipairs(s.offerBatch or {}) do if not x.answered then return end end
+  if s.closing then return end
+  s.closing = true
+  after(CLOSE_AFTER, function()
+    s.closing = false
+    for _, x in ipairs(s.offerBatch or {}) do closeOffer(x) end
     refresh()
   end)
 end
@@ -339,18 +429,30 @@ function T.Receive()
   window("ShowLoot")
   refresh()
 end
+-- Objet à attribuer ; s'il n'en reste pas (tous au conseil ou attribués), un de plus arrive
 local function pending()
   local e = nextNew()
-  if not e then ns.print("aucun objet à attribuer : « Recevoir 3 objets » d'abord (panneau du raid d'essai).") end
+  if not e then receive(TRADE) e = nextNew() end
   return e
 end
+-- Tout au conseil : une annonce numérotée, un conseil par objet (moteur sans L.StartAllCouncils : un à la fois)
 function T.Council()
-  local e = pending()
-  if not e then return end
-  local res = loot("StartCouncil", e.key)
-  local now = find(e.key)
-  local session = now and now.session or ((type(res) == "string" or type(res) == "number") and res) or nil
-  if session then T.state.lastCouncil = tostring(session) window("ShowCouncil", session) end
+  local fresh = {}
+  for _, e in ipairs(items()) do if e.status == "new" then fresh[#fresh + 1] = e end end
+  if #fresh == 0 then ns.print("aucun objet à attribuer : « Recevoir 3 objets » d'abord (panneau du raid d'essai).") return end
+  local first
+  if ns.Loot and ns.Loot.StartAllCouncils then
+    local _, sessions = loot("StartAllCouncils")
+    first = type(sessions) == "table" and sessions[1] or nil
+  else
+    for _, e in ipairs(fresh) do
+      local res, sid = loot("StartCouncil", e.key)
+      local now = find(e.key)
+      first = first or (now and now.status == "council" and now.session) or sid or ((type(res) == "string" or type(res) == "number") and res) or nil
+      if not res then break end
+    end
+  end
+  if first ~= nil then window("ShowCouncil", first) end
   refresh()
 end
 function T.Roll(kind)
@@ -377,16 +479,21 @@ function T.NotPassed()
   loot("AddTestNotPassed", NOADDON, link)
   refresh()
 end
--- Côté joueur : Tharok propose un objet au conseil (même message LO que dans un vrai raid)
+-- Côté joueur : Tharok propose deux objets d'un coup (mêmes messages LO que dans un vrai raid) ; le second n'est pas de
+-- ton armure (seulement Transmo ou Passer)
 function T.Offer()
   local s = T.state
-  local link = nextLink()
-  s.offerSeq = s.offerSeq + 1
-  local session = tostring(900 + s.offerSeq)
-  s.offer = { session = session, link = link }
-  chat("[Raid] " .. colored(CHEF) .. " : au conseil, " .. link .. " : réponds dans la fenêtre.")
-  deliver(CHEF, "LO;" .. session .. ";" .. (itemString(link) or "item:0") .. ";" .. itemName(link), "RAID")
-  window("ShowOffer", session)
+  local batch, parts = {}, {}
+  for i, link in ipairs({ nextLink(), otherArmorLink() }) do
+    s.offerSeq = s.offerSeq + 1
+    local o = { session = tostring(900 + s.offerSeq), link = link }
+    s.offers[o.session] = o
+    batch[i], parts[i] = o, i .. " " .. link
+  end
+  s.offerBatch, s.closing = batch, false
+  chat("[Raid] " .. colored(CHEF) .. " : au conseil, " .. table.concat(parts, ", ") .. ". Réponds dans la fenêtre, ou chuchote-moi bis, up, os ou transmo suivi du numéro.")
+  for _, o in ipairs(batch) do deliver(CHEF, "LO;" .. o.session .. ";" .. (itemString(o.link) or "item:0") .. ";" .. itemName(o.link), "RAID") end
+  window("ShowOffer", batch[1].session)
   refresh()
 end
 
@@ -407,7 +514,7 @@ function T.Start()
   end
   run = run + 1
   T.active = true
-  T.state = { received = 0, councils = {}, nCouncil = 0, rolls = {}, nMsos = 0, nFree = 0, offerSeq = 0 }
+  T.state = { received = 0, councils = {}, nCouncil = 0, rolls = {}, nMsos = 0, nFree = 0, offerSeq = 0, offers = {}, lag = 0 }
   local m = me()
   local ok, _, class = pcall(UnitClass, "player")
   local members = { { name = m, class = ok and F.usable(class) and class or nil, subgroup = 1, online = true, addon = true } }
@@ -417,11 +524,16 @@ function T.Start()
     if p.council then council[#council + 1] = p.name end
   end
   local counts = { short = "saison", label = "Reçus · saison", entries = {} }
-  for _, p in ipairs(PLAYERS) do counts.entries[#counts.entries + 1] = { names = { p.name }, n = RECEIVED[p.name] or 0 } end
-  ns.Loot.test = { members = members, council = council, counts = counts, send = T.send, say = T.say, trade = T.trade, reroll = T.reroll }
-  -- Objets de secours demandés au jeu dès maintenant : leurs noms seront prêts à la première étape
-  if #links() < 6 and C_Item and C_Item.RequestLoadItemDataByID then
-    for _, id in ipairs(FALLBACK) do pcall(C_Item.RequestLoadItemDataByID, id) end
+  for _, p in ipairs(PLAYERS) do
+    local r = RECEIVED[p.name] or { 0, 0, 0, 0 }
+    counts.entries[#counts.entries + 1] = { names = { p.name }, n = r[1], bis = r[2], up = r[3], ms = r[4] }
+  end
+  ns.Loot.test = { armorRule = true, members = members, council = council, counts = counts, send = T.send, say = T.say, trade = T.trade, reroll = T.reroll }
+  -- Objets de secours (et ceux d'une autre armure, côté joueur) demandés au jeu dès maintenant : leurs noms seront prêts
+  if C_Item and C_Item.RequestLoadItemDataByID then
+    if #links() < 6 then for _, id in ipairs(FALLBACK) do pcall(C_Item.RequestLoadItemDataByID, id) end end
+    pcall(C_Item.RequestLoadItemDataByID, MAIL)
+    pcall(C_Item.RequestLoadItemDataByID, LEATHER)
   end
   ns.print("raid d'essai lancé : tu es chef de butin, avec 9 joueurs fictifs. Rien ne part au chat du raid, aux autres joueurs ni au site.")
   T.Show()
@@ -455,19 +567,21 @@ end)
 --------------------------------------------------------------------------------------------------------------------
 local function signature()
   local s = T.state or {}
-  local parts = { tostring(s.lastCouncil), size(loot("NotPassed")), s.offer and (s.offer.session .. tostring(s.offer.answered)) or "" }
+  local parts = { tostring(s.lastCouncil), size(loot("NotPassed")) }
+  for _, o in ipairs(s.offerBatch or {}) do parts[#parts + 1] = o.session .. tostring(o.response) .. tostring(o.closed) end
   for _, e in ipairs(items()) do parts[#parts + 1] = tostring(e.key) .. ":" .. tostring(e.status) .. ":" .. tostring(e.winner) end
   return table.concat(parts, ",")
 end
--- Tenu à jour quand le moteur change (réponses, jets, échanges) ; ta réponse lue aussi dans le moteur, au cas où
+-- Tenu à jour quand le moteur change (réponses, jets, échanges) ; tes réponses lues aussi dans le moteur, au cas où
 local function watch()
   if not (T.active and T.panel and T.panel:IsShown()) then return end
-  local o = T.state.offer
-  local offers = o and not o.answered and loot("Offers")
-  if type(offers) == "table" then
-    local mine = offers[o.session] or offers[tonumber(o.session)]
-    for _, x in pairs(offers) do if not mine and type(x) == "table" and tostring(x.session) == o.session then mine = x end end
-    if type(mine) == "table" and mine.response then T.OnAnswer(o.session, mine.response) end
+  local offers = loot("Offers")
+  for _, o in ipairs(T.state.offerBatch or {}) do
+    for _, x in pairs(type(offers) == "table" and not o.closed and offers or {}) do
+      if type(x) == "table" and tostring(x.session) == o.session and x.answered and x.response and x.response ~= o.response then
+        T.OnAnswer(o.session, x.response)
+      end
+    end
   end
   if signature() ~= T.sig then T.Refresh() end
 end
@@ -512,16 +626,21 @@ function T.Refresh()
   L.Add("Le butin de groupe te donne 3 objets (ceux que tu portes : infobulles du jeu) ; les autres ont passé. Échange possible pendant 2 h : "
     .. "il reste 1 h 52 pour deux d'entre eux, 25 min pour le troisième (en orange)." .. GREY .. "\nReçus : " .. #all .. " · à attribuer : " .. (count.new or 0) .. "|r",
     { { "Recevoir 3 objets", 150, function() T.Receive() end }, { "Fenêtre du butin", 150, function() window("ShowLoot") end } })
-  L.Header("2. Conseil")
-  local buttons = { { "Lancer le conseil", 150, function() T.Council() end } }
-  if T.state.lastCouncil then buttons[2] = { "Fenêtre du conseil", 160, function() window("ShowCouncil", T.state.lastCouncil) end } end
-  L.Add("Chacun répond (BiS, Upgrade, Off-spec, Transmo, Passer) avec ses objets portés ; Orvane, sans l'addon, te chuchote « bis » ; "
-    .. "Tharok et Brumelune votent. Réponds aussi si tu veux, vote pour départager, puis « Donner ».", buttons)
+  L.Header("2. Tout au conseil")
+  local buttons = { { "Tout au conseil", 150, function() T.Council() end } }
+  if T.state.lastCouncil then buttons[2] = { "Fenêtre du conseil", 160, function() window("ShowCouncil", openCouncil()) end } end
+  L.Add("Les objets à distribuer partent au conseil d'un coup (une annonce, objets numérotés). Chacun répond à chaque objet avec ses "
+    .. "objets portés : Transmo ou Passer si ce n'est pas l'armure de sa classe. Orvane, sans l'addon, te chuchote « bis 1 ». Tharok et "
+    .. "Brumelune votent sur chaque objet. La bande du haut passe d'un objet à l'autre ; vote pour départager, puis « Donner » : la "
+    .. "fenêtre passe au conseil suivant. Réponds aussi si tu veux (fenêtre « ta réponse »)."
+    .. GREY .. "\nConseils en cours : " .. (count.council or 0) .. "|r", buttons)
   L.Header("3. Jets MS / OS")
-  L.Add("MS : /roll 100, OS : /roll 99 ; le premier jet de chacun compte. Ashlen et Vex font 87 : seuls les ex æquo relancent. Puis « Donner » au gagnant.",
+  L.Add("MS : /roll 100, OS : /roll 99 ; le premier jet de chacun compte. Ashlen et Vex font 87 : seuls les ex æquo relancent. Puis « Donner » au gagnant. "
+    .. "S'il ne reste rien à distribuer, un objet de plus arrive.",
     { { "Lancer les jets MS / OS", 190, function() T.Roll("msos") end } })
   L.Header("4. Jet libre")
-  L.Add("Tout le monde peut faire /roll 100 : le plus haut l'emporte.", { { "Lancer le jet libre", 170, function() T.Roll("free") end } })
+  L.Add("Tout le monde peut faire /roll 100 : le plus haut l'emporte (un objet de plus arrive si besoin).",
+    { { "Lancer le jet libre", 170, function() T.Roll("free") end } })
   L.Header("5. Garder")
   L.Add("Personne n'en a besoin : tu gardes l'objet (désenchantement, banque de guilde), sans échange. Aussi « Garder » dans la fenêtre du butin.",
     { { "Garder le suivant", 160, function() T.Keep() end } })
@@ -549,8 +668,10 @@ function T.Refresh()
     end
   end
   L.Header("8. Côté joueur")
-  L.Add("Tharok, chef de butin fictif, propose un objet au conseil : la fenêtre de réponse des joueurs (BiS, Upgrade, Off-spec, Transmo, Passer, et une note).",
-    { { "Recevoir une proposition", 200, function() T.Offer() end } })
+  L.Add("Tharok, chef de butin fictif, te propose deux objets d'un coup : la fenêtre de réponse des joueurs, avec la bande d'objets. "
+    .. "Le second n'est pas de ton armure : seulement Transmo ou Passer. Après chaque réponse, la fenêtre passe à l'objet suivant ; "
+    .. "tu peux changer une réponse tant que Tharok n'a pas terminé (quelques secondes après ta dernière réponse).",
+    { { "Recevoir 2 propositions", 200, function() T.Offer() end } })
   L.Header("Fin")
   local done = (count.awarded or 0) + (count.traded or 0) + (count.kept or 0)
   L.Add(GREY .. done .. (done > 1 and " objets attribués" or " objet attribué") .. " pendant l'essai. Le vrai butin de groupe (passer automatiquement), "

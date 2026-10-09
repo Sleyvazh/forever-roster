@@ -125,7 +125,8 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
 /**
  * Données d'un groupe de Roster pour l'addon Roster (format RRG v1, docs/addon-format.md) : raids à venir (mêmes raids
  * que FRG) avec leur difficulté et leur effectif, mon inscription et mon perso (« Prénom-Royaume ») ; lot R3b : conseil du
- * butin par défaut (O, persos du propriétaire et des officiers), conseil choisi pour un raid en conseil (L), objets reçus (N).
+ * butin par défaut (O, persos du propriétaire et des officiers), conseil choisi pour un raid en conseil (L), objets reçus (N)
+ * et leur détail (D : BiS, Upgrade, jets MS ; addon 0.3).
  */
 async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId: string) {
   const now = Date.now();
@@ -146,14 +147,16 @@ async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId
   for (const c of played) byUser.set(c.userId, [...(byUser.get(c.userId) ?? []), { name: c.name, realm: c.realm }]);
   const council = played.filter(c => c.role !== "member").map(c => ({ name: c.name, realm: c.realm }));
 
-  // Objets reçus sur la période (colonne « Reçus » du conseil) ; par joueur, ses persos partagent le compte (main d'abord)
+  // Objets reçus sur la période (colonne « Reçus » du conseil) ; par joueur, ses persos partagent le compte (main d'abord).
+  // Détail (ligne D) : BiS, Upgrade, jets MS du compte retenu (par joueur ou par perso, comme le total)
   const settings = await groupLootSettings(db, g.id);
   const counts = await groupLootCounts(db, g.id, settings);
   const byPlayer = new Map<string, typeof counts.rows>();
   for (const r of counts.rows) byPlayer.set(r.userId, [...(byPlayer.get(r.userId) ?? []), r]);
+  const detail = (r: (typeof counts.rows)[number]) => ({ bis: r.bis, upgrade: r.upgrade, ms: r.ms });
   const entries = settings.countBy === "player"
-    ? [...byPlayer.values()].map(rs => ({ names: rs.sort((a, b) => Number(b.isMain) - Number(a.isMain)).map(r => ({ name: r.name, realm: r.realm })), n: rs[0]!.player }))
-    : counts.rows.map(r => ({ names: [{ name: r.name, realm: r.realm }], n: r.own }));
+    ? [...byPlayer.values()].map(rs => ({ names: rs.sort((a, b) => Number(b.isMain) - Number(a.isMain)).map(r => ({ name: r.name, realm: r.realm })), n: rs[0]!.player, ...detail(rs[0]!) }))
+    : counts.rows.map(r => ({ names: [{ name: r.name, realm: r.realm }], n: r.own, ...detail(r) }));
 
   const text = buildRRG(g, Math.floor(now / 1000), raidRows.map(r => {
     const m = myByRaid.get(r.id);

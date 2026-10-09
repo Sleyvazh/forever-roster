@@ -255,6 +255,10 @@ describe("Roster : conseil du butin et objets reçus (RRG O, L, N)", () => {
       `L;250005;Tharok-Ysondre;${at + 500};Vorasius;roll;;jet 54;Anneau`,
       `L;250006;Tharok-Ysondre;${at + 600};Vorasius;ml;;;Bague`,
       `L;250007;Kaeldra-Hyjal;${at + 700};Vorasius;;;;Cape grise`,
+      // Retours du raid de test : conseil Upgrade (compte, détail Upgrade), objet gardé et Transmo (ne comptent pas)
+      `L;250008;Kaeldra-Hyjal;${at + 800};Vorasius;council;upgrade;2 votes;Gantelets`,
+      `L;250009;Tharok-ConseildesOmbres;${at + 900};Vorasius;ml;;gardé;Éclat`,
+      `L;250010;Kaeldra-Hyjal;${at + 1000};Vorasius;council;transmo;;Épaulières`,
     ];
     return [`RRB;1;${raid.id};${at};${at + 3 * 3600};Kaeldra-Hyjal;Flèche du Vide;The Voidspire;1;heroic`, ...lines, `END;${lines.length}`].join("\n");
   };
@@ -286,7 +290,7 @@ describe("Roster : conseil du butin et objets reçus (RRG O, L, N)", () => {
     expect((await s.off.r.get("/api/addon/export")).json().text).not.toMatch(/\nL;/);
   });
 
-  it("objets reçus d'après les bilans RRB : conseil BiS, jet MS, chef de butin et objets notés comptent ; pas OS, jet libre ni Off-Spec", async () => {
+  it("objets reçus d'après les bilans RRB : conseil BiS et Upgrade, jet MS, chef de butin et objets notés comptent ; pas OS, jet libre, Off-Spec, Transmo ni gardé", async () => {
     const s = await scene("J");
     const gr = `/api/groups/${s.g.id}`;
     expect((await s.off.r.post("/api/addon/import", { text: lootRRB(s) })).json().results).toMatchObject([{ status: "updated" }]);
@@ -302,33 +306,70 @@ describe("Roster : conseil du butin et objets reçus (RRG O, L, N)", () => {
       [250005, "roll", null, "jet 54", "jet libre", s.twin.id],
       [250006, "ml", null, "", null, s.twin.id],
       [250007, null, null, "", null, s.kaeldra.id],
+      [250008, "council", "upgrade", "2 votes", null, s.kaeldra.id],
+      [250009, "ml", null, "gardé", "gardé", s.tharok.id],
+      [250010, "council", "transmo", "", "Transmo", s.kaeldra.id],
     ]);
 
-    // Par joueur (réglage par défaut) : Kaeldra 2 (MS, noté) ; Tharok et son homonyme d'Ysondre 2 (conseil BiS, chef de butin)
-    const counted = async () => Object.fromEntries(((await s.mem.r.get(`${gr}/attendance`)).json().characters as { id: string; counted: number }[]).map(c => [c.id, c.counted]));
-    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 2, [s.tharok.id]: 2, [s.twin.id]: 2 });
-    const n = () => s.off.r.get("/api/addon/export").then(r => (r.json().text as string).split("\n").find(l => l.startsWith("N;")));
-    expect(await n()).toMatch(/^N;saison;depuis le début;(Kaeldra-Hyjal:2,Tharok-(ConseildesOmbres\+Tharok-Ysondre|Ysondre\+Tharok-ConseildesOmbres):2|Tharok-(ConseildesOmbres\+Tharok-Ysondre|Ysondre\+Tharok-ConseildesOmbres):2,Kaeldra-Hyjal:2)$/);
+    // Par joueur (réglage par défaut) : Kaeldra 3 (Upgrade, MS, noté) ; Tharok et son homonyme d'Ysondre 2 (conseil BiS, chef de butin)
+    type Att = { id: string; counted: number; detail: { bis: number; upgrade: number; ms: number } };
+    const att = async () => (await s.mem.r.get(`${gr}/attendance`)).json().characters as Att[];
+    const counted = async () => Object.fromEntries((await att()).map(c => [c.id, c.counted]));
+    const detail = async () => Object.fromEntries((await att()).map(c => [c.id, [c.detail.bis, c.detail.upgrade, c.detail.ms]]));
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 3, [s.tharok.id]: 2, [s.twin.id]: 2 });
+    // Détail (BiS, Upgrade, MS) : le chef de butin et l'objet noté sont dans le total seulement
+    expect(await detail()).toMatchObject({ [s.kaeldra.id]: [0, 1, 1], [s.tharok.id]: [1, 0, 0], [s.twin.id]: [1, 0, 0] });
+    const lines = () => s.off.r.get("/api/addon/export").then(r => (r.json().text as string).split("\n"));
+    const n = async () => (await lines()).find(l => l.startsWith("N;"));
+    const tharoks = "Tharok-(?:ConseildesOmbres\\+Tharok-Ysondre|Ysondre\\+Tharok-ConseildesOmbres)";
+    expect(await n()).toMatch(new RegExp(`^N;saison;depuis le début;(Kaeldra-Hyjal:3,${tharoks}:2|${tharoks}:2,Kaeldra-Hyjal:3)$`));
+    // Ligne D juste après N : mêmes entrées, même ordre, BiS:Upgrade:MS
+    let text = await lines();
+    const dAt = text.findIndex(l => l.startsWith("D;"));
+    expect(text[dAt - 1]).toMatch(/^N;/);
+    const names = (line: string, from: number) => line.split(";")[from]!.split(",").map(e => e.split(":")[0]);
+    expect(names(text[dAt]!, 1)).toEqual(names(text[dAt - 1]!, 3));
+    expect(text[dAt]).toMatch(new RegExp(`^D;(Kaeldra-Hyjal:0:1:1,${tharoks}:1:0:0|${tharoks}:1:0:0,Kaeldra-Hyjal:0:1:1)$`));
+    expect(text.at(-1)).toBe("END;1");
 
     // Exclusion par un officier (« Ne pas compter ») : un membre ne peut pas
     const excl = { itemId: 250007, name: "Kaeldra-Hyjal", at: s.at + 700, excluded: true };
     expect((await s.mem.r.put(`${s.base}/loot-exclusions`, excl)).statusCode).toBe(403);
     expect((await s.off.r.put(`${s.base}/loot-exclusions`, excl)).json()).toEqual({ excluded: true });
     expect((await s.mem.r.get(s.base)).json().log.loot.find((l: { itemId: number }) => l.itemId === 250007)).toMatchObject({ excluded: true, skip: null });
-    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 1, [s.tharok.id]: 2 });
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 2, [s.tharok.id]: 2 });
+    // L'Upgrade exclu sort du total et du détail
+    expect((await s.off.r.put(`${s.base}/loot-exclusions`, { ...excl, itemId: 250008, at: s.at + 800 })).statusCode).toBe(200);
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 1 });
+    expect(await detail()).toMatchObject({ [s.kaeldra.id]: [0, 0, 1] });
+    expect((await s.off.r.put(`${s.base}/loot-exclusions`, { ...excl, itemId: 250008, at: s.at + 800, excluded: false })).statusCode).toBe(200);
     // Nom introuvable dans le bilan
     expect((await s.off.r.put(`${s.base}/loot-exclusions`, { ...excl, name: "Kaeldra-Ysondre" })).statusCode).toBe(404);
 
-    // Par perso, avec une correction d'un officier ; la fiche du joueur suit
+    // Par perso, avec une correction d'un officier (catégorie Jet MS) ; la fiche du joueur suit
     expect((await s.off.r.put(`${gr}/loot-settings`, { countBy: "character" })).statusCode).toBe(200);
-    expect((await s.off.r.post(`${gr}/loot-corrections`, { characterId: s.tharok.id, delta: 2, note: "Objets donnés hors addon" })).statusCode).toBe(201);
-    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 1, [s.tharok.id]: 3, [s.twin.id]: 1 });
+    const corr = { characterId: s.tharok.id, delta: 2, note: "Objets donnés hors addon" };
+    expect((await s.off.r.post(`${gr}/loot-corrections`, { ...corr, kind: "os" })).statusCode).toBe(400);
+    expect((await s.off.r.post(`${gr}/loot-corrections`, { ...corr, kind: "ms" })).statusCode).toBe(201);
+    expect(await counted()).toMatchObject({ [s.kaeldra.id]: 2, [s.tharok.id]: 3, [s.twin.id]: 1 });
+    expect(await detail()).toMatchObject({ [s.kaeldra.id]: [0, 1, 1], [s.tharok.id]: [1, 0, 2], [s.twin.id]: [0, 0, 0] });
     expect(await n()).toMatch(/^N;saison;depuis le début;/);
-    expect((await n())!.split(";")[3]!.split(",").sort()).toEqual(["Kaeldra-Hyjal:1", "Tharok-ConseildesOmbres:3", "Tharok-Ysondre:1"]);
+    expect((await n())!.split(";")[3]!.split(",").sort()).toEqual(["Kaeldra-Hyjal:2", "Tharok-ConseildesOmbres:3", "Tharok-Ysondre:1"]);
+    // D par perso : Tharok-Ysondre (chef de butin seulement, 0:0:0) n'y est pas ; même ordre que N
+    text = await lines();
+    const d = text.find(l => l.startsWith("D;"))!;
+    expect(d.slice(2).split(",").sort()).toEqual(["Kaeldra-Hyjal:0:1:1", "Tharok-ConseildesOmbres:1:0:2"]);
+    expect(names(d, 1)).toEqual(names(text.find(l => l.startsWith("N;"))!, 3).filter(x => x !== "Tharok-Ysondre"));
     const sheet = (await s.off.r.get(`${gr}/members/${s.mem.user.id}/sheet`)).json();
-    expect(sheet.lootCount).toMatchObject({ by: "character", player: 4 });
+    // Fiche : total et détail du joueur (ses persos ensemble), catégorie de chaque correction
+    expect(sheet.lootCount).toMatchObject({ by: "character", player: 4, detail: { bis: 1, upgrade: 0, ms: 2 } });
+    expect(sheet.lootCount.corrections).toMatchObject([{ delta: 2, kind: "ms", note: "Objets donnés hors addon" }]);
     expect(sheet.loot.filter((l: { skip: string | null }) => l.skip).map((l: { itemId: number; skip: string }) => [l.itemId, l.skip]).sort())
-      .toEqual([[250004, "jet OS"], [250005, "jet libre"]]);
+      .toEqual([[250004, "jet OS"], [250005, "jet libre"], [250009, "gardé"]]);
+    // Sans catégorie (null) : dans le total seulement
+    expect((await s.off.r.post(`${gr}/loot-corrections`, { ...corr, delta: -1, kind: null })).statusCode).toBe(201);
+    expect(await counted()).toMatchObject({ [s.tharok.id]: 2 });
+    expect(await detail()).toMatchObject({ [s.tharok.id]: [1, 0, 2] });
   });
 });
 
@@ -359,23 +400,38 @@ describe("Historique de butin d'avant le site (Administration → Butin)", () =>
 
     const done = await s.off.r.post(url, { text, apply: true });
     expect(done.statusCode).toBe(201);
+    // created : joueurs ajoutés (chacun peut avoir plusieurs corrections)
     expect(done.json().created).toBe(2);
-    const counts = (await s.mem.r.get(`/api/groups/${s.g.id}/loot-counts`)).json();
-    const own = Object.fromEntries(counts.rows.map((x: { name: string; realm: string; own: number }) => [`${x.name}-${x.realm}`, x.own]));
-    expect(own).toMatchObject({ "Kaeldra-Hyjal": 3, "Tharok-Ysondre": 25, "Tharok-Conseil des Ombres": 0 });
-    // Au-delà de 20 : deux corrections (20 + 5), motif lisible
-    expect(counts.corrections.map((c: { name: string; delta: number; note: string }) => [c.name, c.delta, c.note]).sort()).toEqual([
-      ["Kaeldra", 3, "Historique Season 2 : 1 BiS, 2 Spé 1"],
-      ["Tharok", 20, "Historique Season 2 : 0 BiS, 25 Spé 1"],
-      ["Tharok", 5, "Historique Season 2 : 0 BiS, 25 Spé 1"],
+    type CRow = { name: string; realm: string; own: number; bis: number; upgrade: number; ms: number };
+    const loot = async () => (await s.mem.r.get(`/api/groups/${s.g.id}/loot-counts`)).json();
+    const own = (rows: CRow[]) => Object.fromEntries(rows.map(x => [`${x.name}-${x.realm}`, [x.own, x.bis, x.upgrade, x.ms]]));
+    const counts = await loot();
+    // Par joueur (réglage par défaut) : total, BiS, Upgrade (« Spé 1 »), jets MS
+    expect(own(counts.rows)).toMatchObject({ "Kaeldra-Hyjal": [3, 1, 2, 0], "Tharok-Ysondre": [25, 0, 25, 0], "Tharok-Conseil des Ombres": [0, 0, 25, 0] });
+    // Une correction BiS et une correction Upgrade par joueur ; catégorie à 0 : pas de correction ; au-delà de 20 : 20 + 5
+    expect(counts.corrections.map((c: { name: string; delta: number; kind: string | null; note: string }) => [c.name, c.delta, c.kind, c.note]).sort()).toEqual([
+      ["Kaeldra", 1, "bis", "Historique Season 2 : 1 BiS"],
+      ["Kaeldra", 2, "upgrade", "Historique Season 2 : 2 Spé 1"],
+      ["Tharok", 20, "upgrade", "Historique Season 2 : 25 Spé 1"],
+      ["Tharok", 5, "upgrade", "Historique Season 2 : 25 Spé 1"],
     ]);
 
     // Liste recollée (avec un nouveau venu) : seuls les nouveaux sont ajoutés
     const again = (await s.off.r.post(url, { text, apply: true })).json();
     expect(again.created).toBe(0);
     expect(view(again).filter(r => r[1] === "exists").map(r => r[0])).toEqual(["Kaeldra", "Tharok-Ysondre"]);
-    // Un autre nom d'historique : une nouvelle correction
-    expect((await s.off.r.post(url, { text: "Kaeldra - BiS 1, Spé 1 0", label: "Saison 1", apply: true })).json().created).toBe(1);
+    expect((await loot()).corrections).toHaveLength(4);
+    // Un autre nom d'historique : de nouvelles corrections ; sans détail (« 3 objets ») : le total, sans catégorie ;
+    // un total plus grand que BiS + Spé 1 : le reste sans catégorie
+    expect((await s.off.r.post(url, { text: "Kaeldra - BiS 1, Spé 1 0 (total 3)\nTharok-Ysondre : 3 objets", label: "Saison 1", apply: true })).json().created).toBe(2);
+    const after = await loot();
+    expect(after.corrections.filter((c: { note: string }) => c.note.startsWith("Historique Saison 1 :"))
+      .map((c: { name: string; delta: number; kind: string | null; note: string }) => [c.name, c.delta, c.kind, c.note]).sort()).toEqual([
+      ["Kaeldra", 1, "bis", "Historique Saison 1 : 1 BiS"],
+      ["Kaeldra", 2, null, "Historique Saison 1 : 2 autres objets"],
+      ["Tharok", 3, null, "Historique Saison 1 : 3 objets"],
+    ]);
+    expect(own(after.rows)).toMatchObject({ "Kaeldra-Hyjal": [6, 2, 2, 0], "Tharok-Ysondre": [28, 0, 25, 0] });
     // Journal du groupe
     const events = (await s.off.r.get(`/api/groups/${s.g.id}/audit`)).json().events as { type: string }[];
     expect(events.filter(e => e.type === "loot_history_imported")).toHaveLength(2);
