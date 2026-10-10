@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 42, date: "2026-10-10", kind: "site", title: "Nouvelles icônes de classes et de spés, par Pahpool",
+    text: "Toutes les classes et toutes les spés ont maintenant leur icône, réalisée par Pahpool : sur le site, dans les compos et dans les messages du bot Discord. Deux spés arrivent avec elles : Frostfire pour le mage et Gladiator pour le guerrier (DPS au bouclier). Merci Pahpool !" },
   { n: 41, date: "2026-10-07", kind: "bot", title: "Avis du Discord suivis sur le site",
     text: "Les avis envoyés par /feedback peuvent arriver aussi dans l'onglet Administration de ton groupe, section « Avis » : le chef et les officiers y suivent chaque avis (Nouveau, En cours, Fait, Refusé), voient toute la conversation et répondent depuis le site, la réponse part en MP à l'auteur. Un avis anonyme reste anonyme. Pour l'activer : /feedback-config regler avec les options site et groupe, sur un serveur Discord déjà lié au groupe." },
   { n: 40, date: "2026-10-07", kind: "site", title: "Signale un bug ou une idée",

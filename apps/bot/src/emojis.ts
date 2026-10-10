@@ -1,4 +1,4 @@
-import { CLASS_SPECS, CLASSES, specDef, specSlug, type ClassName } from "@forever/game-data";
+import { CLASS_SPECS, CLASSES, iconSpec, specSlug, type ClassName } from "@forever/game-data";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -37,8 +37,9 @@ export function specEmojiName(cls: string, spec: string) {
 /** Émoji de la spé si on l'a, sinon celui de son arbre, sinon celui de la classe, sinon rien. */
 export function makeLookup(ids: Map<string, string>): EmojiLookup {
   const lookup: EmojiLookup = (cls, spec) => {
-    const def = spec ? specDef(cls, spec) : null;
-    for (const name of [def ? specEmojiName(cls, spec!) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
+    // Spé de Roster : émoji de son équivalent sur Forever (Holy du paladin → Holy Heal…)
+    const def = spec ? iconSpec(cls, spec) : null;
+    for (const name of [def ? specEmojiName(cls, def.name) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
       const id = name && ids.get(name);
       if (id) return `<:${name}:${id}>`;
     }
@@ -89,23 +90,36 @@ export async function iconFiles(dir: string): Promise<{ name: string; file: stri
 export interface EmojiApi {
   list(): Promise<{ id: string; name: string | null }[]>;
   create(name: string, data: Buffer): Promise<{ id: string; name: string | null }>;
+  /** Supprime un émoji : sert à remplacer celui dont l'icône a changé sur le serveur. */
+  remove?(id: string): Promise<void>;
 }
 
-/** Envoie à Discord les icônes qui n'y sont pas encore ; renvoie la table nom → id. */
+/** Date de création d'un émoji, inscrite dans son identifiant Discord (snowflake). */
+export const snowflakeTime = (id: string) => Number(BigInt(id) >> 22n) + 1420070400000;
+/** Marge contre un léger décalage d'horloge entre le serveur et Discord. */
+const NEWER_BY_MS = 10 * 60e3;
+
+/**
+ * Envoie à Discord les icônes qui n'y sont pas encore, et remplace celles dont le fichier est plus récent que l'émoji
+ * (nouveau jeu d'icônes rangé par scripts/normalize-icons.py) ; renvoie la table nom → id.
+ */
 export async function syncEmojis(dir: string, api: EmojiApi, log: (msg: string) => void) {
   const ids = new Map<string, string>();
   for (const e of await api.list()) if (e.name?.startsWith("fr_")) ids.set(e.name, e.id);
-  let added = 0;
+  let added = 0, replaced = 0;
   for (const { name, file } of await iconFiles(dir)) {
-    if (ids.has(name)) continue;
-    const { size } = await stat(file);
+    const { size, mtimeMs } = await stat(file);
+    const old = ids.get(name);
+    if (old && !(api.remove && mtimeMs > snowflakeTime(old) + NEWER_BY_MS)) continue;
     if (size > MAX_BYTES) { log(`Icône trop lourde pour un émoji (${Math.round(size / 1024)} Ko > 256 Ko) : ${file}`); continue; }
     try {
+      if (old) { await api.remove!(old); ids.delete(name); }
       const e = await api.create(name, await readFile(file));
       ids.set(name, e.id);
-      added++;
+      if (old) replaced++; else added++;
     } catch (err) { log(`Émoji ${name} refusé par Discord : ${(err as Error).message}`); }
   }
   if (added) log(`${added} émoji(s) ajouté(s).`);
+  if (replaced) log(`${replaced} émoji(s) remplacé(s) par une icône plus récente.`);
   return ids;
 }

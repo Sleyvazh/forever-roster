@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, post, type Character } from "../api";
 import { useGameText } from "../gameText";
 import { bnetAge, BnetImportButton, useBnetEnabled, useBnetRefresh } from "./BnetImport";
+import { ClassIcon, classIconUrl, SpecIcon } from "./Icons";
 import { RoleIcon } from "./RoleIcon";
 
 /**
@@ -10,6 +11,16 @@ import { RoleIcon } from "./RoleIcon";
  * niveau, liens vers l'Armurerie, Raider.IO et Warcraft Logs, notes. Pas d'équipement ni de talents à recopier :
  * Battle.net et les sites de référence les ont déjà (import Battle.net : R2b).
  */
+
+/** Médaillon de la fiche : icône de la spé (ou de la classe) pour les classes communes aux deux jeux, sinon l'initiale. */
+function Avatar({ c }: { c: Character }) {
+  const icon = !!c.cls && !!classIconUrl(c.cls);
+  return (
+    <span className={`rc-av${icon ? " icon" : ""}`} aria-hidden="true">
+      {icon ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={44} /> : <ClassIcon cls={c.cls} size={44} />) : (c.name || "?")[0]}
+    </span>
+  );
+}
 
 const REALMS_ID = "rc-realms";
 export const RealmList = () => <datalist id={REALMS_ID}>{FRENCH_REALMS.map(r => <option key={r} value={r} />)}</datalist>;
@@ -30,7 +41,7 @@ export function RetailCharacterSheet({ c, onChange, onRefreshed, subhead, footer
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: t.color(c.cls) ?? "var(--line-2)" }}>
         <div>
-          <h2 className="with-icon"><span className="rc-av" aria-hidden="true">{(c.name || "?")[0]}</span><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
+          <h2 className="with-icon"><Avatar c={c} /><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
           <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.spec1 && ` · ${t.spec(c.cls, c.spec1)}`}{c.ilvl ? <> · ilvl <span className="num">{c.ilvl}</span></> : null}</div>
         </div>
         <div className="row">{roles.map(r => <RoleIcon key={r} role={r} />)}</div>
@@ -106,7 +117,7 @@ export function RetailCharacterView({ c }: { c: Character }) {
     <section className="panel lift" style={{ minWidth: 0 }} aria-label={`Fiche de ${c.name}`}>
       <div className="dhead" style={{ ["--cc" as string]: t.color(c.cls) ?? "var(--line-2)" }}>
         <div>
-          <h2 className="with-icon"><span className="rc-av" aria-hidden="true">{(c.name || "?")[0]}</span><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
+          <h2 className="with-icon"><Avatar c={c} /><span>{c.name}</span>{c.realm && <span className="rc-realm">· {c.realm}</span>}</h2>
           <div className="line">Niv. <span className="num">{c.level}</span> · <span className="cls">{c.cls ? t.cls(c.cls) : "Classe ?"}</span>{c.ilvl ? <> · ilvl <span className="num">{c.ilvl}</span></> : null}{c.owner && ` · ${c.owner}`}</div>
         </div>
       </div>

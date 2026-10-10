@@ -40,6 +40,8 @@ export function App() {
             <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />
           </Routes>
         </main>
+        {/* Crédit de l'artiste des icônes, sur toutes les pages (Forever Roster et Roster) */}
+        <footer className="site-foot">Icônes de classes et de spécialisations réalisées par Pahpool</footer>
       </div>
     </>
   );

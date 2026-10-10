@@ -48,6 +48,7 @@ h1, h2, h3, h4 { font-family: var(--f-disp); font-weight: 400; letter-spacing: .
 
 /* Structure */
 .shell { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; display: grid; gap: 20px; }
+.site-foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; text-align: center; }
 
 .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .page-head h1 { font-size: clamp(26px, 4vw, 36px); }
@@ -1185,6 +1186,8 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .rc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 18px; }
 .rc-av { width: 52px; height: 52px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: var(--f-disp, inherit); font-size: 24px;
   border: 2px solid var(--cc); color: var(--cc); background: var(--panel-2); flex: none; }
+.rc-av.icon .sicon, .rc-av.icon .cicon { border-radius: 50%; }
+.rc-av.icon .gi-fallback { background: none; border: 0; }
 .rc-realm { color: var(--ink-2); font-size: .6em; }
 .rc-links { gap: 8px; }
 .rc-links .chip { display: inline-block; padding: 3px 11px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }

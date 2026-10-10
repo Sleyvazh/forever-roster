@@ -18,13 +18,15 @@ export interface SpecDef { name: string; role: Role; tree: 0 | 1 | 2 }
 const s = (name: string, role: Role, tree: 0 | 1 | 2): SpecDef => ({ name, role, tree });
 
 export const CLASS_SPECS = {
-  Warrior: [s("Arms", "DPS", 0), s("Fury", "DPS", 1), s("Protection", "Tank", 2)],
+  // Gladiator : DPS au bouclier, sur l'arbre Protection
+  Warrior: [s("Arms", "DPS", 0), s("Fury", "DPS", 1), s("Protection", "Tank", 2), s("Gladiator", "DPS", 2)],
   Paladin: [s("Holy Heal", "Heal", 0), s("Holy DPS", "DPS", 0), s("Protection", "Tank", 1), s("Retribution", "DPS", 2)],
   Hunter: [s("Beast Mastery", "DPS", 0), s("Marksmanship", "DPS", 1), s("Survival", "DPS", 2)],
   Rogue: [s("Assassination", "DPS", 0), s("Combat", "DPS", 1), s("Subtlety", "DPS", 2)],
   Priest: [s("Discipline Heal", "Heal", 0), s("Discipline DPS", "DPS", 0), s("Holy", "Heal", 1), s("Shadow", "DPS", 2)],
   Shaman: [s("Elemental", "DPS", 0), s("Enhancement DPS", "DPS", 1), s("Enhancement Tank", "Tank", 1), s("Restoration", "Heal", 2)],
-  Mage: [s("Arcane", "DPS", 0), s("Fire", "DPS", 1), s("Frost", "DPS", 2)],
+  // Frostfire : build mixte Feu et Givre (Frostfire Bolt compte pour les deux écoles), rangé sous l'arbre Fire
+  Mage: [s("Arcane", "DPS", 0), s("Fire", "DPS", 1), s("Frost", "DPS", 2), s("Frostfire", "DPS", 1)],
   Warlock: [s("Affliction", "DPS", 0), s("Demonology", "DPS", 1), s("Destruction", "DPS", 2)],
   Druid: [s("Balance", "DPS", 0), s("Feral Cat", "DPS", 1), s("Feral Bear", "Tank", 1), s("Restoration", "Heal", 2)],
 } satisfies Record<string, SpecDef[]>;
@@ -75,6 +77,19 @@ export const specSlug = (spec: string) => spec.toLowerCase().replace(/[^a-z0-9]+
 /** Définition d'une spé pour une classe donnée (rôle, arbre principal). */
 export function specDef(cls: string, spec: string): SpecDef | null {
   return (CLASS_SPECS as Record<string, SpecDef[]>)[cls]?.find(d => d.name === spec) ?? null;
+}
+
+/** Spés de WoW Retail (Roster) qui portent un autre nom sur Forever : même icône que leur équivalent. */
+const RETAIL_ICON_SPEC: Record<string, string> = {
+  "Paladin:Holy": "Holy Heal", "Priest:Discipline": "Discipline Heal", "Shaman:Enhancement": "Enhancement DPS",
+  "Druid:Feral": "Feral Cat", "Druid:Guardian": "Feral Bear", "Rogue:Outlaw": "Combat",
+};
+/**
+ * Spé de Forever dont l'icône (et l'émoji) sert pour cette spé : elle-même, ou son équivalent pour une spé de Roster
+ * (Holy du paladin → Holy Heal…). null pour les classes et les spés propres à Retail (chevalier de la mort, Devourer…).
+ */
+export function iconSpec(cls: string, spec: string): SpecDef | null {
+  return specDef(cls, spec) ?? specDef(cls, RETAIL_ICON_SPEC[`${cls}:${spec}`] ?? "");
 }
 
 export function isValidCombo(race: string, cls: string): boolean {

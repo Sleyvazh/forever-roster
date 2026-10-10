@@ -6,7 +6,7 @@ import { parseRaidDate } from "../src/dates";
 import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus } from "../src/flow";
 import { decodeId, encodeId, splitValue } from "../src/ids";
 import { escapeMd, fitLines, renderAnnouncement, renderReminder } from "../src/render";
-import { emojiName, iconFiles, makeLookup, specEmojiName, syncEmojis } from "../src/emojis";
+import { emojiName, iconFiles, makeLookup, snowflakeTime, specEmojiName, syncEmojis } from "../src/emojis";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -253,6 +253,14 @@ describe("compo publiée, rappels et émojis", () => {
     expect(emoji("Priest", "Shadow")).toBe("");
   });
 
+  it("spés de Roster : émoji de leur équivalent sur Forever", () => {
+    const e = makeLookup(new Map([["fr_druid", "11"], ["fr_druid_feral_bear", "45"], ["fr_paladin_holy_heal", "46"], ["fr_mage_frostfire", "47"]]));
+    expect(e("Druid", "Guardian")).toBe("<:fr_druid_feral_bear:45>");
+    expect(e("Paladin", "Holy")).toBe("<:fr_paladin_holy_heal:46>");
+    expect(e("Mage", "Frostfire")).toBe("<:fr_mage_frostfire:47>");
+    expect(e("Death Knight", "Frost")).toBe("");
+  });
+
   it("l'annonce montre les groupes de la compo validée et les inscrits non placés", () => {
     const base = view();
     const v = view({
@@ -309,5 +317,29 @@ describe("compo publiée, rappels et émojis", () => {
     expect([...ids]).toEqual([["fr_warlock", "9"], ["fr_druid_feral_bear", "10"], ["fr_warlock_1", "10"]]);
     expect(log).toHaveBeenCalledWith(expect.stringContaining("trop lourde"));
     expect(await iconFiles(path.join(dir, "absent"))).toEqual([]);
+  });
+
+  it("remplace un émoji dont l'icône a changé depuis son envoi", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "icons-"));
+    await mkdir(path.join(dir, "class"));
+    await writeFile(path.join(dir, "class", "mage.png"), "nouvelle");
+    await writeFile(path.join(dir, "class", "rogue.png"), "même");
+    // mage : émoji envoyé en 2020, avant l'icône ; rogue : émoji envoyé après l'icône
+    const at = (ms: number) => String((BigInt(ms) - 1420070400000n) << 22n);
+    const oldId = at(Date.UTC(2020, 0, 1)), freshId = at(Date.now() + 3600e3);
+    expect(snowflakeTime(oldId)).toBe(Date.UTC(2020, 0, 1));
+    const removed: string[] = [];
+    const api = {
+      list: async () => [{ id: oldId, name: "fr_mage" }, { id: freshId, name: "fr_rogue" }],
+      create: vi.fn(async (name: string) => ({ id: "77", name })),
+      remove: async (id: string) => { removed.push(id); },
+    };
+    const log = vi.fn();
+    const ids = await syncEmojis(dir, api, log);
+    expect(removed).toEqual([oldId]);
+    expect(api.create).toHaveBeenCalledTimes(1);
+    expect(ids.get("fr_mage")).toBe("77");
+    expect(ids.get("fr_rogue")).toBe(freshId);
+    expect(log).toHaveBeenCalledWith("1 émoji(s) remplacé(s) par une icône plus récente.");
   });
 });

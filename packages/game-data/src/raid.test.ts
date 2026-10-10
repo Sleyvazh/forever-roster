@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeCoverage, exclusiveBudget, roleCounts } from "./raid";
-import { isValidCombo, isValidSpec, roleOf, talentPointsAt } from "./core";
+import { iconSpec, isValidCombo, isValidSpec, roleOf, specDef, talentPointsAt } from "./core";
 
 const get = (cov: ReturnType<typeof computeCoverage>, id: string) => cov.find(c => c.effect.id === id)!;
 
@@ -60,6 +60,19 @@ describe("spés de niche", () => {
     expect(roleOf("Discipline Heal")).toBe("Heal");
     expect(roleOf("Holy DPS")).toBe("DPS");
     expect(roleOf("Holy Heal")).toBe("Heal");
+    expect(roleOf("Gladiator")).toBe("DPS");
+    expect(roleOf("Frostfire")).toBe("DPS");
+  });
+  it("Frostfire et Gladiator, et les icônes des spés de Roster", () => {
+    expect(isValidSpec("Mage", "Frostfire")).toBe(true);
+    expect(isValidSpec("Warrior", "Gladiator")).toBe(true);
+    expect(specDef("Warrior", "Gladiator")).toEqual({ name: "Gladiator", role: "DPS", tree: 2 });
+    expect(iconSpec("Paladin", "Holy")?.name).toBe("Holy Heal");
+    expect(iconSpec("Druid", "Guardian")?.name).toBe("Feral Bear");
+    expect(iconSpec("Rogue", "Outlaw")?.name).toBe("Combat");
+    expect(iconSpec("Priest", "Holy")?.name).toBe("Holy");
+    expect(iconSpec("Death Knight", "Frost")).toBeNull();
+    expect(iconSpec("Monk", "Windwalker")).toBeNull();
   });
   it("les variantes gardent les buffs de leur arbre", () => {
     const cov = computeCoverage([{ characterId: "p", cls: "Priest", spec: "Discipline DPS", group: 1 }]);

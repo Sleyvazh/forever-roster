@@ -1,19 +1,22 @@
-import { CLASSES, specDef, specSlug, type ClassName } from "@forever/game-data";
+import { CLASSES, iconSpec, specSlug, type ClassName } from "@forever/game-data";
 import { useState, type CSSProperties } from "react";
 
 /**
- * Icônes du jeu servies par notre serveur (dossier icons/, hors dépôt Git) :
+ * Icônes des classes et des spés, dessinées par Pahpool, servies par notre serveur (dossier icons/, hors dépôt Git) :
  *   /icons/class/<classe>.png   /icons/spec/<classe>-<spé>.png (ex. druid-feral-bear)
+ * Sur Roster, les classes communes aux deux jeux prennent les mêmes (Holy du paladin → holy-heal, Guardian → feral-bear…).
  * Si un fichier manque, on affiche un repli (ancienne icône d'arbre, puis de classe, puis initiale) : rien ne casse.
  */
-export const classIconUrl = (cls: string) => { const c = CLASSES[cls as ClassName]; return c ? `/icons/class/${c.slug}.png` : null; };
+/** À changer quand le jeu d'icônes change : les navigateurs gardent les icônes une semaine (Caddy). */
+const REV = "?v=2";
+export const classIconUrl = (cls: string) => { const c = CLASSES[cls as ClassName]; return c ? `/icons/class/${c.slug}.png${REV}` : null; };
 export const specIconUrl = (cls: string, spec: string) => {
-  const c = CLASSES[cls as ClassName];
-  return c && specDef(cls, spec) ? `/icons/spec/${c.slug}-${specSlug(spec)}.png` : null;
+  const c = CLASSES[cls as ClassName], d = iconSpec(cls, spec);
+  return c && d ? `/icons/spec/${c.slug}-${specSlug(d.name)}.png${REV}` : null;
 };
 /** Ancien emplacement (icônes rangées par numéro d'arbre), gardé en repli. */
 export const treeIconUrl = (cls: string, spec: string) => {
-  const c = CLASSES[cls as ClassName], d = specDef(cls, spec);
+  const c = CLASSES[cls as ClassName], d = iconSpec(cls, spec);
   return c && d ? `/icons/tree/${c.slug}-${d.tree + 1}.png` : null;
 };
 

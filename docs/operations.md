@@ -302,21 +302,27 @@ En développement : `npm run gamedata:import -w apps/api` (options `--build` ou 
 
 ## Icônes du jeu
 
-Les icônes (classes, arbres de talents, métiers, puis objets) sont des fichiers de Blizzard : elles restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/`. Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
+Les icônes de classes et de spécialisations sont l'œuvre de **Pahpool** (crédité en pied de page du site et dans les Nouveautés) ; les autres (métiers, rôles, objets) sont des fichiers de Blizzard. Toutes restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/` pour les deux adresses : Roster reprend celles des classes communes aux deux jeux (Holy du paladin → Holy Heal, Discipline → Discipline Heal, Feral → Feral Cat, Guardian → Feral Bear, Enhancement → Enhancement DPS, Outlaw → Combat ; `iconSpec` dans `packages/game-data`). Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
 
-Ajouter un lot d'icônes reçu sur le PC :
+Ajouter un lot d'icônes reçu sur le PC (PowerShell, seulement les images : le dossier peut contenir autre chose) :
 
 ```powershell
-scp -r "$HOME\Pictures\WoWicons" forever:~/wowicons
+ssh forever "mkdir -p ~/wowicons"
+scp (Get-ChildItem "$HOME\Pictures\WoWicons\*.png").FullName forever:~/wowicons/
 ```
+
+Puis sur le serveur :
 
 ```bash
 cd ~/forever-roster
 python3 scripts/normalize-icons.py ~/wowicons      # range et renomme dans icons/
 rm -r ~/wowicons
+sudo docker compose restart bot                    # émojis Discord
 ```
 
-Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `Profession_<Métier>.png`. Le nom après le tiret désigne une spé (`Druid3-FeralCat`, `Druid2-FeralGuardian` pour Feral Bear, `Shaman3-EnhancementTankRockbiter` pour Enhancement Tank) ou un arbre (`Paladin1-Holy` vaut pour Holy Heal et Holy DPS ; une icône de spé précise l'emporte sur celle de l'arbre) ; le numéro sert seulement à trier. Les icônes sont rangées dans `icons/spec/<classe>-<spé>.png` (ex. `druid-feral-bear.png`). Le script liste les fichiers ignorés. Rien à redémarrer pour le site : les nouvelles icônes sont servies immédiatement (cache navigateur d'une semaine). Pour les émojis Discord, `sudo docker compose restart bot`.
+Noms reconnus : `ClassIcon_<classe>.png`, `<Classe><n>-<Spé ou arbre>.png` et `Profession_<Métier>.png`. Le nom après le tiret désigne une spé (`Druid3-FeralCat`, `Mage4-Frostfire`, `Warrior4-Gladiator`), un autre nom connu (`Druid2-FeralGuardian` pour Feral Bear, `Shaman3-EnhancementTankRockbiter` pour Enhancement Tank, `Paladin2-Shockadin` pour Holy DPS, `Priest2-SmiteDPS` pour Discipline DPS) ou un arbre (`Paladin1-Holy` vaut pour Holy Heal et Holy DPS ; une icône de spé précise l'emporte sur celle de l'arbre) ; le numéro sert seulement à trier. Les icônes sont rangées dans `icons/spec/<classe>-<spé>.png` (ex. `druid-feral-bear.png`). Le script liste les fichiers ignorés et ne recopie pas une icône identique à celle déjà en place.
+
+Rien à redémarrer pour le site : les nouvelles icônes sont servies immédiatement. Les navigateurs gardent les icônes une semaine : quand un jeu d'icônes **remplace** l'ancien, changer `REV` dans `apps/web/src/components/Icons.tsx` (le prochain déploiement force le rechargement). Le bot envoie les icônes manquantes comme émojis et **remplace** celles dont le fichier est plus récent que l'émoji, au démarrage puis toutes les 6 h ; les annonces déjà publiées prennent la nouvelle icône à leur prochaine mise à jour.
 
 En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui aussi ignoré par Git).
 

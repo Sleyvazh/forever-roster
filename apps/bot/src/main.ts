@@ -106,12 +106,13 @@ async function start() {
   }, log);
   const publishSoon = (view: RaidView) => { sync.publish(view).catch(e => log.warn("Mise à jour de l'annonce impossible", e?.message)); };
 
-  /** Envoie les icônes du serveur comme émojis d'application (au démarrage, puis toutes les 6 h). */
+  /** Envoie les icônes du serveur comme émojis d'application, remplace celles qui ont changé (au démarrage, puis toutes les 6 h). */
   const refreshEmojis = async () => {
     const app = client.application!;
     const ids = await syncEmojis(cfg.iconsDir, {
       list: async () => [...(await app.emojis.fetch()).values()].map(e => ({ id: e.id, name: e.name })),
       create: (name, data) => app.emojis.create({ attachment: data, name }).then(e => ({ id: e.id, name: e.name })),
+      remove: async id => { await app.emojis.delete(id); },
     }, msg => log.info(msg));
     emoji = ids.size ? makeLookup(ids) : noEmoji;
   };
