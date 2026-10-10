@@ -79,6 +79,7 @@ function R.Sample()
     end
     R.current = e.raid.id
     R.Prune()
+    if ns.Loot and ns.Loot.LogAwards then ns.safe("butin", ns.Loot.LogAwards) end
     ns.print((resumed and "relevé du raid repris : " or "relevé du raid démarré : ") .. (log.name or "raid") .. " (présence, boss et butin, envoyés avec ta synchro). Onglet Options pour le couper.")
   end
   log.recorder = ns.Comm.Me()
@@ -135,11 +136,26 @@ local function qualityOf(id)
   end
   return nil
 end
+-- Équipement (armes, armures, jetons) : seul butin noté et compté. Composants (Étincelles…), consommables, gemmes,
+-- recettes, montures et mascottes : ignorés. Objet pas encore connu du jeu : noté (on ne sait pas).
+local KEEP_CLASS = { [2] = true, [4] = true, [15] = true }
+local SKIP_MISC = { [2] = true, [5] = true } -- divers : mascottes, montures
+function R.IsGear(id)
+  local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+  if not (info and id) then return nil end
+  local ok, _, _, _, _, _, classID, subclassID = pcall(info, id)
+  if not ok or type(classID) ~= "number" or secret(classID) then return nil end
+  if not KEEP_CLASS[classID] then return false end
+  if classID == 15 and type(subclassID) == "number" and not secret(subclassID) and SKIP_MISC[subclassID] then return false end
+  return true
+end
+
 function R.OnLoot(msg)
   local log = R.Current()
   if not log or not usable(msg) then return end
   local who, id, quality, matched = parse(msg)
   if not matched or not id then return end
+  if R.IsGear(id) == false then return end
   quality = quality or qualityOf(id)
   if not quality or quality < R.MinQuality() then return end
   local full = who and F.FullName(who) or ns.Comm.Me()
@@ -153,30 +169,50 @@ function R.OnLoot(msg)
   refresh()
 end
 
+-- Relevé qui couvre ce moment (attribution faite pendant une pause du relevé : /reload, groupe quitté un instant…)
+function R.LogAt(at)
+  local cur = R.Current()
+  if cur and (not at or at >= (cur.start or 0) - 3600) then return cur end
+  if not at then return nil end
+  local best
+  for _, log in pairs(logs()) do
+    if at >= (log.start or 0) - 3600 and at <= (log.stop or log.start or 0) + R.MAX_HOURS * 3600 and (not best or (log.start or 0) > (best.start or 0)) then best = log end
+  end
+  return best
+end
+
 -- Lot R3b : objet attribué par la distribution de Roster (un clic du chef de butin). La ligne du butin ramassé par le
 -- chef de butin (« … reçoit le butin », sans méthode) prend le gagnant, la méthode, la réponse et le détail ; sans elle,
 -- une ligne est ajoutée. index : ligne d'une attribution précédente du même objet ; key : objet du chef de butin (une
 -- nouvelle attribution du même objet remplace la précédente). from : chef de butin quand l'attribution vient de son
--- message LW (relevé d'un autre joueur : son bilan connaît aussi les gagnants). Renvoie l'index de la ligne.
-function R.Award(itemId, winner, method, response, detail, name, index, key, from)
-  local log = R.Current()
-  if not log or not itemId or not usable(winner) then return nil end
+-- message LW (relevé d'un autre joueur : son bilan connaît aussi les gagnants). at : heure où l'objet a été reçu (relevé
+-- retrouvé même s'il était en pause). Renvoie l'index de la ligne, 0 pour un objet qui n'est pas de l'équipement (rien à
+-- noter), nil sans relevé.
+function R.Award(itemId, winner, method, response, detail, name, index, key, from, at)
+  itemId = tonumber(itemId)
+  if not itemId or not usable(winner) then return nil end
+  if R.IsGear(itemId) == false then return 0 end
+  local log = R.LogAt(at)
+  if not log then return nil end
   log.loot = log.loot or {}
   local holder = from or ns.Comm.Me()
+  local function free(l) return tonumber(l.id) == itemId and not l.awarded and (l.method or "") == "" end
   local line = index and log.loot[index]
-  if not (line and line.id == itemId and line.awarded) then line, index = nil, nil end
+  if not (line and tonumber(line.id) == itemId and line.awarded) then line, index = nil, nil end
   if not line and key then
-    for i, l in ipairs(log.loot) do if l.awardKey == key and l.id == itemId then line, index = l, i break end end
+    for i, l in ipairs(log.loot) do if l.awardKey == key and tonumber(l.id) == itemId then line, index = l, i break end end
+  end
+  -- La ligne de l'objet ramassé par le chef de butin, sinon celle de cet objet ramassé par n'importe qui (nom écrit
+  -- autrement, chef de butin changé en cours de soirée)
+  if not line then
+    for i = #log.loot, 1, -1 do local l = log.loot[i] if free(l) and F.SameName(l.who, holder) then line, index = l, i break end end
   end
   if not line then
-    for i = #log.loot, 1, -1 do
-      local l = log.loot[i]
-      if l.id == itemId and not l.awarded and (l.method or "") == "" and F.SameName(l.who, holder) then line, index = l, i break end
-    end
+    for i = #log.loot, 1, -1 do local l = log.loot[i] if free(l) then line, index = l, i break end end
   end
   if not line then
     local boss = (R.boss and time() - R.boss.at < BOSS_WINDOW) and R.boss.name or ""
-    line = { id = itemId, at = time(), boss = boss }
+    line = { id = itemId, at = at or time(), boss = boss }
     log.loot[#log.loot + 1] = line
     index = #log.loot
   end
@@ -226,8 +262,9 @@ function R.Last()
   return best
 end
 
--- Bloc RRB d'un bilan
+-- Bloc RRB d'un bilan (attributions du chef de butin pas encore notées : rattrapées d'abord)
 function R.Block(log)
+  if ns.Loot and ns.Loot.LogAwards then ns.safe("butin", ns.Loot.LogAwards) end
   return F.BuildRRB({
     raidId = log.raidId, start = log.start, stop = log.stop, recorder = log.recorder, name = log.name, instance = log.instance,
     lead = R.IsLead(log), difficulty = log.difficulty, people = log.people, loot = log.loot, encounters = log.encounters,

@@ -91,7 +91,7 @@ local S = {
   loot = {}, rollCalls = {}, confirms = {}, bags = { [0] = {}, {}, {}, {}, {} }, equipped = {}, tradeLeft = {}, items = {}, ilvl = {}, equipLoc = {},
   -- Objets portables (0.3) : sous-classe d'armure (1 tissu… 4 plaques ; sinon objet divers), ligne rouge de l'infobulle,
   -- objets que le jeu ne connaît pas du tout
-  armor = {}, redLine = {}, unknownItem = {},
+  armor = {}, redLine = {}, unknownItem = {}, itemClass = {},
 }
 local function fullOf(m) return m.name .. "-" .. m.realm end
 local function findMember(full) for i, m in ipairs(S.members) do if fullOf(m) == full then return m, i end end end
@@ -195,7 +195,7 @@ local BLIZZARD = {
       local id = idOf(item)
       if not id or S.unknownItem[id] then return nil end
       local a = S.armor[id]
-      return id, a and "Armure" or "Divers", a and ({ "Tissu", "Cuir", "Mailles", "Plaques" })[a] or "Divers", S.equipLoc[id] or "", 1234, a and 4 or 15, a or 0
+      return id, a and "Armure" or "Divers", a and ({ "Tissu", "Cuir", "Mailles", "Plaques" })[a] or "Divers", S.equipLoc[id] or "", 1234, S.itemClass[id] or (a and 4 or 15), a or 0
     end,
     GetItemInfo = function(item)
       local link = S.items[idOf(item) or 0]
@@ -1609,6 +1609,42 @@ Lo.StopTest()
 fire("TRADE_CLOSED")
 clearItems()
 advance(2)
+
+-- 10h. Bilan : chaque attribution notée, même relevé en pause (/reload) ; ligne retrouvée même si le nom du chef de butin
+-- y est écrit autrement ; objets qui ne sont pas de l'équipement (Étincelles…) ni notés ni comptés ; rattrapage avant
+-- l'export
+assert(R.IsRecording(), "relevé en cours")
+local HOOD, SPARK = item(242430, "Capuche de la Faille"), item(242431, "Étincelle des marées")
+S.itemClass[242431] = 7 -- composant d'artisanat
+local nLoot = #log.loot
+local h1 = receive(HOOD, 4, 5, "1 h 50 min")
+assert(#log.loot == nLoot + 1 and log.loot[nLoot + 1].who == "Kaeldra-Hyjal", "capuche ramassée par le chef de butin")
+fire("CHAT_MSG_LOOT", "Mordak-Ysondre reçoit le butin : " .. SPARK .. ".", "", "", "", "")
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. SPARK .. ".", "", "", "", "")
+assert(#log.loot == nLoot + 1, "Étincelle (composant) : pas notée")
+-- /reload : relevé en pause jusqu'au prochain relevé de la minute
+local paused = R.current
+R.current = nil
+assert(Lo.Award(h1.key, "Vex-Kael'Thas", "council", "bis", "2 votes"), "capuche donnée pendant la pause du relevé")
+local hl = log.loot[nLoot + 1]
+assert(hl.who == "Vex-Kael'Thas" and hl.method == "council" and hl.response == "bis" and hl.detail == "2 votes" and #log.loot == nLoot + 1 and h1.logged, "notée quand même dans le bilan (relevé retrouvé à l'heure de l'objet)")
+R.current = paused
+-- Ligne de l'objet au nom d'un autre (chef de butin changé, nom écrit autrement) : retrouvée, pas de doublon
+local CLOAK2 = item(242432, "Cape des marées")
+local c2 = receive(CLOAK2, 4, 6, "1 h 50 min")
+log.loot[#log.loot].who = "Tharok-Hyjal" -- ramassée sous un autre nom (chef de butin changé)
+local before2 = #log.loot
+assert(Lo.Award(c2.key, "Sylvane-Hyjal", "roll", nil, "MS 77"), "cape donnée")
+assert(#log.loot == before2 and log.loot[before2].who == "Sylvane-Hyjal" and log.loot[before2].detail == "MS 77", "ligne du chef retrouvée malgré le nom")
+-- Attribution pas notée (vieille version, relevé introuvable) : rattrapée avant l'export
+h1.logged, h1.logIndex, hl.awarded, hl.method, hl.who, hl.response, hl.detail, hl.awardKey = nil, nil, nil, "", "Kaeldra-Hyjal", "", "", nil
+assert(R.Block(log):find("L;242430;Vex%-Kael'Thas;%d+;[^;]*;council;bis;2 votes", 1) and h1.logged, "rattrapée avant l'export")
+-- Composant attribué : rien dans le bilan
+local s3 = receive(SPARK, 4, 7, "1 h 50 min")
+local nl = #log.loot
+assert(s3 and Lo.Award(s3.key, "Orvane-Hyjal", "ml") and #log.loot == nl and s3.logged, "composant attribué : rien dans le bilan")
+clearItems()
+assert(errors() == 0, "bilan sans erreur : " .. tostring(lastPrinted("erreur")))
 assert(errors() == 0, "retours du raid de test sans erreur : " .. tostring(lastPrinted("erreur")))
 end
 feedback()

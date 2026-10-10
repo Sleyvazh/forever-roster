@@ -428,7 +428,31 @@ function L.Locate(e, tries)
 end
 
 -- Objets plus vieux que 12 h, ou dont l'échange n'est plus possible, retirés
+-- Attributions pas encore notées dans le bilan (relevé en pause au moment du clic : /reload, groupe quitté un
+-- instant…) : rattrapées dès que le relevé reprend, avant l'export et avant de retirer un vieil objet
+-- (jamais deux à la fois : noter rafraîchit la minicarte, qui relit la liste des objets)
+local logging = false
+function L.LogAwards()
+  if logging or L.test or not (ns.Recorder and ns.Recorder.Award) then return 0 end
+  logging = true
+  local ok, n = pcall(function()
+    local done = 0
+    for _, e in ipairs(store().items) do
+      if not e.logged and e.winner and (e.status == "awarded" or e.status == "traded" or e.status == "kept") then
+        local idx = ns.Recorder.Award(e.itemId, e.winner, e.method, e.response, e.detail, e.name, e.logIndex, e.key, nil, e.at)
+        if idx then e.logIndex, e.logged, done = idx, true, done + 1 end
+      end
+    end
+    return done
+  end)
+  logging = false
+  if not ok then error(n, 0) end
+  return n
+end
+L.IsLogging = function() return logging end
+
 function L.Prune()
+  if not L.test then L.LogAwards() end
   local all, now = list(), time()
   for i = #all, 1, -1 do
     local e = all[i]
@@ -1435,7 +1459,11 @@ function L.Award(key, winner, method, response, detail)
   if L.test then
     L.testLog.loot[#L.testLog.loot + 1] = { id = e.itemId, who = full, method = method, response = response or "", detail = detail, at = time() }
   else
-    e.logIndex = ns.Recorder.Award(e.itemId, full, method, response, detail, e.name, e.logIndex, e.key)
+    local was = logging
+    logging = true
+    local ok, idx = pcall(ns.Recorder.Award, e.itemId, full, method, response, detail, e.name, e.logIndex, e.key, nil, e.at)
+    logging = was
+    if ok then e.logIndex, e.logged = idx, idx ~= nil else ns.print("|cffff6060erreur (bilan)|r " .. tostring(idx)) end
     -- Les autres relevés (chef de raid…) notent aussi le gagnant : tous les bilans du raid concordent
     send("LW;" .. e.key .. ";" .. e.itemId .. ";" .. full .. ";" .. method .. ";" .. (response or "") .. ";" .. F.cut(F.clean(detail), 40))
   end
