@@ -5,6 +5,7 @@
 -- par préfixe, puis 1 par seconde. Aussi : les membres du groupe (noms « Prénom-Royaume ») et le chuchotement à ceux
 -- qui n'ont pas l'addon.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local C = {}
 ns.Comm = C
 local F = ns.Format
@@ -194,7 +195,7 @@ local function drain()
       tokens = tokens - 1
       heldSince = nil
       table.remove(q, 1)
-      if e.onSent then ns.safe("message envoyé", e.onSent) end
+      if e.onSent then ns.safe(L["message envoyé"], e.onSent) end
     end
   end
   heldSince = nil
@@ -268,7 +269,7 @@ C.versionKey = versionKey
 -- auto : question automatique (arrivée dans un raid), au plus une fois toutes les 30 s ; sinon demandée par le joueur
 function C.AskVersions(auto)
   if not channel() then
-    if not auto then ns.print("il faut être en groupe ou en raid pour voir qui a l'addon.") end
+    if not auto then ns.print(L["il faut être en groupe ou en raid pour voir qui a l'addon."]) end
     return false
   end
   if auto and C.lastAsk and now() - C.lastAsk < 30 then return false end
@@ -276,7 +277,7 @@ function C.AskVersions(auto)
   C.asking, C.askedAt = true, nil
   C.Send("VQ", nil, nil, function() C.asking, C.askedAt = false, now() refresh() if C_Timer and C_Timer.After then C_Timer.After(C.WAIT + 0.5, refresh) end end)
   if not auto then
-    ns.print(C.asking and "question prête : elle part au groupe dès la fin du combat de boss." or "question envoyée au groupe : réponses dans l'onglet En raid.")
+    ns.print(C.asking and L["question prête : elle part au groupe dès la fin du combat de boss."] or L["question envoyée au groupe : réponses dans l'onglet En raid."])
   end
   refresh()
   return true
@@ -327,18 +328,19 @@ end)
 --------------------------------------------------------------------------------------------------------------------
 -- Chuchoter d'installer Roster, sans lien (choix de Flo, en attendant CurseForge ; sur un clic du chef de raid ou d'un assistant seulement)
 --------------------------------------------------------------------------------------------------------------------
-C.WHISPER = "Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence et distribution du butin) : pense à l'installer."
+-- Chuchotement dans la langue de l'interface de celui qui l'envoie (clé en français, traduite à l'envoi)
+C.WHISPER = N("Salut ! Pour ce raid, on utilise l'addon Roster (compo, présence et distribution du butin) : pense à l'installer.")
 C.whispered = {} -- clé du nom → heure
 function C.Whisper(name)
   local full = F.FullName(name)
   if not full then return false end
-  if not (C.InGroup() and C.IsLead()) then ns.print("seul le chef de raid ou un assistant peut chuchoter aux joueurs sans l'addon.") return false end
+  if not (C.InGroup() and C.IsLead()) then ns.print(L["seul le chef de raid ou un assistant peut chuchoter aux joueurs sans l'addon."]) return false end
   -- Pendant une rencontre de boss, le jeu bloque les messages des addons (chat compris)
-  if C.ChatLocked() then ns.print("pas pendant un combat de boss : réessaie juste après.") return false end
+  if C.ChatLocked() then ns.print(L["pas pendant un combat de boss : réessaie juste après."]) return false end
   local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
-  if not send or not pcall(send, C.WHISPER, "WHISPER", nil, full) then ns.print("le jeu n'a pas permis le message à " .. F.Display(full) .. ".") return false end
+  if not send or not pcall(send, L[C.WHISPER], "WHISPER", nil, full) then ns.print(L("le jeu n'a pas permis le message à %s.", F.Display(full))) return false end
   C.whispered[F.Fold(full)] = time()
-  ns.print("chuchoté à " .. F.Display(full) .. " : installer l'addon Roster.")
+  ns.print(L("chuchoté à %s : installer l'addon Roster.", F.Display(full)))
   refresh()
   return true
 end

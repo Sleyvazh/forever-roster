@@ -1,5 +1,6 @@
 -- Bouton autour de la minicarte : clic pour ouvrir la fenêtre, glisser pour le déplacer, /fr minicarte pour le masquer.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local M = {}
 ns.Minimap = M
 
@@ -61,11 +62,11 @@ function M.Create()
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:AddLine("Forever Roster")
     local n = M.count or 0
-    if n > 0 then GameTooltip:AddLine(n .. " envoi(s) en attente pour le site (persos, bilan de raid)", 1, 0.82, 0) end
-    if M.recording then GameTooltip:AddLine("Relevé du raid en cours : " .. (M.recording.name or "raid"), 1, 0.23, 0.19) end
-    GameTooltip:AddLine("Clic : ouvrir la fenêtre", 1, 1, 1)
-    GameTooltip:AddLine("Clic droit : synchro rapide avec le site", 1, 1, 1)
-    GameTooltip:AddLine("Glisser : déplacer le bouton", 0.6, 0.64, 0.71)
+    if n > 0 then GameTooltip:AddLine(L("%d envoi(s) en attente pour le site (persos, bilan de raid)", n), 1, 0.82, 0) end
+    if M.recording then GameTooltip:AddLine(L("Relevé du raid en cours : %s", M.recording.name or "raid"), 1, 0.23, 0.19) end
+    GameTooltip:AddLine(L["Clic : ouvrir la fenêtre"], 1, 1, 1)
+    GameTooltip:AddLine(L["Clic droit : synchro rapide avec le site"], 1, 1, 1)
+    GameTooltip:AddLine(L["Glisser : déplacer le bouton"], 0.6, 0.64, 0.71)
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -97,8 +98,8 @@ function M.Toggle()
   if not button then M.Create() end
   if not button then return end
   ForeverRosterDB.minimap.hidden = not ForeverRosterDB.minimap.hidden
-  if ForeverRosterDB.minimap.hidden then button:Hide() ns.print("bouton de la minicarte masqué (/fr minicarte pour le remettre).")
+  if ForeverRosterDB.minimap.hidden then button:Hide() ns.print(L["bouton de la minicarte masqué (/fr minicarte pour le remettre)."])
   else button:Show() end
 end
 
-ns.on("PLAYER_LOGIN", function() ns.safe("minicarte", M.Create) end)
+ns.on("PLAYER_LOGIN", function() ns.safe(N("minicarte"), M.Create) end)

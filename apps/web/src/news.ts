@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 43, date: "2026-10-11", kind: "addon", version: "1.5", title: "L'addon en français ou en anglais",
+    text: "L'addon suit maintenant la langue de ton jeu : en français si ton client est en français, en anglais sinon. Pour en choisir une autre : onglet Options, « Langue » (ou /fr langue fr, en ou jeu), puis recharge l'interface. Les commandes ont aussi leur nom anglais (/fr loot, /fr sync…). Version 1.5.6." },
   { n: 42, date: "2026-10-10", kind: "site", title: "Nouvelles icônes de classes et de spés, par Pahpool",
     text: "Toutes les classes et toutes les spés ont maintenant leur icône, réalisée par Pahpool : sur le site, dans les compos et dans les messages du bot Discord. Deux spés arrivent avec elles : Frostfire pour le mage et Gladiator pour le guerrier (DPS au bouclier). Merci Pahpool !" },
   { n: 41, date: "2026-10-07", kind: "bot", title: "Avis du Discord suivis sur le site",

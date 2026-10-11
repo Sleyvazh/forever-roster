@@ -2,6 +2,7 @@
 -- simulés (versions de l'addon, consommables, jets, réponses et votes du conseil) ; rien ne part au site, au chat du
 -- raid ni aux autres joueurs. Le butin de maître et l'échange réels restent à vérifier dans un vrai raid.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local RA = ns.Raid
 local K = ns.UI.kit
 local T = {}
@@ -15,18 +16,18 @@ local function refresh()
   if T.Refresh then T.Refresh() end
 end
 -- Action différée, abandonnée si l'essai s'est arrêté entre-temps
-local function after(sec, fn) C_Timer.After(sec, function() if RA.test then ns.safe("raid d'essai", fn) end end) end
-local function say(text) ns.print(GREY .. "(essai) " .. text .. "|r") end
+local function after(sec, fn) C_Timer.After(sec, function() if RA.test then ns.safe(L["raid d'essai"], fn) end end) end
+local function say(text) ns.print(GREY .. L("(essai) %s", text) .. "|r") end
 
 -- Joueurs fictifs : rôle, type de DPS ; old = ancienne version de l'addon (sans conseil ni consommables), noAddon = sans addon
 local PLAYERS = {
   { name = "Gorrak", role = "Tank" },
   { name = "Brakka", role = "Tank" },
-  { name = "Nyssaël", role = "Heal" },
+  { name = "Nyssaël", role = "Heal" }, -- nolocale (nom de joueur)
   { name = "Grumdal", role = "Heal" },
   { name = "Mirelle", role = "Heal", noAddon = true },
   { name = "Vesper", role = "DPS", dps = "melee" },
-  { name = "Sylvaë", role = "DPS", dps = "caster" },
+  { name = "Sylvaë", role = "DPS", dps = "caster" }, -- nolocale (nom de joueur)
   { name = "Ilyra", role = "DPS", dps = "caster" },
   { name = "Thorn", role = "DPS", dps = "ranged", old = "0.9.0" },
 }
@@ -39,8 +40,8 @@ local CONSUMABLES = {
 -- Sacs des joueurs fictifs (certains manquent de quelque chose)
 local BAGS = {
   Gorrak = { [13457] = 5, [13445] = 2 }, Brakka = { [13457] = 6, [13445] = 5 },
-  ["Nyssaël"] = { [13457] = 5, [13444] = 12 }, Grumdal = { [13457] = 5, [13444] = 4 },
-  Vesper = { [13457] = 3, [13452] = 5 }, ["Sylvaë"] = { [13457] = 5 }, Ilyra = { [13457] = 8 },
+  ["Nyssaël"] = { [13457] = 5, [13444] = 12 }, Grumdal = { [13457] = 5, [13444] = 4 }, -- nolocale (noms de joueurs)
+  Vesper = { [13457] = 3, [13452] = 5 }, ["Sylvaë"] = { [13457] = 5 }, Ilyra = { [13457] = 8 }, -- nolocale
 }
 -- Objets du corps : ceux que tu portes, connus du serveur de Forever (leurs infobulles s'affichent) ; à défaut,
 -- des objets de Molten Core (nom anglais affiché si le serveur ne les connaît pas). Chaque objet a son scénario.
@@ -64,7 +65,7 @@ local function pickItems()
     if id and not seen[id] then
       seen[id] = true
       local name, _, quality = ns.ItemInfo(id)
-      worn[#worn + 1] = { id = id, name = name or ns.Group.names[id] or ("objet " .. id), quality = quality }
+      worn[#worn + 1] = { id = id, name = name or ns.Group.names[id] or L("objet %d", id), quality = quality }
     end
   end
   ITEM, ROLE = {}, {}
@@ -76,7 +77,7 @@ local function pickItems()
   return #worn
 end
 -- Objets reçus sur la saison (comme la ligne N des données du site) : colonne « Reçus » du conseil
-local COUNTS = { Gorrak = 3, Brakka = 1, ["Nyssaël"] = 0, Grumdal = 2, Mirelle = 1, Vesper = 4, ["Sylvaë"] = 2, Ilyra = 1, Thorn = 0 }
+local COUNTS = { Gorrak = 3, Brakka = 1, ["Nyssaël"] = 0, Grumdal = 2, Mirelle = 1, Vesper = 4, ["Sylvaë"] = 2, Ilyra = 1, Thorn = 0 } -- nolocale
 
 -- Jets des joueurs fictifs : { nom, jet, dé lancé (s'il diffère du dé demandé : jet ignoré) }
 local function rollsFor(item, kind, only)
@@ -86,16 +87,16 @@ local function rollsFor(item, kind, only)
     return out
   end
   local role = ROLE[item.itemId]
-  if kind == "sr" and role == "ring" then return { { "Gorrak", 41 }, { "Vesper", 58 }, { "Sylvaë", 96 } } end -- Sylvaë n'a rien réservé
-  if kind == "sr" and role == "tie" then return { { "Nyssaël", 67 }, { "Ilyra", 67 } } end
+  if kind == "sr" and role == "ring" then return { { "Gorrak", 41 }, { "Vesper", 58 }, { "Sylvaë", 96 } } end -- nolocale (Sylvaë n'a rien réservé)
+  if kind == "sr" and role == "tie" then return { { "Nyssaël", 67 }, { "Ilyra", 67 } } end -- nolocale
   if kind == "ms" and role == "nobody" then return {} end
-  if kind == "os" and role == "nobody" then return { { "Sylvaë", 45 }, { "Ilyra", 81 }, { "Thorn", 72, 100 } } end
+  if kind == "os" and role == "nobody" then return { { "Sylvaë", 45 }, { "Ilyra", 81 }, { "Thorn", 72, 100 } } end -- nolocale
   if kind == "free" and role == "free" then return { { "Vesper", 23 }, { "Gorrak", 88 }, { "Brakka", 54, 99 } } end
   local out, pool = {}, {}
   if kind == "sr" then
     for n in pairs((RA.session and RA.session.eligible) or {}) do if n ~= me() then pool[#pool + 1] = n end end
   else
-    pool = { "Vesper", "Gorrak", "Ilyra", "Grumdal", "Sylvaë" }
+    pool = { "Vesper", "Gorrak", "Ilyra", "Grumdal", "Sylvaë" } -- nolocale
   end
   for i = 1, math.min(3, #pool) do out[i] = { table.remove(pool, math.random(#pool)), math.random(1, kind == "os" and 99 or 100) } end
   return out
@@ -105,7 +106,7 @@ function T.Rolls(item, kind, only)
   for i, r in ipairs(rollsFor(item, kind, only)) do
     after(0.7 * i, function() if RA.session == s then RA.OnRoll(r[1], r[2], 1, r[3] or s.max) end end)
   end
-  if not s.eligible or s.eligible[me()] ~= nil then say("fais /roll " .. s.max .. " toi aussi : ton vrai jet compte.") end
+  if not s.eligible or s.eligible[me()] ~= nil then say(L("fais /roll %d toi aussi : ton vrai jet compte.", s.max)) end
 end
 local startRoll = RA.StartRoll
 RA.StartRoll = function(item, kind, only)
@@ -114,25 +115,25 @@ RA.StartRoll = function(item, kind, only)
   return ok
 end
 
--- Conseil : réponses (addon ou chuchotées), puis votes de Gorrak et Nyssaël
+-- Conseil : réponses (addon ou chuchotées), puis votes de Gorrak et Nyssaël ; précisions traduites à l'envoi
 local RESPONSES = {
-  set = { { "Mirelle", "bis", nil, true }, { "Nyssaël", "upgrade", "2e pièce du set" }, { "Ilyra", "upgrade" }, { "Vesper", "transmo" }, { "Grumdal", "off" }, { "Gorrak", "pass" } },
-  default = { { "Sylvaë", "bis" }, { "Gorrak", "upgrade", "petit gain" }, { "Thorn", "off", nil, true }, { "Brakka", "pass" } },
+  set = { { "Mirelle", "bis", nil, true }, { "Nyssaël", "upgrade", N("2e pièce du set") }, { "Ilyra", "upgrade" }, { "Vesper", "transmo" }, { "Grumdal", "off" }, { "Gorrak", "pass" } }, -- nolocale
+  default = { { "Sylvaë", "bis" }, { "Gorrak", "upgrade", N("petit gain") }, { "Thorn", "off", nil, true }, { "Brakka", "pass" } }, -- nolocale
 }
-local VOTES = { set = { { "Gorrak", "Mirelle" }, { "Nyssaël", "Ilyra" } }, default = { { "Gorrak", "Sylvaë" }, { "Nyssaël", "Gorrak" } } }
+local VOTES = { set = { { "Gorrak", "Mirelle" }, { "Nyssaël", "Ilyra" } }, default = { { "Gorrak", "Sylvaë" }, { "Nyssaël", "Gorrak" } } } -- nolocale
 function T.Council(sid, id)
   local list = RESPONSES[ROLE[id]] or RESPONSES.default
   for i, r in ipairs(list) do
     after(0.8 + i * 0.6, function()
       -- Sans addon (ou ancienne version) : réponse chuchotée au maître du butin, sans objets portés
       local gear = r[4] and "" or tostring(GEAR[i % #GEAR + 1].id)
-      RA.Deliver(r[1], "LA;" .. sid .. ";" .. r[2] .. ";" .. gear .. ";" .. (r[4] and "chuchoté" or (r[3] or "")), "WHISPER")
+      RA.Deliver(r[1], "LA;" .. sid .. ";" .. r[2] .. ";" .. gear .. ";" .. (r[4] and "chuchoté" or (r[3] and L[r[3]] or "")), "WHISPER") -- nolocale (marque interne)
     end)
   end
   for i, v in ipairs(VOTES[ROLE[id]] or VOTES.default) do
     after(1.2 + #list * 0.6 + i * 0.8, function() RA.Deliver(v[1], "LV;" .. sid .. ";" .. v[2], "WHISPER") end)
   end
-  after(0.5, function() say("réponds dans la fenêtre « ta réponse », puis vote : Gorrak et Nyssaël votent aussi, à toi de départager et de donner.") end)
+  after(0.5, function() say(L["réponds dans la fenêtre « ta réponse », puis vote : Gorrak et Nyssaël votent aussi, à toi de départager et de donner."]) end)
 end
 
 -- Messages vers le raid : on reçoit les siens (comme en jeu), les addons fictifs répondent
@@ -164,16 +165,16 @@ end
 function T.award(item, winner, method, detail, response)
   local log = RA.test.log.loot
   log[#log + 1] = { who = winner, itemId = item.itemId, method = method, detail = detail, response = response }
-  say("objet donné à " .. winner .. " par le butin de maître (simulé).")
+  say(L("objet donné à %s par le butin de maître (simulé).", winner))
 end
 function T.trade(entry)
-  say("échange avec " .. entry.winner .. "...")
+  say(L("échange avec %s...", entry.winner))
   after(1.5, function()
     local list = RA.test.handover
     for i = #list, 1, -1 do if list[i] == entry then table.remove(list, i) end end
     local log = RA.test.log.loot
     log[#log + 1] = { who = entry.winner, itemId = entry.itemId, method = entry.method, detail = entry.detail, response = entry.response }
-    ns.print((entry.link or ns.Group.displayLink(entry.itemId, entry.name, entry.quality)) .. " remis à " .. entry.winner .. " (essai).")
+    ns.print(L("%s remis à %s (essai).", entry.link or ns.Group.displayLink(entry.itemId, entry.name, entry.quality), entry.winner))
     refresh()
   end)
   return true
@@ -183,44 +184,45 @@ local function reset()
   RA.items, RA.session, RA.councils, RA.asks, RA.call, RA.versions, RA.askedAt = {}, nil, {}, {}, nil, {}, nil
 end
 function RA.StartTest()
-  if IsInGroup and IsInGroup() then ns.print("le raid d'essai se lance hors groupe : quitte le groupe d'abord.") return false end
+  if IsInGroup and IsInGroup() then ns.print(L["le raid d'essai se lance hors groupe : quitte le groupe d'abord."]) return false end
   reset()
   local worn = pickItems()
   local m = me()
   local members, roster = { m }, { [m] = { role = "DPS", dps = "melee" } }
   for _, p in ipairs(PLAYERS) do members[#members + 1] = p.name roster[p.name] = { role = p.role, dps = p.dps } end
-  local counts = { short = "saison", label = "depuis le début de la saison (essai)", byName = {} }
+  -- Textes du raid d'essai (d'ordinaire écrits sur le site) : dans la langue de l'interface au lancement
+  local counts = { short = L["saison"], label = L["depuis le début de la saison (essai)"], byName = {} }
   for name, n in pairs(COUNTS) do counts.byName[name] = { names = { name }, n = n } end
   counts.byName[m] = { names = { m }, n = 2 }
   local raggy = { name = "Ragnaros", encounterId = 672, npcIds = { 11502 }, rows = {
-    { label = "Tank principal", names = { "Gorrak" }, text = "" },
-    { label = "Fils de la flamme", names = { "Brakka", m }, text = "" },
-    { label = "Soins des tanks", names = { "Nyssaël", "Mirelle" }, text = "" },
-    { label = "Placement", names = {}, text = "distance et soigneurs à 30 m derrière le boss" },
+    { label = L["Tank principal"], names = { "Gorrak" }, text = "" },
+    { label = L["Fils de la flamme"], names = { "Brakka", m }, text = "" },
+    { label = L["Soins des tanks"], names = { "Nyssaël", "Mirelle" }, text = "" }, -- nolocale
+    { label = L["Placement"], names = {}, text = L["distance et soigneurs à 30 m derrière le boss"] },
   } }
   local domo = { name = "Majordomo Executus", encounterId = 671, npcIds = { 12018 }, rows = {
     { label = "Tanks", names = { "Gorrak", "Brakka" }, text = "" },
-    { label = "Moutons", names = { "Sylvaë", "Ilyra" }, text = "" },
-    { label = "Interruptions", names = { m }, text = "les soigneurs d'abord" },
+    { label = L["Moutons"], names = { "Sylvaë", "Ilyra" }, text = "" }, -- nolocale
+    { label = L["Interruptions"], names = { m }, text = L["les soigneurs d'abord"] },
   } }
   RA.test = {
     members = members, handover = {}, log = { loot = {} }, sheet = raggy,
     send = T.send, award = T.award, trade = T.trade,
     data = {
-      entry = { raid = { id = "essai", name = "Raid d'essai · Molten Core", time = time(), loot = "softres" }, group = { name = "Groupe d'essai" } },
-      loot = "softres", consumables = CONSUMABLES, bosses = { raggy, domo }, council = { m, "Gorrak", "Nyssaël" }, roster = roster,
+      entry = { raid = { id = "essai", name = L["Raid d'essai"] .. " · Molten Core", time = time(), loot = "softres" }, group = { name = L["Groupe d'essai"] } },
+      loot = "softres", consumables = CONSUMABLES, bosses = { raggy, domo }, council = { m, "Gorrak", "Nyssaël" }, roster = roster, -- nolocale
       counts = counts,
       reserves = {
         [ITEM.ring.id] = { { name = m, bonus = 0 }, { name = "Gorrak", bonus = 20 }, { name = "Vesper", bonus = 10 } },
-        [ITEM.tie.id] = { { name = "Nyssaël", bonus = 10 }, { name = "Ilyra", bonus = 10 } },
+        [ITEM.tie.id] = { { name = "Nyssaël", bonus = 10 }, { name = "Ilyra", bonus = 10 } }, -- nolocale
       },
     },
   }
   -- Objets demandés au jeu dès maintenant : leurs liens seront prêts à l'ouverture du corps
   for _, it in pairs(ITEM) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
   for _, it in ipairs(GEAR) do ns.Group.names[it.id] = ns.Group.names[it.id] or it.name ns.RequestItem(it.id) end
-  ns.print("raid d'essai lancé : 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs.")
-  if worn < 6 then say("le corps d'essai montre les objets que tu portes ; il en manque, il est complété par des objets de Molten Core (infobulle absente si le serveur ne les connaît pas).") end
+  ns.print(L["raid d'essai lancé : 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs."])
+  if worn < 6 then say(L["le corps d'essai montre les objets que tu portes ; il en manque, il est complété par des objets de Molten Core (infobulle absente si le serveur ne les connaît pas)."]) end
   RA.ShowTest()
   refresh()
   return true
@@ -232,11 +234,11 @@ function RA.StopTest()
   if T.panel then T.panel:Hide() end
   if RA.HideSheet then RA.HideSheet() end
   if RA.ShowAsk then RA.ShowAsk() end -- plus de question en attente : la fenêtre se ferme
-  ns.print("raid d'essai terminé.")
+  ns.print(L["raid d'essai terminé."])
   refresh()
 end
 ns.on("GROUP_ROSTER_UPDATE", function()
-  if RA.test and IsInGroup and IsInGroup() then ns.print("tu es entré dans un groupe : raid d'essai arrêté.") RA.StopTest() end
+  if RA.test and IsInGroup and IsInGroup() then ns.print(L["tu es entré dans un groupe : raid d'essai arrêté."]) RA.StopTest() end
 end)
 
 -- Corps ouvert (simulé) : les objets d'un mode de butin
@@ -260,7 +262,8 @@ end
 -- Panneau d'essai : une étape par fonction
 function RA.ShowTest()
   if not RA.test then return RA.StartTest() end
-  if not T.panel then T.panel = RA.listWindow("ForeverRosterTest", "Raid d'essai", 540) end
+  if not T.panel then T.panel = RA.listWindow("ForeverRosterTest", L["Raid d'essai"], 540) end
+  T.panel:SetWindowTitle(L["Raid d'essai"])
   K.front(T.panel)
   T.panel:Show()
   T.Refresh()
@@ -268,31 +271,31 @@ end
 function T.Refresh()
   local p = T.panel
   if not p or not p:IsShown() or not RA.test then return end
-  local L = p.list
-  p.hintText:SetText(ORANGE .. "Toi et 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs.|r")
-  L.Reset()
-  L.Header("1. Qui a l'addon")
-  L.Add("Thorn a une ancienne version, Mirelle n'a pas l'addon." .. GREY .. "\nRésultat dans l'onglet En raid (Mirelle passe en « pas d'addon » au bout de 5 s).|r",
-    { { "Demander les versions", 180, function() RA.AskVersions(true) ns.UI.Show("enraid") end } })
-  L.Header("2. Consommables")
-  L.Add("Chacun répond avec ses sacs ; tes vraies potions comptent." .. GREY .. "\nPrêts, manques et sans réponse dans l'onglet En raid.|r",
-    { { "Appel aux consommables", 200, function() RA.CallConsumables() ns.UI.Show("enraid") end } })
-  L.Header("3. Fiche du boss")
-  L.Add("Hors combat, cible n'importe quel PNJ : la fiche de Ragnaros s'ouvre, comme en ciblant le boss. Attaque-le : elle se ferme." .. GREY .. "\nTu as une tâche sur Ragnaros (Fils de la flamme).|r",
-    { { "Afficher la fiche", 140, function() T.ShowBoss() end }, { "Début du combat", 140, function() RA.HideSheet() end } })
-  L.Header("4. Butin en soft reserve")
-  L.Add("Les objets du corps sont ceux que tu portes. Jets SR avec bonus SR+ (tu as réservé le premier : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre.",
-    { { "Ouvrir le corps", 140, function() T.OpenCorpse("softres") end } })
-  L.Header("5. Butin au conseil")
-  L.Add("Chacun répond (BiS, Upgrade...), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager.",
-    { { "Ouvrir le corps", 140, function() T.OpenCorpse("council") end } })
-  L.Header("6. Objets à remettre")
-  L.Add("« Garder, à remettre » dans la fenêtre du butin, puis « Échanger » dans l'onglet En raid (échange simulé)." .. GREY .. "\nEn attente : " .. #RA.Handover() .. "|r",
-    { { "Onglet En raid", 130, function() ns.UI.Show("enraid") end } })
-  L.Header("Fin")
-  L.Add(GREY .. #RA.test.log.loot .. " objet(s) attribué(s) pendant l'essai. Le vrai butin de maître et l'échange restent à vérifier dans un vrai raid.|r",
-    { { "Recommencer", 120, function() RA.StopTest() RA.StartTest() end }, { "Quitter l'essai", 130, function() RA.StopTest() end } })
-  L.Done()
+  local li = p.list
+  p.hintText:SetText(ORANGE .. L["Toi et 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs."] .. "|r")
+  li.Reset()
+  li.Header(L["1. Qui a l'addon"])
+  li.Add(L["Thorn a une ancienne version, Mirelle n'a pas l'addon."] .. GREY .. "\n" .. L["Résultat dans l'onglet En raid (Mirelle passe en « pas d'addon » au bout de 5 s)."] .. "|r",
+    { { L["Demander les versions"], 180, function() RA.AskVersions(true) ns.UI.Show("enraid") end } })
+  li.Header(L["2. Consommables"])
+  li.Add(L["Chacun répond avec ses sacs ; tes vraies potions comptent."] .. GREY .. "\n" .. L["Prêts, manques et sans réponse dans l'onglet En raid."] .. "|r",
+    { { L["Appel aux consommables"], 200, function() RA.CallConsumables() ns.UI.Show("enraid") end } })
+  li.Header(L["3. Fiche du boss"])
+  li.Add(L["Hors combat, cible n'importe quel PNJ : la fiche de Ragnaros s'ouvre, comme en ciblant le boss. Attaque-le : elle se ferme."] .. GREY .. "\n" .. L["Tu as une tâche sur Ragnaros (Fils de la flamme)."] .. "|r",
+    { { L["Afficher la fiche"], 140, function() T.ShowBoss() end }, { L["Début du combat"], 140, function() RA.HideSheet() end } })
+  li.Header(L["4. Butin en soft reserve"])
+  li.Add(L["Les objets du corps sont ceux que tu portes. Jets SR avec bonus SR+ (tu as réservé le premier : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre."],
+    { { L["Ouvrir le corps"], 140, function() T.OpenCorpse("softres") end } })
+  li.Header(L["5. Butin au conseil"])
+  li.Add(L["Chacun répond (BiS, Upgrade...), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager."],
+    { { L["Ouvrir le corps"], 140, function() T.OpenCorpse("council") end } })
+  li.Header(L["6. Objets à remettre"])
+  li.Add(L["« Garder, à remettre » dans la fenêtre du butin, puis « Échanger » dans l'onglet En raid (échange simulé)."] .. GREY .. "\n" .. L("En attente : %d", #RA.Handover()) .. "|r",
+    { { L["Onglet En raid"], 130, function() ns.UI.Show("enraid") end } })
+  li.Header(L["Fin"])
+  li.Add(GREY .. L("%d objet(s) attribué(s) pendant l'essai. Le vrai butin de maître et l'échange restent à vérifier dans un vrai raid.", #RA.test.log.loot) .. "|r",
+    { { L["Recommencer"], 120, function() RA.StopTest() RA.StartTest() end }, { L["Quitter l'essai"], 130, function() RA.StopTest() end } })
+  li.Done()
 end
 
 return T

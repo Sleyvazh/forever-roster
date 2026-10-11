@@ -49,6 +49,8 @@ jobs:
           lua5.1 addon/tests/roster_format_test.lua
           lua5.1 addon/tests/roster_sim.lua
           lua5.1 addon/tests/roster_ui_test.lua
+          # Textes des deux addons : traduction anglaise de chaque texte, aucun texte français oublié
+          lua5.1 addon/tests/locale_check.lua
       - name: Zip et envoi
         env:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}

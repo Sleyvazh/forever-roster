@@ -3,6 +3,7 @@
 -- (réglable), chaque fin de rencontre, l'instance et sa difficulté. Le bilan (bloc RRB) part avec la synchro ; le site
 -- ne l'enregistre que d'un officier du groupe ou du créateur du raid. Rien à faire pendant le raid.
 local _, ns = ...
+local L = ns.L
 local R = {}
 ns.Recorder = R
 local F = ns.Format
@@ -12,7 +13,7 @@ R.MAX_HOURS = 6
 local secret, usable = F.secret, F.usable
 local function db() return ns.db and ns.db() end
 local function refresh() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end end
-local function minimap() if ns.Minimap and ns.Minimap.Update then ns.safe("minicarte", ns.Minimap.Update) end end
+local function minimap() if ns.Minimap and ns.Minimap.Update then ns.safe(L["minicarte"], ns.Minimap.Update) end end
 local function logs()
   local d = db()
   if not d then return {} end
@@ -58,14 +59,14 @@ end
 function R.Sample()
   if not db() then return end
   if not R.Enabled() or not ns.Comm.InRaid() then
-    stop("relevé du raid terminé : le bilan part au site avec ta prochaine synchro (onglet Synchro).")
+    if R.current then stop(L["relevé du raid terminé : le bilan part au site avec ta prochaine synchro (onglet Synchro)."]) end
     return
   end
   local now = time()
   local log = R.Current()
   -- Groupe de raid gardé longtemps après le raid : le relevé s'arrête 6 h après l'heure prévue
   if log and (log.raidTime or 0) > 0 and now > log.raidTime + R.MAX_HOURS * 3600 then
-    stop("relevé du raid terminé (" .. R.MAX_HOURS .. " h après l'heure prévue) : le bilan part au site avec ta prochaine synchro.")
+    stop(L("relevé du raid terminé (%d h après l'heure prévue) : le bilan part au site avec ta prochaine synchro.", R.MAX_HOURS))
     return
   end
   if not log then
@@ -79,8 +80,10 @@ function R.Sample()
     end
     R.current = e.raid.id
     R.Prune()
-    if ns.Loot and ns.Loot.LogAwards then ns.safe("butin", ns.Loot.LogAwards) end
-    ns.print((resumed and "relevé du raid repris : " or "relevé du raid démarré : ") .. (log.name or "raid") .. " (présence, boss et butin, envoyés avec ta synchro). Onglet Options pour le couper.")
+    if ns.Loot and ns.Loot.LogAwards then ns.safe(L["butin"], ns.Loot.LogAwards) end
+    local name = log.name or "raid"
+    ns.print(resumed and L("relevé du raid repris : %s (présence, boss et butin, envoyés avec ta synchro). Onglet Options pour le couper.", name)
+      or L("relevé du raid démarré : %s (présence, boss et butin, envoyés avec ta synchro). Onglet Options pour le couper.", name))
   end
   log.recorder = ns.Comm.Me()
   -- Chef de raid : celui qui mène le raid au moins la moitié des relevés
@@ -264,7 +267,7 @@ end
 
 -- Bloc RRB d'un bilan (attributions du chef de butin pas encore notées : rattrapées d'abord)
 function R.Block(log)
-  if ns.Loot and ns.Loot.LogAwards then ns.safe("butin", ns.Loot.LogAwards) end
+  if ns.Loot and ns.Loot.LogAwards then ns.safe(L["butin"], ns.Loot.LogAwards) end
   return F.BuildRRB({
     raidId = log.raidId, start = log.start, stop = log.stop, recorder = log.recorder, name = log.name, instance = log.instance,
     lead = R.IsLead(log), difficulty = log.difficulty, people = log.people, loot = log.loot, encounters = log.encounters,
@@ -273,9 +276,9 @@ end
 
 -- Relevé chaque minute ; aussi dès que le groupe change (début du raid), au plus une fois toutes les 10 s
 local lastRoster, ticking = 0, false
-local function tick() ns.safe("relevé du raid", R.Sample) end
+local function tick() ns.safe(L["relevé du raid"], R.Sample) end
 ns.on("PLAYER_LOGIN", function()
-  ns.safe("relevé du raid", R.Prune)
+  ns.safe(L["relevé du raid"], R.Prune)
   if ticking or not C_Timer then return end
   ticking = true
   if C_Timer.NewTicker then C_Timer.NewTicker(60, tick)
@@ -289,7 +292,7 @@ ns.on("GROUP_ROSTER_UPDATE", function()
   lastRoster = time()
   tick()
 end)
-ns.on("CHAT_MSG_LOOT", function(msg) ns.safe("butin", R.OnLoot, msg) end)
-ns.on("ENCOUNTER_END", function(...) ns.safe("fin de rencontre", R.OnEncounterEnd, ...) end)
+ns.on("CHAT_MSG_LOOT", function(msg) ns.safe(L["butin"], R.OnLoot, msg) end)
+ns.on("ENCOUNTER_END", function(...) ns.safe(L["fin de rencontre"], R.OnEncounterEnd, ...) end)
 
 return R

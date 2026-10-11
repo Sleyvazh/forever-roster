@@ -2,6 +2,7 @@
 -- ns.Groups : groupes chargés (RosterDB.groups), raids à venir, raid en cours pour le relevé.
 -- ns.Data : ce que la synchro (onglet Synchro, synchro rapide, bouton de la minicarte) charge et exporte.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local G, D = {}, {}
 ns.Groups, ns.Data = G, D
 local F = ns.Format
@@ -15,9 +16,12 @@ local function groups()
   return d.groups
 end
 
-G.LABEL = { present = "Présent", late = "En retard", tentative = "Peut-être", absent = "Absent", bench = "Banc", alt = "Reroll" }
+-- Statuts d'inscription et difficultés : clés en français, traduites à l'affichage (G.Label, G.Difficulty)
+G.LABEL = { present = N("Présent"), late = N("En retard"), tentative = N("Peut-être"), absent = N("Absent"), bench = N("Banc"), alt = N("Reroll") }
 G.COLOR = { present = "|cff4fd35f", late = "|cfff0b43c", tentative = "|cff9aa3b6", absent = "|cffff6b5e", bench = "|cff9aa3b6", alt = "|cff9aa3b6" }
-G.DIFFICULTY = { normal = "Normal", heroic = "Héroïque", mythic = "Mythique" }
+G.DIFFICULTY = { normal = N("Normal"), heroic = N("Héroïque"), mythic = N("Mythique") }
+function G.Label(status) local l = G.LABEL[status] return l and L[l] or status end
+function G.Difficulty(key) local l = G.DIFFICULTY[key] return l and L[l] or key end
 -- Fenêtre du relevé : de 2 h avant l'heure prévue à 3 h après
 G.BEFORE, G.AFTER = 2 * 3600, 3 * 3600
 
@@ -96,36 +100,43 @@ function G.Counts(e) return e and e.group.counts or nil end
 --------------------------------------------------------------------------------------------------------------------
 -- Synchro : chargement des textes du site, export des bilans
 --------------------------------------------------------------------------------------------------------------------
-local plural = F.plural
+-- « 2 groupes » / « 1 groupe » (clés N au singulier et au pluriel) : texte traduit, et le même en français pour la
+-- sauvegarde (jamais traduite)
+local function count(n, one, many) return L(F.Many(n) and many or one, n), string.format(n > 1 and many or one, n) end
 
 -- Texte collé : un ou plusieurs blocs RRG (groupes) ou une compo RRR. Renvoie ok, message.
 function D.Load(text)
-  if not F.usable(text) then return false, "Texte illisible." end
+  if not F.usable(text) then return false, L["Texte illisible."] end
   local d = db()
-  if not d then return false, "Addon pas encore prêt : réessaie dans un instant." end
+  if not d then return false, L["Addon pas encore prêt : réessaie dans un instant."] end
   local kind = F.Kind(text)
-  if F.IsForever(text) then return false, F.FOREVER end
-  local msg
+  if F.IsForever(text) then return false, L[F.FOREVER] end
+  local msg, saved
   if kind == "RRG" then
     local list, err = F.ParseRRG(text)
     if not list then return false, err end
     G.Load(list)
     local raids = 0
     for _, g in ipairs(list) do raids = raids + #g.raids end
-    msg = plural(#list, "groupe") .. " (" .. plural(raids, "raid") .. ")"
+    local groupsText, groupsFr = count(#list, N("%d groupe"), N("%d groupes"))
+    local raidsText, raidsFr = count(raids, N("%d raid"), N("%d raids"))
+    msg, saved = groupsText .. " (" .. raidsText .. ")", groupsFr .. " (" .. raidsFr .. ")"
   elseif kind == "RRR" then
     local ok, err = ns.Compo.Load(text)
     if not ok then return false, err end
     local raid, members = ns.Compo.Get()
-    msg = "compo « " .. (raid and raid.name or "?") .. " » : " .. plural(#members, "perso") .. " (onglet Compo)"
+    local name = raid and raid.name or "?"
+    local who, whoFr = count(#members, N("%d perso"), N("%d persos"))
+    msg = L("compo « %s » : %s (onglet Compo)", name, who)
+    saved = string.format(N("compo « %s » : %s (onglet Compo)"), name, whoFr)
   elseif kind == "RRB" then
-    return false, "Ce texte est un bilan de raid : colle-le sur le site (Ctrl+V sur n'importe quelle page)."
+    return false, L["Ce texte est un bilan de raid : colle-le sur le site (Ctrl+V sur n'importe quelle page)."]
   else
-    return false, "Texte non reconnu : sur Roster, « Copier pour le jeu » (barre du haut) ou « Export pour le jeu » d'un raid (onglet Compo)."
+    return false, L["Texte non reconnu : sur Roster, « Copier pour le jeu » (barre du haut) ou « Export pour le jeu » d'un raid (onglet Compo)."]
   end
-  d.lastLoad = { at = time(), text = msg }
+  d.lastLoad = { at = time(), text = saved }
   refresh()
-  return true, "Chargé : " .. msg .. "."
+  return true, L("Chargé : %s.", msg)
 end
 
 -- Bilans à envoyer (RRB) : ceux pas encore envoyés (ou changés depuis) ; all : tous ceux des 3 derniers jours
@@ -150,7 +161,7 @@ function D.MarkSent()
   end
   for _, e in ipairs(list) do e.log.sentAt = math.max(e.log.sentAt or 0, e.updated) end
   lastExport = nil
-  if ns.Minimap and ns.Minimap.Update then ns.safe("minicarte", ns.Minimap.Update) end
+  if ns.Minimap and ns.Minimap.Update then ns.safe(L["minicarte"], ns.Minimap.Update) end
   refresh()
 end
 
@@ -162,12 +173,12 @@ function D.Summary()
   local list = G.List()
   local parts = {}
   if #list > 0 then
-    parts[#parts + 1] = plural(#list, "groupe chargé", "groupes chargés") .. (d.groupsAt and (" le " .. date("%d/%m à %H:%M", d.groupsAt)) or "")
+    parts[#parts + 1] = (F.Many(#list) and L("%d groupes chargés", #list) or L("%d groupe chargé", #list)) .. (d.groupsAt and (" " .. L("le %s", F.Stamp(d.groupsAt))) or "")
   end
   local raid = ns.Compo and ns.Compo.Get()
-  if raid then parts[#parts + 1] = "compo « " .. raid.name .. " » chargée" end
-  if #parts == 0 then return "Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici." end
-  return "Données du site : " .. table.concat(parts, " · ") .. "."
+  if raid then parts[#parts + 1] = L("compo « %s » chargée", raid.name) end
+  if #parts == 0 then return L["Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici."] end
+  return L("Données du site : %s.", table.concat(parts, " · "))
 end
 
 return G

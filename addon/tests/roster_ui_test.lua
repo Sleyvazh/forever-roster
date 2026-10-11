@@ -6,8 +6,11 @@
 -- Les fichiers de jeu (Format, Comm, Groups, Compo, Recorder, Loot, Pages, LootUI) absents sont remplacés par des
 -- doublures qui respectent le contrat ; présents, ce sont eux qui servent. Fonctions du contrat 0.3 absentes du moteur :
 -- doublures aussi (« Loot 0.3 » dans le message final).
+-- Textes de l'interface (addon/tests/locale_audit.lua) ; langue du client : WOW_LOCALE (frFR par défaut)
+LOCALE_AUDIT = dofile("addon/tests/locale_audit.lua")
+function GetLocale() return os.getenv("WOW_LOCALE") or "frFR" end
 local printed = {}
-function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") end
+function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") LOCALE_AUDIT.show(printed[#printed]) end
 
 -- Cadres : toute méthode existe et ne fait rien (sauf texte, visibilité, scripts et parent, utiles aux vérifications)
 TEXTS = setmetatable({}, { __mode = "v" }) -- dernier cadre qui affiche ce texte
@@ -17,7 +20,8 @@ local function frame(parent)
     if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
     if k == "Hide" then return function(self) self.shown = false local h = rawget(self, "scripts").OnHide if h then h(self) end end end
     if k == "IsShown" then return function(self) return self.shown end end
-    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self end end end
+    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self LOCALE_AUDIT.show(v) end end end
+    if k == "AddLine" or k == "AddDoubleLine" then return function(_, x, y) LOCALE_AUDIT.show(x) LOCALE_AUDIT.show(y) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetScript" then return function(self, n, fn) rawget(self, "scripts")[n] = fn end end
     if k == "GetScript" then return function(self, n) return rawget(self, "scripts")[n] end end
@@ -128,7 +132,7 @@ C_PartyInfo = { InviteUnit = function() end, ConvertToRaid = function() end }
 local realSends, realChat = 0, 0
 C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function() realSends = realSends + 1 return 0 end,
   InChatMessagingLockdown = function() return false end, SendChatMessage = function() realChat = realChat + 1 end }
-function SendChatMessage() realChat = realChat + 1 end
+function SendChatMessage(text) LOCALE_AUDIT.show(text) realChat = realChat + 1 end
 -- Objets portés (raid d'essai) : liens avec bonus, niveau d'objet, emplacement, classe et sous-classe d'objet (4 armure :
 -- 1 tissu, 2 cuir, 3 mailles, 4 plaques, 0 divers ; 2 arme). Le joueur est druide (cuir) : il ne peut pas porter les
 -- spallières (plaques) ni la cuirasse (tissu).
@@ -185,6 +189,7 @@ end })
 -- Fichiers du .toc : ceux de l'addon, sinon ceux communs avec Forever Roster (addon/shared, copiés dans le zip)
 local function exists(path) local f = io.open(path) if f then f:close() return true end return false end
 local ns = {}
+LOCALE_AUDIT.install(ns)
 local GAME = { ["Format.lua"] = true, ["Comm.lua"] = true, ["Groups.lua"] = true, ["Compo.lua"] = true, ["Recorder.lua"] = true, ["Pages.lua"] = true,
   ["Loot.lua"] = true, ["LootUI.lua"] = true }
 local toc = {}
@@ -613,6 +618,13 @@ ns.UI.Refresh()
 assert(n("Pages.Refresh") == refreshes + 2, "ns.UI.Refresh : onglet affiché")
 run("inviter") run("placer") run("versions")
 assert(n("Compo.Invite") == 1 and n("Compo.Arrange") == 1 and n("Comm.AskVersions") == 1, "inviter, placer, versions")
+-- Commandes anglaises : mêmes actions que les mots français
+run("invite") run("sort") run("place")
+assert(n("Compo.Invite") == 2 and n("Compo.Arrange") == 3, "commandes anglaises : invite, sort, place")
+for alias, tab in pairs({ sync = "synchro", inraid = "enraid", comp = "compo" }) do
+  run(alias)
+  assert(ns.UI.IsShown() and RosterDB.tab == tab, "/roster " .. alias)
+end
 run("minicarte")
 assert(RosterDB.minimap.hidden and not M.button:IsShown() and printed[#printed]:find("masqué"), "/roster minicarte : masqué")
 run("minicarte")
@@ -621,11 +633,34 @@ run("habillage")
 assert(RosterDB.skin == "site" and reloads == 1, "/roster habillage : site, interface rechargée")
 run("habillage")
 assert(RosterDB.skin == nil and reloads == 2, "/roster habillage : retour au jeu")
+run("skin") run("skin")
+assert(RosterDB.skin == nil and reloads == 4, "/roster skin : habillage, dans les deux sens")
+-- Langue (RosterDB.lang : nil = celle du jeu, "fr", "en") : rechargement seulement si les fenêtres changent de langue
+run("langue en")
+assert(RosterDB.lang == "en" and ns.Lang() == "en" and reloads == 5 and printed[#printed]:find("Roster|r: language: English, reloading the interface.", 1, true), "/roster langue en : anglais, interface rechargée")
+run("language auto")
+assert(RosterDB.lang == nil and ns.Lang() == "fr" and reloads == 5 and printed[#printed]:find("langue : celle du jeu (Français).", 1, true), "/roster language auto : langue du jeu, déjà celle des fenêtres")
+run("langue")
+assert(RosterDB.lang == "en" and reloads == 6, "/roster langue : passe à l'autre langue")
+run("lang fr")
+assert(RosterDB.lang == "fr" and reloads == 6, "/roster lang fr : français, déjà celui des fenêtres")
+run("langue klingon")
+assert(RosterDB.lang == "fr" and printed[#printed]:find("/roster langue [fr | en | auto]", 1, true), "/roster langue : mot inconnu, rappel de la commande")
+RosterDB.lang = nil
 local before = #printed
 run("aide")
 assert(printed[before + 1]:find("version " .. TOC_VERSION, 1, true) and #printed - before >= 9, "aide")
 local help = table.concat(printed, "\n", before + 1)
 assert(help:find("/roster butin", 1, true) and help:find("/roster remettre", 1, true) and help:find("/roster test", 1, true), "aide : butin, remettre, test")
+assert(help:find("/roster langue", 1, true), "aide : langue")
+-- Aide en anglais : commandes anglaises
+RosterDB.lang = "en"
+before = #printed
+run("help")
+help = table.concat(printed, "\n", before + 1)
+assert(help:find("/roster loot", 1, true) and help:find("/roster sync | raids | inraid | comp | options", 1, true) and help:find("/roster language", 1, true)
+  and not help:find("/roster butin", 1, true), "aide en anglais : commandes anglaises")
+RosterDB.lang = nil
 -- Fenêtre fermée : Refresh sans effet
 ns.UI.Toggle()
 assert(not ns.UI.IsShown())
@@ -762,6 +797,18 @@ click("Recharger")
 assert(reloads == reloadsBefore + 1, "Recharger : interface rechargée au clic")
 click("Jeu")
 assert(RosterDB.skin == nil, "habillage du jeu")
+-- Langue : celle du jeu (par défaut), Français, English ; comme l'habillage, appliquée au rechargement de l'interface
+assert(RosterDB.lang == nil and TEXTS["Celle du jeu (Français)"] and TEXTS["Français"] and TEXTS["English"], "langue : celle du jeu par défaut")
+reloadsBefore = reloads
+click("English")
+assert(RosterDB.lang == "en" and ns.Lang() == "en" and reloads == reloadsBefore and TEXTS["Reload"] and TEXTS["Reload"]:IsShown(), "anglais choisi : rechargement proposé")
+assert(TEXTS["Game client (Français)"] and TEXTS["Website"], "options affichées en anglais, noms des langues jamais traduits")
+click("Reload")
+assert(reloads == reloadsBefore + 1, "Reload : interface rechargée au clic")
+click("Français")
+assert(RosterDB.lang == "fr" and ns.Lang() == "fr" and not ns.LangPending(), "français choisi : déjà la langue des fenêtres")
+click("Celle du jeu (Français)")
+assert(RosterDB.lang == nil and ns.Lang() == "fr", "retour à la langue du jeu")
 
 -- 7. Minicarte : clic, clic droit, glisser, minicarte carrée, infobulle ; liste des addons de la minicarte
 ns.UI.Toggle()
@@ -1231,5 +1278,7 @@ assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " ..
 local stubs = {}
 for mod in pairs(stub) do stubs[#stubs + 1] = mod end
 table.sort(stubs)
+-- Données du test (noms de groupe et de raid écrits ici) autorisées par le contrôle des textes
+LOCALE_AUDIT.check("Roster", { "Les Veilleurs", "Libération", "Autre groupe" })
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("roster_ui_test : tout est bon" .. (#stubs > 0 and (" (doublures : " .. table.concat(stubs, ", ") .. ")") or ""))

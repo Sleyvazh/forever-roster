@@ -1,7 +1,10 @@
 -- Simulation minimale de l'API de WoW : charge l'addon dans l'ordre du .toc et lance ses commandes.
 -- lua5.1 addon/tests/wow_sim.lua (depuis la racine du dépôt). Échoue si une commande lève une erreur.
+-- Textes de l'interface (addon/tests/locale_audit.lua) ; langue du client : WOW_LOCALE (frFR par défaut)
+LOCALE_AUDIT = dofile("addon/tests/locale_audit.lua")
+function GetLocale() return os.getenv("WOW_LOCALE") or "frFR" end
 local printed = {}
-function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") end
+function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") LOCALE_AUDIT.show(printed[#printed]) end
 
 -- Cadres : toute méthode existe et ne fait rien (sauf texte et visibilité, utiles aux vérifications)
 TEXTS = setmetatable({}, { __mode = "v" }) -- dernier cadre qui affiche ce texte (boutons)
@@ -11,7 +14,8 @@ local function frame()
     if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
     if k == "Hide" then return function(self) self.shown = false local h = rawget(self, "scripts").OnHide if h then h(self) end end end
     if k == "IsShown" then return function(self) return self.shown end end
-    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self end end end
+    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self LOCALE_AUDIT.show(v) end end end
+    if k == "AddLine" or k == "AddDoubleLine" then return function(_, x, y) LOCALE_AUDIT.show(x) LOCALE_AUDIT.show(y) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetScript" then return function(self, n, fn) rawget(self, "scripts")[n] = fn end end
     if k == "GetStringHeight" then return function() return 100 end end
@@ -55,7 +59,7 @@ C_Container = { GetContainerNumSlots = function(bag) return BAG[bag] and #BAG[ba
 NUM_BAG_SLOTS = 4
 function GetItemInfo(id) return "Objet " .. id, "|cff0070dd|Hitem:" .. id .. "::::::::60:::::|h[Objet " .. id .. "]|h|r" end
 local said = {}
-function SendChatMessage(text, channel) said[#said + 1] = channel .. ":" .. text end
+function SendChatMessage(text, channel) LOCALE_AUDIT.show(text) said[#said + 1] = channel .. ":" .. text end
 LOOT_ITEM_SELF = "Vous recevez le butin : %s."
 Enum = { TooltipDataType = { Item = 0 } }
 local tooltipHook
@@ -113,6 +117,7 @@ setmetatable(_G, { __index = BLIZZARD, __newindex = function(t, k, v)
   rawset(t, k, v)
 end })
 local ns = {}
+LOCALE_AUDIT.install(ns)
 -- Fichiers du .toc : ceux de l'addon, sinon ceux communs avec Roster (addon/shared, copiés dans le zip)
 local function addonFile(line)
   local own = "addon/ForeverRoster/" .. line
@@ -296,6 +301,22 @@ ForeverRosterDB.chars["Greta-Forever EU"] = { recipes = {}, snapshot = { header 
 ns.UI.pages.options.confirm = "Greta-Forever EU"
 ns.UI.Refresh()
 assert(errors() == before, "onglet Options affiché sans erreur")
+-- Langue (Options) : celle du jeu par défaut ; Français ou English, appliquée au rechargement de l'interface
+assert(ForeverRosterDB.lang == nil and ns.Lang() == "fr" and TEXTS["Celle du jeu (Français)"], "langue : celle du jeu par défaut")
+ns.UI.SetLang("en")
+assert(ForeverRosterDB.lang == "en" and ns.Lang() == "en" and ns.L["Synchro"] == "Sync" and TEXTS["Game client (Français)"], "langue : English")
+assert(TEXTS["Reload"] and TEXTS["Reload"]:IsShown(), "langue changée : rechargement proposé")
+ns.UI.SetLang("fr")
+assert(ForeverRosterDB.lang == "fr" and ns.Lang() == "fr" and not TEXTS["Reload"]:IsShown(), "langue : Français, déjà celle de l'interface")
+ns.UI.SetLang(nil)
+local langReloads, realLangReload = 0, ReloadUI
+ReloadUI = function() langReloads = langReloads + 1 end
+run("language en")
+assert(ForeverRosterDB.lang == "en" and langReloads == 1, "/fr language en : interface rechargée")
+run("langue jeu")
+assert(ForeverRosterDB.lang == nil and ns.Lang() == "fr" and langReloads == 1, "/fr langue jeu : langue du jeu, rien à recharger")
+ReloadUI = realLangReload
+assert(errors() == before, "langue changée sans erreur")
 -- Relevé du raid : présence chaque minute, butin épique, bilan FRB dans l'export puis marqué envoyé
 assert(#tickers >= 1, "relevé programmé chaque minute")
 ns.UI.LoadFromSite("FRG;1;g5;1789990000;Relevé\nR;4a1e43ea-54e8-4b49-888f-5e19b5754f61;" .. (time() + 600) .. ";Molten Core;;\nEND;1")
@@ -463,6 +484,9 @@ assert(#RA.asks == 1, "fenêtre de réponse")
 RA.Respond(RA.asks[1], "bis", "pour mon set")
 fire("CHAT_MSG_ADDON", "FRoster", "LA;" .. sid .. ";upgrade;16866;", "WHISPER", "Gorrak")
 assert(RA.councils[sid].cands.Tournicoti.response == "bis" and RA.councils[sid].cands.Gorrak.response == "upgrade", "réponses reçues par le conseil")
+-- Réponse chuchotée par un joueur sans addon : mots anglais acceptés aussi
+fire("CHAT_MSG_WHISPER", "Transmog!", "Vesper-Forever EU")
+assert(RA.councils[sid].cands.Vesper.response == "transmo" and RA.councils[sid].cands.Vesper.note == "chuchoté", "réponse chuchotée en anglais")
 RA.Vote(sid, "Gorrak")
 assert(RA.Tally(sid).Gorrak == 1, "vote compté")
 RA.ShowCouncil(sid)
@@ -953,5 +977,8 @@ export = ns.Export.Build()
 assert(export:find("\nP;Pêche;75;150\n") and export:find("\nP;Cooking;120;150\n"), "métiers par GetProfessions")
 assert(export:match("^FRC;2;Tournicoti;") and export:find("\nG;1:16866\n"), "export de base")
 assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
+-- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai
+local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4" }
+LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon")

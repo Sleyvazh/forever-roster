@@ -1,5 +1,6 @@
 -- Compo de raid venue du site : invitations et placement dans les groupes.
 local _, ns = ...
+local L = ns.L
 local C = {}
 ns.Compo = C
 
@@ -40,7 +41,7 @@ function C.Roster()
       local name, _, subgroup, _, _, _, _, online = GetRaidRosterInfo(i)
       if name then
         roster[lower(short(name))] = { index = i, subgroup = subgroup, online = online }
-        counts[subgroup] = (counts[subgroup] or 0) + 1
+        if subgroup then counts[subgroup] = (counts[subgroup] or 0) + 1 end
       end
     end
   else
@@ -74,7 +75,7 @@ end
 local pending = {}
 function C.Invite()
   if IsInGroup() and not (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then
-    ns.print("seul le chef du groupe ou un assistant peut inviter.")
+    ns.print(L["seul le chef du groupe ou un assistant peut inviter."])
     return
   end
   local roster = C.Roster()
@@ -92,8 +93,8 @@ function C.Invite()
   for _ = 1, math.min(room, #pending) do
     InviteUnit(table.remove(pending, 1)); sent = sent + 1
   end
-  ns.print(sent .. " invitation(s) envoyée(s)" .. (#pending > 0 and (", " .. #pending .. " en attente du passage en raid") or "") .. ".")
-  if #manual > 0 then ns.print("à inviter à la main (inscrits Discord) : " .. table.concat(manual, ", ")) end
+  ns.print(#pending > 0 and L("%d invitation(s) envoyée(s), %d en attente du passage en raid.", sent, #pending) or L("%d invitation(s) envoyée(s).", sent))
+  if #manual > 0 then ns.print(L("à inviter à la main (inscrits Discord) : %s", table.concat(manual, ", "))) end
 end
 
 ns.on("GROUP_ROSTER_UPDATE", function()
@@ -102,7 +103,7 @@ ns.on("GROUP_ROSTER_UPDATE", function()
   if IsInRaid() then
     local n = #pending
     while #pending > 0 do InviteUnit(table.remove(pending, 1)) end
-    ns.print("raid formé : " .. n .. " invitation(s) de plus.")
+    ns.print(L("raid formé : %d invitation(s) de plus.", n))
   end
 end)
 
@@ -127,20 +128,20 @@ local function step()
 end
 
 function C.Arrange()
-  if not IsInRaid() then ns.print("il faut être en raid pour placer les groupes.") return end
-  if not (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then ns.print("il faut être chef du raid ou assistant.") return end
-  if InCombatLockdown() then ns.print("impossible en combat.") return end
+  if not IsInRaid() then ns.print(L["il faut être en raid pour placer les groupes."]) return end
+  if not (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then ns.print(L["il faut être chef du raid ou assistant."]) return end
+  if InCombatLockdown() then ns.print(L["impossible en combat."]) return end
   arranging, steps = true, 0
-  if not step() then arranging = false ns.print("les groupes sont déjà bons.") end
+  if not step() then arranging = false ns.print(L["les groupes sont déjà bons."]) end
 end
 
 ns.on("GROUP_ROSTER_UPDATE", function()
   if not arranging then return end
   steps = steps + 1
-  if InCombatLockdown() or steps > 80 then arranging = false ns.print("placement interrompu.") return end
+  if InCombatLockdown() or steps > 80 then arranging = false ns.print(L["placement interrompu."]) return end
   -- petit délai : laisse le jeu terminer le déplacement précédent
   C_Timer.After(0.2, function()
-    if arranging and not step() then arranging = false ns.print("groupes placés.") end
+    if arranging and not step() then arranging = false ns.print(L["groupes placés."]) end
     if ns.UI and ns.UI.RefreshCompo then ns.UI.RefreshCompo() end
   end)
 end)

@@ -1,5 +1,6 @@
 -- Talents de Forever : système moderne de Blizzard (C_Traits / C_ClassTalents) à la place des talents Classic.
 local _, ns = ...
+local L = ns.L
 local T = {}
 ns.Talents = T
 
@@ -17,9 +18,9 @@ end
 
 -- Talents du perso : un nœud par talent (position dans l'arbre, rang actuel, rang max, sort)
 function T.Capture()
-  if not (C_Traits and C_ClassTalents and C_ClassTalents.GetActiveConfigID) then return nil, "système de talents introuvable" end
+  if not (C_Traits and C_ClassTalents and C_ClassTalents.GetActiveConfigID) then return nil, L["système de talents introuvable"] end
   local configID = C_ClassTalents.GetActiveConfigID()
-  if not configID then return nil, "aucune configuration de talents active" end
+  if not configID then return nil, L["aucune configuration de talents active"] end
   local cfg = C_Traits.GetConfigInfo(configID)
   local nodes = {}
   for _, treeID in ipairs(cfg and cfg.treeIDs or {}) do

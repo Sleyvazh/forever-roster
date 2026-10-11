@@ -2,12 +2,13 @@
 -- le groupe de raid, et le butin de qualité épique ou plus (réglable). Le bilan (bloc FRB) part au site avec la
 -- synchro habituelle ; seul celui d'un officier du groupe y est enregistré. Rien à faire pendant le raid.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local R = {}
 ns.Recorder = R
 
 local KEEP_DAYS = 30
 local QUALITY = { ff8000 = 5, a335ee = 4, ["0070dd"] = 3, ["1eff00"] = 2, ffffff = 1 }
-R.QUALITY_LABEL = { [2] = "Inhabituel", [3] = "Rare", [4] = "Épique", [5] = "Légendaire" }
+R.QUALITY_LABEL = { [2] = N("Inhabituel"), [3] = N("Rare"), [4] = N("Épique"), [5] = N("Légendaire") } -- traduits à l'affichage
 
 local function db()
   ForeverRosterDB.raidLogs = ForeverRosterDB.raidLogs or {}
@@ -42,7 +43,7 @@ end
 -- Un relevé : qui est dans le groupe de raid en ce moment
 function R.Sample()
   if not R.Enabled() or not IsInRaid() then
-    stop(R.current and ("relevé du raid terminé : il part au site avec ta prochaine synchro (ta touche, Ctrl+C)."))
+    stop(R.current and L["relevé du raid terminé : il part au site avec ta prochaine synchro (ta touche, Ctrl+C)."])
     return
   end
   local now = time()
@@ -56,7 +57,7 @@ function R.Sample()
       db()[e.raid.id] = log
     end
     R.current = e.raid.id
-    ns.print("relevé du raid démarré : |cffe3b54b" .. (log.name or "raid") .. "|r (présence et butin, envoyés avec ta synchro). Onglet Options pour le couper.")
+    ns.print(L("relevé du raid démarré : |cffe3b54b%s|r (présence et butin, envoyés avec ta synchro). Onglet Options pour le couper.", log.name or "raid"))
   end
   log.recorder = UnitName("player")
   -- Chef de raid (lot K1) : celui qui mène le raid la plupart du temps, ou qui distribue le butin (R.Award)
@@ -205,9 +206,9 @@ end
 
 -- Relevé chaque minute ; aussi dès que le groupe change (début de raid), au plus une fois toutes les 10 s
 local lastRoster = 0
-local function tick() ns.safe("relevé du raid", R.Sample) end
+local function tick() ns.safe(N("relevé du raid"), R.Sample) end
 ns.on("PLAYER_LOGIN", function()
-  ns.safe("relevé du raid", R.Prune)
+  ns.safe(N("relevé du raid"), R.Prune)
   if C_Timer.NewTicker then C_Timer.NewTicker(60, tick) else
     local function loop() tick() C_Timer.After(60, loop) end
     C_Timer.After(60, loop)
@@ -218,7 +219,7 @@ ns.on("GROUP_ROSTER_UPDATE", function()
   lastRoster = time()
   tick()
 end)
-ns.on("CHAT_MSG_LOOT", function(...) ns.safe("butin", R.OnLoot, ...) end)
+ns.on("CHAT_MSG_LOOT", function(...) ns.safe(N("butin"), R.OnLoot, ...) end)
 -- Dernier boss vaincu : noté avec le butin des 15 minutes qui suivent
 ns.on("ENCOUNTER_END", function(_, name, _, _, success)
   if success == 1 or success == true then R.boss = { name = tostring(name or ""), at = time() } end

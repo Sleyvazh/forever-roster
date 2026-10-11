@@ -69,6 +69,10 @@ Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) 
 
 Rien ne part au chat du raid, aux autres joueurs ni au site : annonces, chuchotements et jets s'affichent dans ta fenêtre de chat, précédés de « [essai] ». `/roster test` affiche ou masque le panneau ; « Quitter l'essai » ou `/roster test fin` l'arrête. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.
 
+## Langue (0.3.2)
+
+L'interface suit la langue du client du jeu : français sur un client en français, anglais sinon. Onglet **Options**, « Langue » (ou `/roster langue fr | en | auto`, aussi `/roster language`) pour en choisir une autre ; elle s'applique au rechargement de l'interface. Les commandes ont aussi leur nom anglais (`/roster loot`, `handover`, `sync`, `inraid`, `comp`…). Les messages entre addons et les textes pour le site ne changent pas avec la langue (`docs/addon-format.md`, « Langue des addons »).
+
 ## Installation
 
 Télécharger le zip sur la page **Addon** de Roster, puis copier le dossier `Roster` dans `World of Warcraft\_retail_\Interface\AddOns\`, puis relancer le jeu ou taper `/reload`.

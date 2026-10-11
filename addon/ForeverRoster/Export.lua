@@ -1,6 +1,7 @@
 -- Export des persos vers le site (format FRC v1, un bloc par perso, voir docs/addon-format.md).
 -- Chaque perso est relevé automatiquement quand il change ; l'export les contient tous.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local E = {}
 ns.Export = E
 
@@ -28,7 +29,7 @@ local function scan(numFn, infoFn, recipeLinkFn, itemLinkFn, nameFn)
       if key and not list[key] then list[key] = true n = n + 1 end
     end
   end
-  if n > 0 then ns.print(n .. " patron(s) de " .. prof .. " ajouté(s) à l'export.") end
+  if n > 0 then ns.print(L("%d patron(s) de %s ajouté(s) à l'export.", n, prof)) end
 end
 
 -- Compétence du métier ouvert, gardée pour l'export (repli si le jeu ne liste pas les compétences)
@@ -63,11 +64,11 @@ local function scanModern()
     local info = T.GetRecipeInfo and T.GetRecipeInfo(id)
     if (not info or info.learned) and not db.recipes[prof]["s" .. id] then db.recipes[prof]["s" .. id] = true n = n + 1 end
   end
-  if n > 0 then ns.print(n .. " patron(s) de " .. prof .. " ajouté(s) à l'export.") end
+  if n > 0 then ns.print(L("%d patron(s) de %s ajouté(s) à l'export.", n, prof)) end
 end
 local function onTradeSkill()
   C_Timer.After(0.3, function()
-    ns.safe("patrons", function()
+    ns.safe(N("patrons"), function()
       if GetNumTradeSkills then scanTradeSkill() else scanModern() end
       if E.autoSnapshot then E.autoSnapshot() end
     end)
@@ -77,7 +78,7 @@ ns.on("TRADE_SKILL_SHOW", onTradeSkill)
 ns.on("TRADE_SKILL_UPDATE", onTradeSkill)
 ns.on("TRADE_SKILL_LIST_UPDATE", onTradeSkill)
 if GetNumCrafts then
-  local onCraft = function() C_Timer.After(0.3, function() ns.safe("patrons", scanCraft) end) end
+  local onCraft = function() C_Timer.After(0.3, function() ns.safe(N("patrons"), scanCraft) end) end
   ns.on("CRAFT_SHOW", onCraft)
   ns.on("CRAFT_UPDATE", onCraft)
 end
@@ -86,7 +87,7 @@ end
 -- quiet : relevé automatique, sans message dans le chat.
 local function captureLines(quiet)
   local lines = {}
-  ns.safe("équipement", function()
+  ns.safe(N("équipement"), function()
     for _, slot in ipairs(SLOTS) do
       local id = GetInventoryItemID("player", slot)
       if id then lines[#lines + 1] = { "G", slot, id } end
@@ -102,14 +103,14 @@ local function captureLines(quiet)
     lines[#lines + 1] = { "P", name, tonumber(rank) or 0, tonumber(maxRank) or 0 }
     profs = profs + 1
   end
-  ns.safe("métiers", function()
+  ns.safe(N("métiers"), function()
     if not (GetNumSkillLines and GetSkillLineInfo) then return end
     for i = 1, GetNumSkillLines() or 0 do
       local name, isHeader, _, rank, _, _, maxRank = GetSkillLineInfo(i)
       if not isHeader then add(name, rank, maxRank) end
     end
   end)
-  ns.safe("métiers", function()
+  ns.safe(N("métiers"), function()
     if not (GetProfessions and GetProfessionInfo) then return end
     local idx = { GetProfessions() }
     for i = 1, 6 do
@@ -121,15 +122,15 @@ local function captureLines(quiet)
   end)
   local db = ns.charDB()
   for prof, v in pairs(db.skills or {}) do add(prof, v[1], v[2]) end
-  if profs == 0 and not quiet then ns.print("aucun métier lu : ouvre une fois chaque fenêtre de métier, puis actualise l'export.") end
+  if profs == 0 and not quiet then ns.print(L["aucun métier lu : ouvre une fois chaque fenêtre de métier, puis actualise l'export."]) end
   for prof, list in pairs(db.recipes or {}) do
     for key in pairs(list) do lines[#lines + 1] = { "R", prof, key } end
   end
   -- Chaque partie est protégée : une erreur (API du jeu différente) n'empêche pas d'exporter le reste
   local okT, talents, why = pcall(ns.Talents.Capture)
   if not quiet then
-    if not okT then ns.print("talents non exportés : " .. tostring(talents))
-    elseif not talents then ns.print("talents non exportés : " .. tostring(why)) end
+    if not okT then ns.print(L("talents non exportés : %s", tostring(talents)))
+    elseif not talents then ns.print(L("talents non exportés : %s", tostring(why))) end
   end
   if okT and talents then
     for _, n in ipairs(talents.nodes) do
@@ -158,14 +159,14 @@ local function autoSnapshot()
   pending = true
   C_Timer.After(1, function()
     pending = false
-    ns.safe("relevé du perso", E.Snapshot, true)
+    ns.safe(N("relevé du perso"), E.Snapshot, true)
     if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
   end)
 end
 E.autoSnapshot = autoSnapshot
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_LEVEL_UP", "TRAIT_CONFIG_UPDATED",
   "SKILL_LINES_CHANGED", "PLAYER_LOGOUT" }) do
-  ns.on(event, event == "PLAYER_LOGOUT" and function() ns.safe("relevé du perso", E.Snapshot, true) end or autoSnapshot)
+  ns.on(event, event == "PLAYER_LOGOUT" and function() ns.safe(N("relevé du perso"), E.Snapshot, true) end or autoSnapshot)
 end
 
 -- Persos relevés sur ce compte (le perso connecté en premier)
@@ -190,9 +191,9 @@ end
 local function linesOf(c, snap)
   local lines = {}
   for _, l in ipairs(snap.lines or {}) do lines[#lines + 1] = l end
-  ns.safe("inscriptions", function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
-  ns.safe("recherchés", function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
-  ns.safe("consommables", function() for _, l in ipairs(ns.Group.ConsumableLines(c)) do lines[#lines + 1] = l end end)
+  ns.safe(N("inscriptions"), function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
+  ns.safe(N("recherchés"), function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
+  ns.safe(N("consommables"), function() for _, l in ipairs(ns.Group.ConsumableLines(c)) do lines[#lines + 1] = l end end)
   return ns.Format.Compact(lines)
 end
 
@@ -268,7 +269,7 @@ function E.Build(opts)
   return table.concat(blocks, "\n"), included
 end
 
--- Contenu d'un export : nombre d'éléments, et leurs noms (persos, puis « bilan de … »)
+-- Contenu d'un export : nombre d'éléments, et leurs noms à afficher (persos, puis « bilan de … »)
 function E.Size(included) return #(included or {}) + #((included or {}).logs or {}) end
 function E.Names(included, color)
   local names = {}
@@ -276,7 +277,7 @@ function E.Names(included, color)
     local h = e.snap.header or {}
     names[#names + 1] = color and color(h.class, h.name or e.key) or (h.name or e.key)
   end
-  for _, log in ipairs((included or {}).logs or {}) do names[#names + 1] = "bilan de " .. (log.name or "raid") end
+  for _, log in ipairs((included or {}).logs or {}) do names[#names + 1] = L("bilan de %s", log.name or "raid") end
   return names
 end
 
@@ -287,7 +288,7 @@ function E.Outbox()
   for _, e in ipairs(E.Pending()) do
     local sig = signature(e.char, e.snap)
     out[#out + 1] = { kind = "frc", key = e.key, sig = sig, text = block(e.char, e.snap) }
-    ns.safe("inscriptions", ns.Group.MarkOut, e.char, sig)
+    ns.safe(N("inscriptions"), ns.Group.MarkOut, e.char, sig)
   end
   return out
 end
@@ -297,7 +298,7 @@ function E.MarkSent(included)
   for _, e in ipairs(included or {}) do
     e.char.sentSig = signature(e.char, e.snap)
     e.char.sentAt = time()
-    ns.safe("inscriptions", ns.Group.MarkReceived, e.char, nil)
+    ns.safe(N("inscriptions"), ns.Group.MarkReceived, e.char, nil)
   end
   if ns.Recorder then ns.Recorder.MarkSent((included or {}).logs) end
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end

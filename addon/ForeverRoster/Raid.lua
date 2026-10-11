@@ -3,6 +3,7 @@
 -- objets à remettre par échange. Tout ce qui dépend du client de Forever est protégé : sans l'API, la fonction se tait.
 -- Raid d'essai (Test.lua) : RA.test remplace le raid, ses membres et les messages ; rien ne part au site ni au chat.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local RA = {}
 ns.Raid = RA
 
@@ -28,7 +29,7 @@ local function db(key) ForeverRosterDB[key] = ForeverRosterDB[key] or {} return 
 -- Comparaison de noms (boss) : casse, accents et ponctuation ignorés
 local function norm(s)
   s = tostring(s or ""):lower()
-  for a, b in pairs({ ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["à"] = "a", ["â"] = "a", ["ô"] = "o", ["î"] = "i", ["û"] = "u", ["ç"] = "c", ["œ"] = "oe" }) do s = s:gsub(a, b) end
+  for a, b in pairs({ ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["à"] = "a", ["â"] = "a", ["ô"] = "o", ["î"] = "i", ["û"] = "u", ["ç"] = "c", ["œ"] = "oe" }) do s = s:gsub(a, b) end -- nolocale
   return (s:gsub("[^%w]", ""))
 end
 
@@ -45,7 +46,7 @@ function RA.Chunks(text, max)
 end
 function RA.Say(text)
   if RA.test then -- raid d'essai : dans ta fenêtre de chat seulement
-    for _, line in ipairs(RA.Chunks(text)) do ns.print("|cff9aa3b6[essai]|r " .. line) end
+    for _, line in ipairs(RA.Chunks(text)) do ns.print("|cff9aa3b6" .. L["[essai]"] .. "|r " .. line) end
     return
   end
   local ch = channel()
@@ -172,15 +173,15 @@ end)
 function RA.CallConsumables()
   local d = RA.Current()
   local list = d and d.consumables or {}
-  if #list == 0 then ns.print("aucun consommable demandé pour ce raid : sur le site, page du raid, onglet Préparation.") return false end
-  if not channel() then ns.print("l'appel aux consommables se fait en groupe ou en raid.") return false end
+  if #list == 0 then ns.print(L["aucun consommable demandé pour ce raid : sur le site, page du raid, onglet Préparation."]) return false end
+  if not channel() then ns.print(L["l'appel aux consommables se fait en groupe ou en raid."]) return false end
   local ids = {}
   for _, c in ipairs(list) do ids[#ids + 1] = c.itemId end
   RA.call = { at = time(), by = me(), ids = ids, counts = {}, open = true, raidId = d.entry.raid.id }
   for _, n in ipairs(RA.Members()) do RA.call.counts[n] = false end
   send("CQ;" .. table.concat(ids, ","))
   C_Timer.After(8, function() RA.CloseCall() end)
-  ns.print("appel aux consommables lancé : réponses dans l'onglet En raid.")
+  ns.print(L["appel aux consommables lancé : réponses dans l'onglet En raid."])
   refresh()
   return true
 end
@@ -220,7 +221,7 @@ function RA.CallSummary()
       local lacks = {}
       for _, line in ipairs(d.consumables) do
         if ns.Format.Concerns(line.target, d.roster[n]) and (c[line.itemId] or 0) < line.n then
-          lacks[#lacks + 1] = (line.name ~= "" and line.name or ("objet " .. line.itemId)) .. " " .. (c[line.itemId] or 0) .. "/" .. line.n
+          lacks[#lacks + 1] = (line.name ~= "" and line.name or L("objet %d", line.itemId)) .. " " .. (c[line.itemId] or 0) .. "/" .. line.n
         end
       end
       if #lacks > 0 then out.missing[#out.missing + 1] = { name = n, lacks = lacks } else out.ready[#out.ready + 1] = n end
@@ -233,9 +234,9 @@ function RA.AnnounceMissing()
   if not s then return end
   local parts = {}
   for _, m in ipairs(s.missing) do parts[#parts + 1] = m.name .. " (" .. table.concat(m.lacks, ", ") .. ")" end
-  if #parts > 0 then RA.Say("Consommables manquants : " .. table.concat(parts, " · ")) end
-  if #s.silent > 0 then RA.Say("Pas de réponse (addon absent) : " .. table.concat(s.silent, ", ")) end
-  if #parts == 0 and #s.silent == 0 then RA.Say("Consommables : tout le monde est prêt.") end
+  if #parts > 0 then RA.Say(L("Consommables manquants : %s", table.concat(parts, " · "))) end
+  if #s.silent > 0 then RA.Say(L("Pas de réponse (addon absent) : %s", table.concat(s.silent, ", "))) end
+  if #parts == 0 and #s.silent == 0 then RA.Say(L["Consommables : tout le monde est prêt."]) end
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -271,7 +272,7 @@ function RA.MyTasks(sheet, who)
   who = who or me()
   local out = {}
   for _, r in ipairs(sheet.rows) do
-    for _, n in ipairs(r.names) do if n == who then out[#out + 1] = r.label ~= "" and r.label or "ta tâche" end end
+    for _, n in ipairs(r.names) do if n == who then out[#out + 1] = r.label ~= "" and r.label or L["ta tâche"] end end
   end
   return out
 end
@@ -287,7 +288,7 @@ function RA.SheetLines(sheet, skipMine)
 end
 function RA.AnnounceSheet(sheet)
   local parts = {}
-  for _, l in ipairs(RA.SheetLines(sheet)) do parts[#parts + 1] = (l.label ~= "" and (l.label .. " : ") or "") .. l.value end
+  for _, l in ipairs(RA.SheetLines(sheet)) do parts[#parts + 1] = (l.label ~= "" and (L("%s :", l.label) .. " ") or "") .. l.value end
   RA.Say(sheet.name .. " · " .. table.concat(parts, " · "))
 end
 RA.dismissed = {}
@@ -390,10 +391,12 @@ function RA.StartRoll(item, kind, only)
     local names = {}
     for n, b in pairs(eligible) do names[#names + 1] = n .. (b > 0 and (" (+" .. b .. ")") or "") end
     table.sort(names)
-    RA.Say(link .. (only and " : égalité, relance entre " or " réservé (SR) par ") .. table.concat(names, ", ") .. " · /roll 100, bonus SR+ ajouté")
-  elseif kind == "ms" then RA.Say(link .. " : jets en spé principale (MS) · /roll 100")
-  elseif kind == "os" then RA.Say(link .. " : jets en spé secondaire (OS) · /roll 99")
-  else RA.Say(link .. (only and (" : égalité, relance entre " .. table.concat(only, ", ")) or " : jet libre") .. " · /roll 100") end
+    if only then RA.Say(L("%s : égalité, relance entre %s · /roll 100, bonus SR+ ajouté", link, table.concat(names, ", ")))
+    else RA.Say(L("%s réservé (SR) par %s · /roll 100, bonus SR+ ajouté", link, table.concat(names, ", "))) end
+  elseif kind == "ms" then RA.Say(L("%s : jets en spé principale (MS) · /roll 100", link))
+  elseif kind == "os" then RA.Say(L("%s : jets en spé secondaire (OS) · /roll 99", link))
+  elseif only then RA.Say(L("%s : égalité, relance entre %s · /roll 100", link, table.concat(only, ", ")))
+  else RA.Say(L("%s : jet libre · /roll 100", link)) end
   refresh()
   return true
 end
@@ -447,7 +450,8 @@ function RA.Give(item, winner, method, response, detail)
     ns.Recorder.Award(item.itemId, winner, method, response, detail)
     if winner ~= me() then RA.AddHandover(item, winner, method, response, detail) end
   end
-  RA.Say(link .. " pour " .. winner .. (detail and detail ~= "" and (" (" .. detail .. ")") or ""))
+  if detail and detail ~= "" then RA.Say(L("%s pour %s (%s)", link, winner, RA.DetailText(detail)))
+  else RA.Say(L("%s pour %s", link, winner)) end
   for i = #RA.items, 1, -1 do if RA.items[i] == item then table.remove(RA.items, i) end end
   if RA.session and RA.session.item == item then RA.session = nil end
   refresh()
@@ -470,10 +474,20 @@ function RA.AwardSession()
   local w = list[1]
   RA.Give(s.item, w.name, s.kind == "sr" and "sr" or "roll", nil, RA.RollDetail(s, w))
 end
--- Détail noté avec l'objet : « 61 +20 = 81 » (SR), « MS 87 », « jet 54 »
+-- Détail noté avec l'objet : « 61 +20 = 81 » (SR), « MS 87 », « jet 54 », « 2 voix » (conseil). Il part au site en
+-- français (données) ; affiché en jeu, il passe par RA.DetailText
 function RA.RollDetail(s, w)
   if s.kind == "sr" then return w.bonus > 0 and (w.roll .. " +" .. w.bonus .. " = " .. w.total) or tostring(w.roll) end
-  return (s.kind == "free" and "jet " or (s.kind:upper() .. " ")) .. w.roll
+  return (s.kind == "free" and "jet " or (s.kind:upper() .. " ")) .. w.roll -- nolocale (données du site)
+end
+-- Détail dans la langue de l'interface (annonce au raid)
+function RA.DetailText(detail)
+  detail = tostring(detail or "")
+  local n = detail:match("^jet (%d+)$")
+  if n then return L("jet %s", n) end
+  n = detail:match("^(%d+) voix$")
+  if n then return n == "1" and L["1 voix"] or L("%s voix", n) end
+  return detail
 end
 
 -- Objets à remettre (gardés par le maître du butin) : échange possible pendant 2 h après le ramassage
@@ -500,8 +514,8 @@ end
 function RA.Trade(entry)
   if RA.test then return RA.test.trade(entry) end
   local unit = unitFor(entry.winner)
-  if not unit then ns.print(entry.winner .. " n'est pas dans le groupe.") return false end
-  if CheckInteractDistance and not CheckInteractDistance(unit, 2) then ns.print(entry.winner .. " est trop loin pour échanger.") return false end
+  if not unit then ns.print(L("%s n'est pas dans le groupe.", entry.winner)) return false end
+  if CheckInteractDistance and not CheckInteractDistance(unit, 2) then ns.print(L("%s est trop loin pour échanger.", entry.winner)) return false end
   RA.trading = entry
   if InitiateTrade then InitiateTrade(unit) end
   return true
@@ -525,7 +539,7 @@ ns.on("TRADE_CLOSED", function()
       local list = db("handover")
       for i = #list, 1, -1 do if list[i] == e then table.remove(list, i) end end
       ns.Recorder.Reassign(e.itemId, me(), e.winner, e.method, e.detail)
-      ns.print((e.link or ns.Group.displayLink(e.itemId)) .. " remis à " .. e.winner .. ".")
+      ns.print(L("%s remis à %s.", e.link or ns.Group.displayLink(e.itemId), e.winner))
     end
     refresh()
   end)
@@ -535,7 +549,8 @@ end)
 -- les membres du conseil votent. Réponses et votes ne sont envoyés qu'au conseil (et au maître du butin).
 RA.councils = {} -- sessions vues par le conseil : [sid] = { itemId, ml, cands = { [nom] = { response, gear, note } }, votes = { [membre] = nom } }
 RA.asks = {}     -- objets à qui répondre (joueur) : { sid, itemId, ml, at }
-local RESPONSES = { bis = "BiS", upgrade = "Upgrade", off = "Off-Spec", transmo = "Transmo", pass = "Passer" }
+-- Intitulés des réponses (traduits à l'affichage : L[RA.RESPONSES[clé]])
+local RESPONSES = { bis = N("BiS"), upgrade = N("Upgrade"), off = N("Off-Spec"), transmo = N("Transmo"), pass = N("Passer") }
 RA.RESPONSES = RESPONSES
 function RA.CouncilNames()
   local d = RA.Current()
@@ -561,7 +576,7 @@ function RA.StartCouncil(item)
   -- Nom de l'objet joint (1.2) : affiché chez les autres tant que leur jeu ne connaît pas encore l'objet
   local name = item.name or (item.link and item.link:match("|h%[(.-)%]|h")) or ""
   send("LO;" .. sid .. ";" .. item.itemId .. ";" .. ns.Format.clean(name):sub(1, 80))
-  RA.Say(sayLink(item) .. " : conseil du butin · réponds dans la fenêtre de l'addon (ou chuchote bis, up, os au maître du butin)")
+  RA.Say(L("%s : conseil du butin · réponds dans la fenêtre de l'addon (ou chuchote bis, up, os au maître du butin)", sayLink(item)))
   if RA.ShowCouncil then RA.ShowCouncil(sid) end
   refresh()
 end
@@ -591,7 +606,7 @@ function RA.Equipped(id)
 end
 function RA.Respond(ask, response, note)
   local gear = table.concat(RA.Equipped(ask.itemId), ",")
-  toCouncil("LA;" .. ask.sid .. ";" .. response .. ";" .. gear .. ";" .. ns.Format.clean(note or ""):sub(1, 80), ask.ml)
+  toCouncil("LA;" .. ask.sid .. ";" .. response .. ";" .. gear .. ";" .. ns.Format.clean(note or ""):sub(1, 80), ask.ml) -- nolocale (message entre addons)
   for i = #RA.asks, 1, -1 do if RA.asks[i] == ask then table.remove(RA.asks, i) end end
   refresh()
 end
@@ -603,13 +618,20 @@ handlers.LA = function(sender, f)
   c.cands[sender] = { response = f[3], gear = gear, note = f[5] or "" }
   refresh()
 end
--- Réponse chuchotée par un joueur sans addon (« bis », « up », « os », « transmo ») au maître du butin
-local WHISPERED = { bis = "bis", up = "upgrade", upgrade = "upgrade", os = "off", off = "off", transmo = "transmo", pass = "pass", passe = "pass" }
+-- Réponse chuchotée par un joueur sans addon (« bis », « up », « os », « transmo ») au maître du butin : mots français
+-- et anglais acceptés, quelle que soit la langue du maître du butin
+local WHISPERED = {
+  bis = "bis", up = "upgrade", upgrade = "upgrade", upg = "upgrade",
+  os = "off", off = "off", offspec = "off", ["off-spec"] = "off", ["off spec"] = "off",
+  transmo = "transmo", transmog = "transmo", tmog = "transmo", xmog = "transmo",
+  pass = "pass", passe = "pass", passer = "pass",
+}
 ns.on("CHAT_MSG_WHISPER", function(msg, sender)
   local s = RA.session
   if not s or s.kind ~= "council" then return end
-  local r = WHISPERED[strtrim and strtrim(tostring(msg)):lower() or tostring(msg):lower()]
-  if r then handlers.LA(short(sender), { "LA", s.sid, r, "", "chuchoté" }) end
+  -- Casse, espaces et ponctuation finale ignorés (« Bis ! », « off spec. »)
+  local r = WHISPERED[tostring(msg or ""):lower():gsub("^%s+", ""):gsub("[%s%.!]+$", ""):gsub("%s+", " ")]
+  if r then handlers.LA(short(sender), { "LA", s.sid, r, "", "chuchoté" }) end -- nolocale (marque interne, jamais affichée)
 end)
 function RA.Vote(sid, cand)
   local c = RA.councils[sid]
@@ -627,7 +649,7 @@ end
 function RA.Tally(sid)
   local c = RA.councils[sid]
   local n, by = {}, {}
-  for voter, cand in pairs(c and c.votes or {}) do n[cand] = (n[cand] or 0) + 1 by[#by + 1] = voter .. " pour " .. cand end
+  for voter, cand in pairs(c and c.votes or {}) do n[cand] = (n[cand] or 0) + 1 by[#by + 1] = L("%s pour %s", voter, cand) end
   table.sort(by)
   return n, by
 end
@@ -638,7 +660,7 @@ function RA.AwardCouncil(sid, winner)
   local votes = RA.Tally(sid)[winner] or 0
   local cand = c.cands[winner]
   send("LC;" .. sid .. ";" .. winner)
-  RA.Give(s.item, winner, "council", cand and cand.response ~= "pass" and cand.response or nil, votes .. " voix")
+  RA.Give(s.item, winner, "council", cand and cand.response ~= "pass" and cand.response or nil, votes .. " voix") -- détail pour le site, en français
   RA.councils[sid] = nil
 end
 handlers.LC = function(_, f)

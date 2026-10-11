@@ -2,6 +2,7 @@
 -- déplacer, /roster minicarte : masquer) et entrée de Roster dans la liste des addons de la minicarte
 -- (## AddonCompartmentFunc du .toc, Retail 10.1+).
 local ADDON, ns = ...
+local L = ns.L
 local M = {}
 ns.Minimap = M
 
@@ -61,13 +62,15 @@ local function tooltip(owner, anchor, drag)
   GameTooltip:SetOwner(owner, anchor or "ANCHOR_LEFT")
   GameTooltip:AddLine("Roster")
   M.Update()
-  if M.count > 0 then GameTooltip:AddLine(M.count .. " envoi(s) en attente pour le site", 0.66, 0.78, 0.92) end
-  if M.recording then GameTooltip:AddLine("Relevé du raid en cours (présence et butin)", 1, 0.23, 0.19) end
-  if M.handover > 0 then GameTooltip:AddLine(M.handover .. (M.handover > 1 and " objets à remettre" or " objet à remettre") .. " aux gagnants (échange)", 0.94, 0.71, 0.24) end
-  GameTooltip:AddLine("Clic : ouvrir la fenêtre", 1, 1, 1)
-  GameTooltip:AddLine("Clic droit : synchro rapide avec le site", 1, 1, 1)
-  if M.handover > 0 then GameTooltip:AddLine("Maj+clic : objets à remettre", 1, 1, 1) end
-  if drag then GameTooltip:AddLine("Glisser : déplacer le bouton", 0.6, 0.64, 0.71) end
+  if M.count > 0 then GameTooltip:AddLine(L("%d envoi(s) en attente pour le site", M.count), 0.66, 0.78, 0.92) end
+  if M.recording then GameTooltip:AddLine(L["Relevé du raid en cours (présence et butin)"], 1, 0.23, 0.19) end
+  if M.handover > 0 then
+    GameTooltip:AddLine(ns.Format.Many(M.handover) and L("%d objets à remettre aux gagnants (échange)", M.handover) or L("%d objet à remettre aux gagnants (échange)", M.handover), 0.94, 0.71, 0.24)
+  end
+  GameTooltip:AddLine(L["Clic : ouvrir la fenêtre"], 1, 1, 1)
+  GameTooltip:AddLine(L["Clic droit : synchro rapide avec le site"], 1, 1, 1)
+  if M.handover > 0 then GameTooltip:AddLine(L["Maj+clic : objets à remettre"], 1, 1, 1) end
+  if drag then GameTooltip:AddLine(L["Glisser : déplacer le bouton"], 0.6, 0.64, 0.71) end
   GameTooltip:Show()
 end
 
@@ -110,17 +113,17 @@ function M.Create()
   button.rec:SetPoint("BOTTOM", 0, -6)
   button.rec:SetText("|cffff3b30REC|r")
   button.rec:Hide()
-  button:SetScript("OnClick", function(_, which) ns.safe("minicarte", click, which) end)
+  button:SetScript("OnClick", function(_, which) ns.safe(L["minicarte"], click, which) end)
   button:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", onDrag) end)
   button:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
-  button:SetScript("OnEnter", function(self) ns.safe("minicarte", tooltip, self, "ANCHOR_LEFT", true) end)
+  button:SetScript("OnEnter", function(self) ns.safe(L["minicarte"], tooltip, self, "ANCHOR_LEFT", true) end)
   button:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
   place()
   if s.hidden then button:Hide() else button:Show() end
   M.button = button
   M.Update()
   -- Pastille et « REC » tenus à jour même sans changement visible (début et fin du relevé)
-  if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(20, function() ns.safe("minicarte", M.Update) end) end
+  if C_Timer and C_Timer.NewTicker then C_Timer.NewTicker(20, function() ns.safe(L["minicarte"], M.Update) end) end
 end
 
 -- Objets attribués par le chef de butin, pas encore échangés (distribution par Roster)
@@ -154,12 +157,12 @@ end
 function M.Toggle()
   local show = ns.db().minimap and ns.db().minimap.hidden and true or false -- masqué : on le remet
   M.SetShown(show)
-  if not show then ns.print("bouton de la minicarte masqué (/roster minicarte pour le remettre ; Roster reste dans la liste des addons de la minicarte).") end
+  if not show then ns.print(L["bouton de la minicarte masqué (/roster minicarte pour le remettre ; Roster reste dans la liste des addons de la minicarte)."]) end
 end
 
 -- Liste des addons de la minicarte (Retail) : fonctions nommées dans le .toc (## AddonCompartmentFunc…)
-function Roster_OnCompartmentClick(_, which) ns.safe("liste des addons", click, which) end
-function Roster_OnCompartmentEnter(_, frame) ns.safe("liste des addons", tooltip, frame or UIParent, "ANCHOR_LEFT") end
+function Roster_OnCompartmentClick(_, which) ns.safe(L["liste des addons"], click, which) end
+function Roster_OnCompartmentEnter(_, frame) ns.safe(L["liste des addons"], tooltip, frame or UIParent, "ANCHOR_LEFT") end
 function Roster_OnCompartmentLeave() if GameTooltip then GameTooltip:Hide() end end
 
-ns.on("PLAYER_LOGIN", function() ns.safe("minicarte", M.Create) end)
+ns.on("PLAYER_LOGIN", function() ns.safe(L["minicarte"], M.Create) end)

@@ -1,6 +1,7 @@
 -- Compo de raid venue du site (RRR) : état de chaque perso dans le groupe, invitations et placement dans les groupes.
 -- Hors combat seulement : ConvertToRaid (12.0.5), SetRaidSubgroup et SwapRaidSubgroup (chef du raid ou assistant).
 local _, ns = ...
+local L, N = ns.L, ns.N
 local C = {}
 ns.Compo = C
 local F = ns.Format
@@ -16,7 +17,7 @@ function C.Load(text)
   local raid, members = F.ParseRRR(text)
   if not raid then return false, members end
   local d = db()
-  if not d then return false, "Addon pas encore prêt : réessaie dans un instant." end
+  if not d then return false, L["Addon pas encore prêt : réessaie dans un instant."] end
   d.compo = { raid = raid, members = members, at = time() }
   return true
 end
@@ -39,7 +40,9 @@ function C.Clear()
   refresh()
 end
 
-C.STATE = { ok = "bon groupe", move = "à déplacer", missing = "absent du raid", manual = "inscrit Discord : à inviter à la main", bench = "banc", unplaced = "pas placé" }
+-- Clés en français, traduites à l'affichage (onglet Compo : L[C.STATE[état]])
+C.STATE = { ok = N("bon groupe"), move = N("à déplacer"), missing = N("absent du raid"), manual = N("inscrit Discord : à inviter à la main"),
+  bench = N("banc"), unplaced = N("pas placé") }
 
 -- État de chaque perso de la compo : ok (bon groupe ; en groupe hors raid : présent), move (pas le bon groupe),
 -- missing (pas dans le groupe), manual (inscrit Discord : pseudo, à inviter à la main), bench (banc), unplaced (pas placé)
@@ -68,11 +71,11 @@ end
 --------------------------------------------------------------------------------------------------------------------
 C.pending = {}
 function C.Invite()
-  if combat() then ns.print("impossible en combat : réessaie juste après.") return false end
+  if combat() then ns.print(L["impossible en combat : réessaie juste après."]) return false end
   local inGroup = ns.Comm.InGroup()
-  if inGroup and not ns.Comm.IsLead() then ns.print("seul le chef du groupe ou un assistant peut inviter.") return false end
+  if inGroup and not ns.Comm.IsLead() then ns.print(L["seul le chef du groupe ou un assistant peut inviter."]) return false end
   local _, members = C.Get()
-  if #members == 0 then ns.print("aucune compo chargée : sur Roster, page du raid, onglet Compo, « Export pour le jeu », puis colle-la dans l'onglet Synchro.") return false end
+  if #members == 0 then ns.print(L["aucune compo chargée : sur Roster, page du raid, onglet Compo, « Export pour le jeu », puis colle-la dans l'onglet Synchro."]) return false end
   local _, byKey = ns.Comm.Roster()
   local me = F.Key(ns.Comm.Me())
   local manual = {}
@@ -94,8 +97,9 @@ function C.Invite()
   end
   -- Déjà en groupe (2 ou plus) et encore du monde à inviter : passage en raid tout de suite
   if #pending > 0 and not raid and size > 1 and ns.Comm.IsLeader() then toRaid() end
-  ns.print(F.plural(sent, "invitation envoyée", "invitations envoyées") .. (#pending > 0 and (", " .. #pending .. " en attente du passage en raid") or "") .. ".")
-  if #manual > 0 then ns.print("à inviter à la main (inscrits Discord, le pseudo n'est pas forcément le nom en jeu) : " .. table.concat(manual, ", ")) end
+  ns.print((F.Many(sent) and L("%d invitations envoyées", sent) or L("%d invitation envoyée", sent))
+    .. (#pending > 0 and L(", %d en attente du passage en raid", #pending) or "") .. ".")
+  if #manual > 0 then ns.print(L("à inviter à la main (inscrits Discord, le pseudo n'est pas forcément le nom en jeu) : %s", table.concat(manual, ", "))) end
   return true
 end
 
@@ -108,10 +112,10 @@ local function inviteRest()
   end
   local n = 0
   while #C.pending > 0 do if invite(table.remove(C.pending, 1)) then n = n + 1 end end
-  ns.print("raid formé : " .. F.plural(n, "invitation", "invitations") .. " de plus.")
+  ns.print(F.Many(n) and L("raid formé : %d invitations de plus.", n) or L("raid formé : %d invitation de plus.", n))
 end
-ns.on("GROUP_ROSTER_UPDATE", function() ns.safe("invitations", inviteRest) end)
-ns.on("PLAYER_REGEN_ENABLED", function() ns.safe("invitations", inviteRest) end)
+ns.on("GROUP_ROSTER_UPDATE", function() ns.safe(L["invitations"], inviteRest) end)
+ns.on("PLAYER_REGEN_ENABLED", function() ns.safe(L["invitations"], inviteRest) end)
 
 --------------------------------------------------------------------------------------------------------------------
 -- Placement : un déplacement à la fois (le jeu met à jour le raid après coup), au rythme de GROUP_ROSTER_UPDATE
@@ -155,18 +159,18 @@ local function watch()
   stepId = stepId + 1
   local id = stepId
   if C_Timer and C_Timer.After then
-    C_Timer.After(4, function() if C.arranging and stepId == id then stop("placement interrompu : le jeu n'a pas répondu.") end end)
+    C_Timer.After(4, function() if C.arranging and stepId == id then stop(L["placement interrompu : le jeu n'a pas répondu."]) end end)
   end
 end
 
 function C.Arrange()
-  if not ns.Comm.InRaid() then ns.print("il faut être en raid pour placer les groupes.") return false end
-  if not ns.Comm.IsLead() then ns.print("il faut être chef du raid ou assistant pour placer les groupes.") return false end
-  if combat() then ns.print("impossible en combat : réessaie juste après.") return false end
+  if not ns.Comm.InRaid() then ns.print(L["il faut être en raid pour placer les groupes."]) return false end
+  if not ns.Comm.IsLead() then ns.print(L["il faut être chef du raid ou assistant pour placer les groupes."]) return false end
+  if combat() then ns.print(L["impossible en combat : réessaie juste après."]) return false end
   local raid = C.Get()
-  if not raid then ns.print("aucune compo chargée.") return false end
+  if not raid then ns.print(L["aucune compo chargée."]) return false end
   C.arranging, steps = true, 0
-  if step() then watch() else stop("les groupes sont déjà bons.") end
+  if step() then watch() else stop(L["les groupes sont déjà bons."]) end
   return true
 end
 
@@ -174,18 +178,18 @@ local scheduled = false
 ns.on("GROUP_ROSTER_UPDATE", function()
   if not C.arranging or scheduled then return end
   steps = steps + 1
-  if combat() then stop("placement interrompu : combat.") return end
-  if steps > 80 then stop("placement interrompu : trop de déplacements.") return end
+  if combat() then stop(L["placement interrompu : combat."]) return end
+  if steps > 80 then stop(L["placement interrompu : trop de déplacements."]) return end
   -- Petit délai : laisse le jeu terminer le déplacement précédent (plusieurs mises à jour pour un seul déplacement)
   local function go()
     scheduled = false
     if not C.arranging then return end
-    if combat() then stop("placement interrompu : combat.") return end
-    if step() then watch() else stop("groupes placés.") end
+    if combat() then stop(L["placement interrompu : combat."]) return end
+    if step() then watch() else stop(L["groupes placés."]) end
   end
   if C_Timer and C_Timer.After then
     scheduled = true
-    C_Timer.After(0.2, function() ns.safe("placement", go) end)
+    C_Timer.After(0.2, function() ns.safe(L["placement"], go) end)
   else go() end
 end)
 

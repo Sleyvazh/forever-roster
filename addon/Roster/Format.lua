@@ -7,6 +7,11 @@ local _, ns = ...
 ns = ns or {}
 local F = {}
 ns.Format = F
+-- Textes de l'interface (addon/shared/Locale.lua) ; testé hors jeu sans Locale.lua : textes en français
+local L = ns.L or setmetatable({}, { __index = function(_, k) return k end,
+  __call = function(_, k, ...) if select("#", ...) == 0 then return k end return string.format(k, ...) end })
+local N = ns.N or function(k) return k end
+local function lang() return ns.Lang and ns.Lang() or "fr" end
 
 -- Valeur secrète du jeu (12.x) : ni comparaison, ni clé de table, ni calcul
 local function secret(v) return issecretvalue ~= nil and issecretvalue(v) == true end
@@ -52,7 +57,13 @@ function F.cut(s, n)
 end
 
 local function plural(n, word, words) return n .. " " .. (n > 1 and (words or (word .. "s")) or word) end
-F.plural = plural
+F.plural = plural -- texte en français (aussi pour les données du site : « 3 votes »)
+-- Texte affiché au pluriel ? En français à partir de 2 (« 0 objet », « 2 objets ») ; en anglais sauf pour 1 (« 0 items »)
+function F.Many(n)
+  n = tonumber(n) or 0
+  if lang() == "fr" then return n > 1 end
+  return n ~= 1
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Noms « Prénom-Royaume »
@@ -102,8 +113,8 @@ function F.Split(full)
 end
 
 -- Accents (UTF-8 sur deux octets) ramenés à la lettre de base, pour comparer « Brumelune » et « Brümelune »
-local FOLD = { ["æ"] = "ae", ["Æ"] = "ae", ["œ"] = "oe", ["Œ"] = "oe", ["ß"] = "ss", ["ð"] = "d", ["Ð"] = "d", ["þ"] = "th", ["Þ"] = "th" }
-for base, chars in pairs({ a = "àáâãäåÀÁÂÃÄÅ", c = "çÇ", e = "èéêëÈÉÊË", i = "ìíîïÌÍÎÏ", n = "ñÑ", o = "òóôõöøÒÓÔÕÖØ", u = "ùúûüÙÚÛÜ", y = "ýÿÝ" }) do
+local FOLD = { ["æ"] = "ae", ["Æ"] = "ae", ["œ"] = "oe", ["Œ"] = "oe", ["ß"] = "ss", ["ð"] = "d", ["Ð"] = "d", ["þ"] = "th", ["Þ"] = "th" } -- nolocale
+for base, chars in pairs({ a = "àáâãäåÀÁÂÃÄÅ", c = "çÇ", e = "èéêëÈÉÊË", i = "ìíîïÌÍÎÏ", n = "ñÑ", o = "òóôõöøÒÓÔÕÖØ", u = "ùúûüÙÚÛÜ", y = "ýÿÝ" }) do -- nolocale
   for ch in chars:gmatch("[\192-\223][\128-\191]") do FOLD[ch] = base end
 end
 function F.Fold(s)
@@ -146,9 +157,10 @@ function F.IsForever(text)
   return k ~= nil and k:sub(1, 2) == "FR"
 end
 
-F.INCOMPLETE = "Texte incomplet : recopie tout, jusqu'à la dernière ligne END."
-F.FOREVER = "Ce texte vient de Forever Roster (WoW Forever) : colle-le dans l'addon Forever Roster."
-local function newer(v) return "Version non gérée (" .. txt(v, 8) .. ") : mets l'addon à jour." end
+-- Messages d'erreur : clés en français, traduites quand elles sont renvoyées (L[F.INCOMPLETE])
+F.INCOMPLETE = N("Texte incomplet : recopie tout, jusqu'à la dernière ligne END.")
+F.FOREVER = N("Ce texte vient de Forever Roster (WoW Forever) : colle-le dans l'addon Forever Roster.")
+local function newer(v) return L("Version non gérée (%s) : mets l'addon à jour.", txt(v, 8)) end
 local DIFFICULTIES = { normal = true, heroic = true, mythic = true }
 local function difficulty(s) s = txt(s, 10):lower() return DIFFICULTIES[s] and s or "" end
 local function opt(s, max) s = txt(s, max) return s ~= "" and s or nil end
@@ -241,7 +253,7 @@ function F.ParseRRG(text)
   for line in tostring(text or ""):gmatch("[^\r\n]+") do
     local f = split(trim(line))
     if f[1] == "RRG" then
-      if not close() then return nil, F.INCOMPLETE end
+      if not close() then return nil, L[F.INCOMPLETE] end
       if tonumber(f[2]) ~= 1 then return nil, newer(f[2]) end
       cur, count, n, detail = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {} }, nil, 0, nil
     elseif cur and f[1] == "R" and count == nil then
@@ -268,8 +280,8 @@ function F.ParseRRG(text)
       count = tonumber(f[2])
     end
   end
-  if not cur then return nil, "Ce ne sont pas les données du site : sur Roster, « Copier pour le jeu » (barre du haut), puis colle ici." end
-  if not close() then return nil, F.INCOMPLETE end
+  if not cur then return nil, L["Ce ne sont pas les données du site : sur Roster, « Copier pour le jeu » (barre du haut), puis colle ici."] end
+  if not close() then return nil, L[F.INCOMPLETE] end
   return groups
 end
 
@@ -285,14 +297,14 @@ function F.ParseRRR(text)
       local source = txt(f[9], 10)
       members[#members + 1] = {
         name = txt(f[2], 60), class = txt(f[3], 16):upper(), role = txt(f[4], 8), spec = txt(f[5], 30),
-        group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = txt(f[8], 12), source = source ~= "" and source or "site",
+        group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = txt(f[8], 12), source = source ~= "" and source or "site", -- nolocale
       }
     elseif raid and f[1] == "END" then
       count = tonumber(f[2])
     end
   end
-  if not raid then return nil, "Ce n'est pas un export de compo : sur Roster, page du raid, onglet Compo, « Export pour le jeu »." end
-  if count ~= #members then return nil, "Export incomplet : recopie tout le texte, jusqu'à la ligne END." end
+  if not raid then return nil, L["Ce n'est pas un export de compo : sur Roster, page du raid, onglet Compo, « Export pour le jeu »."] end
+  if count ~= #members then return nil, L["Export incomplet : recopie tout le texte, jusqu'à la ligne END."] end
   return raid, members
 end
 
@@ -433,12 +445,31 @@ function F.TradeTimeParser(fmt)
   end
 end
 
--- « 1 h 58 min », « 45 min », « moins d'une minute »
+-- « 1 h 58 min », « 45 min », « moins d'une minute » (h et min : les mêmes en anglais)
 function F.Duration(sec)
   sec = math.max(0, math.floor(tonumber(sec) or 0))
   if sec >= 3600 then return string.format("%d h %02d min", math.floor(sec / 3600), math.floor(sec % 3600 / 60)) end
   if sec >= 60 then return math.floor(sec / 60) .. " min" end
-  return "moins d'une minute"
+  return L["moins d'une minute"]
+end
+
+-- Dates affichées : « 08/10 à 21:00 », « mercredi 08/10 à 21:00 » ; en anglais « Oct 8, 21:00 », « Wed Oct 8, 21:00 »
+local DAYS = { N("dimanche"), N("lundi"), N("mardi"), N("mercredi"), N("jeudi"), N("vendredi"), N("samedi") }
+local MONTHS = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+local function osDate(fmt, t) return (date or os.date)(fmt, t) end
+function F.Stamp(t)
+  t = tonumber(t) or 0
+  local day
+  if lang() == "fr" then day = osDate("%d/%m", t)
+  else
+    local d = osDate("*t", t)
+    day = MONTHS[d.month] .. " " .. d.day
+  end
+  return L("%s à %s", day, osDate("%H:%M", t))
+end
+function F.When(t)
+  if not t or t == 0 then return L["date à définir"] end
+  return L[DAYS[osDate("*t", t).wday]] .. " " .. F.Stamp(t)
 end
 
 -- Lien d'objet → chaîne de l'objet sans couleurs (« item:242394::::::::90:::::… », bonus compris), identifiant, nom

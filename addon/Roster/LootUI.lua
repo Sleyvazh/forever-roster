@@ -3,6 +3,7 @@
 -- d'objets en haut pour passer d'un objet à l'autre. Le moteur est dans Loot.lua ; boîte à outils : addon/shared/Kit.lua
 -- (deux habillages, tailles mémorisées). Les attributions partent toujours d'un clic (annonce et chuchotement).
 local _, ns = ...
+local L, N = ns.L, ns.N -- langue de l'interface (addon/shared/Locale.lua), traduit à l'affichage
 local U = {}
 ns.LootUI = U
 local K, F = ns.Kit, ns.Format
@@ -18,6 +19,18 @@ local RESP_INITIAL = { bis = "B", upgrade = "U", off = "O", transmo = "T", pass 
 U.state = {} -- ce que chaque fenêtre affiche (tests hors jeu)
 
 local function Lo() return ns.Loot end
+-- Pluriel : en français 0 et 1 au singulier, en anglais 1 seulement (one et many : textes N("%d …"))
+local function plural(n, one, many)
+  local single = (ns.Lang() == "fr") and n <= 1 or n == 1
+  return L(single and one or many, n)
+end
+-- Libellé d'une réponse au conseil (BiS, Upgrade, Off-spec, Transmo, Passer) dans la langue de l'interface
+local function label(response)
+  local Lx = Lo()
+  if Lx.Label then return Lx.Label(response) end
+  local v = Lx.RESPONSES and Lx.RESPONSES[response or ""]
+  return v and L[v] or nil
+end
 local function name(full) return F.Display(full) end
 local function who(full)
   local m = Lo().Member(full)
@@ -28,17 +41,17 @@ local function short(full)
   local m = Lo().Member(full)
   return K.colored(m and m.class, (F.Split(full)) or name(full))
 end
-local function ilvl(e) return e.ilvl and (GREY .. "  niv. " .. e.ilvl .. "|r") or "" end
+local function ilvl(e) return e.ilvl and (GREY .. "  " .. L("niv. %s", e.ilvl) .. "|r") or "" end
 local function count(v) if type(v) == "table" then return #v end return tonumber(v) or 0 end
 -- Temps restant pour l'échange : orange sous 30 min
 local function timeLeft(e)
-  if not e.expires then return GREY .. "durée d'échange inconnue|r", nil end
+  if not e.expires then return GREY .. L["durée d'échange inconnue"] .. "|r", nil end
   local s = e.expires - time()
-  if s <= 0 then return RED .. "délai d'échange passé|r", s end
-  return (s < 1800 and ORANGE or GREY) .. F.Duration(s) .. " pour l'échanger|r", s
+  if s <= 0 then return RED .. L["délai d'échange passé"] .. "|r", s end
+  return (s < 1800 and ORANGE or GREY) .. L("%s pour l'échanger", F.Duration(s)) .. "|r", s
 end
 local function refreshMain() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end end
-local function after(fn) return function() ns.safe("butin", fn) U.Refresh() refreshMain() end end
+local function after(fn) return function() ns.safe(L["butin"], fn) U.Refresh() refreshMain() end end
 -- Hauteur d'un texte (bornée : la fenêtre se cale dessus)
 local function height(fs, min, max)
   local h = fs.GetStringHeight and fs:GetStringHeight()
@@ -197,12 +210,11 @@ end
 -- Butin du chef de butin
 --------------------------------------------------------------------------------------------------------------------
 local lootWin
-local KIND = { msos = "MS / OS", free = "jet libre" }
-local ROLL_KIND = { ms = "MS", os = "OS", free = "libre" }
+local ROLL_KIND = { ms = "MS", os = "OS" } -- jet libre : L["libre"]
 
 function U.ShowLoot()
   if not ns.db() then return end
-  if not lootWin then lootWin = listWindow("RosterLoot", "Butin · chef de butin", 600, 500, "loot") end
+  if not lootWin then lootWin = listWindow("RosterLoot", L["Butin · chef de butin"], 600, 500, "loot") end
   K.front(lootWin)
   lootWin:Show()
   U.RefreshLoot()
@@ -229,47 +241,50 @@ function U.AllToCouncil()
   return #sessions, sessions
 end
 
-local function rollLines(L, e, st)
+local function rollLines(li, e, st)
   local r = Lo().Rolls(e.key)
   if not r then return end
   st.rolls = r
   for i, rows in ipairs(r.previous or {}) do
     local parts = {}
     for _, x in ipairs(rows) do parts[#parts + 1] = name(x.name) .. " " .. x.roll end
-    L.Add(GREY .. (i == 1 and "1er tour" or (i .. "e tour")) .. " : " .. table.concat(parts, ", ") .. "|r")
+    local list = table.concat(parts, ", ")
+    li.Add(GREY .. (i == 1 and L("1er tour : %s", list) or L("%de tour : %s", i, list)) .. "|r")
   end
-  if r.hidden then L.Add(ORANGE .. "Le jeu cache les messages du chat en ce moment : jets illisibles. Relance après le combat.|r") end
-  if #r.rows == 0 then L.Add(GREY .. (r.open and "En attente des jets..." or "Aucun jet.") .. "|r") end
+  if r.hidden then li.Add(ORANGE .. L["Le jeu cache les messages du chat en ce moment : jets illisibles. Relance après le combat."] .. "|r") end
+  if #r.rows == 0 then li.Add(GREY .. (r.open and L["En attente des jets..."] or L["Aucun jet."]) .. "|r") end
   for i, x in ipairs(r.rows) do
     local win = not r.tie and i == 1
-    L.Add((win and (STAR .. GOLD) or "") .. name(x.name) .. "|r  " .. x.roll .. GREY .. "  (" .. (ROLL_KIND[x.kind] or x.kind) .. ")|r"
-      .. ((r.tie and x.kind == r.best.kind and x.roll == r.best.roll) and (ORANGE .. "  ex æquo|r") or ""))
+    local kind = x.kind == "free" and L["libre"] or ROLL_KIND[x.kind] or x.kind
+    li.Add((win and (STAR .. GOLD) or "") .. name(x.name) .. "|r  " .. x.roll .. GREY .. "  (" .. kind .. ")|r"
+      .. ((r.tie and x.kind == r.best.kind and x.roll == r.best.roll) and (ORANGE .. "  " .. L["ex æquo"] .. "|r") or ""))
   end
   local buttons = {}
   if r.best and not r.tie then
-    buttons[#buttons + 1] = { "Donner à " .. name(r.winners[1]), 190, after(function() Lo().AwardRoll(e.key) end) }
+    buttons[#buttons + 1] = { L("Donner à %s", name(r.winners[1])), 190, after(function() Lo().AwardRoll(e.key) end) }
   end
   if r.tie then
     local tied = {}
     for _, n in ipairs(r.winners) do tied[#tied + 1] = name(n) end
-    buttons[#buttons + 1] = { "Relancer : " .. table.concat(tied, ", "), 250, after(function() Lo().Reroll(e.key) end) }
+    buttons[#buttons + 1] = { L("Relancer : %s", table.concat(tied, ", ")), 250, after(function() Lo().Reroll(e.key) end) }
   end
-  buttons[#buttons + 1] = { "Annuler", 90, after(function() Lo().Cancel(e.key) end) }
-  L.Add(GREY .. (r.kind == "free" and "/roll 100 pour tous" or "MS : /roll 100, OS : /roll 99 ; la spé principale passe d'abord")
-    .. ". Seul le premier jet compte ; égalité : seuls les ex æquo relancent.|r", buttons)
+  buttons[#buttons + 1] = { L["Annuler"], 90, after(function() Lo().Cancel(e.key) end) }
+  li.Add(GREY .. (r.kind == "free" and L["/roll 100 pour tous. Seul le premier jet compte ; égalité : seuls les ex æquo relancent."]
+    or L["MS : /roll 100, OS : /roll 99 ; la spé principale passe d'abord. Seul le premier jet compte ; égalité : seuls les ex æquo relancent."]) .. "|r", buttons)
 end
 
 function U.RefreshLoot()
   if not lootWin or not lootWin:IsShown() then return end
-  local Lx, L = Lo(), lootWin.list
+  local Lx, li = Lo(), lootWin.list
   local st = { items = 0, handover = 0, notPassed = 0, fresh = 0, master = Lx.IsMaster() }
   U.state.loot = st
   local master = Lx.Master()
   local held = ns.Comm.Held()
-  lootWin.hintText:SetText((Lx.test and (ORANGE .. "Raid d'essai · |r") or "") .. "Chef de butin : " .. (master and who(master) or "?")
-    .. (st.master and (GREEN .. " (toi)|r") or "") .. GREY .. "  · distribution par Roster " .. (Lx.Enabled() and "activée" or "coupée")
-    .. (held > 0 and ("  · " .. F.plural(held, "message") .. " en attente de la fin du combat") or "") .. "|r")
-  L.Reset()
+  lootWin.hintText:SetText((Lx.test and (ORANGE .. L["Raid d'essai"] .. " · |r") or "") .. L("Chef de butin : %s", master and who(master) or "?")
+    .. (st.master and (GREEN .. " " .. L["(toi)"] .. "|r") or "") .. GREY .. "  · "
+    .. (Lx.Enabled() and L["distribution par Roster activée"] or L["distribution par Roster coupée"])
+    .. (held > 0 and ("  · " .. plural(held, N("%d message en attente de la fin du combat"), N("%d messages en attente de la fin du combat"))) or "") .. "|r")
+  li.Reset()
   local todo, hand, done = {}, {}, {}
   for _, e in ipairs(Lx.Items()) do
     if e.status == "awarded" then hand[#hand + 1] = e
@@ -279,70 +294,73 @@ function U.RefreshLoot()
       if e.status == "new" then st.fresh = st.fresh + 1 end
     end
   end
-  L.Header("À distribuer · " .. #todo)
-  if not st.master then L.Add(GREY .. "Tu n'es pas chef de butin : " .. (master and name(master) or "le chef de raid") .. " distribue le butin.|r") end
+  li.Header(L("À distribuer · %d", #todo))
+  if not st.master then li.Add(GREY .. L("Tu n'es pas chef de butin : %s distribue le butin.", master and name(master) or L["le chef de raid"]) .. "|r") end
   if #todo == 0 then
-    L.Add(GREY .. (Lx.test and "Aucun objet. Raid d'essai : ajoute un objet depuis le panneau d'essai."
-      or "Aucun objet. Distribution activée, les objets que tu reçois au butin de groupe arrivent ici.") .. "|r")
+    li.Add(GREY .. (Lx.test and L["Aucun objet. Raid d'essai : ajoute un objet depuis le panneau d'essai."]
+      or L["Aucun objet. Distribution activée, les objets que tu reçois au butin de groupe arrivent ici."]) .. "|r")
   end
   -- Tout au conseil : une annonce numérotée, chacun répond à chaque objet (bande d'objets)
   if st.master and st.fresh >= 2 then
-    L.Add(GREY .. "Propose d'un coup les " .. st.fresh .. " objets pas encore distribués : une seule annonce, objets numérotés ; "
-      .. "chacun répond à chaque objet.|r", { { "Tout au conseil (" .. st.fresh .. ")", 170, after(function() U.AllToCouncil() end) } })
+    li.Add(GREY .. L("Propose d'un coup les %d objets pas encore distribués : une seule annonce, objets numérotés ; chacun répond à chaque objet.", st.fresh)
+      .. "|r", { { L("Tout au conseil (%d)", st.fresh), 170, after(function() U.AllToCouncil() end) } })
   end
   for _, e in ipairs(todo) do
     st.items = st.items + 1
     local status = ""
     if e.status == "council" then
       local c = e.session and Lx.Council(e.session)
-      status = GREEN .. "  · conseil " .. ((c and c.num) and (c.num .. " ") or "") .. "en cours"
-        .. (c and (" (" .. F.plural(#c.cands, "réponse") .. ")") or "") .. "|r"
+      status = GREEN .. "  · " .. ((c and c.num) and L("conseil %d en cours", c.num) or L["conseil en cours"])
+        .. (c and (" (" .. plural(#c.cands, N("%d réponse"), N("%d réponses")) .. ")") or "") .. "|r"
     elseif e.status == "roll" then
       local r = Lx.Rolls(e.key)
-      status = GREEN .. "  · jets " .. (r and KIND[r.kind] or "") .. " en cours|r"
+      local kind = r and r.kind
+      status = GREEN .. "  · " .. (kind == "free" and L["jets jet libre en cours"] or kind == "msos" and L["jets MS / OS en cours"]
+        or L("jets %s en cours", "")) .. "|r"
     end
     local text = e.link .. ilvl(e) .. status .. "\n" .. (timeLeft(e))
     local buttons = {}
     if st.master then
       if e.status == "council" then
-        buttons = { { "Fenêtre du conseil", 160, function() U.ShowCouncil(e.session) end }, { "Annuler", 90, after(function() Lx.Cancel(e.key) end) } }
+        buttons = { { L["Fenêtre du conseil"], 160, function() U.ShowCouncil(e.session) end }, { L["Annuler"], 90, after(function() Lx.Cancel(e.key) end) } }
       elseif e.status ~= "roll" then
         buttons = {
-          { "Conseil", 84, after(function() Lx.StartCouncil(e.key) end) },
-          { "Jets MS / OS", 112, after(function() Lx.StartRoll(e.key, "msos") end) },
-          { "Jet libre", 84, after(function() Lx.StartRoll(e.key, "free") end) },
-          { "Garder", 78, after(function() Lx.Keep(e.key) end) },
-          { "Retirer", 78, after(function() Lx.Remove(e.key) end) },
+          { L["Conseil"], 84, after(function() Lx.StartCouncil(e.key) end) },
+          { L["Jets MS / OS"], 112, after(function() Lx.StartRoll(e.key, "msos") end) },
+          { L["Jet libre"], 84, after(function() Lx.StartRoll(e.key, "free") end) },
+          { L["Garder"], 78, after(function() Lx.Keep(e.key) end) },
+          { L["Retirer"], 78, after(function() Lx.Remove(e.key) end) },
         }
       end
     end
-    L.Add(text, buttons)
-    if e.status == "roll" then rollLines(L, e, st) end
+    li.Add(text, buttons)
+    if e.status == "roll" then rollLines(li, e, st) end
   end
-  L.Header("Objets à remettre · " .. #hand)
+  li.Header(L("Objets à remettre · %d", #hand))
   st.handover = #hand
-  if #hand == 0 then L.Add(GREY .. "Aucun. Chaque objet attribué arrive ici jusqu'à l'échange.|r") end
+  if #hand == 0 then li.Add(GREY .. L["Aucun. Chaque objet attribué arrive ici jusqu'à l'échange."] .. "|r") end
   for _, e in ipairs(hand) do
-    L.Add(e.link .. GREY .. " pour |r" .. who(e.winner) .. "  " .. (timeLeft(e)),
-      { { "Échanger", 100, after(function() Lx.Trade(e.key) end) }, { "Remis", 80, after(function() Lx.MarkTraded(e.key) end) } })
+    li.Add(e.link .. GREY .. " " .. L["pour"] .. " |r" .. who(e.winner) .. "  " .. (timeLeft(e)),
+      { { L["Échanger"], 100, after(function() Lx.Trade(e.key) end) }, { L["Remis"], 80, after(function() Lx.MarkTraded(e.key) end) } })
   end
   local np = Lx.NotPassed()
   if #np > 0 then
-    L.Header("N'ont pas passé · " .. #np)
+    li.Header(L("N'ont pas passé · %d", #np))
     st.notPassed = #np
     for _, n in ipairs(np) do
-      L.Add(who(n.name) .. GREY .. " a gagné |r" .. n.link .. GREY .. " au butin de groupe" .. (n.whispered and (" · chuchoté à " .. date("%H:%M", n.whispered)) or "") .. "|r",
-        (st.master and not n.whispered) and { { "Chuchoter", 110, after(function() Lx.WhisperNotPassed(n.name) end) } } or nil)
+      li.Add(who(n.name) .. GREY .. " " .. L["a gagné"] .. " |r" .. n.link .. GREY .. " " .. L["au butin de groupe"]
+        .. (n.whispered and (" · " .. L("chuchoté à %s", date("%H:%M", n.whispered))) or "") .. "|r",
+        (st.master and not n.whispered) and { { L["Chuchoter"], 110, after(function() Lx.WhisperNotPassed(n.name) end) } } or nil)
     end
-    L.Add(GREY .. "Sans l'addon (ou passer automatique coupé), ils ont gardé leur chance au butin de groupe : demande-leur de garder l'objet pour l'échange.|r")
+    li.Add(GREY .. L["Sans l'addon (ou passer automatique coupé), ils ont gardé leur chance au butin de groupe : demande-leur de garder l'objet pour l'échange."] .. "|r")
   end
   if #done > 0 then
-    L.Header("Gardés et remis · " .. #done)
+    li.Header(L("Gardés et remis · %d", #done))
     for _, e in ipairs(done) do
-      L.Add(GREY .. (e.status == "kept" and "Gardé : " or "Remis à " .. name(e.winner) .. " : ") .. "|r" .. e.link)
+      li.Add(GREY .. (e.status == "kept" and L["Gardé :"] or L("Remis à %s :", name(e.winner))) .. " |r" .. e.link)
     end
   end
-  L.Done()
+  li.Done()
 end
 
 --------------------------------------------------------------------------------------------------------------------
@@ -350,15 +368,18 @@ end
 -- votes) ; « Donner » pour le chef de butin, puis le conseil ouvert suivant
 --------------------------------------------------------------------------------------------------------------------
 local councilWin, councilSession, byReceived
-local COUNCIL_COLS = {
-  { title = "Joueur", w = 150, lines = 2 },
-  { title = "Réponse", w = 80 },
-  { title = "Porte", flex = 1.4, min = 150, small = true, lines = 2, tip = true },
-  { title = "Note", flex = 1, min = 100, small = true, lines = 2, tip = true },
-  { title = "Reçus", w = 124, justify = "CENTER", small = true, lines = 2, tip = true },
-  { title = "Votes", flex = 0.8, min = 100, small = true, lines = 2 },
-  { title = "", w = 168, buttons = true },
-}
+-- Colonnes du tableau (titres traduits à la création de la fenêtre)
+local function councilCols()
+  return {
+    { title = L["Joueur"], w = 150, lines = 2 },
+    { title = L["Réponse"], w = 80 },
+    { title = L["Porte"], flex = 1.4, min = 150, small = true, lines = 2, tip = true },
+    { title = L["Note"], flex = 1, min = 100, small = true, lines = 2, tip = true },
+    { title = L["Reçus"], w = 124, justify = "CENTER", small = true, lines = 2, tip = true },
+    { title = L["Votes"], flex = 0.8, min = 100, small = true, lines = 2 },
+    { title = "", w = 168, buttons = true },
+  }
+end
 local RECV_COL = 5
 
 -- Conseils de moins de 2 h, dans l'ordre de proposition ; moteur sans L.Councils : le conseil affiché seulement
@@ -387,7 +408,7 @@ end
 function U.ShowCouncil(session)
   if not ns.db() then return end
   if not councilWin then
-    local w = K.window("RosterLootCouncil", "Conseil du butin", 980, 454)
+    local w = K.window("RosterLootCouncil", L["Conseil du butin"], 980, 454)
     local p = CreateFrame("Frame", nil, w)
     p:SetPoint("TOPLEFT", 14, K.site() and -36 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
     local hx = K.site() and 6 or 52 -- à droite du portrait (habillage du jeu)
@@ -396,7 +417,7 @@ function U.ShowCouncil(session)
     w.hintText = K.hint(p, "")
     w.hintText:ClearAllPoints() w.hintText:SetPoint("TOPLEFT", hx, -36) w.hintText:SetPoint("RIGHT", p, "RIGHT", -10, 0)
     K.itemTips(p) -- objet du conseil, en titre
-    w.grid = K.grid(p, -74, 44, COUNCIL_COLS)
+    w.grid = K.grid(p, -74, 44, councilCols())
     -- En-tête « Reçus » cliquable : tri par objets reçus (le moins servi d'abord), ou retour au tri par réponse et votes
     local sort = CreateFrame("Button", nil, p)
     local head = w.grid.head[RECV_COL]
@@ -405,8 +426,8 @@ function U.ShowCouncil(session)
     sort:SetScript("OnEnter", function(self)
       if not GameTooltip then return end
       GameTooltip:SetOwner(self, "ANCHOR_TOP")
-      GameTooltip:SetText("Objets reçus")
-      GameTooltip:AddLine(byReceived and "Clic : retour au tri par réponse, puis votes." or "Clic : trier par objets reçus, le moins servi d'abord.", 1, 1, 1, true)
+      GameTooltip:SetText(L["Objets reçus"])
+      GameTooltip:AddLine(byReceived and L["Clic : retour au tri par réponse, puis votes."] or L["Clic : trier par objets reçus, le moins servi d'abord."], 1, 1, 1, true)
       GameTooltip:Show()
     end)
     sort:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
@@ -425,7 +446,7 @@ end
 
 -- « Donner » : objet attribué, puis le conseil ouvert suivant
 function U.Give(session, winner)
-  ns.safe("butin", function() Lo().AwardCouncil(session, winner) end)
+  ns.safe(L["butin"], function() Lo().AwardCouncil(session, winner) end)
   local c = Lo().Council(session)
   if c and c.closed then
     local nxt = nextOpenCouncil(session)
@@ -436,10 +457,10 @@ function U.Give(session, winner)
 end
 
 local function gearText(c)
-  if c.whispered then return GREY .. "réponse chuchotée|r" end
-  if #c.gear == 0 then return GREY .. "rien à cet emplacement|r" end
+  if c.whispered then return GREY .. L["réponse chuchotée"] .. "|r" end
+  if #c.gear == 0 then return GREY .. L["rien à cet emplacement"] .. "|r" end
   local out = {}
-  for _, g in ipairs(c.gear) do out[#out + 1] = (g.link or ("objet " .. g.id)) .. (g.ilvl and (GREY .. " " .. g.ilvl .. "|r") or "") end
+  for _, g in ipairs(c.gear) do out[#out + 1] = (g.link or L("objet %d", g.id)) .. (g.ilvl and (GREY .. " " .. g.ilvl .. "|r") or "") end
   return table.concat(out, "\n")
 end
 
@@ -452,7 +473,7 @@ local function recvParts(x, long)
   end
   add(x.receivedBis, "BiS")
   add(x.receivedUp, long and "Upgrade" or "Up")
-  add(x.receivedMs, long and "jet MS" or "MS", long and "jets MS")
+  add(x.receivedMs, long and L["jet MS"] or "MS", long and L["jets MS"])
   return table.concat(parts, " · ")
 end
 local function recvText(x)
@@ -479,13 +500,13 @@ function U.RefreshCouncil()
     local n = x.num or i
     local answers, waiting = count(x.answers), count(x.waiting)
     local text = (waiting == 0 and GREEN or WHITE) .. answers .. "/" .. (answers + waiting) .. "|r"
-    local lines = { "Objet " .. n .. (x.master and (" · chef de butin : " .. name(x.master)) or "") }
+    local lines = { L("Objet %d", n) .. (x.master and (" · " .. L("chef de butin : %s", name(x.master))) or "") }
     if x.closed then
-      text = x.winner and (CHECK .. " " .. short(x.winner)) or (GREY .. "annulé|r")
-      lines[#lines + 1] = x.winner and (GREEN .. "Terminé : " .. name(x.winner) .. " reçoit l'objet.|r") or (GREY .. "Conseil annulé.|r")
+      text = x.winner and (CHECK .. " " .. short(x.winner)) or (GREY .. L["annulé"] .. "|r")
+      lines[#lines + 1] = x.winner and (GREEN .. L("Terminé : %s reçoit l'objet.", name(x.winner)) .. "|r") or (GREY .. L["Conseil annulé."] .. "|r")
     else
-      lines[#lines + 1] = F.plural(answers, "réponse") .. " sur " .. (answers + waiting) .. " joueurs"
-      if x.myVote then lines[#lines + 1] = "Ton vote : " .. name(x.myVote) end
+      lines[#lines + 1] = L("%s sur %d joueurs", plural(answers, N("%d réponse"), N("%d réponses")), answers + waiting)
+      if x.myVote then lines[#lines + 1] = L("Ton vote : %s", name(x.myVote)) end
     end
     local icon = iconOf(x.itemId or F.ItemId(x.link))
     if not icon then text = F.cut(x.name or F.ItemName(x.link) or "?", 14) .. " " .. text end
@@ -496,7 +517,7 @@ function U.RefreshCouncil()
   councilWin.band.Set(entries, councilSession)
   G.Reset()
   if not c then
-    councilWin.hintText:SetText(GREY .. "Pas de conseil en cours.|r")
+    councilWin.hintText:SetText(GREY .. L["Pas de conseil en cours."] .. "|r")
     councilWin.foot:SetText("")
     G.Done()
     return
@@ -506,15 +527,16 @@ function U.RefreshCouncil()
   local isCouncil = Lx.IsCouncil(c.master)
   local nVotes = 0
   for _, x in ipairs(c.cands) do nVotes = nVotes + x.votes end
-  G.SetTitle(RECV_COL, (byReceived and K.ACCENT or "") .. (c.counts and ("Reçus · " .. c.counts.short) or "Reçus ce soir")
-    .. (byReceived and " (tri)|r" or ""))
-  local head = (num and (K.ACCENT .. num .. "|r  ") or "") .. c.link .. (c.ilvl and (GREY .. "  niv. " .. c.ilvl .. "|r") or "")
-    .. GREY .. "  · chef de butin : " .. name(c.master) .. (c.isMaster and " (toi)" or "") .. "|r"
+  -- Titre : « Reçus · saison » (libellé court des données du site), sinon « Reçus ce soir »
+  G.SetTitle(RECV_COL, (byReceived and K.ACCENT or "") .. (c.counts and L("Reçus · %s", c.counts.short) or L["Reçus ce soir"])
+    .. (byReceived and (" " .. L["(tri)"] .. "|r") or ""))
+  local head = (num and (K.ACCENT .. num .. "|r  ") or "") .. c.link .. (c.ilvl and (GREY .. "  " .. L("niv. %s", c.ilvl) .. "|r") or "")
+    .. GREY .. "  · " .. L("chef de butin : %s", name(c.master)) .. (c.isMaster and (" " .. L["(toi)"]) or "") .. "|r"
   if c.closed then
-    head = head .. "\n" .. (c.winner and (GREEN .. "Conseil terminé : " .. name(c.winner) .. " reçoit l'objet.|r") or (GREY .. "Conseil annulé.|r"))
+    head = head .. "\n" .. (c.winner and (GREEN .. L("Conseil terminé : %s reçoit l'objet.", name(c.winner)) .. "|r") or (GREY .. L["Conseil annulé."] .. "|r"))
   else
-    head = head .. "\n" .. GOLD .. F.plural(#c.cands, "réponse") .. "|r" .. GREY .. (#c.waiting > 0 and (", " .. #c.waiting .. " en attente") or "")
-      .. "  · " .. F.plural(nVotes, "vote") .. " (conseil : " .. #c.council .. ")|r"
+    head = head .. "\n" .. GOLD .. plural(#c.cands, N("%d réponse"), N("%d réponses")) .. "|r" .. GREY .. (#c.waiting > 0 and (", " .. L("%d en attente", #c.waiting)) or "")
+      .. "  · " .. plural(nVotes, N("%d vote"), N("%d votes")) .. " " .. L("(conseil : %d)", #c.council) .. "|r"
   end
   councilWin.hintText:SetText(head)
   -- Tri du moteur (réponse, puis votes) ; ou par objets reçus, le moins servi d'abord (ceux qui passent restent en bas)
@@ -539,18 +561,18 @@ function U.RefreshCouncil()
     local buttons = {}
     if not c.closed and x.response ~= "pass" then
       if isCouncil then
-        buttons[#buttons + 1] = { (c.myVote and F.SameName(c.myVote, x.name)) and "Voté" or "Voter", 74, function() Lx.Vote(c.session, x.name) U.Refresh() end }
+        buttons[#buttons + 1] = { (c.myVote and F.SameName(c.myVote, x.name)) and L["Voté"] or L["Voter"], 74, function() Lx.Vote(c.session, x.name) U.Refresh() end }
       end
-      if c.isMaster then buttons[#buttons + 1] = { "Donner", 86, function() U.Give(c.session, x.name) end } end
+      if c.isMaster then buttons[#buttons + 1] = { L["Donner"], 86, function() U.Give(c.session, x.name) end } end
     end
     local resp = x.response
     -- Ne peut pas porter cette armure : réponse grisée et mention sous le nom
     local cant = x.canUse == false
     G.Row({
-      who(x.name) .. (cant and ("\n" .. ORANGE .. "ne peut pas le porter|r") or ""),
-      ((not cant and RESP_COLOR[resp]) or GREY) .. (Lx.RESPONSES[resp] or resp) .. "|r",
+      who(x.name) .. (cant and ("\n" .. ORANGE .. L["ne peut pas le porter"] .. "|r") or ""),
+      ((not cant and RESP_COLOR[resp]) or GREY) .. (label(resp) or resp) .. "|r",
       gearText(x),
-      (x.note ~= "") and ("|cffc9cfdb« " .. x.note .. " »|r") or "",
+      (x.note ~= "") and ("|cffc9cfdb" .. L("« %s »", x.note) .. "|r") or "",
       recvText(x),
       #voters > 0 and (WHITE .. x.votes .. "|r " .. GREY .. table.concat(voters, ", ") .. "|r") or (GREY .. "0|r"),
     }, {
@@ -560,22 +582,25 @@ function U.RefreshCouncil()
         GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
         if col == 3 and x.gear[1] and not x.whispered then
           GameTooltip:SetHyperlink("item:" .. x.gear[1].id)
-          for k = 2, #x.gear do GameTooltip:AddLine("et " .. (x.gear[k].link or ("objet " .. x.gear[k].id))) end
+          for k = 2, #x.gear do GameTooltip:AddLine(L("et %s", x.gear[k].link or L("objet %d", x.gear[k].id))) end
         elseif col == 4 and x.note ~= "" then
           GameTooltip:SetText(name(x.name)) GameTooltip:AddLine(x.note, 1, 1, 1, true)
         elseif col == RECV_COL then
           local total = tonumber(x.received) or 0
           local d = recvParts(x, true)
-          GameTooltip:SetText(name(x.name) .. " : objets reçus")
-          GameTooltip:AddLine(F.plural(total, "objet") .. " au total" .. (d ~= "" and (" : " .. d) or ""), 1, 1, 1, true)
+          GameTooltip:SetText(L("%s : objets reçus", name(x.name)))
+          local all = plural(total, N("%d objet"), N("%d objets"))
+          GameTooltip:AddLine(d ~= "" and L("%s au total : %s", all, d) or L("%s au total", all), 1, 1, 1, true)
           if x.receivedBis ~= nil then
             local rest = total - (tonumber(x.receivedBis) or 0) - (tonumber(x.receivedUp) or 0) - (tonumber(x.receivedMs) or 0)
-            if rest > 0 then GameTooltip:AddLine("dont " .. rest .. " autre" .. (rest > 1 and "s" or "") .. " (donné directement, noté sans catégorie)", 1, 1, 1, true) end
+            if rest > 0 then
+              GameTooltip:AddLine(plural(rest, N("dont %d autre (donné directement, noté sans catégorie)"), N("dont %d autres (donné directement, noté sans catégorie)")), 1, 1, 1, true)
+            end
           end
-          if c.counts then GameTooltip:AddLine((x.receivedSite or 0) .. " sur le site, " .. c.counts.label, 1, 1, 1, true)
-          else GameTooltip:AddLine("Données du site non chargées : colle-les dans l'onglet Synchro.", 1, 1, 1, true) end
-          GameTooltip:AddLine((x.receivedTonight or 0) .. " ce soir (pas encore sur le site)", 1, 1, 1, true)
-          GameTooltip:AddLine("Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés.", 0.6, 0.64, 0.71, true)
+          if c.counts then GameTooltip:AddLine(L("%s sur le site, %s", tostring(x.receivedSite or 0), c.counts.label), 1, 1, 1, true)
+          else GameTooltip:AddLine(L["Données du site non chargées : colle-les dans l'onglet Synchro."], 1, 1, 1, true) end
+          GameTooltip:AddLine(L("%s ce soir (pas encore sur le site)", tostring(x.receivedTonight or 0)), 1, 1, 1, true)
+          GameTooltip:AddLine(L["Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés."], 0.6, 0.64, 0.71, true)
         else
           return
         end
@@ -583,14 +608,14 @@ function U.RefreshCouncil()
       end,
     })
   end
-  if #c.cands == 0 then G.Row({ GREY .. "En attente...|r", "", GREY .. "Les réponses arrivent ici au fil de l'eau.|r" }) end
+  if #c.cands == 0 then G.Row({ GREY .. L["En attente..."] .. "|r", "", GREY .. L["Les réponses arrivent ici au fil de l'eau."] .. "|r" }) end
   G.Done()
   local waiting = {}
   for i = 1, math.min(#c.waiting, 12) do waiting[i] = name(c.waiting[i]) end
-  councilWin.foot:SetText((#c.waiting > 0 and (GREY .. "Pas encore répondu : |r" .. table.concat(waiting, ", ") .. (#c.waiting > 12 and (" +" .. (#c.waiting - 12)) or ""))
-    or (GREY .. "Tout le monde a répondu.|r")) .. "\n" .. GREY .. "Bande du haut : un objet par conseil. Survol : objet porté, note, détail des reçus ; "
-    .. "clic sur « Reçus » : trier. Votes visibles du conseil seulement."
-    .. (c.isMaster and " « Donner » attribue l'objet (annonce au raid et au gagnant), puis passe au conseil suivant." or "") .. "|r")
+  councilWin.foot:SetText((#c.waiting > 0 and (GREY .. L["Pas encore répondu :"] .. " |r" .. table.concat(waiting, ", ") .. (#c.waiting > 12 and (" +" .. (#c.waiting - 12)) or ""))
+    or (GREY .. L["Tout le monde a répondu."] .. "|r")) .. "\n" .. GREY
+    .. L["Bande du haut : un objet par conseil. Survol : objet porté, note, détail des reçus ; clic sur « Reçus » : trier. Votes visibles du conseil seulement."]
+    .. (c.isMaster and (" " .. L["« Donner » attribue l'objet (annonce au raid et au gagnant), puis passe au conseil suivant."]) or "") .. "|r")
   -- Hauteur selon le nombre de réponses, tant que la fenêtre n'a pas été redimensionnée à la main
   local d = ns.db()
   if not (d and d.sizes and d.sizes.council) then councilWin:SetHeight(math.max(330, math.min(680, 194 + 30 * math.max(#c.cands, 3)))) end
@@ -646,7 +671,7 @@ local function selectOffer(session)
 end
 
 local function buildOffer()
-  local w = K.window("RosterLootOffer", "Butin · ta réponse", OFFER_W, 300)
+  local w = K.window("RosterLootOffer", L["Butin · ta réponse"], OFFER_W, 300)
   w:ClearAllPoints() w:SetPoint("TOP", 0, -140)
   K.itemTips(w) -- objet proposé et objets portés
   local x = K.gapX()
@@ -658,19 +683,19 @@ local function buildOffer()
   w.warn = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   w.warn:SetWidth(OFFER_W - x - 18) w.warn:SetJustifyH("LEFT")
   w.noteLabel = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  w.noteLabel:SetText(GREY .. "Note pour le conseil (facultatif) :|r")
+  w.noteLabel:SetText(GREY .. L["Note pour le conseil (facultatif) :"] .. "|r")
   w.note = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
   w.note:SetSize(OFFER_W - x - 30, 22) w.note:SetAutoFocus(false) w.note:SetMaxLetters(60)
   w.note:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
   w.buttons = {}
   for _, key in ipairs(Lo().ORDER) do
-    local b = K.button(w, Lo().RESPONSES[key], 86, nil)
-    b:SetScript("OnClick", function() ns.safe("réponse au conseil", U.Answer, key) end)
+    local b = K.button(w, label(key), 86, nil)
+    b:SetScript("OnClick", function() ns.safe(L["réponse au conseil"], U.Answer, key) end)
     w.buttons[key] = b
   end
   w.done = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   w.done:SetWidth(OFFER_W - x - 124) w.done:SetJustifyH("LEFT")
-  w.close = K.button(w, "Fermer", 90, function() w:Hide() end)
+  w.close = K.button(w, L["Fermer"], 90, function() w:Hide() end)
   w.foot = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   w.foot:SetWidth(OFFER_W - x - 18) w.foot:SetJustifyH("LEFT")
   return w
@@ -714,7 +739,7 @@ function U.Answer(key)
   local note = offerWin.note:GetText() or ""
   local ok, err = Lo().Answer(o.session, key, note)
   if ok == false then
-    offerErr = err or "Réponse refusée."
+    offerErr = err or L["Réponse refusée."]
   else
     offerErr = nil
     notes[o.session], drafts[o.session] = note, nil
@@ -747,17 +772,19 @@ function U.RefreshOffer()
   for i, x in ipairs(list) do
     local num = x.num or i
     local usable, reason = canUse(x)
-    local label = Lx.RESPONSES[x.response or ""]
-    local lines = { "Objet " .. num .. (x.from and (" · proposé par " .. name(x.from)) or "") }
-    lines[#lines + 1] = x.answered and ("Ta réponse : " .. (RESP_COLOR[x.response] or GREY) .. (label or "?") .. "|r") or "Pas encore de réponse."
-    if usable == false then lines[#lines + 1] = ORANGE .. "Tu ne peux pas le porter" .. ((reason and reason ~= "") and (" : " .. reason) or "") .. "|r" end
+    local resp = label(x.response)
+    local lines = { L("Objet %d", num) .. (x.from and (" · " .. L("proposé par %s", name(x.from))) or "") }
+    lines[#lines + 1] = x.answered and L("Ta réponse : %s", (RESP_COLOR[x.response] or GREY) .. (resp or "?") .. "|r") or L["Pas encore de réponse."]
+    if usable == false then
+      lines[#lines + 1] = ORANGE .. ((reason and reason ~= "") and L("Tu ne peux pas le porter : %s", reason) or L["Tu ne peux pas le porter"]) .. "|r"
+    end
     local icon = iconOf(x.itemId or F.ItemId(x.link))
     local text = x.answered and (CHECK .. (RESP_COLOR[x.response] or GREY) .. (RESP_INITIAL[x.response] or "?") .. "|r") or ""
     if not icon then text = F.cut(x.name or F.ItemName(x.link) or "?", 14) .. (text ~= "" and (" " .. text) or "") end
     entries[i] = { key = x.session, num = num, itemId = x.itemId, link = x.link, name = x.name, icon = icon, text = text, dim = usable == false, lines = lines }
     st.band[i] = { session = x.session, num = num, text = text, answered = x.answered and true or false, response = x.answered and x.response or nil }
     seen[x.session] = st.band[i].answered
-    if x.answered then mine[#mine + 1] = num .. " " .. (RESP_COLOR[x.response] or GREY) .. (label or "?") .. "|r"
+    if x.answered then mine[#mine + 1] = num .. " " .. (RESP_COLOR[x.response] or GREY) .. (resp or "?") .. "|r"
     elseif x ~= o then st.left = st.left + 1 end
   end
   w.band.Set(entries, o.session)
@@ -768,16 +795,16 @@ function U.RefreshOffer()
   local gear = {}
   for _, g in ipairs(Lx.Equipped(o.itemString) or {}) do gear[#gear + 1] = g.link .. (g.ilvl and (GREY .. " (" .. g.ilvl .. ")|r") or "") end
   local lvl = Lx.ilvlOf(o.itemString)
-  local text = o.link .. (lvl and (GREY .. "  niv. " .. lvl .. "|r") or "") .. GREY .. "  proposé par " .. name(o.from) .. "|r\n"
-    .. (#gear > 0 and ("Tu portes : " .. table.concat(gear, ", ")) or (GREY .. "Rien de porté à cet emplacement.|r"))
+  local text = o.link .. (lvl and (GREY .. "  " .. L("niv. %s", lvl) .. "|r") or "") .. GREY .. "  " .. L("proposé par %s", name(o.from)) .. "|r\n"
+    .. (#gear > 0 and L("Tu portes : %s", table.concat(gear, ", ")) or (GREY .. L["Rien de porté à cet emplacement."] .. "|r"))
   if o.answered then
-    text = text .. "\nTa réponse : " .. (RESP_COLOR[o.response] or GREY) .. (Lx.RESPONSES[o.response or ""] or "?") .. "|r"
-      .. GREY .. " (modifiable tant que le conseil est ouvert)|r"
+    text = text .. "\n" .. L("Ta réponse : %s", (RESP_COLOR[o.response] or GREY) .. (label(o.response) or "?") .. "|r")
+      .. GREY .. " " .. L["(modifiable tant que le conseil est ouvert)"] .. "|r"
   end
   w.text:SetText(text)
   local warn = {}
   if usable == false then
-    warn[#warn + 1] = ORANGE .. "Tu ne peux pas porter cet objet" .. ((reason and reason ~= "") and (" : " .. reason) or ".") .. "|r"
+    warn[#warn + 1] = ORANGE .. ((reason and reason ~= "") and L("Tu ne peux pas porter cet objet : %s", reason) or L["Tu ne peux pas porter cet objet."]) .. "|r"
   end
   if offerErr then warn[#warn + 1] = RED .. tostring(offerErr) .. "|r" end
   w.warn:SetText(table.concat(warn, "\n"))
@@ -786,10 +813,9 @@ function U.RefreshOffer()
   for _, b in pairs(w.buttons) do b:Hide() end
   local allDone = o.answered and st.left == 0
   st.done = allDone and true or false
-  w.done:SetText(allDone and (GREEN .. "Tout est répondu.|r " .. GREY .. "Tes réponses : |r" .. table.concat(mine, GREY .. " · |r")
-    .. GREY .. ". Clique un objet de la bande pour changer ta réponse.|r") or "")
-  w.foot:SetText(GREY .. "Ta réponse part au chef de butin et au conseil, qui votent. Sans l'addon : chuchote au chef de butin bis, up, os "
-    .. "ou transmo, suivi du numéro de l'objet (« bis " .. num .. " »).|r")
+  w.done:SetText(allDone and (GREEN .. L["Tout est répondu."] .. "|r " .. GREY .. L["Tes réponses :"] .. " |r" .. table.concat(mine, GREY .. " · |r")
+    .. GREY .. ". " .. L["Clique un objet de la bande pour changer ta réponse."] .. "|r") or "")
+  w.foot:SetText(GREY .. L("Ta réponse part au chef de butin et au conseil, qui votent. Sans l'addon : chuchote au chef de butin bis, up, os ou transmo, suivi du numéro de l'objet (« bis %s »).", tostring(num)) .. "|r")
   -- Mise en page de haut en bas ; la fenêtre se cale sur son contenu
   local x, y = w.x, w.top - 34
   w.text:ClearAllPoints() w.text:SetPoint("TOPLEFT", x, y)
@@ -806,8 +832,8 @@ function U.RefreshOffer()
   y = y - 30
   for i, key in ipairs(keys) do
     local b = w.buttons[key]
-    local label = Lx.RESPONSES[key]
-    b:SetText((o.answered and o.response == key) and (CHECK .. " " .. label) or label)
+    local text = label(key)
+    b:SetText((o.answered and o.response == key) and (CHECK .. " " .. text) or text)
     b:ClearAllPoints() b:SetPoint("TOPLEFT", x + (i - 1) * 90, y) b:Show()
     st.buttons[i] = key
   end
@@ -830,7 +856,7 @@ end
 local handWin
 function U.ShowHandover()
   if not ns.db() then return end
-  if not handWin then handWin = listWindow("RosterLootHandover", "Butin · objets à remettre", 600, 380, "handover") end
+  if not handWin then handWin = listWindow("RosterLootHandover", L["Butin · objets à remettre"], 600, 380, "handover") end
   K.front(handWin)
   handWin:Show()
   U.RefreshHandover()
@@ -838,35 +864,34 @@ end
 
 function U.RefreshHandover()
   if not handWin or not handWin:IsShown() then return end
-  local Lx, L = Lo(), handWin.list
+  local Lx, li = Lo(), handWin.list
   local st = { items = 0 }
   U.state.handover = st
-  handWin.hintText:SetText(GREY .. "« Échanger » demande l'échange au gagnant (à quelques mètres de toi). Dès que la fenêtre d'échange s'ouvre "
-    .. "avec lui (même s'il l'ouvre lui-même), ses objets y sont posés tout seuls ; valide ensuite dans le jeu. Hors combat.|r")
-  L.Reset()
+  handWin.hintText:SetText(GREY .. L["« Échanger » demande l'échange au gagnant (à quelques mètres de toi). Dès que la fenêtre d'échange s'ouvre avec lui (même s'il l'ouvre lui-même), ses objets y sont posés tout seuls ; valide ensuite dans le jeu. Hors combat."] .. "|r")
+  li.Reset()
   local hand = {}
   for _, e in ipairs(Lx.Items()) do if e.status == "awarded" then hand[#hand + 1] = e end end
-  L.Header("Objets à remettre · " .. #hand)
-  if #hand == 0 then L.Add(GREY .. "Aucun objet à remettre.|r") end
+  li.Header(L("Objets à remettre · %d", #hand))
+  if #hand == 0 then li.Add(GREY .. L["Aucun objet à remettre."] .. "|r") end
   for _, e in ipairs(hand) do
     st.items = st.items + 1
     local m = Lx.Member(e.winner)
-    L.Add(e.link .. ilvl(e) .. GREY .. " pour |r" .. who(e.winner) .. (m and "" or (RED .. " (plus dans le groupe)|r")) .. "\n" .. (timeLeft(e)),
-      { { "Échanger", 100, after(function() Lx.Trade(e.key) end) }, { "Remis", 80, after(function() Lx.MarkTraded(e.key) end) },
-        { "Retirer", 80, after(function() Lx.Remove(e.key) end) } })
+    li.Add(e.link .. ilvl(e) .. GREY .. " " .. L["pour"] .. " |r" .. who(e.winner) .. (m and "" or (RED .. " " .. L["(plus dans le groupe)"] .. "|r")) .. "\n" .. (timeLeft(e)),
+      { { L["Échanger"], 100, after(function() Lx.Trade(e.key) end) }, { L["Remis"], 80, after(function() Lx.MarkTraded(e.key) end) },
+        { L["Retirer"], 80, after(function() Lx.Remove(e.key) end) } })
   end
-  L.Add(GREY .. "« Remis » : échange fait à la main. Le jeu ne permet l'échange qu'aux joueurs présents au butin, pendant 2 h.|r")
-  L.Done()
+  li.Add(GREY .. L["« Remis » : échange fait à la main. Le jeu ne permet l'échange qu'aux joueurs présents au butin, pendant 2 h."] .. "|r")
+  li.Done()
 end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Rafraîchir les fenêtres ouvertes ; tout fermer (fin du raid d'essai)
 --------------------------------------------------------------------------------------------------------------------
 function U.Refresh()
-  ns.safe("butin", U.RefreshLoot)
-  ns.safe("conseil du butin", U.RefreshCouncil)
-  ns.safe("objets à remettre", U.RefreshHandover)
-  ns.safe("réponse au conseil", U.RefreshOffer)
+  ns.safe(L["butin"], U.RefreshLoot)
+  ns.safe(L["conseil du butin"], U.RefreshCouncil)
+  ns.safe(L["objets à remettre"], U.RefreshHandover)
+  ns.safe(L["réponse au conseil"], U.RefreshOffer)
 end
 
 function U.Close()

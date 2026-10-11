@@ -2,153 +2,163 @@
 -- Deux habillages au choix (Options) : celui de l'interface de Forever, ou celui du site (sombre, liserés dorés).
 -- Fenêtres, listes et habillages : boîte à outils commune avec l'addon Roster (addon/shared/Kit.lua).
 local ADDON, ns = ...
+local L, N = ns.L, ns.N
 local U = {}
 ns.UI = U
 local K = ns.Kit
 U.kit, U.site, U.front, U.styleStatus, U.itemTips, U.roleIcon = K, K.site, K.front, K.styleStatus, K.itemTips, K.roleIcon
 
 local GOLD, GREY, GREEN, BLUE = K.GOLD, K.GREY, K.GREEN, K.BLUE
+-- État de chaque membre de la compo : couleur, texte (traduit à l'affichage)
 local STATE = {
-  ok = "|cff4fd35fbon groupe|r", move = "|cfff0b43cà déplacer|r", missing = "|cffff6b5eabsent du raid|r",
-  manual = "|cff9aa3b6inscrit Discord : à inviter à la main|r", bench = "|cff9aa3b6banc|r",
+  ok = { "|cff4fd35f", N("bon groupe") }, move = { "|cfff0b43c", N("à déplacer") }, missing = { "|cffff6b5e", N("absent du raid") },
+  manual = { "|cff9aa3b6", N("inscrit Discord : à inviter à la main") }, bench = { "|cff9aa3b6", N("banc") },
 }
+local function stateText(state)
+  local s = STATE[state]
+  return s and (s[1] .. L[s[2]] .. "|r") or state
+end
 local site, C, ART, atlas, solid, titleFont, diamond, gapX = K.site, K.C, K.ART, K.atlas, K.solid, K.titleFont, K.diamond, K.gapX
 local front, window, textArea, button, statusButton, styleStatus = K.front, K.window, K.textArea, K.button, K.statusButton, K.styleStatus
 local hint, list, colored, roleIcon = K.hint, K.list, K.colored, K.roleIcon
+-- Habillages (valeurs gardées dans la sauvegarde et main.skin, pas des textes)
+local SKIN_SITE, SKIN_GAME = "site", "jeu" -- nolocale
 
 
 -- Fenêtre principale : une page par onglet, onglets à icône sur le côté droit (comme la fiche de perso)
 local main
+-- Noms des onglets traduits à l'affichage (L[t.label])
 local TABS = {
-  { key = "synchro", label = "Synchro", icon = "Interface\\Icons\\INV_Letter_15" },
-  { key = "raids", label = "Raids", icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
-  { key = "enraid", label = "En raid", icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
-  { key = "compo", label = "Compo", icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
-  { key = "patrons", label = "Patrons", icon = "Interface\\Icons\\INV_Scroll_03" },
-  { key = "options", label = "Options", icon = "Interface\\Icons\\INV_Misc_Gear_01" },
+  { key = "synchro", label = N("Synchro"), icon = "Interface\\Icons\\INV_Letter_15" },
+  { key = "raids", label = N("Raids"), icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
+  { key = "enraid", label = N("En raid"), icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
+  { key = "compo", label = N("Compo"), icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
+  { key = "patrons", label = N("Patrons"), icon = "Interface\\Icons\\INV_Scroll_03" },
+  { key = "options", label = N("Options"), icon = "Interface\\Icons\\INV_Misc_Gear_01" },
 }
 local pages, refreshers = {}, {}
 U.pages = pages
 
 local function buildRaids(p)
-  hint(p, "Inscris " .. (UnitName("player") or "ce perso") .. " aux raids de tes groupes. Les données du site se collent dans l'onglet " .. GOLD .. "Synchro|r.")
+  hint(p, L("Inscris %s aux raids de tes groupes. Les données du site se collent dans l'onglet %sSynchro|r.", UnitName("player") or L["ce perso"], GOLD))
   p.list = list(p, -40)
 end
 refreshers.raids = function(p)
-  local G, L = ns.Group, p.list
-  L.Reset()
+  local G, rows = ns.Group, p.list
+  rows.Reset()
   local groups = G.List()
   if #groups == 0 then
-    L.Header("Groupes")
-    L.Add(GREY .. "Aucun groupe chargé : sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle dans l'onglet Synchro.|r")
+    rows.Header(L["Groupes"])
+    rows.Add(GREY .. L["Aucun groupe chargé : sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle dans l'onglet Synchro."] .. "|r")
   else
     local names = {}
     for _, g in ipairs(groups) do names[#names + 1] = g.name .. GREY .. " (" .. date("%d/%m %H:%M", g.at) .. ")|r" end
-    L.Header("Raids à venir")
+    rows.Header(L["Raids à venir"])
     local companion = ns.Companion and ns.Companion.Active()
-    local who = UnitName("player") or "ce perso"
-    L.Add(GREY .. "Groupes : |r" .. table.concat(names, ", ") .. "\n" .. GREY .. "Inscription de " .. who
-      .. (companion and " : elle part au site au prochain /reload (« Envoyer maintenant ») ou à la déconnexion.|r" or ", envoyée au site avec l'export.|r"))
+    local who = UnitName("player") or L["ce perso"]
+    rows.Add(GREY .. L["Groupes :"] .. " |r" .. table.concat(names, ", ") .. "\n" .. GREY
+      .. (companion and L("Inscription de %s : elle part au site au prochain /reload (« Envoyer maintenant ») ou à la déconnexion.", who)
+        or L("Inscription de %s, envoyée au site avec l'export.", who)) .. "|r")
     local raids = G.Raids()
-    if #raids == 0 then L.Add(GREY .. "Aucun raid à venir.|r") end
+    if #raids == 0 then rows.Add(GREY .. L["Aucun raid à venir."] .. "|r") end
     for _, e in ipairs(raids) do
-      local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or "date à définir"
-      local site = e.onSite and (GREY .. "  site : " .. (G.LABEL[e.onSite] or e.onSite) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
+      local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or L["date à définir"]
+      local site = e.onSite and (GREY .. "  " .. L("site : %s", G.StatusLabel(e.onSite)) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
       -- Inscription faite en jeu, en attendant que le site l'enregistre (elle est alors oubliée : 1.5.4)
       local game = ""
       if e.status then
-        local label = G.LABEL[e.status] or e.status
-        if e.state == "sent" then game = GREEN .. "  en jeu : " .. label .. ", reçu par le site|r"
-        elseif e.state == "outbox" then game = GOLD .. "  en jeu : " .. label .. ", envoi en cours|r"
-        elseif companion then game = GOLD .. "  en jeu : " .. label .. ", pas encore envoyé|r"
-        else game = GOLD .. "  en jeu : " .. label .. ", part avec ton prochain export|r" end
+        local label = G.StatusLabel(e.status)
+        if e.state == "sent" then game = GREEN .. "  " .. L("en jeu : %s, reçu par le site", label) .. "|r"
+        elseif e.state == "outbox" then game = GOLD .. "  " .. L("en jeu : %s, envoi en cours", label) .. "|r"
+        elseif companion then game = GOLD .. "  " .. L("en jeu : %s, pas encore envoyé", label) .. "|r"
+        else game = GOLD .. "  " .. L("en jeu : %s, part avec ton prochain export", label) .. "|r" end
       end
       local buttons = {}
       -- Choisi : l'inscription faite en jeu, sinon celle du site
       local current = e.status or e.onSite
       for _, st in ipairs(G.STATUSES) do
-        buttons[#buttons + 1] = { st.label, 100, function()
+        buttons[#buttons + 1] = { L[st.label], 100, function()
           G.SignUp(e.group.id, e.raid.id, st.key, e.raid.time) U.Refresh()
         end, { color = st.color, selected = current == st.key } }
       end
-      L.Add(GOLD .. e.raid.name .. "|r  " .. when .. site .. game, buttons)
+      rows.Add(GOLD .. e.raid.name .. "|r  " .. when .. site .. game, buttons)
       if e.state == "todo" and companion then
-        L.Add(GREY .. "Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), puis Roster Companion le transmet au site.|r",
-          { { "Envoyer maintenant", 160, function() ns.Companion.Reload() end } })
+        rows.Add(GREY .. L["Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), puis Roster Companion le transmet au site."] .. "|r",
+          { { L["Envoyer maintenant"], 160, function() ns.Companion.Reload() end } })
       end
     end
   end
-  L.Done()
+  rows.Done()
 end
 
 local function buildCompo(p)
-  hint(p, "Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet " .. GOLD .. "Synchro|r.")
-  local invite = button(p, "Inviter", 120, function() ns.Compo.Invite() end)
+  hint(p, L("Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet %sSynchro|r.", GOLD))
+  local invite = button(p, L["Inviter"], 120, function() ns.Compo.Invite() end)
   invite:SetPoint("TOPLEFT", 4, -40)
-  local arrange = button(p, "Placer les groupes", 170, function() ns.Compo.Arrange() end)
+  local arrange = button(p, L["Placer les groupes"], 170, function() ns.Compo.Arrange() end)
   arrange:SetPoint("LEFT", invite, "RIGHT", 8, 0)
-  p.clear = button(p, "Effacer la compo", 150, function() ns.Compo.Clear() U.Refresh() end)
+  p.clear = button(p, L["Effacer la compo"], 150, function() ns.Compo.Clear() U.Refresh() end)
   p.clear:SetPoint("LEFT", arrange, "RIGHT", 8, 0)
   p.list = list(p, -72)
 end
 refreshers.compo = function(p)
-  local L = p.list
-  L.Reset()
+  local rows = p.list
+  rows.Reset()
   local raid = ns.Compo.Get()
   if p.clear then if raid then p.clear:Show() else p.clear:Hide() end end
   if not raid then
-    L.Header("Compo")
-    L.Add(GREY .. "Aucune compo chargée. Elle s'efface d'elle-même 12 h après l'heure du raid.|r")
+    rows.Header(L["Compo"])
+    rows.Add(GREY .. L["Aucune compo chargée. Elle s'efface d'elle-même 12 h après l'heure du raid."] .. "|r")
   else
-    local when = (raid.time and raid.time > 0) and date("%d/%m %H:%M", raid.time) or "date non fixée"
+    local when = (raid.time and raid.time > 0) and date("%d/%m %H:%M", raid.time) or L["date non fixée"]
     local status, ok, total = ns.Compo.Status(), 0, 0
     for _, s in ipairs(status) do if s.m.group > 0 then total = total + 1 if s.state == "ok" then ok = ok + 1 end end end
-    L.Header(raid.name .. "  ·  " .. when)
-    L.Add(ok .. "/" .. total .. " persos placés au bon endroit")
+    rows.Header(raid.name .. "  ·  " .. when)
+    rows.Add(L("%d/%d persos placés au bon endroit", ok, total))
     local group
     for _, s in ipairs(status) do
       local m = s.m
       if m.group ~= group then
         group = m.group
-        L.Header(group > 0 and ("Groupe " .. group) or "Non placés")
+        rows.Header(group > 0 and L("Groupe %d", group) or L["Non placés"])
       end
-      L.Add(string.format("%s  %s%s %s|r  %s%s", colored(m.class, m.name), GREY, roleIcon(m.role), m.spec or "", STATE[s.state] or s.state,
-        (s.state ~= "missing" and s.online == false) and " |cffff6b5e(hors ligne)|r" or ""))
+      rows.Add(string.format("%s  %s%s %s|r  %s%s", colored(m.class, m.name), GREY, roleIcon(m.role), m.spec or "", stateText(s.state),
+        (s.state ~= "missing" and s.online == false) and (" |cffff6b5e" .. L["(hors ligne)"] .. "|r") or ""))
     end
   end
-  L.Done()
+  rows.Done()
 end
 
 local function buildPatrons(p)
-  hint(p, "Patron vu ailleurs (hôtel des ventes, chat) : tape " .. GOLD .. "/fr cherche|r, Maj+clic sur l'objet pour mettre son lien, puis Entrée.")
+  hint(p, L("Patron vu ailleurs (hôtel des ventes, chat) : tape %s/fr cherche|r, Maj+clic sur l'objet pour mettre son lien, puis Entrée.", GOLD))
   p.list = list(p, -40)
 end
 refreshers.patrons = function(p)
-  local G, L = ns.Group, p.list
-  L.Reset()
+  local G, rows = ns.Group, p.list
+  rows.Reset()
   local tracked, others = G.BagPatterns()
-  L.Header("Suivis par ton groupe")
-  if #tracked == 0 then L.Add(GREY .. "Aucun dans tes sacs (charge les données du site dans l'onglet Raids).|r") end
+  rows.Header(L["Suivis par ton groupe"])
+  if #tracked == 0 then rows.Add(GREY .. L["Aucun dans tes sacs (charge les données du site dans l'onglet Raids)."] .. "|r") end
   for _, e in ipairs(tracked) do
     local link = G.linkFor(e.itemId, e.who and e.who.recipe)
     local parts = {}
-    if e.who then parts[#parts + 1] = G.joinNames(e.who.wanted) and (GREEN .. "recherché par " .. G.joinNames(e.who.wanted) .. "|r") or (GREY .. "personne ne le recherche|r") end
-    if e.bis then parts[#parts + 1] = BLUE .. "BiS de " .. G.joinNames(e.bis) .. "|r" end
-    L.Add(link .. "  " .. table.concat(parts, "  "), { { "Annoncer", 120, function() G.Announce(e.itemId) end } })
+    if e.who then parts[#parts + 1] = G.joinNames(e.who.wanted) and (GREEN .. L("recherché par %s", G.joinNames(e.who.wanted)) .. "|r") or (GREY .. L["personne ne le recherche"] .. "|r") end
+    if e.bis then parts[#parts + 1] = BLUE .. L("BiS de %s", G.joinNames(e.bis)) .. "|r" end
+    rows.Add(link .. "  " .. table.concat(parts, "  "), { { L["Annoncer"], 120, function() G.Announce(e.itemId) end } })
   end
-  L.Header("Autres patrons de tes sacs")
-  if #others == 0 then L.Add(GREY .. "Aucun.|r") end
+  rows.Header(L["Autres patrons de tes sacs"])
+  if #others == 0 then rows.Add(GREY .. L["Aucun."] .. "|r") end
   for _, e in ipairs(others) do
     local on = G.IsWantedHere(e.itemId)
-    L.Add(G.linkFor(e.itemId), { { on and "Retirer" or "Je le recherche", 150, function() G.ToggleWanted(e.itemId, G.linkFor(e.itemId)) U.Refresh() end } })
+    rows.Add(G.linkFor(e.itemId), { { on and L["Retirer"] or L["Je le recherche"], 150, function() G.ToggleWanted(e.itemId, G.linkFor(e.itemId)) U.Refresh() end } })
   end
   local marks = ns.charDB().wanted or {}
   local any = false
   for itemId, on in pairs(marks) do
-    if not any then L.Header("Marqués en jeu (envoyés avec l'export)") any = true end
-    L.Add(G.linkFor(itemId) .. "  " .. (on and (GREEN .. "recherché|r") or (GREY .. "retiré|r")), { { "Annuler", 100, function() marks[itemId] = nil U.Refresh() end } })
+    if not any then rows.Header(L["Marqués en jeu (envoyés avec l'export)"]) any = true end
+    rows.Add(G.linkFor(itemId) .. "  " .. (on and (GREEN .. L["recherché"] .. "|r") or (GREY .. L["retiré"] .. "|r")), { { L["Annuler"], 100, function() marks[itemId] = nil U.Refresh() end } })
   end
-  L.Done()
+  rows.Done()
 end
 
 -- Barre de titre de section fixe (comme « General » sur la fiche de perso)
@@ -173,6 +183,7 @@ end
 
 -- Synchro : coller ce qui vient du site (chargé tout seul), copier ce qui part vers le site (Ctrl+C = envoyé)
 -- Texte collé venant du site : données des groupes (FRG) ou compo d'un raid (FRR). Renvoie ok, message.
+-- Le chargement est noté sans texte (ForeverRosterDB.lastLoad : nombres, nom de la compo), mis en mots à l'affichage.
 function U.LoadFromSite(text)
   local ok, err
   if text:find("FRG;", 1, true) then
@@ -180,18 +191,18 @@ function U.LoadFromSite(text)
     if ok then
       local raids, patterns = 0, 0
       for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
-      ForeverRosterDB.lastLoad = { at = time(), text = string.format("%d groupe(s), %d raid(s), %d patron(s) suivis", #ok, raids, patterns) }
+      ForeverRosterDB.lastLoad = { at = time(), groups = #ok, raids = raids, patterns = patterns }
     end
   elseif text:find("FRR;", 1, true) then
     ok, err = ns.Compo.Load(text)
     if ok then
       local raid = ns.Compo.Get()
-      ForeverRosterDB.lastLoad = { at = time(), text = "compo « " .. (raid and raid.name or "?") .. " » (onglet Compo)" }
+      ForeverRosterDB.lastLoad = { at = time(), compo = raid and raid.name or "?" }
     end
   else
-    err = "Texte non reconnu : sur le site, « Copier pour le jeu » ou « Export pour le jeu » d'un raid."
+    err = L["Texte non reconnu : sur le site, « Copier pour le jeu » ou « Export pour le jeu » d'un raid."]
   end
-  if ok then return true, ForeverRosterDB.lastLoad.text end
+  if ok then return true, ns.Companion.LoadText(ForeverRosterDB.lastLoad) end
   return false, tostring(err)
 end
 
@@ -203,27 +214,27 @@ local function onPaste(self, user)
   if ok then self:SetText("") self:ClearFocus() U.Refresh() else self.page.loadStatus:SetText("|cffff6b5e" .. msg .. "|r") end
 end
 
-local SYNC_HINT = "Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide."
+local SYNC_HINT = N("Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Forever Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide.")
 local function buildSynchro(p)
-  p.hint = hint(p, SYNC_HINT)
-  headerBar(p, -32, "1 · Du site vers le jeu")
+  p.hint = hint(p, L[SYNC_HINT])
+  headerBar(p, -32, L["1 · Du site vers le jeu"])
   p.input = textArea(p, 6, -74, 526, 34)
   p.input.page = p
   p.input:SetScript("OnTextChanged", onPaste)
   p.loadStatus = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.loadStatus:SetPoint("TOPLEFT", 6, -118) p.loadStatus:SetWidth(526) p.loadStatus:SetJustifyH("LEFT")
   -- Roster Companion (1.4) : nouveautés déposées par l'appli, sans /reload
-  p.pull = button(p, "Charger les nouveautés", 180, function() ns.Companion.RefreshCommand() end)
+  p.pull = button(p, L["Charger les nouveautés"], 180, function() ns.Companion.RefreshCommand() end)
   p.pull:SetPoint("TOPRIGHT", p, "TOPRIGHT", -4, -112)
   p.pull:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:AddLine("Charger les nouveautés de Roster Companion")
-    GameTooltip:AddLine("Sans /reload. Aussi tout seul à l'ouverture de cette fenêtre, avant un raid, à l'appel et en entrant en raid. Encore " .. ns.Companion.SlotsLeft() .. " cette session.", 1, 1, 1, true)
+    GameTooltip:AddLine(L["Charger les nouveautés de Roster Companion"])
+    GameTooltip:AddLine(L("Sans /reload. Aussi tout seul à l'ouverture de cette fenêtre, avant un raid, à l'appel et en entrant en raid. Encore %d cette session.", ns.Companion.SlotsLeft()), 1, 1, 1, true)
     GameTooltip:Show()
   end)
   p.pull:SetScript("OnLeave", function() GameTooltip:Hide() end)
   p.pull:Hide()
-  headerBar(p, -140, "2 · Du jeu vers le site")
+  headerBar(p, -140, L["2 · Du jeu vers le site"])
   p.text = textArea(p, 6, -182, 526, 180)
   p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
   p.text:SetScript("OnEscapePressed", function(self) self:ClearFocus() if main then main:Hide() end end)
@@ -238,17 +249,17 @@ local function buildSynchro(p)
   p.status = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   p.status:SetPoint("TOPLEFT", 6, -372) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
   p.all = false
-  p.toggleAll = button(p, "Tout renvoyer", 150, function() p.all = not p.all p.sent = false U.Refresh() end)
+  p.toggleAll = button(p, L["Tout renvoyer"], 150, function() p.all = not p.all p.sent = false U.Refresh() end)
   p.toggleAll:SetPoint("TOPLEFT", 4, -400)
-  local again = button(p, "Actualiser", 120, function() p.sent = false U.Refresh() end)
+  local again = button(p, L["Actualiser"], 120, function() p.sent = false U.Refresh() end)
   again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
   -- Roster Companion (1.5) : les deux sens d'un coup, en rechargeant l'interface
-  p.reload = button(p, "Synchroniser", 130, function() ns.Companion.Reload() end)
+  p.reload = button(p, L["Synchroniser"], 130, function() ns.Companion.Reload() end)
   p.reload:SetPoint("LEFT", again, "RIGHT", 8, 0)
   p.reload:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
-    GameTooltip:AddLine("Synchroniser avec Roster Companion")
-    GameTooltip:AddLine("Recharge l'interface (quelques secondes) : tes persos et inscriptions partent au site, et les nouveautés du site arrivent.", 1, 1, 1, true)
+    GameTooltip:AddLine(L["Synchroniser avec Roster Companion"])
+    GameTooltip:AddLine(L["Recharge l'interface (quelques secondes) : tes persos et inscriptions partent au site, et les nouveautés du site arrivent."], 1, 1, 1, true)
     GameTooltip:Show()
   end)
   p.reload:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -259,44 +270,45 @@ end
 refreshers.synchro = function(p)
   -- Roster Companion (lot K1) : l'appli fait la synchro ; le copier-coller reste possible pour forcer un envoi
   local companion = ns.Companion.Active()
-  p.hint:SetText(companion and ns.Companion.StatusText(GREEN) or SYNC_HINT)
+  p.hint:SetText(companion and ns.Companion.StatusText(GREEN) or L[SYNC_HINT])
   local pull = companion and ns.Companion.SlotsLeft() > 0
   if pull then p.pull:Show() else p.pull:Hide() end
   if companion then p.reload:Show() else p.reload:Hide() end
   p.loadStatus:SetWidth(pull and 336 or 526)
   local last = ForeverRosterDB.lastLoad
-  p.loadStatus:SetText(last and (GREEN .. "Chargé le " .. date("%d/%m %H:%M", last.at) .. " : " .. last.text .. "|r")
-    or (GREY .. "Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul.|r"))
+  p.loadStatus:SetText(last and (GREEN .. L("Chargé le %s : %s", date("%d/%m %H:%M", last.at), ns.Companion.LoadText(last)) .. "|r")
+    or (GREY .. L["Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul."] .. "|r"))
   local ok, value, included = pcall(ns.Export.Build, { all = p.all })
-  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
+  if not ok then ns.print("|cffff6060" .. L("erreur (%s)", "export") .. "|r " .. tostring(value)) return end
   p.value, p.included = value, included
-  p.toggleAll:SetText(p.all and "Seulement les changements" or "Tout renvoyer")
+  p.toggleAll:SetText(p.all and L["Seulement les changements"] or L["Tout renvoyer"])
   local names = ns.Export.Names(included, colored)
   if p.sent then
-    p.status:SetText(GREEN .. "Copié. Sur le site, appuie sur Ctrl+V sur n'importe quelle page.|r")
+    p.status:SetText(GREEN .. L["Copié. Sur le site, appuie sur Ctrl+V sur n'importe quelle page."] .. "|r")
   elseif #names == 0 then
     local lastSent = 0
     for _, e in ipairs(ns.Export.Characters()) do lastSent = math.max(lastSent, e.char.sentAt or 0) end
-    p.status:SetText(GREY .. "Rien de nouveau depuis ton dernier envoi" .. (lastSent > 0 and (" (" .. date("%d/%m %H:%M", lastSent) .. ")") or "") .. ". « Tout renvoyer » pour tout recopier.|r")
+    p.status:SetText(GREY .. (lastSent > 0 and L("Rien de nouveau depuis ton dernier envoi (%s). « Tout renvoyer » pour tout recopier.", date("%d/%m %H:%M", lastSent))
+      or L["Rien de nouveau depuis ton dernier envoi. « Tout renvoyer » pour tout recopier."]) .. "|r")
   else
-    p.status:SetText(GOLD .. "À envoyer|r : " .. table.concat(names, ", ") .. GREY .. "   Ctrl+C puis Échap.|r")
+    p.status:SetText(L("%sÀ envoyer|r : %s%s   Ctrl+C puis Échap.|r", GOLD, table.concat(names, ", "), GREY))
   end
   p.text:SetText(value)
   local all = {}
   for _, e in ipairs(ns.Export.Characters()) do
     local h = e.snap.header or {}
-    all[#all + 1] = colored(h.class, h.name or e.key) .. GREY .. " (" .. (e.char.sentAt and ("envoyé le " .. date("%d/%m", e.char.sentAt)) or "jamais envoyé") .. ")|r"
+    all[#all + 1] = colored(h.class, h.name or e.key) .. GREY .. " (" .. (e.char.sentAt and L("envoyé le %s", date("%d/%m", e.char.sentAt)) or L["jamais envoyé"]) .. ")|r"
   end
-  p.chars:SetText(GREY .. "Persos relevés : |r" .. table.concat(all, ", ") .. GREY .. ". Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r")
+  p.chars:SetText(L("%sPersos relevés : |r%s%s. Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r", GREY, table.concat(all, ", "), GREY))
   if #names > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
 end
 
--- Options : touches, bouton de la minicarte, rappels de raid, persos de l'export
+-- Options : touches, habillage, langue, bouton de la minicarte, rappels de raid, persos de l'export
 local BINDINGS = {
-  { action = "FOREVERROSTER_SYNC", label = "Synchro rapide avec le site" },
-  { action = "FOREVERROSTER_TOGGLE", label = "Ouvrir ou fermer la fenêtre" },
-  { action = "FOREVERROSTER_REFRESH", label = "Charger les nouveautés (Roster Companion)" },
-  { action = "FOREVERROSTER_RELOAD", label = "Synchroniser (Roster Companion, recharge l'interface)" },
+  { action = "FOREVERROSTER_SYNC", label = N("Synchro rapide avec le site") },
+  { action = "FOREVERROSTER_TOGGLE", label = N("Ouvrir ou fermer la fenêtre") },
+  { action = "FOREVERROSTER_REFRESH", label = N("Charger les nouveautés (Roster Companion)") },
+  { action = "FOREVERROSTER_RELOAD", label = N("Synchroniser (Roster Companion, recharge l'interface)") },
 }
 local function keyText(key)
   return (GetBindingText and GetBindingText(key)) or key
@@ -314,13 +326,13 @@ end
 -- Choix d'une touche : la prochaine touche appuyée (avec Alt, Ctrl, Maj) remplace celle de l'action ; Échap annule
 local capture
 function U.SetBinding(action, key)
-  if InCombatLockdown and InCombatLockdown() then ns.print("|cffff6b5epas de changement de touche en combat.|r") return false end
+  if InCombatLockdown and InCombatLockdown() then ns.print("|cffff6b5e" .. L["pas de changement de touche en combat."] .. "|r") return false end
   local _, old = keysOf(action)
   for _, k in ipairs(old) do SetBinding(k, nil) end
   if key then
     local taken = GetBindingAction and GetBindingAction(key)
     if taken and taken ~= "" and taken ~= action then
-      ns.print(GOLD .. keyText(key) .. "|r servait à « " .. ((_G["BINDING_NAME_" .. taken]) or taken) .. " » : remplacée.")
+      ns.print(L("%s servait à « %s » : remplacée.", GOLD .. keyText(key) .. "|r", (_G["BINDING_NAME_" .. taken]) or taken))
     end
     SetBinding(key, action)
   end
@@ -342,7 +354,7 @@ function U.StartCapture(action)
       self:Hide()
       if key ~= "ESCAPE" then
         local combo = (IsAltKeyDown() and "ALT-" or "") .. (IsControlKeyDown() and "CTRL-" or "") .. (IsShiftKeyDown() and "SHIFT-" or "") .. key
-        if U.SetBinding(action, combo) then ns.print("touche " .. GOLD .. keyText(combo) .. "|r enregistrée.") end
+        if U.SetBinding(action, combo) then ns.print(L("touche %s enregistrée.", GOLD .. keyText(combo) .. "|r")) end
       end
       U.Refresh()
     end)
@@ -356,80 +368,97 @@ end
 U.capturing = function() return capture and capture:IsShown() and capture.action or nil end
 
 local function buildOptions(p)
-  hint(p, "Réglages de l'addon, gardés pour tous tes persos. Les touches se changent aussi dans Échap > Options > Raccourcis > AddOns.")
+  hint(p, L["Réglages de l'addon, gardés pour tous tes persos. Les touches se changent aussi dans Échap > Options > Raccourcis > AddOns."])
   p.list = list(p, -40)
 end
+-- Langue : celle du jeu (nil), "fr" ou "en" ; appliquée au rechargement de l'interface (les fenêtres sont construites une fois)
+function U.SetLang(v)
+  ForeverRosterDB.lang = (v == "fr" or v == "en") and v or nil
+  U.Refresh()
+end
 refreshers.options = function(p)
-  local L = p.list
-  L.Reset()
-  L.Header("Touches")
+  local rows = p.list
+  rows.Reset()
+  rows.Header(L["Touches"])
   local waiting = U.capturing()
   for _, b in ipairs(BINDINGS) do
     local shown = keysOf(b.action)
-    local current = #shown > 0 and (GOLD .. table.concat(shown, ", ") .. "|r") or (GREY .. "aucune touche|r")
+    local current = #shown > 0 and (GOLD .. table.concat(shown, ", ") .. "|r") or (GREY .. L["aucune touche"] .. "|r")
     if waiting == b.action then
-      L.Add(b.label .. " : " .. GREEN .. "appuie sur la touche voulue (avec Alt, Ctrl ou Maj si tu veux)... Échap : annuler.|r")
+      rows.Add(L("%s : %sappuie sur la touche voulue (avec Alt, Ctrl ou Maj si tu veux)... Échap : annuler.|r", L[b.label], GREEN))
     else
-      local buttons = { { "Choisir une touche", 160, function() U.StartCapture(b.action) end } }
-      if #shown > 0 then buttons[2] = { "Retirer", 100, function() U.SetBinding(b.action, nil) U.Refresh() end } end
-      L.Add(b.label .. " : " .. current, buttons)
+      local buttons = { { L["Choisir une touche"], 160, function() U.StartCapture(b.action) end } }
+      if #shown > 0 then buttons[2] = { L["Retirer"], 100, function() U.SetBinding(b.action, nil) U.Refresh() end } end
+      rows.Add(L("%s : %s", L[b.label], current), buttons)
     end
   end
-  L.Header("Affichage et rappels")
+  rows.Header(L["Affichage et rappels"])
   -- Habillage : appliqué au rechargement de l'interface (les fenêtres sont construites une fois)
-  local skin = site() and "site" or "jeu"
-  local function setSkin(v) return function() ForeverRosterDB.skin = v ~= "jeu" and v or nil U.Refresh() end end
+  local skin = site() and SKIN_SITE or SKIN_GAME
+  local function setSkin(v) return function() ForeverRosterDB.skin = v ~= SKIN_GAME and v or nil U.Refresh() end end
   local shown = main and main.skin or skin
   local GOLDC = { C.gold[1], C.gold[2], C.gold[3] }
   local skinButtons = {
-    { "Forever (jeu)", 120, setSkin("jeu"), { color = GOLDC, selected = skin == "jeu" } },
-    { "Site", 80, setSkin("site"), { color = GOLDC, selected = skin == "site" } },
+    { L["Forever (jeu)"], 120, setSkin(SKIN_GAME), { color = GOLDC, selected = skin == SKIN_GAME } },
+    { L["Site"], 80, setSkin(SKIN_SITE), { color = GOLDC, selected = skin == SKIN_SITE } },
   }
-  if skin ~= shown then skinButtons[3] = { "Recharger", 100, function() ReloadUI() end } end
-  L.Add("Habillage : " .. GOLD .. (skin == "site" and "celui du site" or "celui de Forever") .. "|r" ..
-    (skin ~= shown and (GREEN .. "  · appliqué après rechargement de l'interface|r") or "") ..
-    "\n" .. GREY .. "Forever : cadres et onglets du jeu. Site : thème sombre, liserés dorés et onglets en haut, comme sur le site.|r", skinButtons)
+  if skin ~= shown then skinButtons[3] = { L["Recharger"], 100, function() ReloadUI() end } end
+  rows.Add(L("Habillage : %s", GOLD .. (skin == SKIN_SITE and L["celui du site"] or L["celui de Forever"]) .. "|r") ..
+    (skin ~= shown and (GREEN .. "  · " .. L["appliqué après rechargement de l'interface"] .. "|r") or "") ..
+    "\n" .. GREY .. L["Forever : cadres et onglets du jeu. Site : thème sombre, liserés dorés et onglets en haut, comme sur le site."] .. "|r", skinButtons)
+  -- Langue : comparée à celle de l'interface depuis son chargement (ns.langAtLoad) pour proposer de recharger
+  local chosen, client = ForeverRosterDB.lang, ns.LangName(ns.ClientLang())
+  local langChanged = ns.langAtLoad ~= nil and ns.Lang() ~= ns.langAtLoad
+  local langButtons = {
+    { L("Celle du jeu (%s)", client), 170, function() U.SetLang(nil) end, { color = GOLDC, selected = chosen == nil } },
+    { ns.LangName("fr"), 90, function() U.SetLang("fr") end, { color = GOLDC, selected = chosen == "fr" } },
+    { ns.LangName("en"), 90, function() U.SetLang("en") end, { color = GOLDC, selected = chosen == "en" } },
+  }
+  if langChanged then langButtons[4] = { L["Recharger"], 100, function() ReloadUI() end } end
+  rows.Add(L("Langue : %s", GOLD .. (ns.LangName(chosen) or L("celle du jeu (%s)", client)) .. "|r") ..
+    (langChanged and (GREEN .. "  · " .. L["appliquée après rechargement de l'interface"] .. "|r") or "") ..
+    "\n" .. GREY .. L["Celle du jeu : français si le jeu est en français, anglais sinon."] .. "|r", langButtons)
   local mapOn = not (ForeverRosterDB.minimap and ForeverRosterDB.minimap.hidden)
-  L.Add("Bouton de la minicarte : " .. (mapOn and (GREEN .. "affiché|r") or (GREY .. "masqué|r")) .. GREY .. "  (clic : fenêtre, clic droit : synchro rapide, pastille : persos à envoyer)|r",
-    { { mapOn and "Masquer" or "Afficher", 100, function() ns.Minimap.SetShown(not mapOn) U.Refresh() end } })
+  rows.Add(L("Bouton de la minicarte : %s", mapOn and (GREEN .. L["affiché"] .. "|r") or (GREY .. L["masqué"] .. "|r")) .. GREY .. "  " .. L["(clic : fenêtre, clic droit : synchro rapide, pastille : persos à envoyer)"] .. "|r",
+    { { mapOn and L["Masquer"] or L["Afficher"], 100, function() ns.Minimap.SetShown(not mapOn) U.Refresh() end } })
   local remind = not ForeverRosterDB.noReminder
-  L.Add("Rappel de raid à la connexion : " .. (remind and (GREEN .. "activé|r") or (GREY .. "coupé|r")) .. GREY .. "  (raid des prochaines 24 h sans réponse : « Tu viens ? »)|r",
-    { { remind and "Couper" or "Activer", 100, function() ForeverRosterDB.noReminder = remind or nil U.Refresh() end } })
-  L.Header("Présence et butin")
+  rows.Add(L("Rappel de raid à la connexion : %s", remind and (GREEN .. L["activé"] .. "|r") or (GREY .. L["coupé"] .. "|r")) .. GREY .. "  " .. L["(raid des prochaines 24 h sans réponse : « Tu viens ? »)"] .. "|r",
+    { { remind and L["Couper"] or L["Activer"], 100, function() ForeverRosterDB.noReminder = remind or nil U.Refresh() end } })
+  rows.Header(L["Présence et butin"])
   local rec, cur = ns.Recorder.Enabled(), ns.Recorder.Current()
-  L.Add("Relevé pendant les raids du site : " .. (rec and (GREEN .. "activé|r") or (GREY .. "coupé|r")) .. (cur and (GOLD .. "  · en cours : " .. (cur.name or "raid") .. "|r") or "") ..
-    "\n" .. GREY .. "Qui est dans le raid (chaque minute) et le butin. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier.|r",
-    { { rec and "Couper" or "Activer", 100, function() ForeverRosterDB.noRecord = rec or nil if rec then ns.Recorder.Sample() end U.Refresh() end } })
+  rows.Add(L("Relevé pendant les raids du site : %s", rec and (GREEN .. L["activé"] .. "|r") or (GREY .. L["coupé"] .. "|r")) .. (cur and (GOLD .. "  · " .. L("en cours : %s", cur.name or "raid") .. "|r") or "") ..
+    "\n" .. GREY .. L["Qui est dans le raid (chaque minute) et le butin. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier."] .. "|r",
+    { { rec and L["Couper"] or L["Activer"], 100, function() ForeverRosterDB.noRecord = rec or nil if rec then ns.Recorder.Sample() end U.Refresh() end } })
   local q = ns.Recorder.MinQuality()
   local function setQ(v) return function() ForeverRosterDB.lootQuality = v U.Refresh() end end
   local QC = { [3] = { 0, 0.44, 0.87 }, [4] = { 0.64, 0.21, 0.93 }, [5] = { 1, 0.5, 0 } }
-  L.Add("Butin noté à partir de : " .. GOLD .. ns.Recorder.QUALITY_LABEL[q] .. "|r", {
-    { "Rare", 90, setQ(3), { color = QC[3], selected = q == 3 } }, { "Épique", 90, setQ(4), { color = QC[4], selected = q == 4 } },
-    { "Légendaire", 110, setQ(5), { color = QC[5], selected = q == 5 } } })
-  L.Header("Persos de l'export")
+  rows.Add(L("Butin noté à partir de : %s", GOLD .. L[ns.Recorder.QUALITY_LABEL[q]] .. "|r"), {
+    { L["Rare"], 90, setQ(3), { color = QC[3], selected = q == 3 } }, { L["Épique"], 90, setQ(4), { color = QC[4], selected = q == 4 } },
+    { L["Légendaire"], 110, setQ(5), { color = QC[5], selected = q == 5 } } })
+  rows.Header(L["Persos de l'export"])
   local chars = ns.Export.Characters()
-  if #chars == 0 then L.Add(GREY .. "Aucun perso relevé pour l'instant.|r") end
+  if #chars == 0 then rows.Add(GREY .. L["Aucun perso relevé pour l'instant."] .. "|r") end
   for _, e in ipairs(chars) do
     local h = e.snap.header or {}
-    local sent = e.char.sentAt and ("envoyé au site le " .. date("%d/%m %H:%M", e.char.sentAt)) or "jamais envoyé"
-    local text = colored(h.class, h.name or e.key) .. GREY .. "  " .. (h.realm or "") .. " · niveau " .. (h.level or "?") .. " · relevé le " .. date("%d/%m %H:%M", e.snap.at or 0) .. " · " .. sent .. "|r"
+    local sent = e.char.sentAt and L("envoyé au site le %s", date("%d/%m %H:%M", e.char.sentAt)) or L["jamais envoyé"]
+    local text = colored(h.class, h.name or e.key) .. GREY .. "  " .. L("%s · niveau %s · relevé le %s · %s", h.realm or "", tostring(h.level or "?"), date("%d/%m %H:%M", e.snap.at or 0), sent) .. "|r"
     if e.current then
-      L.Add(text .. "\n" .. GREY .. "Perso connecté : il est relevé tout seul, il ne peut pas être retiré.|r")
+      rows.Add(text .. "\n" .. GREY .. L["Perso connecté : il est relevé tout seul, il ne peut pas être retiré."] .. "|r")
     elseif p.confirm == e.key then
-      L.Add(text .. "\n" .. GOLD .. "Le retirer de l'export ? Il reviendra si tu te connectes avec lui.|r", {
-        { "Oui, retirer", 120, function() ns.Export.Forget(e.key) p.confirm = nil if ns.Minimap.Update then ns.Minimap.Update() end U.Refresh() end },
-        { "Annuler", 100, function() p.confirm = nil U.Refresh() end },
+      rows.Add(text .. "\n" .. GOLD .. L["Le retirer de l'export ? Il reviendra si tu te connectes avec lui."] .. "|r", {
+        { L["Oui, retirer"], 120, function() ns.Export.Forget(e.key) p.confirm = nil if ns.Minimap.Update then ns.Minimap.Update() end U.Refresh() end },
+        { L["Annuler"], 100, function() p.confirm = nil U.Refresh() end },
       })
     else
-      L.Add(text, { { "Retirer de l'export", 160, function() p.confirm = e.key U.Refresh() end } })
+      rows.Add(text, { { L["Retirer de l'export"], 160, function() p.confirm = e.key U.Refresh() end } })
     end
   end
-  L.Done()
+  rows.Done()
 end
 
 -- Onglet « En raid » (lot G) : qui a l'addon, appel aux consommables, objets à remettre, fiches de boss, butin
 local function buildEnRaid(p)
-  hint(p, "Pendant le raid. Le butin s'ouvre seul quand tu es maître du butin (" .. GOLD .. "/fr butin|r pour la fenêtre, ou avec un lien d'objet).")
+  hint(p, L("Pendant le raid. Le butin s'ouvre seul quand tu es maître du butin (%s/fr butin|r pour la fenêtre, ou avec un lien d'objet).", GOLD))
   p.list = list(p, -40)
 end
 refreshers.enraid = function(p)
@@ -469,7 +498,7 @@ local function sideTab(parent, index, t)
   b:SetScript("OnClick", function() U.Show(t.key) end)
   b:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(t.label)
+    GameTooltip:AddLine(L[t.label])
     GameTooltip:Show()
   end)
   b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -485,7 +514,7 @@ local function topTab(parent, index, t)
   local icon = b:CreateTexture(nil, "ARTWORK")
   icon:SetSize(16, 16) icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) icon:SetTexture(t.icon)
   local label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  label:SetText(t.label)
+  label:SetText(L[t.label])
   local w = 20 + (label.GetStringWidth and label:GetStringWidth() or 50)
   icon:SetPoint("LEFT", b, "CENTER", -w / 2, 0)
   label:SetPoint("LEFT", icon, "RIGHT", 4, 0)
@@ -508,7 +537,7 @@ end
 
 local function buildMain()
   main = window("ForeverRosterMain", "Forever Roster", 600, site() and 650 or 620) -- site : 36 px de plus pour la bande des onglets
-  main.tabs, main.skin = {}, site() and "site" or "jeu"
+  main.tabs, main.skin = {}, site() and SKIN_SITE or SKIN_GAME
   if site() then -- bande des onglets : même fond que le titre, filet en dessous
     local band = main:CreateTexture(nil, "BACKGROUND", nil, -6)
     band:SetPoint("TOPLEFT", 1, -28) band:SetPoint("TOPRIGHT", -1, -28) band:SetHeight(28) solid(band, C.bg, 0.6)
@@ -530,7 +559,7 @@ function U.Refresh()
   if not main or not main:IsShown() then return end
   local tab = pages[ForeverRosterDB.tab] and ForeverRosterDB.tab or "synchro"
   local fn = refreshers[tab]
-  if fn then ns.safe("affichage", fn, pages[tab]) end
+  if fn then ns.safe(N("affichage"), fn, pages[tab]) end
 end
 
 -- Ouvre la fenêtre sur un onglet (le dernier utilisé par défaut)
@@ -541,7 +570,7 @@ function U.Show(tab)
   if tab == "synchro" then pages.synchro.sent = false end
   for _, t in ipairs(TABS) do
     local on = t.key == tab
-    if on then pages[t.key]:Show() main:SetWindowTitle(site() and "Forever Roster" or ("Forever Roster  ·  " .. t.label)) else pages[t.key]:Hide() end
+    if on then pages[t.key]:Show() main:SetWindowTitle(site() and "Forever Roster" or ("Forever Roster  ·  " .. L[t.label])) else pages[t.key]:Hide() end
     local b = main.tabs[t.key]
     if b.SetOn then b:SetOn(on) elseif on then b.selected:Show() else b.selected:Hide() end
   end
@@ -565,7 +594,7 @@ ns.on("BAG_UPDATE_DELAYED", function() if ForeverRosterDB and ForeverRosterDB.ta
 local alert
 function U.LootAlert(itemId, link)
   if not alert then
-    alert = window("ForeverRosterLoot", "Objet suivi ramassé", 440, 150)
+    alert = window("ForeverRosterLoot", L["Objet suivi ramassé"], 440, 150)
     alert:ClearAllPoints() alert:SetPoint("TOP", 0, -160)
     alert.text = alert:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     alert.text:SetPoint("TOPLEFT", 66, -34) alert.text:SetWidth(360) alert.text:SetJustifyH("LEFT")
@@ -573,9 +602,9 @@ function U.LootAlert(itemId, link)
       alert.big = alert:CreateTexture(nil, "ARTWORK")
       alert.big:SetSize(40, 40) alert.big:SetPoint("TOPLEFT", 16, -38) alert.big:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
-    alert.announce = button(alert, "Annoncer au groupe", 170, nil)
+    alert.announce = button(alert, L["Annoncer au groupe"], 170, nil)
     alert.announce:SetPoint("BOTTOMLEFT", 16, 14)
-    local close = button(alert, "Fermer", 110, function() alert:Hide() end)
+    local close = button(alert, L["Fermer"], 110, function() alert:Hide() end)
     close:SetPoint("BOTTOMRIGHT", -16, 14)
   end
   local G = ns.Group
@@ -583,9 +612,9 @@ function U.LootAlert(itemId, link)
   local icon = (C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(itemId)) or (GetItemIcon and GetItemIcon(itemId))
   if icon then alert:SetIcon(icon) if alert.big then alert.big:SetTexture(icon) end end
   local lines = { link or G.linkFor(itemId, who and who.recipe) }
-  if who then lines[#lines + 1] = G.joinNames(who.wanted) and (GREEN .. "Patron recherché par " .. G.joinNames(who.wanted) .. "|r") or (GREY .. "Patron que personne ne recherche.|r") end
-  if who and G.joinNames(who.known, 5) then lines[#lines + 1] = GREY .. "Déjà connu par " .. G.joinNames(who.known, 5) .. "|r" end
-  if bis then lines[#lines + 1] = BLUE .. "BiS de " .. G.joinNames(bis) .. "|r" end
+  if who then lines[#lines + 1] = G.joinNames(who.wanted) and (GREEN .. L("Patron recherché par %s", G.joinNames(who.wanted)) .. "|r") or (GREY .. L["Patron que personne ne recherche."] .. "|r") end
+  if who and G.joinNames(who.known, 5) then lines[#lines + 1] = GREY .. L("Déjà connu par %s", G.joinNames(who.known, 5)) .. "|r" end
+  if bis then lines[#lines + 1] = BLUE .. L("BiS de %s", G.joinNames(bis)) .. "|r" end
   alert.text:SetText(table.concat(lines, "\n"))
   alert.announce:SetScript("OnClick", function() G.Announce(itemId, link) alert:Hide() end)
   front(alert)
@@ -600,7 +629,7 @@ local function closeQuickSoon()
   C_Timer.After(1.2, function() if quick and quickGen == gen then quick:Hide() end end)
 end
 local function buildQuick()
-  quick = window("ForeverRosterQuick", "Forever Roster  ·  Synchro rapide", 460, 196)
+  quick = window("ForeverRosterQuick", "Forever Roster  ·  " .. L["Synchro rapide"], 460, 196)
   quick:ClearAllPoints() quick:SetPoint("TOP", 0, -140)
   quick.status = quick:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   quick.status:SetPoint("TOPLEFT", gapX(), -32) quick.status:SetWidth(444 - gapX()) quick.status:SetJustifyH("LEFT")
@@ -617,7 +646,7 @@ local function buildQuick()
       self:SetText("")
       self:ClearFocus()
       if ok then
-        quick.status:SetText(GREEN .. "Chargé : " .. msg .. ".|r")
+        quick.status:SetText(GREEN .. L("Chargé : %s.", msg) .. "|r")
         U.Refresh()
         closeQuickSoon()
       else
@@ -632,16 +661,16 @@ local function buildQuick()
   quick.box:SetScript("OnKeyDown", function(_, key)
     if key == "C" and IsControlKeyDown() and ns.Export.Size(quick.included) > 0 then
       ns.Export.MarkSent(quick.included)
-      quick.status:SetText(GREEN .. "Copié. Sur le site, Ctrl+V sur n'importe quelle page.|r")
+      quick.status:SetText(GREEN .. L["Copié. Sur le site, Ctrl+V sur n'importe quelle page."] .. "|r")
       U.Refresh()
       closeQuickSoon()
     end
   end)
   quick.foot = quick:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   quick.foot:SetPoint("BOTTOMLEFT", 18, 16) quick.foot:SetWidth(250) quick.foot:SetJustifyH("LEFT")
-  local more = button(quick, "Fenêtre complète", 140, function() quick:Hide() U.Show("synchro") end)
+  local more = button(quick, L["Fenêtre complète"], 140, function() quick:Hide() U.Show("synchro") end)
   more:SetPoint("BOTTOMRIGHT", -16, 10)
-  quick.allBtn = button(quick, "Tout renvoyer", 120, function() U.Quick(true) end)
+  quick.allBtn = button(quick, L["Tout renvoyer"], 120, function() U.Quick(true) end)
   quick.allBtn:SetPoint("RIGHT", more, "LEFT", -6, 0)
   U.quick = quick
 end
@@ -651,18 +680,18 @@ function U.Quick(all)
   if quick:IsShown() and all == nil then quick:Hide() return end
   quickGen = quickGen + 1
   local ok, value, included = pcall(ns.Export.Build, { all = all == true })
-  if not ok then ns.print("|cffff6060erreur (export)|r " .. tostring(value)) return end
+  if not ok then ns.print("|cffff6060" .. L("erreur (%s)", "export") .. "|r " .. tostring(value)) return end
   quick.value, quick.included = value, included
   local names = ns.Export.Names(included, colored)
   if #names > 0 then
-    quick.status:SetText(GOLD .. "Vers le site|r : " .. table.concat(names, ", ") .. "\n" ..
-      "Ctrl+C pour copier, puis Ctrl+V sur le site.\n" .. GREY .. "Ou Ctrl+V ici pour coller ce que tu as copié sur le site.|r")
+    quick.status:SetText(L("%sVers le site|r : %s", GOLD, table.concat(names, ", ")) .. "\n" ..
+      L["Ctrl+C pour copier, puis Ctrl+V sur le site."] .. "\n" .. GREY .. L["Ou Ctrl+V ici pour coller ce que tu as copié sur le site."] .. "|r")
   else
-    quick.status:SetText(GREY .. "Rien de nouveau à envoyer au site.|r\n" ..
-      "Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »).")
+    quick.status:SetText(GREY .. L["Rien de nouveau à envoyer au site."] .. "|r\n" ..
+      L["Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »)."])
   end
   local last = ForeverRosterDB.lastLoad
-  quick.foot:SetText(last and (GREY .. "Données du site : " .. date("%d/%m %H:%M", last.at) .. "|r") or (GREY .. "Données du site : jamais chargées|r"))
+  quick.foot:SetText(GREY .. (last and L("Données du site : %s", date("%d/%m %H:%M", last.at)) or L["Données du site : jamais chargées"]) .. "|r")
   quick.box:SetText(value)
   front(quick)
   quick:Show()
@@ -676,9 +705,9 @@ end
 local function whenText(t)
   local d, now = date("*t", t), date("*t", time())
   local hm = date("%H:%M", t)
-  if d.year == now.year and d.yday == now.yday then return (d.hour >= 17 and "ce soir " or "aujourd'hui ") .. hm end
+  if d.year == now.year and d.yday == now.yday then return d.hour >= 17 and L("ce soir %s", hm) or L("aujourd'hui %s", hm) end
   local tomorrow = date("*t", time() + 86400)
-  if d.year == tomorrow.year and d.yday == tomorrow.yday then return "demain " .. hm end
+  if d.year == tomorrow.year and d.yday == tomorrow.yday then return L("demain %s", hm) end
   return date("%d/%m ", t) .. hm
 end
 U.whenText = whenText
@@ -701,9 +730,9 @@ function U.AskReload(text)
     reloadAsk = window("ForeverRosterReload", "Forever Roster  ·  Roster Companion", 420, 150, ns.LOGO)
     reloadAsk.text = reloadAsk:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     reloadAsk.text:SetPoint("TOPLEFT", gapX(), -36) reloadAsk.text:SetWidth(402 - gapX()) reloadAsk.text:SetJustifyH("LEFT")
-    local later = button(reloadAsk, "Plus tard", 110, function() reloadAsk:Hide() end)
+    local later = button(reloadAsk, L["Plus tard"], 110, function() reloadAsk:Hide() end)
     later:SetPoint("BOTTOMRIGHT", -16, 12)
-    reloadAsk.go = button(reloadAsk, "Recharger", 120, function() reloadAsk:Hide() ns.Companion.Reload() end)
+    reloadAsk.go = button(reloadAsk, L["Recharger"], 120, function() reloadAsk:Hide() ns.Companion.Reload() end)
     reloadAsk.go:SetPoint("RIGHT", later, "LEFT", -8, 0)
   end
   reloadAsk.text:SetText(text)
@@ -722,7 +751,7 @@ local function buildReminder()
   for i, st in ipairs(ns.Group.STATUSES) do
     local b = statusButton(reminder)
     b:SetSize(92, 22)
-    styleStatus(b, st.label, st.color, false)
+    styleStatus(b, L[st.label], st.color, false)
     b:SetScript("OnClick", function()
       local e = reminder.entry
       if not e then return end
@@ -736,8 +765,8 @@ local function buildReminder()
   end
   reminder.foot = reminder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   reminder.foot:SetPoint("BOTTOMLEFT", 18, 18) reminder.foot:SetWidth(260) reminder.foot:SetJustifyH("LEFT")
-  reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
-  reminder.sync = button(reminder, "Synchro rapide", 120, function()
+  reminder.foot:SetText(GREY .. L["Plus tard : ferme, je te le redemande à la prochaine connexion."] .. "|r")
+  reminder.sync = button(reminder, L["Synchro rapide"], 120, function()
     reminder:Hide()
     if reminder.send then ns.Companion.Reload() else U.Quick(false) end
   end)
@@ -756,10 +785,10 @@ function U.Reminder(after)
       -- Avec Roster Companion : l'inscription part au prochain rechargement de l'interface (le clic l'autorise)
       reminder.send = ns.Companion and ns.Companion.Active() or false
       if reminder.send then
-        reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache tout de suite :\n« Envoyer maintenant » recharge l'interface, Roster Companion fait le reste.")
-        reminder.sync:SetText("Envoyer maintenant") reminder.sync:SetWidth(160)
+        reminder.text:SetText(GREEN .. L["Noté."] .. "|r " .. L["Pour que le site le sache tout de suite :\n« Envoyer maintenant » recharge l'interface, Roster Companion fait le reste."])
+        reminder.sync:SetText(L["Envoyer maintenant"]) reminder.sync:SetWidth(160)
       else
-        reminder.text:SetText(GREEN .. "Noté.|r Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site.")
+        reminder.text:SetText(GREEN .. L["Noté."] .. "|r " .. L["Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site."])
       end
       for _, b in ipairs(reminder.buttons) do b:Hide() end
       reminder.foot:SetText("")
@@ -767,13 +796,14 @@ function U.Reminder(after)
     return false
   end
   reminder.send = false
-  reminder.sync:SetText("Synchro rapide") reminder.sync:SetWidth(120)
+  reminder.sync:SetText(L["Synchro rapide"]) reminder.sync:SetWidth(120)
   reminder.entry = e
-  local who = UnitName("player") or "ce perso"
+  local who = UnitName("player") or L["ce perso"]
+  local more = #ask - 1
   reminder.text:SetText(GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time) .. GREY .. "  ·  " .. (e.group.name or "") .. "|r\n" ..
-    "Tu viens avec " .. who .. " ?" .. (#ask > 1 and (GREY .. "  (" .. (#ask - 1) .. " autre" .. (#ask > 2 and "s" or "") .. " raid" .. (#ask > 2 and "s" or "") .. " ensuite)|r") or ""))
+    L("Tu viens avec %s ?", who) .. (more > 0 and (GREY .. "  " .. (more > 1 and L("(%d autres raids ensuite)", more) or L("(%d autre raid ensuite)", more)) .. "|r") or ""))
   for _, b in ipairs(reminder.buttons) do b:Show() end
-  reminder.foot:SetText(GREY .. "Plus tard : ferme, je te le redemande à la prochaine connexion.|r")
+  reminder.foot:SetText(GREY .. L["Plus tard : ferme, je te le redemande à la prochaine connexion."] .. "|r")
   front(reminder)
   reminder:Show()
   return true
@@ -784,8 +814,8 @@ local function remindAtLogin()
   local _, known = U.SoonRaids()
   for _, e in ipairs(known) do
     local st = e.status or e.onSite
-    ns.print(GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time) .. " : " .. (ns.Group.LABEL[st] or st) .. ".")
+    ns.print(L("%s : %s.", GOLD .. e.raid.name .. "|r " .. whenText(e.raid.time), ns.Group.StatusLabel(st)))
   end
   U.Reminder()
 end
-ns.on("PLAYER_LOGIN", function() C_Timer.After(6, function() ns.safe("rappel de raid", remindAtLogin) end) end)
+ns.on("PLAYER_LOGIN", function() C_Timer.After(6, function() ns.safe(N("rappel de raid"), remindAtLogin) end) end)

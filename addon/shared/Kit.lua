@@ -2,6 +2,7 @@
 -- fenêtres, boutons, listes, tableaux, habillages « jeu » et « site », infobulles d'objets, icônes de rôle.
 -- Chaque addon pose avant ce fichier (Core.lua) : ns.db() (sa sauvegarde), ns.LOGO, et au besoin ns.palette.
 local ADDON, ns = ...
+local L, N = ns.L, ns.N
 local K = {}
 ns.Kit = K
 local GOLD, GREY, GREEN, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cff6fb7ff"
@@ -24,7 +25,7 @@ local function atlas(tex, name)
 end
 
 -- Habillage « site » : couleurs du thème sombre du site, titres en Marcellus SC (police livrée avec l'addon, licence OFL)
-local function site() local db = ns.db and ns.db() return db and db.skin == "site" end
+local function site() local db = ns.db and ns.db() return db and db.skin == "site" end -- nolocale (valeur de la sauvegarde)
 local C = {
   bg = { 0.027, 0.039, 0.071 }, panel = { 0.055, 0.078, 0.153 }, panel2 = { 0.078, 0.106, 0.2 },
   line = { 0.137, 0.173, 0.278 }, line2 = { 0.204, 0.251, 0.373 }, frame = { 0.427, 0.353, 0.173 },
@@ -108,7 +109,7 @@ local function siteWindow(name, title, w, h, icon)
   local close = CreateFrame("Button", nil, f)
   close:SetSize(22, 22) close:SetPoint("TOPRIGHT", -4, -3)
   local x = close:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-  x:SetPoint("CENTER") x:SetText("×") x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3])
+  x:SetPoint("CENTER") x:SetText(L["×"]) x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) -- croix de fermeture (la même dans toutes les langues)
   close:SetScript("OnEnter", function() x:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
   close:SetScript("OnLeave", function() x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) end)
   close:SetScript("OnClick", function() f:Hide() end)
@@ -526,8 +527,9 @@ local function colored(cls, name)
   return c and ("|c" .. (c.colorStr or "ffffffff") .. name .. "|r") or name
 end
 
--- Icône de rôle du jeu (atlas de la recherche de groupe) dans un texte, sinon le rôle en toutes lettres
+-- Icône de rôle du jeu (atlas de la recherche de groupe) dans un texte, sinon le rôle en toutes lettres (traduit)
 local ROLE_KEY = { Tank = "TANK", Heal = "HEALER", DPS = "DAMAGER" }
+local ROLE_LABEL = { Tank = N("Tank"), Heal = N("Heal"), DPS = N("DPS") }
 local ROLE_ATLAS = { Tank = "UI-LFG-RoleIcon-Tank", Heal = "UI-LFG-RoleIcon-Healer", DPS = "UI-LFG-RoleIcon-DPS" }
 local function roleIcon(role, size)
   if not ROLE_KEY[role or ""] then return role or "" end
@@ -536,7 +538,7 @@ local function roleIcon(role, size)
     local ok, a = pcall(GetIconForRole, ROLE_KEY[role])
     if ok and type(a) == "string" then atlas = a end
   end
-  if not (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)) then return role end
+  if not (C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas)) then return L[ROLE_LABEL[role]] end
   size = size or 14
   return CreateAtlasMarkup and CreateAtlasMarkup(atlas, size, size) or ("|A:" .. atlas .. ":" .. size .. ":" .. size .. "|a")
 end

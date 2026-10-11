@@ -11,6 +11,7 @@
 -- seul (il faut un clic ou une touche), l'addon le propose donc dans sa propre fenêtre, au plus une fois par heure.
 -- Sans l'appli, rien ne change : la synchro rapide et le copier-coller restent là.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local C = {}
 ns.Companion = C
 
@@ -62,7 +63,7 @@ local function applyAcks(acks, at)
           c.ackSig = sig
           if c.sentSig ~= sig then c.sentSig, c.sentAt = sig, at n = n + 1 end
         end
-        if c then ns.safe("inscriptions", ns.Group.MarkReceived, c, sig, at) end
+        if c then ns.safe(N("inscriptions"), ns.Group.MarkReceived, c, sig, at) end
       end
     end
   end
@@ -90,19 +91,29 @@ function C.Apply()
       -- Plus aucun groupe dans ce jeu
       wipe(ForeverRosterDB.groups or {})
       st.frgAt = frgAt
-      ForeverRosterDB.lastLoad = { at = frgAt, text = "aucun groupe", companion = true }
+      ForeverRosterDB.lastLoad = { at = frgAt, none = true, companion = true }
     else
       local ok = ns.Group.Load(d.frg, true, true)
       if ok then
         local raids, patterns = 0, 0
         for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
         st.frgAt = frgAt
-        ForeverRosterDB.lastLoad = { at = frgAt, text = string.format("%d groupe(s), %d raid(s), %d patron(s) suivis", #ok, raids, patterns), companion = true }
+        ForeverRosterDB.lastLoad = { at = frgAt, groups = #ok, raids = raids, patterns = patterns, companion = true }
       end
     end
   end
-  ns.safe("inscriptions", ns.Group.Reconcile) -- accusés reçus : inscriptions faites en jeu à oublier
+  ns.safe(N("inscriptions"), ns.Group.Reconcile) -- accusés reçus : inscriptions faites en jeu à oublier
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
+end
+
+-- Dernier chargement des données du site (ForeverRosterDB.lastLoad), en texte dans la langue de l'interface :
+-- groupes (groups, raids, patterns), compo d'un raid (compo), plus aucun groupe (none) ; text : sauvegarde plus ancienne (texte en français)
+function C.LoadText(last)
+  if not last then return "" end
+  if last.groups then return L("%d groupe(s), %d raid(s), %d patron(s) suivis", last.groups, last.raids or 0, last.patterns or 0) end
+  if last.compo then return L("compo « %s » (onglet Compo)", last.compo) end
+  if last.none then return L["aucun groupe"] end
+  return last.text or ""
 end
 
 -- Fonctions de chargement : C_AddOns (clients récents) ou globales (Classic), cherchées à l'appel
@@ -128,21 +139,21 @@ function C.SlotsLeft()
 end
 
 local function remaining(n)
-  if n == 0 then return " C'était la dernière actualisation possible avant un /reload." end
-  return string.format(" Encore %d actualisation%s possible%s avant un /reload.", n, n > 1 and "s" or "", n > 1 and "s" or "")
+  if n == 0 then return " " .. L["C'était la dernière actualisation possible avant un /reload."] end
+  return " " .. (n > 1 and L("Encore %d actualisations possibles avant un /reload.", n) or L("Encore %d actualisation possible avant un /reload.", n))
 end
 
 -- Charge la copie suivante et applique ses données. Renvoie : copie chargée, message, données des groupes changées.
 function C.Refresh()
   if not C.Active() then
-    return false, "Roster Companion n'a rien déposé récemment : pour charger les données du site, colle-les dans l'onglet Synchro."
+    return false, L["Roster Companion n'a rien déposé récemment : pour charger les données du site, colle-les dans l'onglet Synchro."]
   end
   if InCombatLockdown() then
     afterCombat = true
-    return false, "actualisation à la fin du combat."
+    return false, L["actualisation à la fin du combat."]
   end
   local load = addonApi("LoadAddOn")
-  if not load then return false, "ce client ne permet pas de charger les données sans /reload." end
+  if not load then return false, L["ce client ne permet pas de charger les données sans /reload."] end
   local d0 = C.Data()
   local at0, frg0 = d0 and tonumber(d0.at) or 0, state().frgAt or 0
   for i = 1, SLOTS do
@@ -155,19 +166,19 @@ function C.Refresh()
         local d, changed = C.Data(), (state().frgAt or 0) > frg0
         local msg
         if changed then
-          msg = "données du site actualisées : " .. (ForeverRosterDB.lastLoad and ForeverRosterDB.lastLoad.text or "groupes") .. "."
+          msg = L("données du site actualisées : %s.", ForeverRosterDB.lastLoad and C.LoadText(ForeverRosterDB.lastLoad) or L["groupes"])
         elseif d and (tonumber(d.at) or 0) > at0 then
-          msg = "envois confirmés par le site, rien de nouveau dans les groupes."
+          msg = L["envois confirmés par le site, rien de nouveau dans les groupes."]
         else
           local at = d and tonumber(d.at)
-          msg = "rien de nouveau" .. (at and (" (dernières données de l'appli : " .. date("%d/%m à %H:%M", at) .. ")") or "") .. "."
+          msg = at and L("rien de nouveau (dernières données de l'appli : %s).", date(L["%d/%m à %H:%M"], at)) or L["rien de nouveau."]
         end
         return true, msg .. remaining(C.SlotsLeft()), changed
       end
       dead[name] = true
     end
   end
-  return false, "plus d'actualisation possible dans cette session : /reload pour recharger les données du site."
+  return false, L["plus d'actualisation possible dans cette session : /reload pour recharger les données du site."]
 end
 
 -- Actualisation toute seule (moments utiles) : rien si l'appli n'est pas là ou si la dernière actualisation est trop
@@ -178,7 +189,7 @@ function C.AutoRefresh(reason)
     if reason ~= "window" then
       if not exhaustedSaid then
         exhaustedSaid = true
-        ns.print("les 20 actualisations sans /reload de cette session sont utilisées : « Synchroniser » (onglet Synchro) ou /reload pour repartir.")
+        ns.print(L["les 20 actualisations sans /reload de cette session sont utilisées : « Synchroniser » (onglet Synchro) ou /reload pour repartir."])
       end
       C.OfferReload()
     end
@@ -226,7 +237,7 @@ end
 function C.OfferReload()
   if InCombatLockdown() or time() - reloadOfferedAt < HOURLY or not (ns.UI and ns.UI.AskReload) then return false end
   reloadOfferedAt = time()
-  ns.UI.AskReload("Les 20 actualisations sans /reload de cette session sont utilisées.\nRecharger l'interface pour recevoir les nouveautés du site (et envoyer tes persos) ?")
+  ns.UI.AskReload(L["Les 20 actualisations sans /reload de cette session sont utilisées.\nRecharger l'interface pour recevoir les nouveautés du site (et envoyer tes persos) ?"])
   return true
 end
 
@@ -234,7 +245,7 @@ end
 -- (l'appli envoie au site dans les secondes qui suivent) et recharge les données de l'appli. Pas en combat.
 function C.Reload()
   if InCombatLockdown() then
-    ns.print("pas de synchronisation en combat : réessaie à la fin du combat.")
+    ns.print(L["pas de synchronisation en combat : réessaie à la fin du combat."])
     return false
   end
   ReloadUI()
@@ -251,16 +262,24 @@ function C.WriteOutbox()
   ForeverRosterDB.outbox = { v = 1, at = time(), addon = ns.version, blocks = blocks }
 end
 
+-- Compte rendu de l'appli (écrit en français par l'appli) : « bilan de « Raid » » traduit à l'affichage, prénoms tels quels
+local function reportItem(s)
+  local raid, rest = tostring(s):match("^bilan de « (.-) »(.*)$") -- nolocale (texte de l'appli)
+  if raid then return L("bilan de « %s »", raid) .. rest end
+  return s
+end
+
 -- Ligne de l'onglet Synchro quand l'appli s'en occupe
 function C.StatusText(color)
   local st = state()
   local parts = {}
   if st.report and st.report.at then
-    local what = #st.report.items > 0 and (" : " .. table.concat(st.report.items, ", ")) or ""
-    parts[#parts + 1] = "envoyés le " .. date("%d/%m à %H:%M", st.report.at) .. what .. "."
+    local when, items = date(L["%d/%m à %H:%M"], st.report.at), {}
+    for i, v in ipairs(st.report.items) do items[i] = reportItem(v) end
+    parts[#parts + 1] = #items > 0 and L("envoyés le %s : %s.", when, table.concat(items, ", ")) or L("envoyés le %s.", when)
   end
-  if st.frgAt then parts[#parts + 1] = "Données du site chargées : " .. date("%d/%m à %H:%M", st.frgAt) .. "." end
-  return (color or "") .. "Roster Companion s'en occupe|r" .. (#parts > 0 and (" · " .. table.concat(parts, " ")) or "")
+  if st.frgAt then parts[#parts + 1] = L("Données du site chargées : %s.", date(L["%d/%m à %H:%M"], st.frgAt)) end
+  return (color or "") .. L["Roster Companion s'en occupe"] .. "|r" .. (#parts > 0 and (" · " .. table.concat(parts, " ")) or "")
 end
 
 ns.on("PLAYER_LOGIN", function()

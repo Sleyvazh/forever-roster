@@ -2,6 +2,20 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.3.2
+
+- The interface follows the game client's language: French on a French client, English otherwise. Options tab, "Language" (or `/roster language fr | en | auto`) to pick another one; it applies after a UI reload.
+- English names for the commands (`/roster loot`, `/roster handover`, `/roster sync`, `/roster inraid`, `/roster comp`…); the French ones still work.
+- Players without the addon can whisper their answer in English too: bis, up / upgrade, os / off / offspec, transmog / tmog, pass, followed by the item number when several items are open ("upgrade 2").
+- Raid announcements and whispers are sent in the loot master's language. Data sent to the website does not change.
+
+Français :
+
+- L'interface suit la langue du client du jeu : français sur un client en français, anglais sinon. Onglet Options, « Langue » (ou `/roster langue fr | en | auto`) pour en choisir une autre ; elle s'applique après un rechargement de l'interface.
+- Les commandes ont aussi leur nom anglais (`/roster loot`, `/roster handover`, `/roster sync`, `/roster inraid`, `/roster comp`…) ; les noms français marchent toujours.
+- Les joueurs sans l'addon peuvent chuchoter leur réponse en anglais aussi : bis, up / upgrade, os / off / offspec, transmog / tmog, pass, suivi du numéro de l'objet quand il y en a plusieurs (« upgrade 2 »).
+- Annonces au raid et chuchotements partent dans la langue du chef de butin. Rien ne change dans ce qui part au site.
+
 ## 0.3.1
 
 - Every awarded item is now recorded in the raid summary, even when recording was paused at that moment (after a `/reload`); missed awards are caught up before the export.

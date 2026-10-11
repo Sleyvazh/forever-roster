@@ -6,12 +6,15 @@
 -- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), retours
 -- du raid de test (section 10 : échange ouvert par le gagnant, objets portables, tout au conseil, détail des reçus), pages
 -- et fenêtres dans les deux habillages, valeurs secrètes. Échoue au premier problème.
+-- Textes de l'interface (addon/tests/locale_audit.lua) ; langue du client : WOW_LOCALE (frFR par défaut)
+LOCALE_AUDIT = dofile("addon/tests/locale_audit.lua")
+function GetLocale() return os.getenv("WOW_LOCALE") or "frFR" end
 local printed = {}
 local verbose = os.getenv("ROSTER_SIM_VERBOSE") -- messages de l'addon affichés au fil de l'eau
 function print(...)
   local t = {}
   for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end
-  printed[#printed + 1] = table.concat(t, " ")
+  printed[#printed + 1] = table.concat(t, " ") LOCALE_AUDIT.show(printed[#printed])
   if verbose then io.stderr:write(printed[#printed], "\n") end
 end
 local function errors() local n = 0 for _, l in ipairs(printed) do if l:find("erreur") then n = n + 1 end end return n end
@@ -48,7 +51,8 @@ local function frame()
     if k == "Show" then return function(self) self.shown = true local h = rawget(self, "scripts").OnShow if h then h(self) end end end
     if k == "Hide" then return function(self) self.shown = false local h = rawget(self, "scripts").OnHide if h then h(self) end end end
     if k == "IsShown" then return function(self) return self.shown end end
-    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self end end end
+    if k == "SetText" then return function(self, v) self.text = v if v then TEXTS[v] = self LOCALE_AUDIT.show(v) end end end
+    if k == "AddLine" or k == "AddDoubleLine" then return function(_, x, y) LOCALE_AUDIT.show(x) LOCALE_AUDIT.show(y) end end
     if k == "GetText" then return function(self) return self.text end end
     if k == "SetScript" then return function(self, n, fn) rawget(self, "scripts")[n] = fn end end
     if k == "GetScript" then return function(self, n) return rawget(self, "scripts")[n] end end
@@ -316,6 +320,7 @@ local BLIZZARD = {
       return 0
     end,
     SendChatMessage = function(msg, chatType, _, target)
+      LOCALE_AUDIT.show(msg)
       assert(not S.lockdown, "message du chat pendant le verrou")
       S.whispers[#S.whispers + 1] = { msg = msg, chatType = chatType, target = target }
     end,
@@ -372,6 +377,7 @@ STUBS["Minimap.lua"] = function(ns) ns.Minimap = { Update = function() ns.Minima
 STUBS["Test.lua"] = function() end
 
 local ns = {}
+LOCALE_AUDIT.install(ns)
 local function addonFile(line)
   for _, dir in ipairs({ "addon/Roster/", "addon/shared/" }) do
     local f = io.open(dir .. line)
@@ -1425,6 +1431,17 @@ whisper("bis4", "Zephyra-Hyjal")
 assert(cand(Lo.Council(sessions[2]), "Tharok-Hyjal").response == "upgrade" and cand(Lo.Council(sessions[3]), "Mordak-Ysondre").response == "bis", "« up 2 », « 3 bis »")
 assert(cand(Lo.Council(sessions[4]), "Vex-Kael'Thas").response == "off" and cand(Lo.Council(sessions[4]), "Zephyra-Hyjal").response == "bis", "« os #4 », « bis4 »")
 assert(not cand(Lo.Council(sessions[1]), "Tharok-Hyjal") and not cand(Lo.Council(sessions[3]), "Tharok-Hyjal"), "seul l'objet visé")
+-- Mots anglais (joueur sans l'addon, client anglais), avec ou sans numéro ; les mots français restent lus
+for text, want in pairs({ ["upgrade 2"] = { "upgrade", 2 }, ["2 Upgrade"] = { "upgrade", 2 }, ["offspec"] = { "off" }, ["off-spec #3"] = { "off", 3 },
+  ["off 1"] = { "off", 1 }, ["off spec 4"] = { "off", 4 }, ["TMOG 4"] = { "transmo", 4 }, ["transmog"] = { "transmo" }, ["pass"] = { "pass" },
+  ["pass 3"] = { "pass", 3 }, ["passer 2"] = { "pass", 2 }, ["passe"] = { "pass" }, ["transmo 1"] = { "transmo", 1 }, ["os"] = { "off" } }) do
+  local r, n = Lo.ParseWhisper(text)
+  assert(r == want[1] and n == want[2], "chuchotement « " .. text .. " » : " .. tostring(r) .. " " .. tostring(n))
+end
+assert(Lo.ParseWhisper("need 2") == nil and Lo.ParseWhisper("hello") == nil, "mots inconnus : ignorés")
+whisper("upgrade 4", "Sylvane-Hyjal")
+whisper("tmog 1", "Orvane-Hyjal")
+assert(cand(Lo.Council(sessions[4]), "Sylvane-Hyjal").response == "upgrade" and cand(Lo.Council(sessions[1]), "Orvane-Hyjal").response == "transmo", "« upgrade 4 », « tmog 1 »")
 -- Sans numéro, plusieurs conseils : rappel chuchoté une fois par lot ; numéro inconnu : rappel aussi
 wmark = #S.whispers
 whisper("bis", "Brumelune-Ysondre")
@@ -1712,5 +1729,9 @@ buildPages(nil)
 buildPages("site")
 assert(errors() == 0, "fin sans erreur : " .. tostring(lastPrinted("erreur")))
 assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
+-- Données du test autorisées par le contrôle des textes : noms de groupe et de raid écrits ici, noms d'objets du test
+-- coupés à 14 octets dans la bande d'objets (LootUI, objet sans icône)
+local LOOT_NAMES = { "Jambières de", "Anneau des spo", "Cuirasse de la", "Objet au nom v", "Objet au conse", "Objet chuchot", "Objet pas enco" }
+LOCALE_AUDIT.check("Roster", { "Les Veilleurs", "Raid à définir", unpack(LOOT_NAMES) })
 print = function(...) io.stdout:write(table.concat({ ... }, " "), "\n") end
 print("roster_sim : tout est bon" .. (#stubbed > 0 and (" (socle simulé : " .. table.concat(stubbed, ", ") .. ")") or ""))

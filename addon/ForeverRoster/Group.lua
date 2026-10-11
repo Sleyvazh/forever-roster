@@ -1,18 +1,21 @@
 -- Données des groupes (FRG v1, collées depuis le site) : inscriptions aux raids en jeu,
 -- patrons recherchés et BiS (infobulles, sacs, alerte au butin), patrons « recherchés » marqués en jeu.
 local _, ns = ...
+local L, N = ns.L, ns.N
 local G = {}
 ns.Group = G
 
 local GOLD, GREY, GREEN, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cff6fb7ff"
 
 -- Statuts proposés en jeu (le banc reste une décision des officiers, sur le site)
--- Couleurs : celles du site (thème sombre), pour reconnaître un statut d'un coup d'œil
+-- Couleurs : celles du site (thème sombre), pour reconnaître un statut d'un coup d'œil. Noms traduits à l'affichage (L[…]).
 G.STATUSES = {
-  { key = "present", label = "Présent", color = { 0.31, 0.83, 0.37 } }, { key = "late", label = "En retard", color = { 0.94, 0.71, 0.24 } },
-  { key = "tentative", label = "Peut-être", color = { 0.66, 0.69, 0.76 } }, { key = "absent", label = "Absent", color = { 1, 0.42, 0.37 } },
+  { key = "present", label = N("Présent"), color = { 0.31, 0.83, 0.37 } }, { key = "late", label = N("En retard"), color = { 0.94, 0.71, 0.24 } },
+  { key = "tentative", label = N("Peut-être"), color = { 0.66, 0.69, 0.76 } }, { key = "absent", label = N("Absent"), color = { 1, 0.42, 0.37 } },
 }
-G.LABEL = { present = "Présent", late = "En retard", tentative = "Peut-être", alt = "Reroll", bench = "Banc", absent = "Absent" }
+G.LABEL = { present = N("Présent"), late = N("En retard"), tentative = N("Peut-être"), alt = N("Reroll"), bench = N("Banc"), absent = N("Absent") }
+-- Nom d'un statut dans la langue de l'interface (statut inconnu : tel quel)
+function G.StatusLabel(status) return G.LABEL[status] and L[G.LABEL[status]] or status end
 
 local function db()
   ForeverRosterDB.groups = ForeverRosterDB.groups or {}
@@ -32,9 +35,9 @@ function G.Load(text, replace, quiet)
     for _ in pairs(g.patterns) do patterns = patterns + 1 end
     for _ in pairs(g.bis) do bis = bis + 1 end
   end
-  if not quiet then ns.print(string.format("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
-  ns.safe("consommables", G.CountConsumables)
-  ns.safe("inscriptions", G.Reconcile)
+  if not quiet then ns.print(L("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
+  ns.safe(N("consommables"), G.CountConsumables)
+  ns.safe(N("inscriptions"), G.Reconcile)
   return groups
 end
 
@@ -96,19 +99,19 @@ end
 function G.SignUp(groupId, raidId, status, raidTime)
   local c = ns.charDB()
   c.signups = c.signups or {}
-  local old, label = c.signups[raidId], G.LABEL[status] or status
+  local old, label = c.signups[raidId], G.StatusLabel(status)
   local inflight = old and (old.outSig ~= nil or old.sent or old.inflight) or nil
   local _, r = findRaid(groupId, raidId)
   if r and r.status == status and (r.char == nil or r.char == UnitName("player")) and not inflight then
     c.signups[raidId] = nil
-    ns.print("inscription : " .. label .. ", c'est déjà ton statut sur le site.")
+    ns.print(L("inscription : %s, c'est déjà ton statut sur le site.", label))
     return
   end
   c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0, at = time(), inflight = inflight }
   if ns.Companion and ns.Companion.Active() then
-    ns.print("inscription notée : " .. label .. ". « Envoyer maintenant » (onglet Raids) l'envoie au site tout de suite, sinon elle part au prochain /reload.")
+    ns.print(L("inscription notée : %s. « Envoyer maintenant » (onglet Raids) l'envoie au site tout de suite, sinon elle part au prochain /reload.", label))
   else
-    ns.print("inscription notée : " .. label .. ". Elle part au site avec ta prochaine synchro.")
+    ns.print(L("inscription notée : %s. Elle part au site avec ta prochaine synchro.", label))
   end
 end
 
@@ -168,7 +171,7 @@ function G.Reconcile()
     end
   end
 end
-ns.on("PLAYER_LOGIN", function() ns.safe("inscriptions", G.Reconcile) end)
+ns.on("PLAYER_LOGIN", function() ns.safe(N("inscriptions"), G.Reconcile) end)
 
 -- Patrons marqués « recherché » en jeu (true) ou retirés (false), pour ce perso, envoyés avec l'export
 function G.IsWantedHere(itemId) return (ns.charDB().wanted or {})[itemId] == true end
@@ -177,7 +180,8 @@ function G.ToggleWanted(itemId, name)
   c.wanted = c.wanted or {}
   local on = not (c.wanted[itemId] == true or (c.wanted[itemId] == nil and G.WantedBySiteForMe(itemId)))
   c.wanted[itemId] = on
-  ns.print((name or ("objet " .. itemId)) .. (on and " : marqué recherché." or " : retiré des recherchés.") .. " Envoyé au site avec ton prochain export.")
+  name = name or L("objet %s", itemId)
+  ns.print(on and L("%s : marqué recherché. Envoyé au site avec ton prochain export.", name) or L("%s : retiré des recherchés. Envoyé au site avec ton prochain export.", name))
   return on
 end
 function G.WantedLines(c)
@@ -289,7 +293,7 @@ local counting = false
 local function countSoon()
   if counting or not ForeverRosterDB then return end
   counting = true
-  C_Timer.After(2, function() counting = false ns.safe("consommables", G.CountConsumables) end)
+  C_Timer.After(2, function() counting = false ns.safe(N("consommables"), G.CountConsumables) end)
 end
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "BANKFRAME_OPENED" }) do ns.on(event, countSoon) end
 
@@ -301,7 +305,7 @@ G.names = {}
 local function linkFor(itemId, fallback)
   local _, link = ns.ItemInfo(itemId)
   if not link then ns.RequestItem(itemId) end
-  return link or ("[" .. (fallback or G.names[itemId] or ("objet " .. itemId)) .. "]")
+  return link or ("[" .. (fallback or G.names[itemId] or L("objet %s", itemId)) .. "]")
 end
 G.linkFor = linkFor
 
@@ -313,7 +317,7 @@ function G.displayLink(itemId, name, quality)
   local _, link = ns.ItemInfo(itemId)
   if link then return link end
   ns.RequestItem(itemId)
-  return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or G.names[itemId] or ("objet " .. itemId)) .. "]|h|r"
+  return "|c" .. (QCOLOR[quality or 1] or "ffffffff") .. "|Hitem:" .. itemId .. "|h[" .. (name or G.names[itemId] or L("objet %s", itemId)) .. "]|h|r"
 end
 
 -- Réponse du serveur aux objets demandés (ITEM_DATA_LOAD_RESULT : l'objet existe ou non)
@@ -323,27 +327,27 @@ ns.on("ITEM_DATA_LOAD_RESULT", function(id, ok) if id then G.loadResult[id] = ok
 -- /fr objet <id ou lien> : ce que le jeu répond pour un objet (diagnostic des « [objet 12345] »)
 -- Fichiers du client (infos immédiates) d'un côté, serveur (nom, lien) de l'autre.
 function G.Diagnose(itemId)
-  local function api(name, fn) return name .. (fn and " présent" or " absent") end
-  ns.print(string.format("objet %d · %s · %s · %s", itemId, api("GetItemInfo", GetItemInfo), api("C_Item.GetItemInfo", C_Item and C_Item.GetItemInfo),
+  local function api(name, fn) return fn and L("%s présent", name) or L("%s absent", name) end
+  ns.print(L("objet %d · %s · %s · %s", itemId, api("GetItemInfo", GetItemInfo), api("C_Item.GetItemInfo", C_Item and C_Item.GetItemInfo),
     api("GetItemCount", GetItemCount or (C_Item and C_Item.GetItemCount))))
   local _, itemType, subType, equipLoc = ns.ItemInfoInstant(itemId)
-  ns.print("fichiers du jeu : " .. (itemType and (itemType .. (subType and subType ~= "" and (" / " .. subType) or "") .. (equipLoc and equipLoc ~= "" and (" · " .. equipLoc) or "")) or "objet inconnu de ce client"))
+  ns.print(L("fichiers du jeu : %s", itemType and (itemType .. (subType and subType ~= "" and (" / " .. subType) or "") .. (equipLoc and equipLoc ~= "" and (" · " .. equipLoc) or "")) or L["objet inconnu de ce client"]))
   local missing = {}
   for _, e in ipairs(ns.missingEvents) do if e == "GET_ITEM_INFO_RECEIVED" or e == "ITEM_DATA_LOAD_RESULT" then missing[#missing + 1] = e end end
-  if #missing > 0 then ns.print("événements absents de ce client : " .. table.concat(missing, ", ")) end
+  if #missing > 0 then ns.print(L("événements absents de ce client : %s", table.concat(missing, ", "))) end
   local name, link = ns.ItemInfo(itemId)
-  ns.print("serveur : " .. (link or (name and ("nom " .. name .. ", sans lien")) or "rien pour l'instant (demande envoyée)"))
+  ns.print(L("serveur : %s", link or (name and L("nom %s, sans lien", name)) or L["rien pour l'instant (demande envoyée)"]))
   if not link then
     G.loadResult[itemId] = nil
     if C_Item and C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, itemId) else ns.ItemInfo(itemId) end
     C_Timer.After(3, function()
       local n2, l2 = ns.ItemInfo(itemId)
       local res = G.loadResult[itemId]
-      ns.print("3 s plus tard : " .. (l2 or (n2 and ("nom " .. n2 .. ", sans lien"))
-        or (res == false and "le serveur répond que cet objet n'existe pas (ou pas encore : phase, contenu de Forever)")
-        or (itemType and "toujours rien : connu des fichiers du jeu, mais le serveur ne l'envoie pas")
-        or "toujours rien, et inconnu des fichiers du jeu : cet objet n'existe pas dans Forever"))
-      ns.print("pour comparer : /fr objet puis Maj+clic sur un objet de tes sacs.")
+      ns.print(L("3 s plus tard : %s", l2 or (n2 and L("nom %s, sans lien", n2))
+        or (res == false and L["le serveur répond que cet objet n'existe pas (ou pas encore : phase, contenu de Forever)"])
+        or (itemType and L["toujours rien : connu des fichiers du jeu, mais le serveur ne l'envoie pas"])
+        or L["toujours rien, et inconnu des fichiers du jeu : cet objet n'existe pas dans Forever"]))
+      ns.print(L["pour comparer : /fr objet puis Maj+clic sur un objet de tes sacs."])
     end)
   end
 end
@@ -389,15 +393,15 @@ local function joinNames(list, max)
 end
 G.joinNames = joinNames
 
--- « J'ai loot ça » : annonce dans le raid ou le groupe, avec qui le recherche ou l'a en BiS
+-- « J'ai loot ça » : annonce dans le raid ou le groupe, avec qui le recherche ou l'a en BiS (dans la langue de celui qui annonce)
 function G.AnnounceText(itemId, link)
   local who, bis = G.Who(itemId), G.Bis(itemId)
   local parts = {}
-  if who then parts[#parts + 1] = joinNames(who.wanted, 10) and ("patron recherché par " .. joinNames(who.wanted, 10)) or "patron que personne ne recherche" end
-  if who and joinNames(who.known, 5) then parts[#parts + 1] = "déjà connu par " .. joinNames(who.known, 5) end
-  if bis then parts[#parts + 1] = "BiS de " .. joinNames(bis, 10) end
+  if who then parts[#parts + 1] = joinNames(who.wanted, 10) and L("patron recherché par %s", joinNames(who.wanted, 10)) or L["patron que personne ne recherche"] end
+  if who and joinNames(who.known, 5) then parts[#parts + 1] = L("déjà connu par %s", joinNames(who.known, 5)) end
+  if bis then parts[#parts + 1] = L("BiS de %s", joinNames(bis, 10)) end
   if #parts == 0 then return nil end
-  return (link or linkFor(itemId, who and who.recipe)) .. " : " .. table.concat(parts, " · ")
+  return L("%s : %s", link or linkFor(itemId, who and who.recipe), table.concat(parts, " · "))
 end
 function G.Announce(itemId, link)
   local text = G.AnnounceText(itemId, link)
@@ -413,12 +417,12 @@ local function addLines(tooltip, itemId)
   tooltip:AddLine(" ")
   tooltip:AddLine(GOLD .. "Forever Roster|r")
   if info.who then
-    tooltip:AddLine(joinNames(info.who.wanted) and ("Recherché par : " .. GREEN .. joinNames(info.who.wanted) .. "|r") or (GREY .. "Personne ne le recherche|r"), 1, 1, 1, true)
-    if joinNames(info.who.known) then tooltip:AddLine(GREY .. "Connu par : " .. joinNames(info.who.known) .. "|r", 1, 1, 1, true) end
+    tooltip:AddLine(joinNames(info.who.wanted) and L("Recherché par : %s", GREEN .. joinNames(info.who.wanted) .. "|r") or (GREY .. L["Personne ne le recherche"] .. "|r"), 1, 1, 1, true)
+    if joinNames(info.who.known) then tooltip:AddLine(GREY .. L("Connu par : %s", joinNames(info.who.known)) .. "|r", 1, 1, 1, true) end
   end
-  if info.bis then tooltip:AddLine("BiS de : " .. BLUE .. joinNames(info.bis) .. "|r", 1, 1, 1, true) end
-  if info.sr then tooltip:AddLine("SR (" .. info.sr.raid.name .. ") : " .. GREEN .. G.ReserveText(info.sr) .. "|r", 1, 1, 1, true) end
-  if info.mark ~= nil then tooltip:AddLine(GREY .. (info.mark and "Marqué recherché par toi (à envoyer)" or "Retiré de tes recherchés (à envoyer)") .. "|r") end
+  if info.bis then tooltip:AddLine(L("BiS de : %s", BLUE .. joinNames(info.bis) .. "|r"), 1, 1, 1, true) end
+  if info.sr then tooltip:AddLine(L("SR (%s) : %s", info.sr.raid.name, GREEN .. G.ReserveText(info.sr) .. "|r"), 1, 1, 1, true) end
+  if info.mark ~= nil then tooltip:AddLine(GREY .. (info.mark and L["Marqué recherché par toi (à envoyer)"] or L["Retiré de tes recherchés (à envoyer)"]) .. "|r") end
   if tooltip.Show then tooltip:Show() end
 end
 G.addTooltipLines = addLines
@@ -429,18 +433,18 @@ local function hookTooltips()
   hooked = true
   if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-      ns.safe("infobulle", addLines, tooltip, data and data.id)
+      ns.safe(N("infobulle"), addLines, tooltip, data and data.id)
     end)
   elseif GameTooltip and GameTooltip.HookScript then
     for _, tt in ipairs({ GameTooltip, ItemRefTooltip }) do
       pcall(tt.HookScript, tt, "OnTooltipSetItem", function(self)
         local _, link = self:GetItem()
-        ns.safe("infobulle", addLines, self, itemIdFrom(link))
+        ns.safe(N("infobulle"), addLines, self, itemIdFrom(link))
       end)
     end
   end
 end
-ns.on("PLAYER_LOGIN", function() ns.safe("infobulles", hookTooltips) end)
+ns.on("PLAYER_LOGIN", function() ns.safe(N("infobulles"), hookTooltips) end)
 G.hookTooltips = hookTooltips
 
 -- Butin : un patron suivi ou un BiS ramassé par moi → alerte avec « Annoncer »
@@ -464,7 +468,7 @@ function G.OnLoot(msg, playerName, _, _, playerName2)
   local id = itemIdFrom(link)
   if not id or not (G.Who(id) or G.Bis(id)) then return end
   if not isMine(msg, playerName, playerName2) then return end
-  ns.print("ramassé : " .. G.AnnounceText(id, link))
+  ns.print(L("ramassé : %s", G.AnnounceText(id, link)))
   if ns.UI and ns.UI.LootAlert then ns.UI.LootAlert(id, link) end
 end
 ns.on("CHAT_MSG_LOOT", function(...) G.OnLoot(...) end)

@@ -5,6 +5,11 @@
 -- Ce fichier n'utilise aucune fonction du jeu : il est testé hors jeu (addon/tests).
 local _, ns = ...
 ns = ns or {}
+-- Textes des erreurs : traduits par ns.L dans le jeu ; hors du jeu (addon/tests/format_test.lua), en français tels quels
+local L = ns.L or setmetatable({}, {
+  __index = function(_, key) return key end,
+  __call = function(_, key, ...) if select("#", ...) == 0 then return key end return string.format(key, ...) end,
+})
 local F = {}
 ns.Format = F
 
@@ -33,20 +38,20 @@ function F.ParseFRR(text)
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
     if f[1] == "FRR" then
-      if tonumber(f[2]) ~= 1 then return nil, "Version d'export non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
+      if tonumber(f[2]) ~= 1 then return nil, L("Version d'export non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
       raid = { id = txt(f[3], 40), time = tonumber(f[4]) or 0, name = txt(f[5], 60) }
     elseif f[1] == "M" then
       members[#members + 1] = {
         -- Prénom seul : le jeu ignore le nom de famille de Forever (« Greta Coulé » → Greta)
         name = txt(f[2], 40):match("^%S+") or "", class = txt(f[3], 12), role = txt(f[4], 8), spec = txt(f[5], 30),
-        group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = f[8] or "", source = f[9] or "site",
+        group = tonumber(f[6]) or 0, pos = tonumber(f[7]) or 0, status = f[8] or "", source = f[9] or "site", -- nolocale (valeur)
       }
     elseif f[1] == "END" then
       count = tonumber(f[2])
     end
   end
-  if not raid then return nil, "Ce n'est pas un export de compo : copie le texte de « Export pour le jeu » sur la page du raid." end
-  if count ~= #members then return nil, "Export incomplet : recopie tout le texte, jusqu'à la ligne END." end
+  if not raid then return nil, L["Ce n'est pas un export de compo : copie le texte de « Export pour le jeu » sur la page du raid."] end
+  if count ~= #members then return nil, L["Export incomplet : recopie tout le texte, jusqu'à la ligne END."] end
   return raid, members
 end
 
@@ -79,8 +84,8 @@ function F.ParseFRG(text)
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
     if f[1] == "FRG" then
-      if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
-      if tonumber(f[2]) ~= 1 then return nil, "Version non gérée (" .. tostring(f[2]) .. ") : mets l'addon à jour." end
+      if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
+      if tonumber(f[2]) ~= 1 then return nil, L("Version non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
       cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
         reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil }, nil, 0
     elseif cur and f[1] == "R" then
@@ -139,8 +144,8 @@ function F.ParseFRG(text)
       count = tonumber(f[2])
     end
   end
-  if not cur then return nil, "Ce ne sont pas les données du site : page Addon du site (ou onglet Raids du groupe), « Copier », puis colle ici." end
-  if not close() then return nil, "Texte incomplet : recopie tout, jusqu'à la dernière ligne END." end
+  if not cur then return nil, L["Ce ne sont pas les données du site : page Addon du site (ou onglet Raids du groupe), « Copier », puis colle ici."] end
+  if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
   return groups
 end
 
