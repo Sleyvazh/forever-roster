@@ -72,13 +72,17 @@ export async function accountRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Ajout d'une adresse e-mail (comptes créés via Battle.net). */
+  /**
+   * Ajout d'une adresse e-mail (comptes créés via Battle.net), ou remplacement tant qu'elle n'est pas confirmée
+   * (mauvaise adresse saisie : le lien envoyé à l'ancienne ne vaut plus). Une adresse confirmée ne se change pas ici.
+   */
   app.post("/email", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (req, reply) => {
     const u = currentUser(req);
-    if (u.email) throw conflict("Ton compte a déjà une adresse e-mail.");
+    if (u.email && u.emailVerifiedAt) throw conflict("Ton adresse e-mail est déjà confirmée.");
     const body = parse(z.object({ email: z.email().max(254).transform(normalizeEmail) }), req.body);
-    const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
+    const [taken] = await db.select({ id: users.id }).from(users).where(and(eq(users.email, body.email), ne(users.id, u.id)));
     if (taken) throw conflict("Cette adresse ne peut pas être utilisée.");
+    await invalidateEmailTokens(db, u.id, "verify");
     await db.update(users).set({ email: body.email, emailVerifiedAt: null, updatedAt: new Date() }).where(eq(users.id, u.id));
     const link = await issueEmailToken(app, u.id, "verify", siteOf(app.ctx.cfg, req).origin);
     await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req), false) });

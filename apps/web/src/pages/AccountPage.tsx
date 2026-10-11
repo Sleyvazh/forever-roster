@@ -108,10 +108,14 @@ function Identity(p: { email: string | null; verified: boolean; battletag: strin
         <span><span className="lbl">E-mail</span><br />{p.email ?? <span className="muted">Aucune adresse</span>}</span>
         {p.email && <span className={`tag ${p.verified ? "ok" : "warn"}`}>{p.verified ? "Confirmée" : "À confirmer"}</span>}
       </div>
-      {!p.email && (
-        <form className="row" onSubmit={e => { e.preventDefault(); void a.run(async () => (await post<{ message: string }>("/account/email", { email })).message); }}>
-          <input type="email" required aria-label="Adresse e-mail" placeholder="ton@adresse.fr" value={email} onChange={e => setEmail(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn sm" type="submit">Ajouter</button>
+      {/* Ajout, ou remplacement tant que l'adresse n'est pas confirmée (mauvaise adresse saisie) */}
+      {(!p.email || !p.verified) && (
+        <form className="stack" style={{ gap: 6 }} onSubmit={e => { e.preventDefault(); void a.run(async () => { const m = (await post<{ message: string }>("/account/email", { email })).message; setEmail(""); p.onDone(); return m; }); }}>
+          {p.email && <span className="muted small">Pas la bonne adresse ? Remplace-la : un nouveau lien de confirmation part à la nouvelle, l'ancien lien ne marche plus.</span>}
+          <div className="row">
+            <input type="email" required aria-label={p.email ? "Nouvelle adresse e-mail" : "Adresse e-mail"} placeholder="ton@adresse.fr" value={email} onChange={e => setEmail(e.target.value)} style={{ flex: 1 }} />
+            <button className="btn sm" type="submit">{p.email ? "Remplacer" : "Ajouter"}</button>
+          </div>
         </form>
       )}
       <div className="row between">

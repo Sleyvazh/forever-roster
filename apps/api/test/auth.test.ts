@@ -175,6 +175,28 @@ describe("Battle.net", () => {
     expect(me.user.hasPassword).toBe(false);
   });
 
+  it("adresse e-mail : remplaçable tant qu'elle n'est pas confirmée, plus ensuite", async () => {
+    mockBnet(6363, "Distrait#7");
+    const c = new Client(env);
+    const start = await c.get("/api/auth/battlenet/start");
+    const state = new URL(start.headers.location as string).searchParams.get("state")!;
+    await c.get(`/api/auth/battlenet/callback?code=abc&state=${state}`);
+    await c.get("/api/auth/me"); // jeton CSRF de la session
+    // Mauvaise adresse saisie, puis la bonne : le premier lien ne vaut plus, le second confirme la bonne
+    expect((await c.post("/api/account/email", { email: "faute@example.test" })).statusCode).toBe(202);
+    const wrong = tokenFrom(env.mailer.outbox.filter(m => m.to === "faute@example.test").at(-1)!.text);
+    expect((await c.post("/api/account/email", { email: "bonne@example.test" })).statusCode).toBe(202);
+    expect((await c.post("/api/auth/verify-email", { token: wrong })).statusCode).toBeGreaterThanOrEqual(400);
+    const good = tokenFrom(env.mailer.outbox.filter(m => m.to === "bonne@example.test").at(-1)!.text);
+    expect((await c.post("/api/auth/verify-email", { token: good })).statusCode).toBeLessThan(300);
+    const me = (await c.get("/api/auth/me")).json();
+    expect(me.user.email).toBe("bonne@example.test");
+    // Confirmée : plus de remplacement ici
+    const again = await c.post("/api/account/email", { email: "autre@example.test" });
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error ?? again.json().message).toMatch(/déjà confirmée/);
+  });
+
   it("refuse un callback dont le state ne vient pas de ce navigateur", async () => {
     mockBnet(5151, "Intrus#1");
     const victim = new Client(env), attacker = new Client(env);
