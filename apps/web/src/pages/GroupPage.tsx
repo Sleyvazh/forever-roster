@@ -19,6 +19,7 @@ import { PlayerSheet } from "../components/PlayerSheet";
 import { ROLE_LABEL } from "./GroupsPage";
 import { useSite } from "../site";
 import type { Game } from "@forever/game-data";
+import { RowMenu } from "../components/RowMenu";
 
 interface GroupDetail {
   group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean };
@@ -239,15 +240,12 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
             {asking === "owner" && <span className="row small">Lui donner le groupe ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
             {asking === "remove" && <span className="row small">Retirer {m.displayName} ? <button type="button" className="btn danger sm" onClick={() => void remove(m)}>Retirer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
             {!asking && (canRole || canRemove) && (
-              <details className="mb-menu">
-                <summary aria-label={`Actions pour ${m.displayName}`}>…</summary>
-                <div className="mb-pop" role="menu">
-                  {canRole && m.role === "member" && <button type="button" role="menuitem" onClick={() => void setRole(m, "officer")}>Nommer officier</button>}
-                  {canRole && m.role === "officer" && <button type="button" role="menuitem" onClick={() => void setRole(m, "member")}>Repasser membre</button>}
-                  {canRole && <button type="button" role="menuitem" onClick={() => setConfirm({ userId: m.userId, action: "owner" })}>Transférer la propriété…</button>}
-                  {canRemove && <button type="button" role="menuitem" className="bad" onClick={() => setConfirm({ userId: m.userId, action: "remove" })}>Retirer du groupe…</button>}
-                </div>
-              </details>
+              <RowMenu label={`Actions pour ${m.displayName}`}>{close => <>
+                {canRole && m.role === "member" && <button type="button" role="menuitem" onClick={() => { close(); void setRole(m, "officer"); }}>Nommer officier</button>}
+                {canRole && m.role === "officer" && <button type="button" role="menuitem" onClick={() => { close(); void setRole(m, "member"); }}>Repasser membre</button>}
+                {canRole && <button type="button" role="menuitem" onClick={() => { close(); setConfirm({ userId: m.userId, action: "owner" }); }}>Transférer la propriété…</button>}
+                {canRemove && <button type="button" role="menuitem" className="bad" onClick={() => { close(); setConfirm({ userId: m.userId, action: "remove" }); }}>Retirer du groupe…</button>}
+              </>}</RowMenu>
             )}
           </td>
         </tr>

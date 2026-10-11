@@ -624,6 +624,27 @@ test("tour des pages", async ({ page }) => {
   await page.locator("#rw").click();
   await page.screenshot({ path: `${OUT_T}/raid-date.png` });
   await page.goto(`/groups/${group}/membres`);
-  await page.locator(".mb-menu summary").first().click();
-  await page.screenshot({ path: `${OUT_T}/membres-menu.png` });
+  // Menu « … » de la dernière ligne : entièrement visible, pas coupé par le cadre du tableau (retour de Flo, 11/10)
+  for (const [w, h, suffix] of [[1360, 900, ""], [1360, 420, "-bas"], [390, 700, "-mobile"]] as const) {
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(`/groups/${group}/membres`);
+    const dots = page.getByRole("button", { name: /^Actions pour/ }).last();
+    await dots.scrollIntoViewIfNeeded();
+    await dots.click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    const box = (await menu.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(h);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(w);
+    for (const item of await menu.getByRole("menuitem").all()) {
+      expect(await item.evaluate(el => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === el; })).toBe(true);
+    }
+    await expect(menu.getByRole("menuitem").first()).toBeFocused();
+    await page.screenshot({ path: `${OUT_T}/membres-menu${suffix}.png` });
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(dots).toBeFocused();
+  }
 });

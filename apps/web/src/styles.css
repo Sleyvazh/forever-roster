@@ -1058,14 +1058,13 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 
 /* Membres : rôle en texte, actions dans un menu (lot E, mb-) */
 .mb-act { text-align: right; white-space: nowrap; }
-.mb-menu { position: relative; display: inline-block; }
-.mb-menu > summary { list-style: none; cursor: pointer; padding: 2px 10px; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink-2); font-weight: 700; letter-spacing: 1px; }
-.mb-menu > summary::-webkit-details-marker { display: none; }
-.mb-menu[open] > summary, .mb-menu > summary:hover { border-color: var(--gold); color: var(--ink); }
-.mb-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 220px; padding: 6px; display: grid; gap: 2px; background: var(--panel); border: 1px solid var(--frame); border-radius: 8px; box-shadow: var(--shadow); text-align: left; }
-.mb-pop button { border: 0; background: none; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 14px; }
-.mb-pop button:hover { background: var(--panel-2); }
-.mb-pop button.bad { color: var(--bad); }
+/* Menu « … » d'une ligne (components/RowMenu.tsx) : la liste est posée par-dessus la page, jamais coupée par le tableau */
+.rm-dots { cursor: pointer; padding: 2px 10px; border: 1px solid var(--line-2); border-radius: 6px; background: none; color: var(--ink-2); font: inherit; font-weight: 700; letter-spacing: 1px; line-height: 1.4; }
+.rm-dots[aria-expanded="true"], .rm-dots:hover { border-color: var(--gold); color: var(--ink); }
+.rm-pop { position: fixed; z-index: 1000; min-width: 220px; max-width: calc(100vw - 16px); padding: 6px; display: grid; gap: 2px; background: var(--panel); border: 1px solid var(--frame); border-radius: 8px; box-shadow: var(--shadow); text-align: left; }
+.rm-pop button { border: 0; background: none; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 14px; }
+.rm-pop button:hover, .rm-pop button:focus-visible { background: var(--panel-2); outline: none; }
+.rm-pop button.bad { color: var(--bad); }
 
 /* Synchro de l'addon sur la fiche, choix des parties au Ctrl+V (lot F) */
 .ce-sync { margin-top: 4px; font-size: 13px; color: var(--ink-3); }
