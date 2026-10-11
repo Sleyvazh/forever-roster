@@ -7,7 +7,10 @@ const PING_MS = 25_000;
 const MAX_MS = 15 * 60_000;
 
 export async function eventRoutes(app: FastifyInstance) {
-  app.get("/", { preHandler: requireAuth, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req, reply) => {
+  // Reconnexions par minute et par adresse IP : 30 en production (RATE_LIMIT_MAX = 300), 10 fois plus dans les tests
+  // de bout en bout, où tous les navigateurs simulés viennent de 127.0.0.1 (la CI dépassait 30 : erreurs 429).
+  const max = Math.max(30, Math.floor(app.ctx.cfg.RATE_LIMIT_MAX / 10));
+  app.get("/", { preHandler: requireAuth, config: { rateLimit: { max, timeWindow: "1 minute" } } }, async (req, reply) => {
     const u = currentUser(req);
     const groups = new Set(await groupsOf(app.ctx.db, u.id));
     reply.hijack();
