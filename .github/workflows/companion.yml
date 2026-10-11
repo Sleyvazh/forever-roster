@@ -79,7 +79,7 @@ jobs:
       - run: npx tsc --noEmit -p .
       - name: Installateur (NSIS)
         run: npx tauri build --bundles nsis -- --locked
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: roster-companion-windows
           path: apps/companion/target/release/bundle/nsis/*.exe
