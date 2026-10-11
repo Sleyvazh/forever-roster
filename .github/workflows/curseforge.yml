@@ -1,0 +1,73 @@
+name: CurseForge
+
+# Envoie un addon sur CurseForge à partir d'un tag : roster-v0.3.2 (Roster) ou forever-v1.5.6 (Forever Roster),
+# suffixe -beta ou -alpha pour un fichier Beta ou Alpha. Le zip est celui du site, octet pour octet ; le texte des
+# changements vient de addon/<dossier>/CHANGELOG.md. Détails : scripts/curseforge.mjs et docs/operations.md (« CurseForge »).
+# Réglages du dépôt : secret CF_API_TOKEN ; numéro du projet dans le .toc (## X-Curse-Project-ID) ou dans les variables
+# CF_PROJECT_ROSTER / CF_PROJECT_FOREVER.
+on:
+  push:
+    tags: ["roster-v*", "forever-v*"]
+  workflow_dispatch:
+    inputs:
+      addon:
+        description: Addon
+        type: choice
+        options: [Roster, ForeverRoster]
+        default: Roster
+      release_type:
+        description: Type de fichier
+        type: choice
+        options: [release, beta, alpha]
+        default: release
+      dry_run:
+        description: Essai à blanc (prépare le zip sans l'envoyer)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: curseforge-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      # Mêmes tests que la CI pour les deux addons : rien ne part si l'un d'eux échoue
+      - name: Tests de l'addon (Lua 5.1, la version du jeu)
+        run: |
+          sudo apt-get install -y -qq lua5.1 > /dev/null
+          for f in addon/ForeverRoster/*.lua addon/Roster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
+          lua5.1 addon/tests/format_test.lua
+          lua5.1 addon/tests/wow_sim.lua
+          lua5.1 addon/tests/roster_format_test.lua
+          lua5.1 addon/tests/roster_sim.lua
+          lua5.1 addon/tests/roster_ui_test.lua
+      - name: Zip et envoi
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_PROJECT_ROSTER: ${{ vars.CF_PROJECT_ROSTER }}
+          CF_PROJECT_FOREVER: ${{ vars.CF_PROJECT_FOREVER }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          ADDON: ${{ inputs.addon }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ -n "$TAG" ]; then
+            set -- --tag "$TAG"
+          else
+            set -- "$ADDON" --type "$RELEASE_TYPE"
+            if [ "$DRY_RUN" = "true" ]; then set -- "$@" --dry-run; fi
+          fi
+          node scripts/curseforge.mjs "$@" --out "$RUNNER_TEMP/curseforge"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: curseforge
+          path: ${{ runner.temp }}/curseforge
+          retention-days: 14

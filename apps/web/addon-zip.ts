@@ -75,6 +75,11 @@ function addonFiles(name: AddonName = "ForeverRoster") {
   return files;
 }
 
+/** Le zip d'un addon, octet pour octet celui du site : envoyé tel quel sur CurseForge (scripts/curseforge.mjs). */
+export function addonZipData(name: AddonName) {
+  return zip(addonFiles(name));
+}
+
 /** Empreinte SHA-256 du zip (le zip est reproductible : même contenu, même date, même empreinte). */
 export function addonSha256(name: AddonName = "ForeverRoster") {
   if (!hasAddon(name)) return "";

@@ -345,6 +345,24 @@ Beaucoup d'objets (surtout ceux de Forever) n'ont pas d'icône propre dans la ta
 
 Si une icône reste introuvable, le site affiche le pictogramme de son emplacement.
 
+## CurseForge (addons)
+
+Les addons partent sur CurseForge par l'Action `.github/workflows/curseforge.yml`, avec le même zip que le site (octet pour octet, `scripts/curseforge.mjs`). Chaque fichier passe par la modération de CurseForge avant d'être visible ; seuls les fichiers **Release** sont installés d'office par l'appli CurseForge (un projet n'y apparaît qu'avec au moins un fichier Release).
+
+Réglages (une fois, dans le dépôt GitHub > Settings > Secrets and variables > Actions) :
+
+- secret `CF_API_TOKEN` : jeton créé sur authors.curseforge.com (profil > API Tokens) ; il ne sert qu'à envoyer des fichiers, et ne se colle nulle part ailleurs ;
+- numéro du projet (encart « About Project » de la page du projet) : ligne `## X-Curse-Project-ID: <numéro>` du `.toc`, ou en attendant la variable `CF_PROJECT_ROSTER` (`CF_PROJECT_FOREVER` pour Forever Roster).
+
+Publier une version : `## Version` du `.toc` à jour, section `## <version>` dans `addon/<dossier>/CHANGELOG.md` (anglais d'abord, puis français ; ce fichier n'est pas dans le zip), puis :
+
+```bash
+git tag roster-v0.3.2          # roster-v0.3.2-beta pour un fichier Beta ; forever-v1.5.6 pour Forever Roster
+git push origin roster-v0.3.2
+```
+
+L'Action relance les tests Lua des deux addons, vérifie que le tag reprend la version du `.toc`, retrouve les versions du jeu de `## Interface` (120100 → 12.1.0, 120105 → 12.1.5 ; celles que CurseForge n'a pas encore sont ignorées), puis envoie le fichier. Le zip et le texte envoyés restent 14 jours dans les artefacts du run. Lancement à la main (onglet Actions > CurseForge > Run workflow) : « Essai à blanc » coché par défaut, pour vérifier le zip et le texte sans rien envoyer. Essai en local : `node scripts/curseforge.mjs Roster --dry-run --out /tmp/cf`.
+
 ## Bot Discord
 
 Le bot publie les raids dans un salon Discord, avec des boutons d'inscription sur le modèle de Raid-Helper. Il tourne dans le conteneur `bot`, sans port ouvert : il se connecte à Discord en sortie, et à l'API par le port interne 3001, qui n'est joignable que sur le réseau Docker. Tant que `DISCORD_BOT_TOKEN` est vide, il reste en veille.
