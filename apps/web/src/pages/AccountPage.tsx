@@ -111,10 +111,10 @@ function Identity(p: { email: string | null; verified: boolean; battletag: strin
       {/* Ajout, ou remplacement tant que l'adresse n'est pas confirmée (mauvaise adresse saisie) */}
       {(!p.email || !p.verified) && (
         <form className="stack" style={{ gap: 6 }} onSubmit={e => { e.preventDefault(); void a.run(async () => { const m = (await post<{ message: string }>("/account/email", { email })).message; setEmail(""); p.onDone(); return m; }); }}>
-          {p.email && <span className="muted small">Pas la bonne adresse ? Remplace-la : un nouveau lien de confirmation part à la nouvelle, l'ancien lien ne marche plus.</span>}
+          {p.email && <span className="muted small">Clique le lien reçu par e-mail pour la confirmer (regarde aussi dans les spams). Pas reçu, ou pas la bonne adresse ? Saisis-la ici : un nouveau lien part, l'ancien ne marche plus.</span>}
           <div className="row">
             <input type="email" required aria-label={p.email ? "Nouvelle adresse e-mail" : "Adresse e-mail"} placeholder="ton@adresse.fr" value={email} onChange={e => setEmail(e.target.value)} style={{ flex: 1 }} />
-            <button className="btn sm" type="submit">{p.email ? "Remplacer" : "Ajouter"}</button>
+            <button className="btn sm" type="submit">{p.email ? "Envoyer le lien" : "Ajouter"}</button>
           </div>
         </form>
       )}
@@ -153,6 +153,8 @@ function DiscordLink({ username, reminders, enabled, onDone }: { username: strin
           <button className="btn discord sm" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/discord/link"); window.location.assign(r.url); })}>Lier Discord</button>
         ) : <span className="muted small">Non configuré sur ce serveur</span>}
       </div>
+      {/* Signalement du 11/10 : Discord refuse l'autorisation tant que le compte Discord n'est pas vérifié */}
+      {!username && enabled && <p className="hint" style={{ margin: 0 }}>Discord peut d'abord te demander de vérifier ton compte Discord (adresse e-mail confirmée chez Discord, regarde aussi dans les spams) : fais-le, puis clique à nouveau sur « Lier Discord ».</p>}
       {username && (
         <label className="row" style={{ gap: 8, flexWrap: "nowrap", alignItems: "flex-start" }}>
           <input type="checkbox" checked={reminders} style={{ width: "auto", marginTop: 3 }}
