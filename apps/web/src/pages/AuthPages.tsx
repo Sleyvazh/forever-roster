@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { ApiError, post } from "../api";
+import { ApiError, get, post } from "../api";
 import { safeNext, useMe } from "../auth";
 
 const BNET_ERRORS: Record<string, string> = {
@@ -125,18 +125,22 @@ export function VerifyEmailPage() {
   const token = useHashToken();
   const qc = useQueryClient();
   const [state, setState] = useState<{ ok: boolean; msg: string } | null>(null);
+  const signedIn = !!useMe().data?.user;
   const once = useRef(false);
   useEffect(() => {
     if (once.current) return; once.current = true;
     if (!token) { setState({ ok: false, msg: "Lien incomplet. Ouvre le lien directement depuis l'e-mail." }); return; }
-    post<{ message: string }>("/auth/verify-email", { token })
+    // Jeton CSRF de la session d'abord (compte déjà connecté qui ouvre le lien : la requête partirait sans lui)
+    get("/auth/me").catch(() => null)
+      .then(() => post<{ message: string }>("/auth/verify-email", { token }))
       .then(r => { setState({ ok: true, msg: r.message }); void qc.invalidateQueries({ queryKey: ["me"] }); })
       .catch(e => setState({ ok: false, msg: e instanceof ApiError ? e.message : "Erreur réseau." }));
   }, [token, qc]);
   return (
     <AuthCard title="Confirmation de l'adresse">
       {!state ? <p className="muted">Vérification…</p> : <div className={`alert ${state.ok ? "ok" : "error"}`} role="status">{state.msg}</div>}
-      <Link to="/login">Aller à la connexion</Link>
+      {/* Déjà connecté (compte Battle.net qui ajoute son adresse) : retour à son compte plutôt qu'à la connexion */}
+      {signedIn ? <Link to="/account">Retour à mon compte</Link> : <Link to="/login">Aller à la connexion</Link>}
     </AuthCard>
   );
 }

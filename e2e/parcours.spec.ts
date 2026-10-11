@@ -1,4 +1,4 @@
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, request as pwRequest, test as base, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
@@ -55,6 +55,18 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#password", password);
     await page.getByRole("button", { name: /se connecter/i }).click();
     await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  });
+
+  await test.step("lien de confirmation ouvert en étant déjà connecté (signalement du 11/10 : « Jeton CSRF invalide »)", async () => {
+    const other = `e2e-autre-${Date.now()}@example.test`;
+    const base = test.info().project.use.baseURL!;
+    const api = await pwRequest.newContext({ baseURL: base, extraHTTPHeaders: { origin: new URL(base).origin } });
+    expect((await api.post("/api/auth/register", { data: { email: other, password, displayName: "Autre" } })).status()).toBe(202);
+    await api.dispose();
+    await expect.poll(() => { try { return lastToken(other, "verify-email"); } catch { return ""; } }).not.toBe("");
+    await page.goto(`/verify-email#${lastToken(other, "verify-email")}`);
+    await expect(page.getByText("Adresse confirmée")).toBeVisible();
+    await page.goto("/");
   });
 
   await test.step("création d'un perso et sauvegarde automatique", async () => {

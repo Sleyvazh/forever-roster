@@ -8,7 +8,12 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function api<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * Requête à l'API. Un « Jeton CSRF invalide » (jeton pas encore reçu : page ouverte depuis un lien d'e-mail et
+ * requête envoyée dès l'affichage, ou session changée dans un autre onglet) relit le jeton de la session, puis la
+ * requête repart une fois.
+ */
+export async function api<T = unknown>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
@@ -17,7 +22,12 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = res.status === 204 ? null : await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? `Erreur ${res.status}`);
+  const error = (data as { error?: string } | null)?.error;
+  if (!res.ok && res.status === 403 && method !== "GET" && !retried && error?.startsWith("Jeton CSRF")) {
+    await api("GET", "/auth/me");
+    return api<T>(method, path, body, true);
+  }
+  if (!res.ok) throw new ApiError(res.status, error ?? `Erreur ${res.status}`);
   if (data && typeof data === "object" && "csrfToken" in data) setCsrf((data as { csrfToken: string | null }).csrfToken);
   return data as T;
 }
