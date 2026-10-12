@@ -4,7 +4,7 @@
  * Les e-mails sont écrits dans test-results/api.log (mode développement) pour récupérer les liens.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,8 @@ const env = {
   // Battle.net simulé (e2e/blizzard-mock.mjs) : import des persos de Roster
   BNET_CLIENT_ID: "e2e", BNET_CLIENT_SECRET: "e2e",
   BNET_OAUTH_HOST: "http://127.0.0.1:4199", BNET_API_HOST: "http://127.0.0.1:4199",
+  // Partage entre joueurs : données des groupes signées avec la clé de TEST du site (keyId a3de5db8)
+  SYNC_SIGNING_KEY: readFileSync(path.join(root, "addon/tests/fixtures/site-test-key.pem")).toString("base64"),
 };
 
 const run = (args) => {

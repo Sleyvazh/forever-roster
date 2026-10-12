@@ -1,5 +1,6 @@
 import type { Role, SignupStatus } from "./core";
 import type { BossSheet, ConsumableLine } from "./prep";
+import { sealGroupBlock, type GroupBlockSigner } from "./share";
 
 /**
  * Export d'un raid pour un addon WoW (format « FRR », version 1) et macros d'invitation.
@@ -95,11 +96,20 @@ export interface GroupExportBis { itemId: number; characters: string[] }
  */
 export interface GroupExportCounts { short: string; label: string; entries: { names: string[]; n: number }[] }
 
+/** Partage entre joueurs : persos du groupe (ligne M) et signataire du site (ligne Z). */
+export interface GroupExportShare {
+  /** Tous les persos rangés dans le groupe sur le site (mains et alts de chaque membre), noms des fiches. */
+  members?: string[];
+  /** Signataire de l'API (absent : bloc sans ligne Z, jamais partagé par l'addon). */
+  sign?: GroupBlockSigner;
+}
+
 /**
  * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
- * et objets BiS recherchés (infobulles, sacs, alerte au butin). Spécification : docs/addon-format.md.
+ * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; partage entre joueurs : persos du groupe (M) et
+ * signature du site (Z). Spécification : docs/addon-format.md.
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts): string {
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}): string {
   const lines = [
     ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : "", r.lootMode ?? ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
@@ -125,6 +135,8 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
     // Lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 » : les persos d'un même joueur partagent le compte)
     ...(counts?.entries.length ? [["N", clean(counts.short), clean(counts.label),
       counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
+    // Partage entre joueurs : M (persos du groupe, prénoms comme la ligne O) toujours, en dernier ; Z ajoutée par sealGroupBlock
+    `M;${list(share.members ?? [])}`,
   ];
-  return [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, ...extra, `END;${lines.length}`].join("\n");
+  return sealGroupBlock("FRG", [`FRG;${ADDON_FORMAT_VERSION};${group.id};${generatedAt};${clean(group.name)}`, ...lines, ...extra], lines.length, share.sign);
 }

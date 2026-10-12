@@ -203,7 +203,8 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: "Administration" }).click();
     await page.locator(".adm-nav").getByRole("button", { name: "Données pour l'addon" }).click();
     await page.locator(".export summary").click();
-    await expect(page.locator("#ga-text")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
+    // Partage entre joueurs : persos du groupe (M) et signature du site (Z, clé de test de e2e/start.mjs)
+    await expect(page.locator("#ga-text")).toHaveValue(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nM;\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$/);
   });
 
   await test.step("page Addon : téléchargement, copier pour le jeu, collage n'importe où de plusieurs persos", async () => {
@@ -216,7 +217,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     // « Copier pour le jeu » : barre du haut (toutes les pages) et étape 2
     await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
     await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nEND;1$/);
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nM;\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$/);
     // La page explique la synchro sans la refaire : copier et coller se font depuis n'importe quelle page
     await expect(page.getByRole("heading", { name: "Synchroniser" })).toBeVisible();
     await expect(page.locator(".addon-step").getByRole("button", { name: "Copier pour le jeu" })).toHaveCount(0);

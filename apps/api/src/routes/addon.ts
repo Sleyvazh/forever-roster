@@ -13,6 +13,7 @@ import { currentLines } from "../lib/professions";
 import { currentUser, requireAuth } from "../lib/session";
 import { otherSite, siteOf } from "../lib/site";
 import { importAddonText } from "../lib/addon-import";
+import { syncSigner, type SyncSigner } from "../lib/sync-signing";
 
 /** Raids envoyés à l'addon : à venir (ou commencés depuis moins de 3 h), puis ceux sans date. */
 const MAX_RAIDS = 15;
@@ -20,15 +21,27 @@ const RECENT_MS = 3 * 3600_000;
 const MAX_GROUPS = 10;
 
 /**
+ * Persos rangés dans le groupe par ses membres actuels (mains et alts), avec le rôle du joueur : ligne M du partage
+ * entre joueurs (tous), conseil du butin par défaut (ceux du propriétaire et des officiers), conseil d'un raid.
+ */
+const playedInGroup = (db: Db, groupId: string) => db.select({ userId: groupCharacters.userId, name: characters.name, realm: characters.realm, role: groupMembers.role })
+  .from(groupCharacters)
+  .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+  .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
+  .where(eq(groupCharacters.groupId, groupId));
+
+/**
  * Données d'un groupe pour l'addon (format FRG v1, docs/addon-format.md) : raids à venir avec mon inscription,
  * patrons recherchés ou connus par les persos du groupe (indexés par l'objet « Patron » des sacs),
- * et objets BiS que ces persos n'ont pas encore.
+ * et objets BiS que ces persos n'ont pas encore. Partage entre joueurs : persos du groupe (M) et signature du site
+ * (Z, avec `signer`), sauf si le bloc contient des données propres au joueur au-delà de son inscription (ci-dessous).
+ * Tous les textes RRG et FRG servis passent par ici (« Copier pour le jeu », un seul groupe, Roster Companion).
  */
-export async function groupExport(db: Db, groupId: string, userId: string) {
+export async function groupExport(db: Db, groupId: string, userId: string, signer: SyncSigner | null) {
   const [g] = await db.select({ id: groups.id, name: groups.name, game: groups.game }).from(groups).where(eq(groups.id, groupId));
   if (!g) throw notFound("Groupe introuvable.");
   // Roster (WoW Retail) : format RRG de l'addon Roster
-  if (g.game === "retail") return rosterGroupExport(db, g, userId);
+  if (g.game === "retail") return rosterGroupExport(db, g, userId, signer);
 
   const now = Date.now();
   const raidRows = await db.select({ id: raids.id, groupId: raids.groupId, name: raids.name, scheduledAt: raids.scheduledAt, lootMode: raids.lootMode, srHidden: raids.srHidden, prep: raids.prep, council: raids.council }).from(raids)
@@ -87,10 +100,8 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
     for (const x of rows) byItem2.set(x.itemId, [...(byItem2.get(x.itemId) ?? []), { name: x.name, bonus: bonus.get(`${x.characterId}:${x.itemId}`) ?? 0 }]);
     reservesOf.set(r.id, [...byItem2.entries()].map(([itemId, by]) => ({ itemId, by })));
   }
-  const council = (await db.select({ name: characters.name }).from(groupCharacters)
-    .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
-    .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
-    .where(and(eq(groupCharacters.groupId, groupId), inArray(groupMembers.role, ["owner", "officer"])))).map(c => c.name);
+  const played = await playedInGroup(db, groupId);
+  const council = played.filter(c => c.role === "owner" || c.role === "officer").map(c => c.name);
 
   // Lot G : consommables demandés, fiches de boss (noms en jeu) et conseil choisi pour le raid (persos de ses membres)
   const { byId, byUser } = await groupNames(db, groupId);
@@ -118,7 +129,10 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
     [...byItem.values()].sort((a, b) => a.recipe.localeCompare(b.recipe)),
     [...bis.values()].sort((a, b) => a.itemId - b.itemId),
     council,
-    { short: counts.summary.short, label: counts.summary.label, entries });
+    { short: counts.summary.short, label: counts.summary.label, entries },
+    // Soft reserve cachée : chacun reçoit des réservations différentes (un membre, les siennes ; un officier, toutes),
+    // qui ne doivent pas passer à d'autres joueurs. Bloc non signé : l'addon ne le partage pas (chacun colle le sien).
+    { members: played.map(c => c.name), sign: signer && !raidRows.some(r => r.lootMode === "softres" && r.srHidden) ? signer.sign : undefined });
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
 }
 
@@ -128,7 +142,7 @@ export async function groupExport(db: Db, groupId: string, userId: string) {
  * butin par défaut (O, persos du propriétaire et des officiers), conseil choisi pour un raid en conseil (L), objets reçus (N)
  * et leur détail (D : BiS, Upgrade, jets MS ; addon 0.3).
  */
-async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId: string) {
+async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId: string, signer: SyncSigner | null) {
   const now = Date.now();
   const raidRows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, difficulty: raids.difficulty, size: raids.size, lootMode: raids.lootMode, council: raids.council }).from(raids)
     .where(and(eq(raids.groupId, g.id), or(gte(raids.scheduledAt, new Date(now - RECENT_MS)), isNull(raids.scheduledAt))))
@@ -138,11 +152,8 @@ async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId
     .where(and(eq(raidSignups.userId, userId), inArray(raidSignups.raidId, raidRows.map(r => r.id)))) : [];
   const myByRaid = new Map(mine.map(m => [m.raidId, m]));
 
-  // Persos joués dans le groupe, par compte, avec le rôle du joueur : conseil par défaut (O) et conseil d'un raid (L)
-  const played = await db.select({ userId: groupCharacters.userId, name: characters.name, realm: characters.realm, role: groupMembers.role }).from(groupCharacters)
-    .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
-    .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
-    .where(eq(groupCharacters.groupId, g.id));
+  // Persos joués dans le groupe, par compte, avec le rôle du joueur : conseil par défaut (O), conseil d'un raid (L), persos du groupe (M)
+  const played = await playedInGroup(db, g.id);
   const byUser = new Map<string, { name: string; realm: string }[]>();
   for (const c of played) byUser.set(c.userId, [...(byUser.get(c.userId) ?? []), { name: c.name, realm: c.realm }]);
   const council = played.filter(c => c.role !== "member").map(c => ({ name: c.name, realm: c.realm }));
@@ -163,7 +174,8 @@ async function rosterGroupExport(db: Db, g: { id: string; name: string }, userId
     return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, difficulty: r.difficulty, size: r.size,
       status: m?.status ?? null, character: m?.name ? { name: m.name, realm: m.realm } : null, lootMode: r.lootMode,
       council: r.lootMode === "council" && r.council ? r.council.flatMap(u => byUser.get(u) ?? []) : null };
-  }), { council, counts: { short: counts.summary.short, label: counts.summary.label, entries } });
+  }), { council, counts: { short: counts.summary.short, label: counts.summary.label, entries }, members: played.map(c => ({ name: c.name, realm: c.realm })) },
+  signer?.sign);
   return { text, name: g.name, raids: raidRows.length, patterns: 0, bis: 0 };
 }
 
@@ -175,14 +187,14 @@ export async function addonRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await membership(db, id, u.id);
-    const { text, raids: r, patterns, bis } = await groupExport(db, id, u.id);
+    const { text, raids: r, patterns, bis } = await groupExport(db, id, u.id, syncSigner(app.ctx.cfg));
     return { text, raids: r, patterns, bis };
   });
 
   /** Tous mes groupes d'un coup (« Copier pour le jeu ») : un bloc FRG par groupe, RRG sur Roster. */
   app.get("/addon/export", async (req) => {
     const u = currentUser(req);
-    return allGroupsExport(db, u.id, siteOf(app.ctx.cfg, req).game);
+    return allGroupsExport(db, u.id, siteOf(app.ctx.cfg, req).game, syncSigner(app.ctx.cfg));
   });
 
   /**
@@ -205,12 +217,15 @@ export async function addonRoutes(app: FastifyInstance) {
   });
 }
 
-/** Tous les groupes du joueur dans ce jeu, un bloc FRG chacun (RRG pour Roster) : « Copier pour le jeu », Roster Companion. */
-export async function allGroupsExport(db: Db, userId: string, game: Game) {
+/**
+ * Tous les groupes du joueur dans ce jeu, un bloc FRG chacun (RRG pour Roster) : « Copier pour le jeu », Roster Companion.
+ * Blocs signés avec `signer` (partage entre joueurs), sauf exception de groupExport.
+ */
+export async function allGroupsExport(db: Db, userId: string, game: Game, signer: SyncSigner | null) {
   const mine = await db.select({ id: groupMembers.groupId }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .where(and(eq(groupMembers.userId, userId), eq(groups.game, game))).limit(MAX_GROUPS);
   const parts = [];
-  for (const g of mine) parts.push(await groupExport(db, g.id, userId));
+  for (const g of mine) parts.push(await groupExport(db, g.id, userId, signer));
   parts.sort((a, b) => a.name.localeCompare(b.name));
   return {
     text: parts.map(p => p.text).join("\n"),

@@ -43,6 +43,8 @@ services:
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
       # API interne du bot : port 3001, joignable seulement sur le réseau Docker (jamais publié ni relayé par Caddy)
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-}
+      # Partage entre joueurs : clé privée qui signe les données des groupes (base64 du PEM) ; vide = non signées
+      SYNC_SIGNING_KEY: ${SYNC_SIGNING_KEY:-}
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]

@@ -128,6 +128,8 @@ T;<raid>;<n° de fiche>;<intitulé>;<persos>;<consigne>
 L;<raid>;<persos du conseil>
 I;<raid>;<perso>;<Tank | Heal | DPS>;<melee | ranged | caster>
 N;<période courte>;<période>;<perso>+<perso>:<nombre>,…
+M;<persos du groupe>
+Z;<keyId>;<signature base64>
 END;<nombre de lignes R, P et B>
 ```
 
@@ -145,7 +147,7 @@ END;<nombre de lignes R, P et B>
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
 | `N` | Lot I : objets reçus (spé principale, exclusions et corrections des officiers comprises) sur la période du groupe : libellé court (`saison`, `30 j`, `5 raids`), libellé complet (`depuis le 05/11/2026`…), puis une entrée par joueur (ses persos du groupe joints par `+`, main d'abord, qui partagent le compte) ou par perso, selon le réglage du groupe. Colonne « Reçus » du conseil du butin. |
 
-Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I` et `N` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes).
+Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I` et `N` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. `M` (persos du groupe) et `Z` (signature du site) ferment le bloc, juste avant `END`, hors du compte aussi : voir « Partage entre joueurs (signature du site) ». Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes).
 
 L'addon s'en sert pour :
 
@@ -288,7 +290,7 @@ D;<perso>+<perso>:<BiS>:<Upgrade>:<jets MS>,…
 - Corrections du compte (lot I) : une correction peut avoir une catégorie (`bis`, `upgrade`, `ms`, ou aucune ; `kind` de `POST /api/groups/:id/loot-corrections`, colonne `loot_corrections.kind`, migration 0033) ; l'import d'un historique crée une correction BiS (« Historique Season 2 : 3 BiS ») et une correction Upgrade (« Historique Season 2 : 4 Spé 1 ») par joueur, aucune pour une catégorie à 0.
 - Exemple (`addon/tests/sample.rrg`) : `N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:2,Brumelune-Ysondre:0` puis `D;Kaeldra-Hyjal+Vex-Kael'Thas:1:1:1,Tharok-ConseildesOmbres:1:0:0` (Tharok a aussi un objet sans catégorie ; Brumelune, à 0:0:0, n'est pas dans `D`).
 
-Ordre : `O`, puis un `L` par raid (dans l'ordre des `R`), puis `N`, puis `D`. Lignes vides omises (pas de `O` sans officier, pas de `L` si aucun membre du conseil choisi n'a de perso dans le groupe : l'addon prend alors `O`).
+Ordre : `O`, puis un `L` par raid (dans l'ordre des `R`), puis `N`, puis `D`, puis `M` et `Z` (partage entre joueurs, voir « Partage entre joueurs (signature du site) »). Lignes vides omises (pas de `O` sans officier, pas de `L` si aucun membre du conseil choisi n'a de perso dans le groupe : l'addon prend alors `O`).
 
 ## RRR, version 1 : compo d'un raid (site → jeu)
 
@@ -368,3 +370,53 @@ Sur le site (lot R3a) : « Copier pour le jeu » donne RRG sur Roster (FRG sur F
 ## Langue des addons (Forever Roster 1.5.6, Roster 0.3.2)
 
 L'interface suit la langue du client du jeu (`GetLocale()` : `frFR` → français, toute autre → anglais), ou celle choisie dans les options (`lang` = `"fr"` ou `"en"` dans la sauvegarde ; `/fr langue`, `/roster langue`, appliquée au rechargement de l'interface). Mécanisme commun : `addon/shared/Locale.lua` (`ns.L["texte français"]`, `ns.L("format", …)`, `ns.N` pour les tables construites au chargement) ; traductions dans `Locale_en.lua` de chaque addon et `addon/shared/Locale_en_Kit.lua`. **Rien de ce qui est décrit dans ce document ne change avec la langue** : messages entre addons, textes pour le site (FRC, FRB, RRG, RRR, RRB…), détails du bilan (« gardé », « 3 votes », « MS 87 »), sauvegarde. Annonces au raid et chuchotements partent dans la langue de celui qui les envoie ; les réponses chuchotées par les joueurs sans l'addon sont lues dans les deux langues. Vérifications : `lua5.1 addon/tests/locale_check.lua` (chaque texte a sa traduction, aucun texte français oublié hors de `L`) et le contrôle des textes à la fin de `wow_sim.lua`, `roster_sim.lua` et `roster_ui_test.lua` (`addon/tests/locale_audit.lua`).
+
+# Partage entre joueurs (signature du site)
+
+Décidé avec Flo le 12/10. Avant : chaque joueur cliquait « Copier pour le jeu » et collait dans l'addon avant chaque raid. Maintenant **un** joueur colle (ou reçoit par Roster Companion) et l'addon partage les données de chaque groupe avec les joueurs de la guilde connectés et ceux du raid (pour ceux hors de la guilde) qui ont l'addon. Le **site signe** chaque bloc (RSA 2048, PKCS#1 v1.5, SHA-256) ; chaque addon vérifie avec la clé publique compilée dans l'addon. Signé, plus récent que le mien et d'un groupe dont je suis membre : appliqué tout seul, d'où qu'il vienne. Le reste est ignoré, jamais appliqué. Un bloc non signé (ancien site, pas de clé sur le serveur) n'est jamais partagé. Les deux addons (Forever Roster et Roster), mêmes règles.
+
+## Lignes M et Z (RRG et FRG)
+
+```
+M;<persos du groupe, séparés par des virgules>
+Z;<keyId>;<signature base64>
+```
+
+- Après toutes les autres lignes du bloc, **juste avant `END`**, et **pas comptées par `END`** : un ancien addon les ignore.
+- `M` : tous les persos rangés dans le groupe sur le site (mains et alts des membres actuels), écrits comme la ligne `O` du format : prénom seul en FRG (`Greta`), `Prénom-Royaume` en RRG (`Tharok-ConseildesOmbres`) ; sans doublon, triés. **Toujours là**, même vide (`M;`) et même sans signature. L'addon qui reçoit le bloc d'un autre joueur ne le garde que si l'un de ses persos y est. `M` fait partie du texte signé.
+- `Z` : seulement si le serveur a une clé (`SYNC_SIGNING_KEY`, voir docs/operations.md). Dernière ligne avant `END`.
+- Exception : un bloc FRG avec un raid en soft reserve **cachée** n'est pas signé (chacun y reçoit des réservations différentes, qui ne doivent pas passer à d'autres) : ce groupe n'est pas partagé, chacun colle le sien comme avant.
+- Exemples signés avec la clé de test : `addon/tests/sample.rrg` (écrit par `packages/game-data/src/roster-addon.test.ts`) et `addon/tests/sample.frg` (deux groupes, écrit par `packages/game-data/src/share.test.ts`) ; déterministes (signature PKCS#1 v1.5).
+
+## Forme canonique (ce qui est signé)
+
+Lignes du bloc de l'en-tête (`RRG;…` ou `FRG;…`) à la dernière avant `Z`, sans `Z` ni `END` :
+
+- chaque ligne sans `\r`, espaces et tabulations retirés au début et à la fin (lignes vides omises) ;
+- **champs personnels vidés** dans les lignes `R` (champ 1 = `R`) : champs 7 et 8 en RRG (mon statut, mon perso), 5 et 6 en FRG ; les séparateurs restent (`R;<raid>;<date>;<nom>;;;journal` en FRG). Seuls les champs présents sont vidés (le site écrit toujours tous les champs) ;
+- lignes jointes par `\n`, sans `\n` final, en octets UTF-8.
+
+Ainsi le bloc d'un joueur vaut pour tous les membres : deux joueurs du même groupe, au même moment, ont la même forme canonique et la même signature. Un bloc dont les champs personnels sont déjà vides est sa propre forme canonique. Code : `canonicalGroupBlock(text, kind)` et `splitGroupBlocks(text, kind)` dans `packages/game-data/src/share.ts` (partagés par l'API et les tests).
+
+## Signature et keyId
+
+- Signature : RSASSA-PKCS1-v1_5 avec SHA-256 sur les octets de la forme canonique, en base64 standard avec `=` (344 caractères pour une clé de 2048 bits).
+- `keyId` : 8 premiers caractères hexadécimaux (minuscules) du SHA-256 du module RSA (octets big-endian, sans zéro de tête).
+- Clé de **test** (tests seulement, jamais dans un zip) : `addon/tests/fixtures/site-test-key.pem` (privée, PKCS#8), `site-test-key.pub.pem`, `SiteKeyTest.lua` ; keyId `a3de5db8`. Les tests de l'API et les tests de bout en bout (`e2e/start.mjs`) signent avec elle.
+- Clés publiques dans les addons : `addon/shared/SiteKey.lua` (chargé par les deux `.toc`, avant `Share.lua`) : `ns.SITE_KEYS["<keyId>"] = { n = "<module hexadécimal>", e = 65537 }`, écrit par `node scripts/site-key.mjs <clé publique.pem> --write` (plusieurs clés possibles lors d'un changement de clé). Vide tant que la clé de production n'y est pas : l'addon n'annonce rien et n'accepte rien.
+- `GET /api/sync/key` (sans connexion) : `{ keyId, publicKey }` (PEM de la clé publique) ; 404 si le serveur n'a pas de clé.
+- `GET /api/sync/frg` (Roster Companion) : blocs signés comme « Copier pour le jeu » ; l'`ETag` ignore la date de génération et la signature (qui change avec elle) mais garde le keyId.
+
+## Messages entre addons (SHV, SHQ, SHD)
+
+Préfixe de chaque addon (`RosterRT` pour Roster, `FRoster` pour Forever Roster) et sa file d'envoi ; chaque message ≤ 255 octets.
+
+| Message | Sens | Contenu |
+|---|---|---|
+| `SHV;<kind>;<groupe>;<at>;<len>` | annonce, GUILD ou RAID | « J'ai le groupe `<groupe>` généré à `<at>` » (`kind` : `RRG` ou `FRG` ; `len` : taille en octets). Seulement pour un bloc **signé**. Envoyé sur GUILD 20 à 40 s (au hasard) après la connexion et juste après un collage ou de nouvelles données ; sur RAID en rejoignant ou en formant un raid. |
+| `SHQ;<groupe>;<at>` | chuchoté à celui qui annonce | « Envoie, j'ai `<at>` » (0 : rien). Seulement si le `<at>` annoncé est plus récent que le mien ; sans données pour ce groupe, une fois par groupe et par session au plus. |
+| `SHD;<groupe>;<at>;<i>;<n>;<morceau>` | diffusé sur le canal de l'annonce | Morceau `i` sur `n` du texte partagé (forme canonique, puis la ligne `Z`, puis `END`). Une seule diffusion, sur le canal où l'`SHV` demandé a été annoncé, après 0,5 à 3 s au hasard, annulée si quelqu'un d'autre diffuse déjà cette version ou une plus récente ; une diffusion d'une même version par canal et par 60 s au plus. |
+
+À la réception : morceaux réassemblés (abandon après 120 s), signature vérifiée (`keyId` connu de `ns.SITE_KEYS`, signature valable sur la forme canonique), `at` plus récent que le mien, et l'un de mes persos dans `M` ; alors l'addon applique les données en gardant **mes** champs personnels (mon statut et mon perso pour chaque raid, d'après mes données précédentes). Les données appliquées restent signées et peuvent être relayées à leur tour.
+
+Option de chaque addon (onglet Options) : « Partager les données du site avec la guilde et le raid », activée d'office ; désactivée, l'addon n'annonce et n'envoie plus rien (il reçoit toujours). L'onglet Synchro indique, pour chaque groupe, d'où viennent les données (« collées », « reçues de X ») et quand.

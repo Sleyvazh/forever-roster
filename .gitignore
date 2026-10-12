@@ -4,6 +4,9 @@ coverage/
 .env
 .env.*
 !.env.example
+# Clé privée du site (partage entre joueurs) : seulement sur le serveur ; clé publique copiée le temps de scripts/site-key.mjs
+/sync-signing.pem
+/sync-signing.pub.pem
 *.log
 .DS_Store
 

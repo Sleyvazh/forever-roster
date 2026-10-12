@@ -6,6 +6,8 @@ import {
   buildRRG, buildRRR, encounterSummary, foreignAddonErrors, fullName, fullNameKey, normalizedRealm, parseRRB, RETAIL_CLASS_TOKENS,
   retailClassOfToken, rosterInviteMacros, sameFullName, type RosterExportMember,
 } from "./roster-addon";
+import type { GroupBlockSigner } from "./share";
+import { testSigner } from "./test-signer";
 
 /**
  * Formats de l'addon Roster (WoW Retail) : RRG et RRR (site → jeu), RRB (jeu → site). Noms fictifs.
@@ -29,9 +31,10 @@ const BRUMELUNE = { name: "Brumelune", realm: "Ysondre" }, VEX = { name: "Vex", 
 /**
  * Lot R3b : un raid en journal, un en conseil avec un conseil choisi (L), un en conseil avec le conseil par défaut (O) ;
  * objets reçus par joueur (N : Kaeldra et son alt Vex partagent le compte) et leur détail (D : BiS, Upgrade, jets MS ;
- * Brumelune, à 0:0:0, n'y est pas ; Tharok a un objet sans catégorie, donné par le chef de butin).
+ * Brumelune, à 0:0:0, n'y est pas ; Tharok a un objet sans catégorie, donné par le chef de butin) ; persos du groupe (M)
+ * et, pour l'exemple écrit pour le test Lua, signature avec la clé de test du site (Z).
  */
-const SAMPLE_RRG = () => buildRRG(GROUP, GENERATED, [
+const SAMPLE_RRG = (sign?: GroupBlockSigner) => buildRRG(GROUP, GENERATED, [
   { id: RAID, name: "Flèche du Vide", at: 1_794_513_600, difficulty: "heroic", size: 20, status: "present", character: KAELDRA, lootMode: "journal" },
   { id: RAID2, name: "L'Abîme Venimeux", at: 1_795_118_400, difficulty: "mythic", size: 20, status: null, character: null, lootMode: "council", council: [KAELDRA, BRUMELUNE] },
   { id: RAID3, name: "Déliement de Kith'ix", at: 0, difficulty: "normal", size: 25, status: "tentative", character: VEX, lootMode: "council", council: null },
@@ -40,7 +43,8 @@ const SAMPLE_RRG = () => buildRRG(GROUP, GENERATED, [
   counts: { short: "saison", label: "depuis le 05/10/2026", entries: [
     { names: [KAELDRA, VEX], n: 3, bis: 1, upgrade: 1, ms: 1 }, { names: [THAROK], n: 2, bis: 1 }, { names: [BRUMELUNE], n: 0, bis: 0, upgrade: 0, ms: 0 },
   ] },
-});
+  members: [KAELDRA, THAROK, VEX, BRUMELUNE],
+}, sign);
 
 const MEMBERS: RosterExportMember[] = [
   { name: "Brumelune", realm: "Ysondre", cls: "Monk", spec: "Mistweaver", role: "Heal", group: 1, pos: 2, status: "present", source: "site" },
@@ -94,9 +98,10 @@ describe("RRG : données des groupes (site → jeu)", () => {
       `L;${RAID2};Brumelune-Ysondre,Kaeldra-Hyjal`,
       "N;saison;depuis le 05/10/2026;Kaeldra-Hyjal+Vex-Kael'Thas:3,Tharok-ConseildesOmbres:2,Brumelune-Ysondre:0",
       "D;Kaeldra-Hyjal+Vex-Kael'Thas:1:1:1,Tharok-ConseildesOmbres:1:0:0",
+      "M;Brumelune-Ysondre,Kaeldra-Hyjal,Tharok-ConseildesOmbres,Vex-Kael'Thas",
       "END;3",
     ]);
-    expect(buildRRG({ id: GROUP.id, name: "A;B|C" }, 1, [])).toBe(`RRG;1;${GROUP.id};1;A B C\nEND;0`);
+    expect(buildRRG({ id: GROUP.id, name: "A;B|C" }, 1, [])).toBe(`RRG;1;${GROUP.id};1;A B C\nM;\nEND;0`);
     expect(text).not.toContain("|");
   });
 
@@ -114,10 +119,11 @@ describe("RRG : données des groupes (site → jeu)", () => {
     expect(text.split("\n").slice(2)).toEqual([
       "O;Kaeldra-Hyjal,Tharok",
       "N;5 raids;sur les 5 derniers raids;Tharok-ConseildesOmbres:2",
+      "M;",
       "END;1",
     ]);
     // Sans persos d'officiers ni compte : ni O, ni N
-    expect(buildRRG(GROUP, 1, [], { council: [], counts: { short: "saison", label: "depuis le début", entries: [] } })).toBe(`RRG;1;${GROUP.id};1;Pasta e Basta\nEND;0`);
+    expect(buildRRG(GROUP, 1, [], { council: [], counts: { short: "saison", label: "depuis le début", entries: [] } })).toBe(`RRG;1;${GROUP.id};1;Pasta e Basta\nM;\nEND;0`);
   });
 
   it("ligne D : mêmes entrées, noms et ordre que N, entrées à 0:0:0 omises, pas de ligne si tout est à 0", () => {
@@ -132,11 +138,12 @@ describe("RRG : données des groupes (site → jeu)", () => {
     expect(text.split("\n").slice(1)).toEqual([
       "N;30 j;sur les 30 derniers jours;Tharok-ConseildesOmbres+Tharok-Ysondre:5,Brumelune-Ysondre:1,Kaeldra-Hyjal:2",
       "D;Tharok-ConseildesOmbres+Tharok-Ysondre:2:1:1,Kaeldra-Hyjal:0:0:2",
+      "M;",
       "END;0",
     ]);
     // Tout à 0 (ou détail inconnu) : N seulement
     const none = buildRRG(GROUP, 1, [], { counts: { short: "saison", label: "depuis le début", entries: [{ names: [KAELDRA], n: 3 }, { names: [THAROK], n: 0, bis: 0, upgrade: 0, ms: 0 }] } });
-    expect(none.split("\n").slice(1)).toEqual(["N;saison;depuis le début;Kaeldra-Hyjal:3,Tharok-ConseildesOmbres:0", "END;0"]);
+    expect(none.split("\n").slice(1)).toEqual(["N;saison;depuis le début;Kaeldra-Hyjal:3,Tharok-ConseildesOmbres:0", "M;", "END;0"]);
   });
 });
 
@@ -267,9 +274,9 @@ describe("RRB : bilan d'un raid (jeu → site)", () => {
 });
 
 describe("exemples partagés avec le test Lua de l'addon", () => {
-  it("écrit addon/tests/sample.rrg et sample.rrr (déterministes)", async () => {
+  it("écrit addon/tests/sample.rrg (signé avec la clé de test du site) et sample.rrr (déterministes)", async () => {
     const { writeFileSync } = await fs();
-    writeFileSync(sample("sample.rrg"), `${SAMPLE_RRG()}\n`);
+    writeFileSync(sample("sample.rrg"), `${SAMPLE_RRG((await testSigner()).sign)}\n`);
     writeFileSync(sample("sample.rrr"), `${SAMPLE_RRR()}\n`);
   });
 

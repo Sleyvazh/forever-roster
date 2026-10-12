@@ -345,6 +345,59 @@ Beaucoup d'objets (surtout ceux de Forever) n'ont pas d'icône propre dans la ta
 
 Si une icône reste introuvable, le site affiche le pictogramme de son emplacement.
 
+## Clé de signature du partage entre joueurs
+
+Les addons partagent les données des groupes entre joueurs (docs/addon-format.md, « Partage entre joueurs (signature du site) ») : un seul joueur colle « Copier pour le jeu », les autres les reçoivent en jeu. Pour qu'un joueur ne puisse pas envoyer de fausses données, le site **signe** chaque bloc avec une clé privée RSA qui **ne quitte jamais le serveur** ; les addons vérifient avec la clé publique, compilée dans l'addon (`addon/shared/SiteKey.lua`).
+
+**Sans clé** (`SYNC_SIGNING_KEY` vide, la valeur par défaut) : tout marche comme avant, « Copier pour le jeu » donne les mêmes données (avec la ligne `M` des persos du groupe) mais sans signature, et les addons ne les partagent pas ; chacun colle les siennes.
+
+### Créer la clé (une fois)
+
+Sur le **serveur** (bash) :
+
+```bash
+cd ~/forever-roster
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out sync-signing.pem && chmod 600 sync-signing.pem
+grep -q '^SYNC_SIGNING_KEY=' .env && echo "SYNC_SIGNING_KEY déjà dans .env : le remplacer à la main" \
+  || echo "SYNC_SIGNING_KEY=$(base64 -w0 sync-signing.pem)" >> .env
+sudo docker compose up -d api
+```
+
+`sync-signing.pem` reste dans `~/forever-roster` (droits 600, ignoré par git) ; la variable `SYNC_SIGNING_KEY` est ce même fichier encodé en base64 sur une ligne. Ne jamais copier ni l'un ni l'autre ailleurs (PC, Discord, conversation) : seule la clé **publique** sort du serveur.
+
+Vérifier, toujours sur le **serveur** :
+
+```bash
+sudo docker compose logs --tail=20 api           # une clé invalide empêche l'API de démarrer : « Configuration invalide : - SYNC_SIGNING_KEY: … »
+curl -s https://forever-roster.sleyvazh.fr/api/sync/key   # {"keyId":"…","publicKey":"-----BEGIN PUBLIC KEY-----…"}
+```
+
+### Mettre la clé publique dans les addons
+
+1. Sur le **serveur** (bash), afficher la clé publique (rien de secret) :
+
+   ```bash
+   cd ~/forever-roster
+   openssl pkey -in sync-signing.pem -pubout
+   ```
+
+   Copier tout le texte, de `-----BEGIN PUBLIC KEY-----` à `-----END PUBLIC KEY-----` compris, dans un fichier `sync-signing.pub.pem` à la racine du dépôt sur le PC (ou l'envoyer à Claude : c'est la seule chose à envoyer). Même clé, sans passer par le serveur : `curl.exe -s https://forever-roster.sleyvazh.fr/api/sync/key` sur le PC (champ `publicKey`).
+
+2. Sur le **PC** (PowerShell, à la racine du dépôt) :
+
+   ```powershell
+   node scripts/site-key.mjs sync-signing.pub.pem --write
+   Remove-Item sync-signing.pub.pem
+   ```
+
+   Le script refuse une clé privée, écrit `addon/shared/SiteKey.lua` et affiche le keyId : il doit être celui de `/api/sync/key`. Commit, push, puis nouvelle version des deux addons (CurseForge ci-dessous ; les zips du site se reconstruisent au déploiement).
+
+Tant que `SiteKey.lua` n'a pas de clé, l'addon n'annonce rien et n'accepte rien : le partage commence avec la version des addons qui contient la clé.
+
+### Changer de clé (clé perdue ou compromise)
+
+La clé n'est pas dans les sauvegardes (seulement dans `.env` et `sync-signing.pem`, sur le serveur) : si le serveur est perdu, on en crée une nouvelle. Sur le **serveur** : recréer `sync-signing.pem` (commande ci-dessus), remplacer la ligne `SYNC_SIGNING_KEY=` de `.env` par la nouvelle valeur (`base64 -w0 sync-signing.pem`), puis `sudo docker compose up -d api`. Sur le **PC** : `node scripts/site-key.mjs nouvelle.pub.pem ancienne.pub.pem --write` garde l'ancienne clé le temps que les joueurs reçoivent des données signées par la nouvelle (sauf si elle est compromise : seulement la nouvelle), puis nouvelle version des addons.
+
 ## CurseForge (addons)
 
 Les addons partent sur CurseForge par l'Action `.github/workflows/curseforge.yml`, avec le même zip que le site (octet pour octet, `scripts/curseforge.mjs`). Chaque fichier passe par la modération de CurseForge avant d'être visible ; seuls les fichiers **Release** sont installés d'office par l'appli CurseForge (un projet n'y apparaît qu'avec au moins un fichier Release).

@@ -3,6 +3,7 @@ import { gameName } from "./addon";
 import { LOOT_METHODS, LOOT_RESPONSES, retailLootMode, type LootMethod, type LootResponse } from "./loot";
 import type { RaidLogAttendee, RaidLogExport, RaidLogLoot } from "./raidlog";
 import { RETAIL_DIFFICULTIES, retailSpec, type GameLang, type RetailDifficulty } from "./retail";
+import { sealGroupBlock, type GroupBlockSigner } from "./share";
 import type { Game } from "./site";
 
 /**
@@ -87,6 +88,11 @@ export interface RosterGroupExtra {
    * D (retours du raid de test) : détail de chaque entrée, BiS, Upgrade et jets MS (lootCategory), dans le même ordre.
    */
   counts?: { short: string; label: string; entries: RosterCountEntry[] };
+  /**
+   * M (partage entre joueurs) : tous les persos rangés dans le groupe sur le site (mains et alts de chaque membre).
+   * L'addon qui reçoit le bloc d'un autre joueur ne le garde que si l'un de ses persos y est.
+   */
+  members?: RosterCharacterName[];
 }
 /** Entrée des lignes N et D : persos qui partagent le compte, total, et son détail (absent : 0). */
 export interface RosterCountEntry { names: RosterCharacterName[]; n: number; bis?: number; upgrade?: number; ms?: number }
@@ -108,9 +114,10 @@ const nameList = (list: RosterCharacterName[]) => uniqueNames(list).sort((a, b) 
 
 /**
  * Bloc RRG d'un groupe : raids à venir avec mon inscription ; lot R3b : conseil par défaut (O), conseil choisi pour
- * chaque raid (L) et objets reçus (N) ; addon 0.3 : détail des objets reçus (D). Spécification : docs/addon-format.md (RRG, version 1).
+ * chaque raid (L) et objets reçus (N) ; addon 0.3 : détail des objets reçus (D) ; partage entre joueurs : persos du
+ * groupe (M) et signature du site (Z, si `sign` est donné). Spécification : docs/addon-format.md (RRG, version 1).
  */
-export function buildRRG(group: { id: string; name: string }, generatedAt: number, raids: RosterGroupRaid[], extra: RosterGroupExtra = {}): string {
+export function buildRRG(group: { id: string; name: string }, generatedAt: number, raids: RosterGroupRaid[], extra: RosterGroupExtra = {}, sign?: GroupBlockSigner): string {
   const lines = raids.map(r => ["R", r.id, Math.max(0, Math.floor(r.at)), clean(r.name), r.difficulty ?? "", Math.max(0, Math.round(r.size)),
     r.status ?? "", r.character ? fullName(r.character.name, r.character.realm) : "", r.lootMode ? retailLootMode(r.lootMode) : ""].join(";"));
   // Lot R3b, après les R et hors du compte de END : un addon 0.1 les ignore sans signaler de texte incomplet
@@ -126,8 +133,10 @@ export function buildRRG(group: { id: string; name: string }, generatedAt: numbe
     ...raids.flatMap(r => { const l = nameList(r.council ?? []); return l ? [`L;${r.id};${l}`] : []; }),
     ...(extra.counts && counts ? [["N", clean(extra.counts.short), clean(extra.counts.label), counts].join(";")] : []),
     ...(extra.counts && detail ? [`D;${detail}`] : []),
+    // Partage entre joueurs : M (persos du groupe, même écriture que O) toujours, en dernier ; Z ajoutée par sealGroupBlock
+    `M;${nameList(extra.members ?? [])}`,
   ];
-  return [`RRG;${ROSTER_FORMAT_VERSION};${group.id};${Math.floor(generatedAt)};${clean(group.name)}`, ...lines, ...after, `END;${lines.length}`].join("\n");
+  return sealGroupBlock("RRG", [`RRG;${ROSTER_FORMAT_VERSION};${group.id};${Math.floor(generatedAt)};${clean(group.name)}`, ...lines, ...after], lines.length, sign);
 }
 
 /* ---------- RRR : compo d'un raid (site → jeu) ---------- */

@@ -25,7 +25,8 @@ fn parse(text: &str) -> Parsed {
                 group = fields.get(2).unwrap_or(&"").to_string();
                 p.group_names.insert(group.clone(), fields.get(4..).map(|f| f.join(";")).unwrap_or_default());
             }
-            "END" => {}
+            // Z : signature du site (partage entre joueurs), qui change à chaque génération comme la date : jamais une nouveauté
+            "END" | "Z" => {}
             kind if RAID_LINES.contains(&kind) && fields.len() > 1 => {
                 let raid = fields[1].to_string();
                 if kind == "R" {
@@ -78,6 +79,18 @@ mod tests {
     fn rien_de_change_malgre_les_dates_de_generation() {
         let new = OLD.replace("1790000000", "1790009999");
         assert!(changes(OLD, &new, 3).is_empty());
+    }
+
+    #[test]
+    fn rien_de_change_malgre_la_signature_du_site() {
+        let signed = OLD.replace("END;3", "M;Greta,John\nZ;a3de5db8;QUJD\nEND;3");
+        let resigned = signed.replace("1790000000", "1790009999").replace("Z;a3de5db8;QUJD", "Z;a3de5db8;REVG");
+        assert!(changes(&signed, &resigned, 3).is_empty());
+        // Un nouveau membre (ligne M) : le groupe a changé
+        assert_eq!(
+            changes(&signed, &resigned.replace("M;Greta,John", "M;Greta,John,Sley"), 3),
+            vec!["groupe « Les Veilleurs »"]
+        );
     }
 
     #[test]

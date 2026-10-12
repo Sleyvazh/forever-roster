@@ -44,8 +44,9 @@ jobs:
           lua5.1 addon/tests/locale_check.lua
           git diff --exit-code addon/tests/sample.frc addon/tests/sample.rrb
       - run: npm test
-      # Textes du site relus par le test Lua de Roster : ils ne doivent pas changer sans que l'addon le sache
-      - run: git diff --exit-code addon/tests/sample.rrg addon/tests/sample.rrr
+      # Textes du site relus par les tests Lua (sample.rrg et sample.frg signés avec la clé de test) : ils ne doivent pas
+      # changer sans que l'addon le sache
+      - run: git diff --exit-code addon/tests/sample.rrg addon/tests/sample.rrr addon/tests/sample.frg
       - run: npm run build
 
   # Parcours complet dans un vrai navigateur, sur le site construit comme en production

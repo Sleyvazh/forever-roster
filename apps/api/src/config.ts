@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseSigningKey } from "./lib/sync-signing";
 
 const bool = z.enum(["true", "false"]).transform(v => v === "true");
 
@@ -28,6 +29,14 @@ const schema = z.object({
   /** Secret partagé avec le bot pour l'API interne (vide = API interne désactivée). */
   INTERNAL_API_SECRET: z.union([z.literal(""), z.string().min(32, "INTERNAL_API_SECRET : 32 caractères minimum")]).default(""),
   INTERNAL_PORT: z.coerce.number().int().default(3001),
+  /**
+   * Partage entre joueurs : clé privée RSA 2048 du site (fichier PEM encodé en base64 sur une ligne) qui signe les
+   * données des groupes (RRG, FRG). Vide : blocs non signés, que l'addon ne partage pas. Vérifiée au démarrage.
+   */
+  SYNC_SIGNING_KEY: z.string().trim().default("").superRefine((v, ctx) => {
+    if (!v) return;
+    try { parseSigningKey(v); } catch (err) { ctx.addIssue({ code: "custom", message: (err as Error).message }); }
+  }),
 });
 
 export type Config = z.infer<typeof schema>;

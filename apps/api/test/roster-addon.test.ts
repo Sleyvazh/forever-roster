@@ -73,6 +73,8 @@ describe("Roster : « Copier pour le jeu » (RRG) et compo (RRR)", () => {
       // Lot R3b : conseil par défaut (persos des officiers) et objets reçus, par joueur (main d'abord), hors du compte de END
       "O;Kaeldra-Hyjal",
       "N;saison;depuis le début;Kaeldra-Hyjal:0,Tharok-ConseildesOmbres+Tharok-Ysondre:0",
+      // Partage entre joueurs : persos du groupe (pas de clé de signature ici : pas de ligne Z)
+      "M;Kaeldra-Hyjal,Tharok-ConseildesOmbres,Tharok-Ysondre",
       "END;1",
     ]);
     // Le membre : son inscription et son perso

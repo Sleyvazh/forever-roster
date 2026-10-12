@@ -14,3 +14,4 @@ export * from "./sync";
 export * from "./retail";
 export * from "./games";
 export * from "./roster-addon";
+export * from "./share";

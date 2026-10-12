@@ -32,7 +32,7 @@ import { imageRoutes } from "./routes/images";
 import { IMAGE_TYPES, MAX_UPLOAD_BYTES } from "./lib/images";
 import { siteRoutes } from "./routes/site";
 import { deviceRoutes } from "./routes/devices";
-import { syncRoutes } from "./routes/sync";
+import { syncKeyRoutes, syncRoutes } from "./routes/sync";
 import { registerDeviceAuth } from "./lib/device-auth";
 
 export interface AppContext {
@@ -114,6 +114,8 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   // Roster Companion (lot K1) : appairage des appareils et synchro par jeton
   await app.register(deviceRoutes, { prefix: "/api/devices" });
   await app.register(syncRoutes, { prefix: "/api/sync" });
+  // Partage entre joueurs : clé publique du site, sans jeton (hors du crochet d'authentification de syncRoutes)
+  await app.register(syncKeyRoutes, { prefix: "/api/sync" });
 
   return app;
 }

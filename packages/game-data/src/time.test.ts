@@ -60,6 +60,7 @@ describe("export addon", () => {
       "R;r1;1791100000;Molten Core;present;Greta;",
       "R;r2;0;Onyxia;;;",
       "P;15090;Warbear Woolies;Greta,Sley;Tournicoti",
+      "M;",
       "END;3",
     ]);
   });
@@ -73,6 +74,7 @@ describe("export addon", () => {
       "R;r1;2;MC;;;softres",
       "S;r1;18814;Greta:10,Kaelys:0",
       "O;Bérénice,Sley",
+      "M;",
       "END;1",
     ]);
   });
@@ -82,6 +84,7 @@ describe("export addon", () => {
     expect(text.split("\n")).toEqual([
       "FRG;1;g1;1;G",
       "N;saison;depuis le 05/11/2026;Greta+Brindille:3,Kaelys:0",
+      "M;",
       "END;0",
     ]);
   });

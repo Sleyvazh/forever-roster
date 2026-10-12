@@ -255,9 +255,10 @@ test.describe("Roster (WoW Retail)", () => {
       expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
       await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
       await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
-      // R3b : conseil par défaut (O), conseil choisi pour ce raid (L), objets reçus (N), hors du compte de END
+      // R3b : conseil par défaut (O), conseil choisi pour ce raid (L), objets reçus (N), hors du compte de END ;
+      // partage entre joueurs : persos du groupe (M) et signature du site (Z, clé de test de e2e/start.mjs)
       expect(await page.evaluate(() => navigator.clipboard.readText()))
-        .toMatch(new RegExp(`^RRG;1;${groupId};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:0\nEND;1$`));
+        .toMatch(new RegExp(`^RRG;1;${groupId};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:0\nM;Brumelune-Hyjal\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$`));
       // Téléphone : onglet Addon en bas, pas de défilement horizontal
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.locator(".tabbar").getByRole("link", { name: "Addon" })).toBeVisible();
@@ -378,7 +379,7 @@ test.describe("Roster (WoW Retail)", () => {
       await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
       await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
       expect(await page.evaluate(() => navigator.clipboard.readText()))
-        .toMatch(new RegExp(`^RRG;1;[0-9a-f-]{36};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:4\nD;Brumelune-Hyjal:2:1:1\nEND;1$`));
+        .toMatch(new RegExp(`^RRG;1;[0-9a-f-]{36};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:4\nD;Brumelune-Hyjal:2:1:1\nM;Brumelune-Hyjal\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$`));
       await page.getByRole("tab", { name: "Administration" }).click();
       await page.locator(".adm-nav").getByRole("button", { name: "Butin" }).click();
       await page.selectOption("#lt-cm", "raids");
