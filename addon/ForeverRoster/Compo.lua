@@ -39,6 +39,9 @@ function C.Roster()
   if IsInRaid() then
     for i = 1, GetNumGroupMembers() do
       local name, _, subgroup, _, _, _, _, online = GetRaidRosterInfo(i)
+      if ns.secret(subgroup) then subgroup = nil end
+      if ns.secret(online) then online = true end
+      name = ns.str(name) -- nom secret : membre ignoré
       if name then
         roster[lower(short(name))] = { index = i, subgroup = subgroup, online = online }
         if subgroup then counts[subgroup] = (counts[subgroup] or 0) + 1 end
@@ -47,8 +50,9 @@ function C.Roster()
   else
     roster[lower(UnitName("player"))] = { index = 0, subgroup = 1, online = true }
     for i = 1, GetNumSubgroupMembers() do
-      local name = UnitName("party" .. i)
-      if name then roster[lower(name)] = { index = 0, subgroup = 1, online = UnitIsConnected("party" .. i) } end
+      local name, online = ns.str(UnitName("party" .. i)), UnitIsConnected("party" .. i)
+      if ns.secret(online) then online = true end
+      if name then roster[lower(name)] = { index = 0, subgroup = 1, online = online } end
     end
   end
   return roster, counts

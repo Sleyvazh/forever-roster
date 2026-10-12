@@ -19,9 +19,38 @@ end
 local LANG_NAME = { fr = N("Français"), en = N("English") }
 function ns.LangName(lang) return LANG_NAME[lang] and L[LANG_NAME[lang]] end
 
+-- Valeurs secrètes : le client de Forever (comme celui de Retail depuis 12.0) cache certaines valeurs en instance
+-- (identité des PNJ ciblés, texte du chat pendant un combat de boss…). Les lire autrement qu'avec issecretvalue
+-- (comparer, découper, concaténer, s'en servir de clé) est une erreur Lua : on vérifie avant, et on s'en passe.
+function ns.secret(v) return issecretvalue ~= nil and issecretvalue(v) == true end
+-- Texte d'une valeur : "" si elle est absente ou secrète (à la place de tostring(v or ""))
+function ns.text(v)
+  if ns.secret(v) then return "" end
+  if v == nil then return "" end
+  return tostring(v)
+end
+-- Chaîne lisible, sinon nil (absente, secrète ou d'un autre type)
+function ns.str(v)
+  if ns.secret(v) then return nil end
+  if type(v) == "string" then return v end
+  return nil
+end
+
 -- Petit bus d'événements : ns.on("GROUP_ROSTER_UPDATE", fn)
 local frame = CreateFrame("Frame")
 local handlers = {}
+-- Événement qui porte une valeur secrète : illisible, ses gestionnaires ne sont pas appelés (ns.onSecret(event, fn) est
+-- prévenu à la place), sauf pour les événements de ns.secretOk, dont les gestionnaires vérifient eux-mêmes.
+local onSecret = {}
+function ns.onSecret(event, fn) onSecret[event] = fn end
+ns.secretOk = { ENCOUNTER_START = true, ENCOUNTER_END = true }
+local function hasSecret(...)
+  if issecretvalue == nil then return false end
+  for i = 1, select("#", ...) do
+    if issecretvalue((select(i, ...))) then return true end
+  end
+  return false
+end
 -- Un événement que ce client ne connaît pas est ignoré (le jeu refuserait sinon tout le fichier)
 ns.missingEvents = {}
 -- Infos d'objet : fonction globale (Classic) ou C_Item (clients récents, où les globales peuvent avoir disparu)
@@ -60,6 +89,10 @@ function ns.on(event, fn)
   return true
 end
 frame:SetScript("OnEvent", function(_, event, ...)
+  if not ns.secretOk[event] and hasSecret(...) then
+    if onSecret[event] then pcall(onSecret[event]) end
+    return
+  end
   for _, fn in ipairs(handlers[event] or {}) do
     local ok, err = pcall(fn, ...)
     if not ok then ns.print("|cffff6060" .. L["erreur"] .. "|r " .. tostring(err)) end

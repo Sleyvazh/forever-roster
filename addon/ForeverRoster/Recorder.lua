@@ -14,7 +14,7 @@ local function db()
   ForeverRosterDB.raidLogs = ForeverRosterDB.raidLogs or {}
   return ForeverRosterDB.raidLogs
 end
-local function short(name) return (tostring(name or ""):match("^[^%-%s]+")) or "" end -- prénom seul (royaume et nom de famille retirés)
+local function short(name) return (ns.text(name):match("^[^%-%s]+")) or "" end -- prénom seul (royaume et nom de famille retirés)
 
 function R.Enabled() return not ForeverRosterDB.noRecord end
 function R.MinQuality() return ForeverRosterDB.lootQuality or 4 end
@@ -66,6 +66,7 @@ function R.Sample()
   -- Instance réelle (bilan v2) : nom donné par le jeu, pour le catalogue de butin du site
   if GetInstanceInfo then
     local inst, kind = GetInstanceInfo()
+    inst, kind = ns.str(inst), ns.str(kind) -- valeurs secrètes : instance pas notée
     if kind == "raid" and inst and inst ~= "" then log.instance = inst end
   end
   for i = 1, GetNumGroupMembers() do
@@ -222,5 +223,6 @@ end)
 ns.on("CHAT_MSG_LOOT", function(...) ns.safe(N("butin"), R.OnLoot, ...) end)
 -- Dernier boss vaincu : noté avec le butin des 15 minutes qui suivent
 ns.on("ENCOUNTER_END", function(_, name, _, _, success)
-  if success == 1 or success == true then R.boss = { name = tostring(name or ""), at = time() } end
+  if ns.secret(success) then return end
+  if success == 1 or success == true then R.boss = { name = ns.text(name), at = time() } end
 end)

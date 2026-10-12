@@ -2,6 +2,14 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.5.8
+
+- Fix for "attempt to index a secret string value (execution tainted by 'ForeverRoster')": in instances the game now hides some values (the identity of the targeted NPC, chat during a boss fight). The addon checks them first and does without. In those places the boss sheet no longer opens when you target the boss: `/fr boss` shows it. Rolls and whispers hidden during a boss fight are reported once to the loot master.
+
+Français :
+
+- Correctif de « attempt to index a secret string value (execution tainted by 'ForeverRoster') » : en instance, le jeu cache désormais certaines valeurs (identité du PNJ ciblé, chat pendant un combat de boss). L'addon les vérifie avant et s'en passe. Là où c'est le cas, la fiche du boss ne s'ouvre plus en ciblant le boss : `/fr boss` l'affiche. Les jets et chuchotements cachés pendant un combat de boss sont signalés une fois au maître du butin.
+
 ## 1.5.7
 
 - **Shared data**: one player pastes "Copier pour le jeu" (or receives it from the Roster Companion app) and the addon passes the group data to every guildmate and raid member who has the addon. The website signs the data and each addon checks the signature: data changed by anyone, even by one character, is refused. Groups with a hidden soft reserve are not shared (each player sees only their own reserves). Option in the Options tab (on by default); the Sync tab says where your data comes from.

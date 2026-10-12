@@ -311,7 +311,7 @@ local function countSoon()
 end
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "BAG_UPDATE_DELAYED", "BANKFRAME_OPENED" }) do ns.on(event, countSoon) end
 
-local function itemIdFrom(link) return link and tonumber(tostring(link):match("item:(%d+)")) end
+local function itemIdFrom(link) return tonumber(ns.text(link):match("item:(%d+)")) end
 G.itemIdFrom = itemIdFrom
 
 -- Noms d'objets déjà vus (raid d'essai, fenêtres du butin) : affichés tant que le jeu n'a pas répondu
@@ -447,7 +447,9 @@ local function hookTooltips()
   hooked = true
   if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-      ns.safe(N("infobulle"), addLines, tooltip, data and data.id)
+      local id = data and data.id
+      if ns.secret(id) then return end
+      ns.safe(N("infobulle"), addLines, tooltip, id)
     end)
   elseif GameTooltip and GameTooltip.HookScript then
     for _, tt in ipairs({ GameTooltip, ItemRefTooltip }) do
@@ -505,7 +507,7 @@ end
 -- Prénom seul, en minuscules, comme le reste de l'addon : sans royaume ni nom de famille de Forever
 -- (« Greta Coulé », « Greta-Forever EU » → greta)
 local function first(name)
-  return ((tostring(name or ""):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
+  return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
 end
 
 -- Mes persos (prénoms en minuscules) : celui-ci, ceux du compte déjà vus par l'addon (ForeverRosterDB.chars, clés

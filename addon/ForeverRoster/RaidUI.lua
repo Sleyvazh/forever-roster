@@ -186,7 +186,7 @@ end
 function RA.LootCounts(l)
   if l.method == "council" and (l.response == "off" or l.response == "transmo") then return false end
   if l.method == "roll" then
-    local d = tostring(l.detail or "")
+    local d = ns.text(l.detail)
     if d:match("^OS") or d:match("^jet") then return false end
   end
   return true

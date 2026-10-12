@@ -10,6 +10,8 @@ local L = ns.L or setmetatable({}, {
   __index = function(_, key) return key end,
   __call = function(_, key, ...) if select("#", ...) == 0 then return key end return string.format(key, ...) end,
 })
+-- Texte d'une valeur, "" si absente ou secrète (ns.text, Core.lua) ; hors du jeu, simple tostring
+local plain = ns.text or function(v) return tostring(v or "") end
 local F = {}
 ns.Format = F
 
@@ -22,19 +24,19 @@ F.split = split
 
 -- Texte venu du site, affiché ou annoncé en jeu : sans « | » (codes du jeu : couleurs, liens, textures), longueur bornée.
 local function txt(s, max)
-  s = tostring(s or ""):gsub("|", "")
+  s = plain(s):gsub("|", "")
   return s:sub(1, max or 80)
 end
 F.txt = txt
 
 -- Retire ce qui casserait une ligne : « ; », « | » (échappement du chat) et retours à la ligne.
 function F.clean(s)
-  return (tostring(s or ""):gsub("[;|\r\n]", " "))
+  return (plain(s):gsub("[;|\r\n]", " "))
 end
 
 function F.ParseFRR(text)
   local raid, members, count = nil, {}, nil
-  for line in tostring(text or ""):gmatch("[^\r\n]+") do
+  for line in plain(text):gmatch("[^\r\n]+") do
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
     if f[1] == "FRR" then
@@ -58,7 +60,7 @@ end
 -- Données d'un groupe (FRG v1) : raids à venir (R) et patrons recherchés / connus (P), indexés par l'objet patron.
 local function names(field, max)
   local out = {}
-  for n in tostring(field or ""):gmatch("[^,]+") do if #out < (max or 40) then out[#out + 1] = txt(n, 40) end end
+  for n in plain(field):gmatch("[^,]+") do if #out < (max or 40) then out[#out + 1] = txt(n, 40) end end
   return out
 end
 -- Un ou plusieurs groupes à la suite (la page Addon du site donne tous les groupes du joueur d'un coup).
@@ -72,7 +74,7 @@ end
 local function per(t, raidId) t[raidId] = t[raidId] or {} return t[raidId] end
 local function ids(field)
   local out = {}
-  for id in tostring(field or ""):gmatch("%d+") do if #out < 8 then out[#out + 1] = tonumber(id) end end
+  for id in plain(field):gmatch("%d+") do if #out < 8 then out[#out + 1] = tonumber(id) end end
   return out
 end
 function F.ParseFRG(text)
@@ -84,7 +86,7 @@ function F.ParseFRG(text)
     groups[#groups + 1] = cur
     return true
   end
-  for line in tostring(text or ""):gmatch("[^\r\n]+") do
+  for line in plain(text):gmatch("[^\r\n]+") do
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
     if lines and count == nil and line ~= "" then lines[#lines + 1] = line end
@@ -106,7 +108,7 @@ function F.ParseFRG(text)
       local id = tonumber(f[3])
       if id then
         local list = {}
-        for name, bonus in tostring(f[4] or ""):gmatch("([^,:]+):(%d+)") do if #list < 40 then list[#list + 1] = { name = txt(name, 40), bonus = tonumber(bonus) or 0 } end end
+        for name, bonus in plain(f[4]):gmatch("([^,:]+):(%d+)") do if #list < 40 then list[#list + 1] = { name = txt(name, 40), bonus = tonumber(bonus) or 0 } end end
         per(cur.reserves, txt(f[2], 40))[id] = list
       end
     elseif cur and f[1] == "O" then
@@ -129,7 +131,7 @@ function F.ParseFRG(text)
     elseif cur and f[1] == "N" then
       -- Objets reçus : les persos d'un même joueur (séparés par « + ») partagent le compte
       local c, entries = { short = txt(f[2], 20), label = txt(f[3], 60), byName = {} }, 0
-      for part in tostring(f[4] or ""):gmatch("[^,]+") do
+      for part in plain(f[4]):gmatch("[^,]+") do
         local list, n = part:match("^(.-):(%-?%d+)$")
         if list and entries < 200 then
           entries = entries + 1
@@ -180,7 +182,7 @@ function F.RollParser(fmt)
   end
   local pattern = "^" .. table.concat(parts) .. "$"
   return function(msg)
-    local caps = { tostring(msg or ""):match(pattern) }
+    local caps = { plain(msg):match(pattern) }
     if #caps < 4 then return nil end
     local v = {}
     for j, p in ipairs(order) do v[p] = caps[j] end

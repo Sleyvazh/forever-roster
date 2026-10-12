@@ -11,7 +11,7 @@ local PREFIX = "FRoster"
 local TRADE_WINDOW = 2 * 3600
 
 -- Prénom seul : sans royaume (« -Royaume ») ni nom de famille de Forever (« John Poutre » → « John »)
-local function short(n) return (tostring(n or ""):match("^[^%-%s]+")) or "" end
+local function short(n) return (ns.text(n):match("^[^%-%s]+")) or "" end
 local function me() return UnitName("player") or "?" end
 local function channel()
   if RA.test then return "RAID" end
@@ -28,7 +28,7 @@ end
 local function db(key) ForeverRosterDB[key] = ForeverRosterDB[key] or {} return ForeverRosterDB[key] end
 -- Comparaison de noms (boss) : casse, accents et ponctuation ignorés
 local function norm(s)
-  s = tostring(s or ""):lower()
+  s = ns.text(s):lower()
   for a, b in pairs({ ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["à"] = "a", ["â"] = "a", ["ô"] = "o", ["î"] = "i", ["û"] = "u", ["ç"] = "c", ["œ"] = "oe" }) do s = s:gsub(a, b) end -- nolocale
   return (s:gsub("[^%w]", ""))
 end
@@ -67,13 +67,13 @@ function RA.Members()
   local out = {}
   if IsInRaid and IsInRaid() then
     for i = 1, (GetNumGroupMembers and GetNumGroupMembers() or 0) do
-      local n = GetRaidRosterInfo(i)
+      local n = ns.str(GetRaidRosterInfo(i)) -- nom secret : membre ignoré
       if n then out[#out + 1] = short(n) end
     end
   else
     out[1] = me()
     for i = 1, (GetNumSubgroupMembers and GetNumSubgroupMembers() or 0) do
-      local n = UnitName("party" .. i)
+      local n = ns.str(UnitName("party" .. i))
       if n then out[#out + 1] = short(n) end
     end
   end
@@ -89,7 +89,7 @@ local function unitFor(name)
       if short(GetRaidRosterInfo(i)) == name then return "raid" .. i end
     end
   end
-  for i = 1, 4 do if UnitName("party" .. i) == name then return "party" .. i end end
+  for i = 1, 4 do if ns.str(UnitName("party" .. i)) == name then return "party" .. i end end
   return nil
 end
 
@@ -219,7 +219,7 @@ end
 --------------------------------------------------------------------------------------------------------------------
 RA.versions = {}
 local function versionKey(v)
-  local a, b, c = tostring(v or ""):match("^(%d+)%.(%d+)%.?(%d*)")
+  local a, b, c = ns.text(v):match("^(%d+)%.(%d+)%.?(%d*)")
   return (tonumber(a) or 0) * 10000 + (tonumber(b) or 0) * 100 + (tonumber(c) or 0)
 end
 function RA.AskVersions(force)
@@ -267,7 +267,7 @@ function RA.CallConsumables()
 end
 handlers.CQ = function(sender, f)
   local parts = {}
-  for id in tostring(f[2] or ""):gmatch("%d+") do
+  for id in ns.text(f[2]):gmatch("%d+") do
     if #parts < 30 then parts[#parts + 1] = id .. ":" .. ns.ItemCount(tonumber(id), true) end
   end
   send("CR;" .. table.concat(parts, ","), "WHISPER", sender)
@@ -275,7 +275,7 @@ end
 handlers.CR = function(sender, f)
   if not RA.call then return end
   local c = {}
-  for id, n in tostring(f[2] or ""):gmatch("(%d+):(%d+)") do c[tonumber(id)] = tonumber(n) end
+  for id, n in ns.text(f[2]):gmatch("(%d+):(%d+)") do c[tonumber(id)] = tonumber(n) end
   RA.call.counts[sender] = c
   if not RA.call.open and not RA.test then ns.Recorder.SetCall({ at = RA.call.at, by = RA.call.by, counts = RA.call.counts }) end
   refresh()
@@ -321,10 +321,12 @@ end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Fiches de boss : en ciblant le boss, avant le pull ; fermées au début du combat. Le PNJ est appris au 1er combat.
+-- En instance, le client peut cacher l'identité du PNJ ciblé (GUID et nom secrets) : pas de fiche au ciblage alors,
+-- /fr boss reste possible.
 --------------------------------------------------------------------------------------------------------------------
 local function npcOf(unit)
   local guid = UnitGUID and UnitGUID(unit)
-  local kind, id = tostring(guid or ""):match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+  local kind, id = ns.text(guid):match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
   if kind == "Creature" or kind == "Vehicle" then return tonumber(id) end
   return nil
 end
@@ -336,7 +338,7 @@ function RA.Sheets()
   return out
 end
 function RA.SheetFor(unit)
-  local npc, name = npcOf(unit), UnitName and UnitName(unit)
+  local npc, name = npcOf(unit), ns.str(UnitName and UnitName(unit))
   if RA.test then return npc and RA.test.sheet or nil end -- raid d'essai : n'importe quel PNJ joue Ragnaros
   if not npc and not name then return nil end
   local learned, names = db("bossNpcs"), db("bossNames")
@@ -383,12 +385,12 @@ end)
 -- Début du combat : la fiche se ferme ; le boss (PNJ, nom dans la langue du client) est retenu pour la suite
 ns.on("ENCOUNTER_START", function(encounterId, name)
   if RA.HideSheet then RA.HideSheet() end
-  if not encounterId or RA.test then return end
+  if not encounterId or ns.secret(encounterId) or RA.test then return end
   local learned = db("bossNpcs")
   for i = 1, 5 do local id = npcOf("boss" .. i) if id then learned[id] = encounterId end end
   local t = npcOf("target")
   if t and UnitCanAttack and UnitCanAttack("player", "target") then learned[t] = learned[t] or encounterId end
-  if name then db("bossNames")[encounterId] = name end
+  if ns.str(name) then db("bossNames")[encounterId] = name end
 end)
 ns.on("PLAYER_REGEN_DISABLED", function() if RA.HideSheet then RA.HideSheet() end end)
 
@@ -396,15 +398,15 @@ ns.on("PLAYER_REGEN_DISABLED", function() if RA.HideSheet then RA.HideSheet() en
 -- Butin : fenêtre du maître du butin, jets (SR avec bonus, MS / OS, libre), conseil, objets à remettre
 --------------------------------------------------------------------------------------------------------------------
 local QUALITY = { ff8000 = 5, a335ee = 4, ["0070dd"] = 3, ["1eff00"] = 2, ffffff = 1, ["9d9d9d"] = 0 }
-local function qualityOf(link) return QUALITY[(tostring(link or ""):match("|cff(%x%x%x%x%x%x)") or ""):lower()] or 0 end
-local function itemId(link) return tonumber(tostring(link or ""):match("item:(%d+)")) end
+local function qualityOf(link) return QUALITY[(ns.text(link):match("|cff(%x%x%x%x%x%x)") or ""):lower()] or 0 end
+local function itemId(link) return tonumber(ns.text(link):match("item:(%d+)")) end
 
 function RA.IsMasterLooter()
   if RA.test then return true end
   if IsMasterLooter then local ok, r = pcall(IsMasterLooter) if ok and r ~= nil then return r and true or false end end
   if not GetLootMethod then return false end
   local method, partyIdx, raidIdx = GetLootMethod()
-  if method ~= "master" then return false end
+  if ns.secret(method) or ns.secret(partyIdx) or ns.secret(raidIdx) or method ~= "master" then return false end
   if IsInRaid and IsInRaid() then return raidIdx ~= nil and UnitIsUnit ~= nil and UnitIsUnit("raid" .. raidIdx, "player") end
   return partyIdx == 0
 end
@@ -494,6 +496,16 @@ ns.on("CHAT_MSG_SYSTEM", function(msg)
   if not RA.session then return end
   RA.OnRoll(rollParser()(msg))
 end)
+-- Chat caché par le jeu (pendant un combat de boss en instance) : jets et chuchotements de ce moment illisibles ;
+-- dit une fois par objet au maître du butin
+local function chatHidden()
+  local s = RA.session
+  if not s or s.chatHidden then return end
+  s.chatHidden = true
+  ns.print(L["le jeu cache le chat pendant un combat de boss : les jets et chuchotements de ce moment ne sont pas lus. Relance ou redemande après le combat."])
+end
+ns.onSecret("CHAT_MSG_SYSTEM", chatHidden)
+ns.onSecret("CHAT_MSG_WHISPER", chatHidden)
 -- Classement : plus haut total d'abord ; tied = ex æquo en tête (au moins 2)
 function RA.Ranking(s)
   s = s or RA.session
@@ -562,7 +574,7 @@ function RA.RollDetail(s, w)
 end
 -- Détail dans la langue de l'interface (annonce au raid)
 function RA.DetailText(detail)
-  detail = tostring(detail or "")
+  detail = ns.text(detail)
   local n = detail:match("^jet (%d+)$")
   if n then return L("jet %s", n) end
   n = detail:match("^(%d+) voix$")
@@ -694,7 +706,7 @@ handlers.LA = function(sender, f)
   local c = RA.councils[f[2] or ""]
   if not c or not RESPONSES[f[3] or ""] then return end
   local gear = {}
-  for id in tostring(f[4] or ""):gmatch("%d+") do gear[#gear + 1] = tonumber(id) end
+  for id in ns.text(f[4]):gmatch("%d+") do gear[#gear + 1] = tonumber(id) end
   c.cands[sender] = { response = f[3], gear = gear, note = f[5] or "" }
   refresh()
 end
@@ -710,7 +722,7 @@ ns.on("CHAT_MSG_WHISPER", function(msg, sender)
   local s = RA.session
   if not s or s.kind ~= "council" then return end
   -- Casse, espaces et ponctuation finale ignorés (« Bis ! », « off spec. »)
-  local r = WHISPERED[tostring(msg or ""):lower():gsub("^%s+", ""):gsub("[%s%.!]+$", ""):gsub("%s+", " ")]
+  local r = WHISPERED[ns.text(msg):lower():gsub("^%s+", ""):gsub("[%s%.!]+$", ""):gsub("%s+", " ")]
   if r then handlers.LA(short(sender), { "LA", s.sid, r, "", "chuchoté" }) end -- nolocale (marque interne, jamais affichée)
 end)
 function RA.Vote(sid, cand)

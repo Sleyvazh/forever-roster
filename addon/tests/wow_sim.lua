@@ -1260,6 +1260,97 @@ local function sharing()
 end
 local shareChecks = sharing()
 
+-- 8 quater. Client à valeurs secrètes (Forever, octobre 2026, comme Retail depuis 12.0) : en instance, le jeu cache
+-- l'identité du PNJ ciblé et, pendant un combat de boss, le texte du chat. Une valeur secrète ne se lit qu'avec
+-- issecretvalue : la comparer, la découper ou la concaténer est une erreur Lua (« attempt to index a secret string value »).
+do
+  local secrets = setmetatable({}, { __mode = "k" })
+  local function secretValue(label)
+    local u = newproxy(true)
+    local mt = getmetatable(u)
+    local function boom() error("attempt to index a secret string value (" .. label .. ")", 2) end
+    mt.__index, mt.__newindex, mt.__concat, mt.__lt, mt.__le, mt.__len, mt.__call = boom, boom, boom, boom, boom, boom, boom
+    secrets[u] = true
+    return u
+  end
+  local keep = { type = type, tostring = tostring, UnitGUID = UnitGUID, UnitName = UnitName, GetRaidRosterInfo = GetRaidRosterInfo,
+    GetInstanceInfo = GetInstanceInfo, GetNumLootItems = GetNumLootItems, GetLootSlotLink = GetLootSlotLink, IsInRaid = IsInRaid,
+    IsInGroup = IsInGroup, GetNumGroupMembers = GetNumGroupMembers, roster = ROSTER, boss = R.boss, bossNames = ForeverRosterDB.bossNames,
+    bossNpcs = ForeverRosterDB.bossNpcs }
+  local before = errors()
+  local function quiet(what) assert(errors() == before, what .. " : " .. tostring(printed[#printed])) end
+  -- Comme le jeu : issecretvalue, type() d'une chaîne secrète = "string", tostring() la laisse secrète
+  issecretvalue = function(v) return secrets[v] == true end
+  type = function(v) if secrets[v] then return "string" end return keep.type(v) end
+  tostring = function(v) if secrets[v] then return v end return keep.tostring(v) end
+  IsInRaid, IsInGroup = function() return true end, function() return true end
+  ROSTER = { "Tournicoti", "Gorrak", secretValue("GetRaidRosterInfo") }
+  GetNumGroupMembers = function() return #ROSTER end
+
+  -- Ciblage en instance : GUID et nom du PNJ secrets → pas de fiche, pas d'erreur (l'erreur vue en jeu le 13/10)
+  if RA.HideSheet then RA.HideSheet() end
+  UnitGUID = function(u) if u == "target" or u:match("^boss") then return secretValue("UnitGUID") end end
+  UnitName = function(u) if u == "target" then return secretValue("UnitName") end return keep.UnitName(u) end
+  fire("PLAYER_TARGET_CHANGED")
+  quiet("ciblage d'un PNJ secret")
+  local sw = RA.sheetWindow and RA.sheetWindow()
+  assert(not (sw and sw:IsShown()), "pas de fiche au ciblage d'un PNJ secret")
+  assert(RA.SheetFor("target") == nil, "fiche introuvable sans GUID ni nom lisibles")
+  -- Début et fin de combat : nom ou numéro secrets ignorés, rien de secret gardé dans la sauvegarde
+  ForeverRosterDB.bossNames, ForeverRosterDB.bossNpcs = { [672] = "Ragnaros" }, {}
+  fire("ENCOUNTER_START", 672, secretValue("ENCOUNTER_START name"), 9, 40)
+  fire("ENCOUNTER_START", secretValue("encounterID"), "Ragnaros", 9, 40)
+  assert(ForeverRosterDB.bossNames[672] == "Ragnaros" and next(ForeverRosterDB.bossNpcs) == nil, "rien de secret appris")
+  R.boss = nil
+  fire("ENCOUNTER_END", 672, "Ragnaros", 9, 40, secretValue("success"))
+  assert(R.boss == nil, "fin de combat illisible ignorée")
+  fire("ENCOUNTER_END", 672, secretValue("ENCOUNTER_END name"), 9, 40, 1)
+  assert(R.boss and R.boss.name == "", "boss vaincu noté, nom secret laissé vide")
+  quiet("début et fin de combat secrets")
+
+  -- Membres : un nom secret est ignoré (raid, compo, relevé)
+  local names = table.concat(RA.Members(), ",")
+  assert(names == "Tournicoti,Gorrak", "membre au nom secret ignoré : " .. names)
+  local roster = ns.Compo.Roster()
+  assert(roster.tournicoti and roster.gorrak, "compo sans le membre secret")
+  GetInstanceInfo = function() return secretValue("instance"), secretValue("kind") end
+  tickers[1]()
+  quiet("relevé avec des valeurs secrètes")
+
+  -- Chat caché pendant un combat de boss : jets et chuchotements illisibles, signalés une fois au maître du butin
+  RA.AddItem("|cffa335ee|Hitem:18814::::::::60:::::|h[Choker]|h|r")
+  assert(RA.StartRoll(RA.items[1], "free"), "jets lancés")
+  local mark = #printed
+  fire("CHAT_MSG_SYSTEM", secretValue("CHAT_MSG_SYSTEM"))
+  fire("CHAT_MSG_SYSTEM", secretValue("CHAT_MSG_SYSTEM"))
+  fire("CHAT_MSG_WHISPER", secretValue("CHAT_MSG_WHISPER"), "Gorrak")
+  local notes = 0
+  for i = mark + 1, #printed do if printed[i]:find("le jeu cache le chat pendant un combat de boss", 1, true) then notes = notes + 1 end end
+  assert(notes == 1, "chat caché signalé une fois (" .. notes .. ")")
+  fire("CHAT_MSG_SYSTEM", "Gorrak obtient un 42 (1-100).")
+  assert(RA.session.rolls.Gorrak and RA.session.rolls.Gorrak.roll == 42, "jet lisible compté après le combat")
+  RA.session = nil
+  table.remove(RA.items, 1)
+  fire("CHAT_MSG_LOOT", secretValue("CHAT_MSG_LOOT"), "Gorrak", "", "", "Gorrak")
+  fire("CHAT_MSG_ADDON", "FRoster", "VQ", "RAID", secretValue("sender"))
+  fire("CHAT_MSG_ADDON", "FRoster", secretValue("text"), "RAID", "Gorrak")
+  quiet("chat et messages d'addon secrets")
+
+  -- Butin et infobulles : lien secret ignoré
+  GetNumLootItems = function() return 1 end
+  GetLootSlotLink = function() return secretValue("GetLootSlotLink") end
+  assert(#RA.ReadLoot() == 0, "objet au lien secret ignoré")
+  tip.lines = {}
+  tooltipHook(tip, { id = secretValue("tooltip id") })
+  quiet("butin et infobulle secrets")
+
+  -- Remise en place
+  issecretvalue, type, tostring = nil, keep.type, keep.tostring
+  UnitGUID, UnitName, GetRaidRosterInfo, GetInstanceInfo = keep.UnitGUID, keep.UnitName, keep.GetRaidRosterInfo, keep.GetInstanceInfo
+  GetNumLootItems, GetLootSlotLink, IsInRaid, IsInGroup, GetNumGroupMembers = keep.GetNumLootItems, keep.GetLootSlotLink, keep.IsInRaid, keep.IsInGroup, keep.GetNumGroupMembers
+  ROSTER, R.boss, ForeverRosterDB.bossNames, ForeverRosterDB.bossNpcs = keep.roster, keep.boss, keep.bossNames, keep.bossNpcs
+end
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
