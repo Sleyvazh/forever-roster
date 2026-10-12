@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, post, put, type Character } from "../api";
 import { useSite } from "../site";
+import { ExternalLink } from "./ExternalLink";
 
 /**
  * Butin des raids (lot C2) : choix du mode, soft reserve d'un raid, réglages du groupe. Classes CSS « lt- ».
@@ -98,7 +99,7 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
       <ul>
         {list.map(o => (
           <li key={`${title}-${o.id}-${o.boss ?? ""}`}>
-            <a className={`q${o.quality}`} href={itemLinks(o.id).wowhead} target="_blank" rel="noopener noreferrer">[{o.name}]</a>
+            <ExternalLink className={`q${o.quality}`} href={itemLinks(o.id).wowhead}>[{o.name}]</ExternalLink>
             {o.boss && <span className="muted small"> · {o.boss}</span>}
             <button type="button" className="btn sm" style={{ marginLeft: "auto" }} disabled={!char || full || reserved.has(o.id) || !v.open}
               onClick={() => void reserve(o.id)}>{reserved.has(o.id) ? "★ Réservé" : "Réserver"}</button>
@@ -151,7 +152,7 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
           <thead><tr><th>Objet</th><th>Boss</th><th>Réservé par</th></tr></thead>
           <tbody>{v.items.map(i => (
             <tr key={i.item.id}>
-              <td><a className={`q${i.item.quality}`} href={itemLinks(i.item.id).wowhead} target="_blank" rel="noopener noreferrer">[{i.item.name}]</a>
+              <td><ExternalLink className={`q${i.item.quality}`} href={itemLinks(i.item.id).wowhead}>[{i.item.name}]</ExternalLink>
                 {i.reservers.length > 1 && <span className="tag warn" style={{ marginLeft: 8 }}>{i.reservers.length} SR</span>}</td>
               <td className="muted small">{i.boss || "—"}</td>
               <td><span className="lt-who">{i.reservers.map(r => (

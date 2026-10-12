@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, get, put } from "../api";
 import { useGameText } from "../gameText";
+import { ExternalLink } from "./ExternalLink";
 import { LootDetail } from "./Loot";
 
 /* ---------- Bilan d'un raid (page du raid) ---------- */
@@ -101,7 +102,7 @@ export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogVi
               <tbody>
                 {log.loot.map((l, i) => (
                   <tr key={`${l.itemId}-${l.at}-${i}`}>
-                    <td><a className={`q${l.quality}`} href={itemHref(l.itemId)} target="_blank" rel="noopener noreferrer">{l.itemName}</a>
+                    <td><ExternalLink className={`q${l.quality}`} href={itemHref(l.itemId)}>{l.itemName}</ExternalLink>
                       {l.boss && <div className="muted small">{l.boss}</div>}</td>
                     <td style={{ color: clsColor(l.cls) }}>{l.name}</td>
                     <td className="r"><div className="rl-tags">
@@ -198,7 +199,7 @@ export function AttendanceTab({ groupId }: { groupId: string }) {
                 <td className="nowrap"><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{c.attended}/{n}</span></td>
                 {c.cells.map((s, i) => <td key={i} className={`c rl-cell ${s ?? ""}`} title={s ? ATTENDANCE_LABEL[s] : "Ni inscrit ni vu"}>{s ? CELL[s] : ""}</td>)}
                 <td className="r" title={`${c.loot} objet${c.loot > 1 ? "s" : ""} relevé${c.loot > 1 ? "s" : ""} au total`}><span className="num">{c.counted}</span><LootDetail detail={c.detail} /></td>
-                <td>{c.lastItem ? <a className={`q${c.lastItem.quality}`} href={retail ? retailItemLink(c.lastItem.id, gt.lang) : itemLinks(c.lastItem.id).wowhead} target="_blank" rel="noopener noreferrer" title={c.lastItem.raidName}>{c.lastItem.name}</a> : <span className="muted">—</span>}</td>
+                <td>{c.lastItem ? <ExternalLink className={`q${c.lastItem.quality}`} href={retail ? retailItemLink(c.lastItem.id, gt.lang) : itemLinks(c.lastItem.id).wowhead} title={c.lastItem.raidName}>{c.lastItem.name}</ExternalLink> : <span className="muted">—</span>}</td>
               </tr>
             );
           })}

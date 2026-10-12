@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { useMe } from "../auth";
 import { useGameText } from "../gameText";
 import { ApiError, del, get, post, type GroupRole } from "../api";
+import { ExternalLink } from "./ExternalLink";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { absenceLabel } from "./Absences";
@@ -104,7 +105,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
             <ul className="ps-loot">
               {loot.map((l, i) => (
                 <li key={`${l.itemId}-${l.at}-${i}`}>
-                  <a className={`q${l.quality}`} href={gt.game === "retail" ? retailItemLink(l.itemId, gt.lang) : itemLinks(l.itemId).wowhead} target="_blank" rel="noopener noreferrer">[{l.name}]</a>
+                  <ExternalLink className={`q${l.quality}`} href={gt.game === "retail" ? retailItemLink(l.itemId, gt.lang) : itemLinks(l.itemId).wowhead}>[{l.name}]</ExternalLink>
                   <span className="muted small"> · {l.character}{l.boss ? ` · ${l.boss}` : ""} · <Link to={`/groups/${groupId}/raids/${l.raidId}/bilan`}>{l.raidName}</Link></span>
                   {l.bis && <span className="rl-chip ok" style={{ marginLeft: 6 }}>BiS ✓</span>}
                   {(l.skip || l.excluded) && <span className="rl-chip muted" style={{ marginLeft: 6 }} title="Ne compte pas dans les objets reçus">ne compte pas{l.skip ? ` · ${l.skip}` : ""}</span>}

@@ -2,6 +2,7 @@ import { BOND_LABEL, compareItems, INVENTORY_LABEL, itemLinks, money, statLine, 
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { get, type GameItem, type ItemSources } from "../api";
+import { ExternalLink } from "./ExternalLink";
 import { glyphFor } from "./ItemGlyphs";
 
 /* Icônes introuvables sur le serveur (pas encore téléchargées) : retenues pour toute la page. */
@@ -156,9 +157,9 @@ export function ItemHover({ item, compare, compareLabel, children, className, li
   const tip = rect && <FloatingTip rect={rect}><ItemTooltipBody item={item} compare={compare} compareLabel={compareLabel} /></FloatingTip>;
   if (link) {
     return (
-      <a className={`ihover ilink ${className ?? ""}`} href={itemLinks(item.id).wowhead} target="_blank" rel="noopener noreferrer" {...events}>
+      <ExternalLink className={`ihover ilink ${className ?? ""}`} href={itemLinks(item.id).wowhead} hint={false} {...events}>
         {children}<span className="sr-only"> (Wowhead, nouvel onglet)</span>{tip}
-      </a>
+      </ExternalLink>
     );
   }
   return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...events}>{children}{tip}</span>;

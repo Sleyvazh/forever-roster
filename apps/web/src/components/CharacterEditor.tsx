@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Character, Prof } from "../api";
 import { CRAFTING, RecipeCard } from "./GameData";
+import { ExternalLink } from "./ExternalLink";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { ImageUpload, Portrait } from "./ImageUpload";
 import { del, uploadImage } from "../api";
@@ -178,8 +179,8 @@ function Profil({ c, onChange, editable }: SubProps) {
           </div>
         )}
         <div className="row">
-          <a className="btn sm ghost" href={`https://foreverchanges.pro/talents/${slug}`} target="_blank" rel="noopener noreferrer">Calculateur de talents</a>
-          <a className="btn sm ghost" href={`https://foreverchanges.pro/class/${slug}`} target="_blank" rel="noopener noreferrer">Changements de classe</a>
+          <ExternalLink className="btn sm ghost" href={`https://foreverchanges.pro/talents/${slug}`}>Calculateur de talents</ExternalLink>
+          <ExternalLink className="btn sm ghost" href={`https://foreverchanges.pro/class/${slug}`}>Changements de classe</ExternalLink>
         </div>
       </div>
     </>
@@ -239,7 +240,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
       )}
       <div className="row small">
         <span className="muted">Total <span className="num">{total}</span>/51</span>
-        {/^https:\/\//.test(link) && <a className="btn sm" href={link} target="_blank" rel="noopener noreferrer">Ouvrir le build</a>}
+        {/^https:\/\//.test(link) && <ExternalLink className="btn sm" href={link}>Ouvrir le build</ExternalLink>}
       </div>
       {total > avail && (avail < 51 && total <= 51
         ? <div className="hint">Ce build compte {total} points, mais le perso est niveau {level} ({avail} point{avail > 1 ? "s" : ""}) : pense à mettre à jour son niveau dans « Identité ».</div>

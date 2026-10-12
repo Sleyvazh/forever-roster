@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { get, type Character } from "../api";
 import { syncAge } from "../addonImport";
 import { ClassIcon } from "../components/Icons";
+import { ExternalLink } from "../components/ExternalLink";
 import { useSite } from "../site";
 
 declare const __ADDON_VERSION__: string;
@@ -59,7 +60,7 @@ function Install() {
           <li>Le zip ne contient que des fichiers texte (<code>.lua</code>, <code>.toc</code>, <code>.xml</code>), plus la police des titres du site (<code>Fonts/MarcellusSC.ttf</code>, licence libre OFL, lue par le jeu) : aucun programme à installer ni à lancer sur ton PC.</li>
           <li>Un addon tourne dans le jeu, sans accès à internet, à tes fichiers ou à ton compte : il ne connaît ni ton mot de passe, ni ta session sur le site. Les échanges passent uniquement par ton copier-coller.</li>
           <li>Il n'envoie rien dans le chat sans un clic de ta part (« Annoncer ») et n'agit pas à ta place en combat.</li>
-          <li>Le code est public : <a href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/ForeverRoster" target="_blank" rel="noopener noreferrer">addon/ForeverRoster sur GitHub</a>.</li>
+          <li>Le code est public : <ExternalLink href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/ForeverRoster">addon/ForeverRoster sur GitHub</ExternalLink>.</li>
           {__ADDON_SHA256__ && <li>Empreinte SHA-256 du zip, pour vérifier qu'il est intact (PowerShell : <code>Get-FileHash ForeverRoster.zip</code>) : <code className="sha">{__ADDON_SHA256__}</code></li>}
         </ul>
       </details>
@@ -156,7 +157,7 @@ function RosterInstall() {
         <ul className="addon-list">
           <li>Le zip ne contient que des fichiers texte (<code>.lua</code>, <code>.toc</code>), le logo de l'addon et la police des titres du site (<code>Fonts/MarcellusSC.ttf</code>, licence libre OFL, lue par le jeu) : aucun programme à installer ni à lancer sur ton PC.</li>
           <li>Un addon tourne dans le jeu, sans accès à internet, à tes fichiers ou à ton compte : il ne connaît ni ton mot de passe, ni ta session sur le site. Les échanges passent uniquement par ton copier-coller.</li>
-          <li>Le code est public : <a href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/Roster" target="_blank" rel="noopener noreferrer">addon/Roster sur GitHub</a>.</li>
+          <li>Le code est public : <ExternalLink href="https://github.com/Sleyvazh/forever-roster/tree/main/addon/Roster">addon/Roster sur GitHub</ExternalLink>.</li>
           {__ROSTER_ADDON_SHA256__ && <li>Empreinte SHA-256 du zip, pour vérifier qu'il est intact (PowerShell : <code>Get-FileHash Roster.zip</code>) : <code className="sha">{__ROSTER_ADDON_SHA256__}</code></li>}
         </ul>
       </details>

@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { ApiError, post, type Character } from "../api";
 import { useGameText } from "../gameText";
 import { bnetAge, BnetImportButton, useBnetEnabled, useBnetRefresh } from "./BnetImport";
+import { ExternalLink } from "./ExternalLink";
 import { ClassIcon, classIconUrl, SpecIcon } from "./Icons";
 import { RoleIcon } from "./RoleIcon";
 
@@ -94,9 +95,9 @@ export function RetailCharacterSheet({ c, onChange, onRefreshed, subhead, footer
         <div className="fld"><span className="lbl">Liens</span>
           {links ? (
             <div className="row rc-links">
-              <a className="chip" href={links.armory} target="_blank" rel="noopener noreferrer">Armurerie</a>
-              <a className="chip" href={links.raiderio} target="_blank" rel="noopener noreferrer">Raider.IO</a>
-              <a className="chip" href={links.warcraftlogs} target="_blank" rel="noopener noreferrer">Warcraft Logs</a>
+              <ExternalLink className="chip" href={links.armory}>Armurerie</ExternalLink>
+              <ExternalLink className="chip" href={links.raiderio}>Raider.IO</ExternalLink>
+              <ExternalLink className="chip" href={links.warcraftlogs}>Warcraft Logs</ExternalLink>
             </div>
           ) : <span className="hint">Avec le nom et le royaume.</span>}
         </div>
@@ -133,9 +134,9 @@ export function RetailCharacterView({ c }: { c: Character }) {
         {links && (
           <div className="fld"><span className="lbl">Liens</span>
             <div className="row rc-links">
-              <a className="chip" href={links.armory} target="_blank" rel="noopener noreferrer">Armurerie</a>
-              <a className="chip" href={links.raiderio} target="_blank" rel="noopener noreferrer">Raider.IO</a>
-              <a className="chip" href={links.warcraftlogs} target="_blank" rel="noopener noreferrer">Warcraft Logs</a>
+              <ExternalLink className="chip" href={links.armory}>Armurerie</ExternalLink>
+              <ExternalLink className="chip" href={links.raiderio}>Raider.IO</ExternalLink>
+              <ExternalLink className="chip" href={links.warcraftlogs}>Warcraft Logs</ExternalLink>
             </div>
           </div>
         )}

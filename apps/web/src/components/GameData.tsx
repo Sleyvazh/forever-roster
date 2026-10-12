@@ -3,6 +3,7 @@ import { ITEM_QUALITIES, itemLinks, PROFESSION_SKILL_LINES, type GEAR_SLOTS } fr
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ApiError, get, put, type GameItem, type GameRecipe, type GameStatus, type RecipeStatus } from "../api";
+import { ExternalLink } from "./ExternalLink";
 
 const QUALITY_LABEL = [...ITEM_QUALITIES, "Artefact", "Héritage"];
 
@@ -24,7 +25,7 @@ export function useGameVersion() {
 export const CRAFTING = new Set(["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Leatherworking", "Mining", "Tailoring", "Cooking", "First Aid"]);
 
 const ExtLink = ({ id }: { id: number }) => (
-  <a className="ext" href={itemLinks(id).wowhead} target="_blank" rel="noopener noreferrer" title="Voir sur Wowhead" aria-label="Voir sur Wowhead">↗</a>
+  <ExternalLink className="ext" href={itemLinks(id).wowhead} title="Voir sur Wowhead" aria-label="Voir sur Wowhead">↗</ExternalLink>
 );
 
 /* ---------------------------------------------------------------- Patrons */
