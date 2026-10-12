@@ -31,6 +31,8 @@ async function account(page: Page, name: string) {
   const token = () => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
   await expect.poll(token).not.toBe("");
   await page.goto(`/verify-email#${token()}`);
+  // Attendre la confirmation : la page relit la session avant d'envoyer le jeton (partir trop tôt l'annule)
+  await expect(page.getByText("Adresse confirmée")).toBeVisible();
   await page.goto("/login");
   await page.fill("#email", email); await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();

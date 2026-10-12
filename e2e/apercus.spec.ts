@@ -65,6 +65,8 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(lastVerifyToken).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken()}`);
+  // Attendre la confirmation : la page relit la session avant d'envoyer le jeton (partir trop tôt l'annule)
+  await expect(page.getByText("Adresse confirmée")).toBeVisible();
   await page.goto("/login");
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
@@ -478,6 +480,8 @@ test("aperçus des signalements", async ({ page, browser }) => {
     const tok = () => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
     await expect.poll(tok).not.toBe("");
     await p.goto(`/verify-email#${tok()}`);
+    // Attendre la confirmation : la page relit la session avant d'envoyer le jeton (partir trop tôt l'annule)
+    await expect(p.getByText("Adresse confirmée")).toBeVisible();
     await p.goto("/login");
     await p.fill("#email", email); await p.fill("#password", pass);
     await p.getByRole("button", { name: /se connecter/i }).click();
