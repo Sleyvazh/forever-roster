@@ -125,6 +125,14 @@ T["%d groupe chargé"] = "%d group loaded"
 T["compo « %s » chargée"] = 'comp "%s" loaded'
 T["Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici."] = 'No website data: on Roster, click "Copier pour le jeu", then paste here.'
 T["Données du site : %s."] = "Website data: %s."
+-- Partage entre joueurs : origine des données de chaque groupe (onglet Synchro)
+T["reçues de %s le %s"] = "received from %s on %s"
+T["reçues de %s"] = "received from %s"
+T["collées le %s"] = "pasted on %s"
+T["collées"] = "pasted"
+T["non partagées : %s"] = "not shared: %s"
+T["pas signées par le site"] = "not signed by the website"
+T["clé du site inconnue"] = "website key unknown to the addon"
 
 -------------------------------------------------------------------------------------------------------------------
 -- Compo.lua : état des persos, invitations, placement
@@ -251,6 +259,11 @@ T[", chef de butin : %s"] = ", loot master: %s"
 T["Passer automatiquement quand le chef de butin distribue (Distribution par Roster) : %s"] = "Auto-pass when the loot master distributes (Roster distribution): %s"
 T["Si tu coupes, passe toi-même sur chaque objet du butin de groupe : sinon il peut te revenir au lieu d'aller au chef de butin."] =
   "If you turn this off, pass on each group loot item yourself: otherwise it may go to you instead of the loot master."
+T["Partage entre joueurs"] = "Sharing between players"
+T["Partager les données du site avec la guilde et le raid : %s"] = "Share website data with the guild and the raid: %s"
+T["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] =
+  "Pasted (or received) data goes to the players of your guild and raid who have Roster; each keeps only their own groups, checked against the website's signature. Off: you still receive other players' data."
+T["+ %d autres groupes"] = "+ %d more groups"
 T["onglet %s"] = "tab %s"
 T["Cet onglet n'a pas pu être chargé (module Pages)."] = "This tab could not be loaded (Pages module)."
 T["Fais /console scriptErrors 1 puis /reload pour voir l'erreur."] = "Type /console scriptErrors 1 then /reload to see the error."
@@ -283,6 +296,7 @@ T["%d joueurs"] = "%d players"
 T["avec %s"] = "with %s"
 T["(tu es connecté avec %s)"] = "(you are logged in as %s)"
 T["pas inscrit"] = "not signed up"
+T["inscription inconnue (données reçues d'un autre joueur)"] = "sign-up unknown (data received from another player)"
 T["en cours"] = "in progress"
 T["Toi : %s"] = "You: %s"
 T["Pendant un raid prévu sur le site, l'addon relève tout seul la présence, les boss et le butin ; le bilan part avec ta synchro."] =

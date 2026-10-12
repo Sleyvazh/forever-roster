@@ -686,6 +686,14 @@ assert(n("Data.Load") == loads + 2 and sp.input:GetText() ~= "" and sp.loadStatu
 sp.input:SetText("")
 ns.UI.Refresh()
 assert(sp.summary:GetText() ~= nil and lastArgs["Data.ExportText"][1] == false, "résumé et export des changements")
+-- Origine des données de chaque groupe (partage entre joueurs) : collées, quand ; pas signées par le site : pas partagées
+local origins = sp.origins:GetText()
+assert(origins:find("Les Veilleurs : collées le ", 1, true) and origins:find("non partagées : pas signées par le site", 1, true), "origine des données : " .. origins)
+assert(ns.Data.Load("RRG;1;a1;1790000000;Libération\nEND;0\nRRG;1;a2;1790000000;Libération\nEND;0\nRRG;1;a3;1790000000;Libération\nEND;0\nRRG;1;a4;1790000000;Libération\nEND;0"))
+ns.UI.Refresh()
+origins = sp.origins:GetText()
+assert(origins:find("+ 2 autres groupes", 1, true) and select(2, origins:gsub("\n", "")) == 2, "origine des données : 3 lignes au plus")
+assert(ns.Data.Load(RRG))
 assert(sp.text:GetText() == sp.value, "export affiché")
 if sp.count > 0 then
   IsControlKeyDown = function() return true end
@@ -780,6 +788,12 @@ for text, fs in pairs(TEXTS) do if type(text) == "string" and fs:GetText() == te
 assert(autoRow and autoRow:find("non") and autoRow:find("passe toi-même", 1, true), "option coupée : explication")
 clickRow("Passer automatiquement", "Oui")
 assert(RosterDB.autoPass == nil and ns.Loot.AutoPass() == true, "passer automatiquement remis (nil = activé)")
+-- Partage des données du site avec la guilde et le raid : oui par défaut (nil), false = coupé (lu par Groups.lua)
+assert(RosterDB.share == nil and ns.Groups.ShareOn(), "partage : activé par défaut")
+clickRow("Partager les données du site avec la guilde et le raid", "Non")
+assert(RosterDB.share == false and not ns.Groups.ShareOn() and RosterDB.autoPass == nil, "partage coupé")
+clickRow("Partager les données du site avec la guilde et le raid", "Oui")
+assert(RosterDB.share == nil and ns.Groups.ShareOn() and realSends == 0, "partage remis (hors guilde et hors raid : rien envoyé)")
 click("Rare")
 assert(RosterDB.lootQuality == 3, "seuil rare")
 click("Légendaire")

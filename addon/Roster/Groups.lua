@@ -1,5 +1,6 @@
 -- Données du site collées en jeu : groupes et raids à venir (RRG), compo d'un raid (RRR, Compo.lua).
--- ns.Groups : groupes chargés (RosterDB.groups), raids à venir, raid en cours pour le relevé.
+-- ns.Groups : groupes chargés (RosterDB.groups), raids à venir, raid en cours pour le relevé ; partage des groupes
+-- signés par le site avec la guilde et le raid (addon/shared/Share.lua, en bas de ce fichier).
 -- ns.Data : ce que la synchro (onglet Synchro, synchro rapide, bouton de la minicarte) charge et exporte.
 local _, ns = ...
 local L, N = ns.L, ns.N
@@ -115,7 +116,11 @@ function D.Load(text)
   if kind == "RRG" then
     local list, err = F.ParseRRG(text)
     if not list then return false, err end
+    for _, g in ipairs(list) do g.origin = { at = time() } end -- collées
     G.Load(list)
+    -- Données neuves : annoncées à la guilde et au raid (seulement les blocs signés par le site)
+    G.ShareSoon("GUILD", 1, 3)
+    G.ShareSoon("RAID", 1, 3)
     local raids = 0
     for _, g in ipairs(list) do raids = raids + #g.raids end
     local groupsText, groupsFr = count(#list, N("%d groupe"), N("%d groupes"))
@@ -180,5 +185,156 @@ function D.Summary()
   if #parts == 0 then return L["Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici."] end
   return L("Données du site : %s.", table.concat(parts, " · "))
 end
+
+-- Origine des données de chaque groupe (onglet Synchro) : collées ou reçues d'un joueur, quand ; pourquoi elles ne se
+-- partagent pas (texte sans signature du site, clé du site pas encore dans l'addon)
+local NOT_SHARED = { unsigned = N("pas signées par le site"), invalid = N("pas signées par le site"), key = N("clé du site inconnue") }
+function D.Origins()
+  local out, d = {}, db() or {}
+  for _, g in ipairs(G.List()) do
+    local o = type(g.origin) == "table" and g.origin or {}
+    local at = o.at or d.groupsAt
+    local how
+    if o.from then
+      how = at and L("reçues de %s le %s", F.Display(o.from), F.Stamp(at)) or L("reçues de %s", F.Display(o.from))
+    else
+      how = at and L("collées le %s", F.Stamp(at)) or L["collées"]
+    end
+    local status = (g.text and ns.Share and ns.Share.Status) and ns.Share.Status(g.text, "RRG") or "unsigned"
+    local why = G.ShareOn() and NOT_SHARED[status]
+    out[#out + 1] = L("%s : %s", g.name or "?", how) .. (why and (" · " .. L("non partagées : %s", L[why])) or "")
+  end
+  return out
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Partage entre joueurs (addon/shared/Share.lua) : un joueur colle les données du site, son addon les annonce à la
+-- guilde et au raid ; les addons qui ont une version plus ancienne (ou rien) la demandent, la vérifient (signature du
+-- site, ligne M : un de mes persos est membre du groupe) et l'appliquent. Option : RosterDB.share (nil : oui, par
+-- défaut ; false : ni annonce ni envoi, la réception continue). Messages SHV, SHQ, SHD : docs/addon-format.md.
+--------------------------------------------------------------------------------------------------------------------
+local Sh = ns.Share or {} -- Share.lua absent ou cassé : pas de partage, le reste de l'addon marche
+local function isTrue(v) return not F.secret(v) and v and true or false end
+local function inGuild()
+  local ok, r = pcall(function() return IsInGuild and IsInGuild() end)
+  return ok and isTrue(r)
+end
+local function inRaid() return ns.Comm ~= nil and ns.Comm.InRaid() end
+
+function G.ShareOn()
+  local d = db()
+  return not (d and d.share == false)
+end
+
+-- Mes persos (clés F.Key) : celui-ci, ceux du compte déjà vus par l'addon (RosterDB.chars, notés à la connexion), et
+-- ceux de mes inscriptions dans les données du site
+function G.MyChars()
+  local out = {}
+  local function add(name) local k = F.Key(name) if k then out[k] = true end end
+  if ns.Comm then add(ns.Comm.Me()) end
+  local d = db()
+  for _, name in pairs(d and type(d.chars) == "table" and d.chars or {}) do add(name) end
+  for _, g in pairs(groups()) do
+    for _, r in ipairs(g.raids or {}) do if r.char then add(r.char) end end
+  end
+  return out
+end
+
+-- Annonce sur la guilde ou le raid dans min à max secondes (une annonce déjà prévue plus tôt suffit)
+local soonAt = {}
+function G.ShareSoon(dist, min, max)
+  if not (Sh.Announce and Sh.Jitter) then return false end
+  local delay = Sh.Jitter(min or 1, max or 3)
+  local at = time() + delay
+  if soonAt[dist] and soonAt[dist] <= at then return false end
+  soonAt[dist] = at
+  local function go()
+    if soonAt[dist] == at then soonAt[dist] = nil end
+    if not G.ShareOn() then return end
+    if dist == "GUILD" and not inGuild() then return end
+    if dist == "RAID" and not inRaid() then return end
+    Sh.Announce(dist, dist == "RAID")
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, go) else go() end
+  return true
+end
+
+-- Bloc reçu d'un autre joueur (déjà vérifié par Share.lua) : il remplace mes données de ce groupe, en gardant mon
+-- inscription (statut et perso) pour chaque raid que j'avais déjà ; un raid nouveau pour moi : inscription inconnue
+-- (r.unknown). Puis relais sur l'autre canal (guilde → raid, raid → guilde).
+local function applyShared(text, sender, dist)
+  local list = F.ParseRRG(text)
+  local g = list and #list == 1 and list[1]
+  if not (g and g.text) then return false end
+  local old = groups()[g.id]
+  local before = {}
+  for _, r in ipairs(old and old.raids or {}) do before[r.id] = r end
+  for _, r in ipairs(g.raids) do
+    local o = before[r.id]
+    if o then r.status, r.char, r.unknown = o.status, o.char, o.unknown
+    else r.status, r.char, r.unknown = nil, nil, true end
+  end
+  g.origin = { from = F.FullName(sender), at = time() }
+  if not G.Load({ g }) then return false end
+  refresh()
+  if ns.Minimap and ns.Minimap.Update then ns.safe(L["minicarte"], ns.Minimap.Update) end
+  G.ShareSoon(dist == "RAID" and "GUILD" or "RAID", 2, 6)
+  return true
+end
+
+if Sh.Setup then Sh.Setup({
+  kind = "RRG",
+  -- File des messages de Comm.lua (combat de boss, limite du jeu), après les messages du butin
+  send = function(msg, dist, target) return ns.Comm.Send(msg, dist, target, nil, true) end,
+  blocks = function()
+    local out = {}
+    for id, g in pairs(groups()) do out[id] = { at = tonumber(g.at) or 0, text = g.text } end
+    return out
+  end,
+  apply = applyShared,
+  mine = function(list)
+    local own = G.MyChars()
+    for _, name in ipairs(list) do
+      local k = F.Key(name)
+      if k and own[k] then return true end
+    end
+    return false
+  end,
+  notify = function(text) ns.print(text) end,
+  enabled = G.ShareOn,
+  display = function(name) return F.Display(name) end,
+  stamp = function(at) return F.Stamp(at) end,
+}) end
+
+for _, code in ipairs({ "SHV", "SHQ", "SHD" }) do
+  ns.Comm.On(code, function(sender, _, dist, msg)
+    if F.SameName(sender, ns.Comm.Me()) or not Sh.OnMessage then return end -- écho de mes propres messages
+    Sh.OnMessage(sender, msg, dist)
+  end)
+end
+
+-- Connexion : ce perso est noté parmi ceux du compte ; annonce à la guilde 20 à 40 s après (le temps que tout charge)
+ns.on("PLAYER_LOGIN", function()
+  local d = db()
+  local me = ns.Comm.Me()
+  if d and me ~= "?" then
+    d.chars = type(d.chars) == "table" and d.chars or {}
+    d.chars[F.Fold(me)] = me
+  end
+  G.ShareSoon("GUILD", 20, 40)
+end)
+
+-- Arrivée dans un raid, ou raid qui s'agrandit : annonce au raid (pour ceux qui ne sont pas de la guilde)
+local wasRaid, lastCount = false, 0
+ns.on("GROUP_ROSTER_UPDATE", function()
+  local raid = inRaid()
+  local n = 0
+  if raid and GetNumGroupMembers then
+    local ok, c = pcall(GetNumGroupMembers)
+    if ok and not F.secret(c) and type(c) == "number" then n = c end
+  end
+  if raid and (not wasRaid or n > lastCount) then G.ShareSoon("RAID", 3, 8) end
+  wasRaid, lastCount = raid, n
+end)
 
 return G

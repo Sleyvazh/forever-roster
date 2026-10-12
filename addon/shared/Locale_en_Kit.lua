@@ -9,3 +9,6 @@ T["×"] = "×"
 T["Tank"] = "Tank"
 T["Heal"] = "Healer"
 T["DPS"] = "DPS"
+
+-- Partage des données du site entre joueurs (Share.lua)
+T["Données de %s reçues de %s (site : %s)."] = "Data for %s received from %s (website: %s)."

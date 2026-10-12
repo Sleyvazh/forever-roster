@@ -241,21 +241,30 @@ end
 -- RRG v1 : un ou plusieurs groupes à la suite. Les lignes ajoutées plus tard (après les R) sont hors du compte de END.
 -- Lot R3b : O (conseil par défaut : officiers et propriétaire), L (conseil choisi pour un raid), N (objets reçus).
 -- Addon 0.3 : D (détail des objets reçus : BiS, Upgrade, jets MS), rattaché aux entrées de N.
+-- Partage entre joueurs (0.4) : M (persos du groupe : members) et Z (signature du site : sig = { key }) juste avant END ;
+-- un bloc signé garde son texte (text : lignes de l'en-tête à END), relayé tel quel aux autres joueurs (Share.lua).
 function F.ParseRRG(text)
-  local groups, cur, count, n, detail = {}, nil, nil, 0, nil
+  local groups, cur, count, n, detail, lines = {}, nil, nil, 0, nil, nil
   local function close()
     if not cur then return true end
     if count ~= n then return false end
     mergeDetails(cur, detail)
+    if cur.sig then cur.text = table.concat(lines, "\n") end
     groups[#groups + 1] = cur
     return true
   end
   for line in tostring(text or ""):gmatch("[^\r\n]+") do
-    local f = split(trim(line))
+    line = trim(line)
+    local f = split(line)
+    if lines and count == nil and line ~= "" then lines[#lines + 1] = line end
     if f[1] == "RRG" then
       if not close() then return nil, L[F.INCOMPLETE] end
       if tonumber(f[2]) ~= 1 then return nil, newer(f[2]) end
-      cur, count, n, detail = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {} }, nil, 0, nil
+      cur, count, n, detail, lines = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {} }, nil, 0, nil, { line }
+    elseif cur and f[1] == "M" and count == nil then
+      cur.members = names(f[2], 1000)
+    elseif cur and f[1] == "Z" and count == nil then
+      cur.sig = { key = txt(f[2], 16) }
     elseif cur and f[1] == "R" and count == nil then
       n = n + 1
       if #cur.raids < 30 then

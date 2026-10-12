@@ -88,6 +88,9 @@ refreshers.raids = function(p)
         mine = mine .. GREY .. " " .. L("avec %s", "|r" .. F.Display(r.char))
         if not F.SameName(r.char, me) then mine = mine .. GREY .. " " .. L("(tu es connecté avec %s)", F.Display(me)) .. "|r" end
       end
+    elseif r.unknown then
+      -- Raid arrivé avec les données d'un autre joueur (partage) : mon inscription n'y est pas
+      mine = GREY .. L["inscription inconnue (données reçues d'un autre joueur)"] .. "|r"
     else
       mine = GREY .. L["pas inscrit"] .. "|r"
     end

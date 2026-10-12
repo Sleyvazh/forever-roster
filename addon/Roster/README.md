@@ -8,11 +8,11 @@ La fenêtre complète, ouverte par le bouton de la minicarte ou `/roster`, a cin
 
 | Onglet | Rôle |
 |---|---|
-| **Synchro** | En haut : colle « Copier pour le jeu » (données des groupes) ou « Export pour le jeu » (compo d'un raid), chargé dès que le texte est complet (message vert, ou rouge s'il est refusé). En bas : le bilan des raids déjà sélectionné ; Ctrl+C le marque envoyé, « Tout renvoyer » pour tout recopier |
+| **Synchro** | En haut : colle « Copier pour le jeu » (données des groupes) ou « Export pour le jeu » (compo d'un raid), chargé dès que le texte est complet (message vert, ou rouge s'il est refusé) ; pour chaque groupe, d'où viennent ses données (« collées » ou « reçues de » un joueur) et quand. En bas : le bilan des raids déjà sélectionné ; Ctrl+C le marque envoyé, « Tout renvoyer » pour tout recopier |
 | **Raids** | Raids à venir de tes groupes |
 | **En raid** | Pendant le raid : qui a l'addon (et sa version), relevé de la présence et du butin, chef de butin et distribution par Roster (0.2.0) |
 | **Compo** | La compo collée : **Inviter**, **Placer les groupes** |
-| **Options** | Touches (choisir, retirer), habillage (jeu ou site), bouton de la minicarte, relevé de la présence et du butin, seuil de qualité du butin, passer automatiquement quand le chef de butin distribue |
+| **Options** | Touches (choisir, retirer), habillage (jeu ou site), bouton de la minicarte, relevé de la présence et du butin, seuil de qualité du butin, passer automatiquement quand le chef de butin distribue, partage des données du site avec la guilde et le raid |
 
 | Commande | Rôle |
 |---|---|
@@ -69,6 +69,16 @@ Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) 
 
 Rien ne part au chat du raid, aux autres joueurs ni au site : annonces, chuchotements et jets s'affichent dans ta fenêtre de chat, précédés de « [essai] ». `/roster test` affiche ou masque le panneau ; « Quitter l'essai » ou `/roster test fin` l'arrête. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.
 
+## Partage des données du site entre joueurs
+
+Un seul joueur colle « Copier pour le jeu » : son addon partage les données de ses groupes avec les joueurs de sa guilde et de son raid qui ont Roster. Code commun aux deux addons : `addon/shared/Share.lua` (protocole), `Crypto.lua` (vérification) et `SiteKey.lua` (clé publique du site) ; branchement de Roster : fin de `Groups.lua`.
+
+- **Signature du site** : le site signe chaque bloc `RRG` (lignes `M`, persos du groupe, et `Z`, signature, juste avant `END` ; `docs/addon-format.md`). Un bloc sans signature (ancien site, pas de clé) n'est jamais partagé. Reçu d'un autre joueur, un bloc n'est appliqué que si sa signature est valide (clé publique compilée dans l'addon), s'il est plus récent que le tien et si l'un de tes persos est dans la ligne `M` (ce perso, ceux du compte déjà connectés avec l'addon, ceux de tes inscriptions ; mêmes règles de noms que le reste de l'addon). Tout le reste est ignoré, de qui que ce soit.
+- **Quand** : annonce à la guilde 20 à 40 s après la connexion et juste après un collage (synchro ou synchro rapide) ; au raid à l'arrivée dans un raid et quand il s'agrandit (pour ceux qui ne sont pas de la guilde). Des données reçues par la guilde sont relayées au raid, et inversement. Ceux qui ont une version plus ancienne (ou rien) la demandent ; une seule diffusion par version et par canal (60 s au plus une fois), en messages de 255 octets au plus, après les messages du butin dans la file d'attente (retenus pendant un combat de boss).
+- **Appliqué** : les données du groupe sont remplacées, mais ton inscription (statut et perso) est gardée pour chaque raid que tu avais déjà ; un raid nouveau affiche « inscription inconnue » dans l'onglet **Raids** jusqu'à ta prochaine copie depuis le site. Un message dans le chat : « Données de Les Veilleurs reçues de Tharok (site : 12/10 à 21:04). »
+- **Option** (onglet **Options**, « Partager les données du site avec la guilde et le raid », `RosterDB.share = false` pour couper) : coupée, ton addon n'annonce ni n'envoie plus rien ; il reçoit toujours les données des autres.
+- **Onglet Synchro** : pour chaque groupe, « collées le … » ou « reçues de Tharok le … », et pourquoi elles ne se partagent pas (« pas signées par le site », « clé du site inconnue »).
+
 ## Langue (0.3.2)
 
 L'interface suit la langue du client du jeu : français sur un client en français, anglais sinon. Onglet **Options**, « Langue » (ou `/roster langue fr | en | auto`, aussi `/roster language`) pour en choisir une autre ; elle s'applique au rechargement de l'interface. Les commandes ont aussi leur nom anglais (`/roster loot`, `handover`, `sync`, `inraid`, `comp`…). Les messages entre addons et les textes pour le site ne changent pas avec la langue (`docs/addon-format.md`, « Langue des addons »).
@@ -81,8 +91,8 @@ Télécharger le zip sur la page **Addon** de Roster, puis copier le dossier `Ro
 
 ```bash
 for f in addon/Roster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
-lua5.1 addon/tests/roster_format_test.lua   # formats RRG, RRR, RRB et noms « Prénom-Royaume » (écrit sample.rrb, relit sample.rrg et sample.rrr du site)
-lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan
+lua5.1 addon/tests/roster_format_test.lua   # formats RRG (lignes M et Z, signature de sample.rrg), RRR, RRB et noms « Prénom-Royaume » (écrit sample.rrb, relit sample.rrg et sample.rrr du site)
+lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan, partage entre joueurs (plusieurs joueurs simulés)
 lua5.1 addon/tests/roster_ui_test.lua       # fenêtre, commandes, synchro rapide, options, minicarte, fenêtres du butin (bandes d'objets), raid d'essai de bout en bout
 ```
 
@@ -93,5 +103,7 @@ Les simulations chargent les fichiers du `.toc` dans l'ordre (dossier de l'addon
 **À vérifier en jeu (0.2.0)** : passer automatique quand le chef de butin a pris l'objet, et rien (avec le message) quand il ne l'a pas pris ; option coupée ; chef de butin désigné par le chef de raid ; fenêtre de réponse chez chacun, réponse chuchotée par un joueur sans l'addon, votes du conseil ; jets lus dans le chat et relance des ex æquo ; minuteur d'échange lu dans l'infobulle et échange avec le gagnant ; annonce au raid et chuchotement au gagnant, aussi pendant et juste après un boss (messages retenus) ; joueur sans l'addon qui gagne au butin de groupe ; raid d'essai avec tes objets portés (infobulles, niveaux d'objet), puis arrêt en rejoignant un groupe.
 
 **Correctif 0.3.1** : chaque objet donné est noté dans le bilan, même si le relevé était en pause au moment du clic (après un `/reload`), et rattrapé avant l'export ; seul l'équipement est relevé (plus les Étincelles et autres composants).
+
+**À vérifier en jeu (partage entre joueurs)** : messages `SHV`, `SHQ`, `SHD` sur la guilde (`GUILD`), au raid et chuchotés (persos d'autres royaumes compris) ; texte partagé en plusieurs messages (retours à la ligne, accents) ; diffusion retenue pendant un combat de boss, puis envoyée ; annonce à la connexion, après un collage, à l'arrivée dans un raid ; message dans le chat à la réception ; option coupée.
 
 **À vérifier en jeu (0.3.0)** : « Tout au conseil » sur 5 objets ou plus (une seule annonce, numéros, « bis 2 » chuchoté) ; bande d'objets dans les deux habillages (icônes, coches, infobulles, flèches quand elle déborde, fenêtre redimensionnée) ; passage à l'objet suivant après une réponse et au conseil suivant après « Donner » ; nouvel objet qui arrive pendant une réponse ; objet d'une autre armure, arme ou jeton réservé à d'autres classes (seulement Transmo et Passer, raison) ; « ne peut pas le porter » au conseil ; colonne « Reçus » (total, détail sur deux lignes, infobulle, tri par l'en-tête) ; objets posés tout seuls quand le gagnant ouvre l'échange.

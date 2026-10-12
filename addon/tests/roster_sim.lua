@@ -174,6 +174,7 @@ local BLIZZARD = {
   UnitClass = function(unit) local m = unitMember(unit) if m then return "Classe", m.class end end,
   UnitIsConnected = function() return true end,
   IsInRaid = function() return S.raid end,
+  IsInGuild = function() return S.guild == true end,
   IsInGroup = function() return inGroup() end,
   GetNumGroupMembers = function() return inGroup() and #S.members or 0 end,
   GetNumSubgroupMembers = function() return S.raid and 0 or #S.members - 1 end,
@@ -308,6 +309,9 @@ local BLIZZARD = {
       if allowance < 1 then S.throttled = S.throttled + 1 return 3 end
       allowance = allowance - 1
       S.sent[#S.sent + 1] = { prefix = prefix, msg = msg, dist = dist, target = target }
+      -- Autres joueurs simulés (section 11 : partage des données du site), en guilde, en raid ou chuchotés
+      if S.bus and (dist == "GUILD" or dist == "RAID" or dist == "WHISPER") then S.bus(msg, dist, target) end
+      if dist == "GUILD" and S.guild then schedule(0.01, function() fire("CHAT_MSG_ADDON", prefix, msg, dist, "Kaeldra-Hyjal") end) end
       -- Le message revient à l'expéditeur (canal du groupe) ; les autres addons répondent à la question des versions
       if dist == "RAID" or dist == "PARTY" then
         schedule(0.01, function() fire("CHAT_MSG_ADDON", prefix, msg, dist, "Kaeldra-Hyjal") end)
@@ -1816,10 +1820,459 @@ Co.Clear()
 buildPages(nil)
 buildPages("site")
 assert(errors() == 0, "fin sans erreur : " .. tostring(lastPrinted("erreur")))
+
+--------------------------------------------------------------------------------------------------------------------
+-- 11. Partage des données du site entre joueurs (addon/shared/Share.lua, Groups.lua) : texte canonique, annonces,
+-- demandes, morceaux, vérifications, inscription gardée, option coupée, relais, pas de diffusions en double.
+-- Les autres joueurs sont d'autres exemplaires de Share.lua (même minuteur, même horloge) reliés par un canal simulé ;
+-- Kaeldra (moi) est l'addon complet.
+--------------------------------------------------------------------------------------------------------------------
+local realChecked = false
+local function sharing()
+local Sh = ns.Share
+local ME = "Kaeldra-Hyjal"
+Sh.random = function() return 0.5 end
+-- Signature simulée pour la clé « test0001 » (somme de contrôle du texte canonique) ; les autres clés passent par la
+-- vraie vérification (addon/shared/Crypto.lua), si elle est là
+local realVerify = ns.Crypto.VerifyRSA
+local function checksum(s)
+  local a, b = 1, 0
+  for i = 1, #s do a = (a + s:byte(i)) % 65521 b = (b + a) % 65521 end
+  return "T" .. (b * 65536 + a) .. "=="
+end
+ns.SITE_KEYS.test0001 = { n = "00", e = 65537 }
+ns.Crypto.VerifyRSA = function(keyId, message, sig)
+  if keyId == "test0001" then return sig == checksum(message) end
+  if realVerify then return realVerify(keyId, message, sig) end
+  return false, "crypto"
+end
+
+-- Texte canonique calculé ici sans Share.lua : champs 7 et 8 des lignes R vidés
+local function canon(lines)
+  local out = {}
+  for _, l in ipairs(lines) do
+    if l:sub(1, 2) == "R;" then
+      local f = {}
+      for x in (l .. ";"):gmatch("([^;]*);") do f[#f + 1] = x end
+      f[7], f[8] = "", ""
+      l = table.concat(f, ";")
+    end
+    out[#out + 1] = l
+  end
+  return table.concat(out, "\n")
+end
+-- Bloc RRG comme le site l'écrit : en-tête, R (avec les champs personnels de celui qui l'a copié), autres lignes, M, Z, END
+local function block(group, at, raids, extra, members, opts)
+  opts = opts or {}
+  local lines = { "RRG;" .. (opts.version or 1) .. ";" .. group .. ";" .. at .. ";Les Veilleurs" }
+  for _, r in ipairs(raids) do lines[#lines + 1] = r end
+  for _, x in ipairs(extra or {}) do lines[#lines + 1] = x end
+  lines[#lines + 1] = "M;" .. table.concat(members, ",")
+  local c = canon(lines)
+  if not opts.unsigned then lines[#lines + 1] = "Z;" .. (opts.key or "test0001") .. ";" .. (opts.sig or checksum(c)) end
+  for _, x in ipairs(opts.after or {}) do lines[#lines + 1] = x end
+  lines[#lines + 1] = "END;" .. #raids
+  return table.concat(lines, "\n"), c
+end
+
+-- 11.1 Texte canonique (RRG et FRG), membres, signature, texte partagé
+local RAW = table.concat({
+  "  RRG;1;g1;1794600000;Les Veilleurs \r",
+  "R;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "",
+  "\tR;r9;0;Raid;normal;25;;;journal",
+  "O;Kaeldra-Hyjal",
+  "M;Kaeldra-Hyjal, Tharok-Hyjal",
+  "Z;test0001;abc=",
+  "END;2",
+  "RRG;1;g2;1794600000;Autre",
+  "END;0",
+}, "\n")
+local info = Sh.Parse(RAW, "RRG")
+assert(info and info.canonical == "RRG;1;g1;1794600000;Les Veilleurs\nR;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;;;council\nR;r9;0;Raid;normal;25;;;journal\nO;Kaeldra-Hyjal\nM;Kaeldra-Hyjal, Tharok-Hyjal",
+  "texte canonique RRG : " .. tostring(info and info.canonical))
+assert(info.group == "g1" and info.at == 1794600000 and info.name == "Les Veilleurs" and #info.members == 2 and info.members[2] == "Tharok-Hyjal", "en-tête et membres")
+assert(info.keyId == "test0001" and info.sig == "abc=" and info.shared == info.canonical .. "\nZ;test0001;abc=\nEND;2", "signature et texte partagé")
+assert(Sh.Canonical(info.shared, "RRG") == info.canonical, "un bloc déjà canonique est sa propre forme canonique")
+assert(Sh.Canonical("FRG;1;g;5;Forever\nR;r;0;Onyxia;present;Greta;softres\nS;r;1;Greta:0\nM;Greta,Ulf\nEND;1", "FRG") == "FRG;1;g;5;Forever\nR;r;0;Onyxia;;;softres\nS;r;1;Greta:0\nM;Greta,Ulf", "texte canonique FRG : champs 5 et 6")
+assert(Sh.Canonical("RRG;1;g;5;G\nR;r;0;Raid", "RRG") == nil and Sh.Canonical("RRG;1;g;5;G\nRRG;1;h;5;H\nEND;0", "RRG") == nil, "bloc incomplet")
+assert(Sh.Parse(RAW, "FRG") == nil, "autre addon : rien")
+assert(Sh.Status(RAW, "RRG") == "ok" and Sh.Status(info.canonical .. "\nEND;2", "RRG") == "unsigned" and Sh.Status(RAW:gsub("test0001", "inconnue"), "RRG") == "key", "état de la signature")
+assert(not Sh.Verify(RAW, "RRG") and Sh.Verify((block("g1", 5, {}, nil, { ME })), "RRG"), "vérification")
+-- Le texte collé garde les lignes M et Z, et le bloc signé pour le relayer
+local gs = F.ParseRRG(RAW)
+assert(gs and #gs == 2 and gs[1].members[2] == "Tharok-Hyjal" and gs[1].sig.key == "test0001" and gs[1].text and Sh.Canonical(gs[1].text, "RRG") == info.canonical, "M et Z lus, texte gardé")
+assert(gs[2].text == nil and gs[2].members == nil and #gs[1].raids == 2 and gs[1].raids[1].status == "present", "bloc sans signature : pas de texte ; inscription lue")
+-- Découpage : messages ≤ 255 octets, caractères UTF-8 entiers, remis bout à bout = le texte partagé
+local bigRaids = {}
+for i = 1, 24 do bigRaids[i] = "R;b" .. i .. ";" .. (T + i * 86400) .. ";Sanctum Žarkov Žžž " .. i .. ";heroic;20;;;council" end
+local BIG = block("6f1c2a10-0000-4000-8000-0000000000f5", BASE + 3000, bigRaids, { "O;Kaeldra-Hyjal" }, { ME, "Tharok-Hyjal" })
+local bigInfo = Sh.Parse(BIG, "RRG")
+local chunks = Sh.Chunks(bigInfo.group, bigInfo.at, bigInfo.shared)
+assert(chunks and #chunks >= 8, "texte long : plusieurs messages")
+local joined = {}
+for i, m in ipairs(chunks) do
+  assert(#m <= 255, "message de " .. #m .. " octets")
+  local g, a, k, n, payload = m:match("^SHD;([^;]+);(%d+);(%d+);(%d+);(.*)$")
+  assert(g == bigInfo.group and tonumber(a) == bigInfo.at and tonumber(k) == i and tonumber(n) == #chunks and not payload:find("^[\128-\191]"), "morceau " .. i)
+  joined[i] = payload
+end
+assert(table.concat(joined) == bigInfo.shared, "morceaux remis bout à bout")
+
+-- 11.2 Plusieurs joueurs : canal simulé (guilde, raid, chuchotements), 50 ms de trajet
+S.guild = true
+local clients = {}
+local function deliver(from, msg, dist, target)
+  for _, c in ipairs(clients) do
+    if c.name ~= from and ((dist == "GUILD" and c.guild) or (dist == "RAID" and c.raid) or (dist == "WHISPER" and c.name == target)) then
+      schedule(0.05, function() c.Sh.OnMessage(from, msg, dist) end)
+    end
+  end
+  if from ~= ME and ((dist == "GUILD" and S.guild) or (dist == "RAID" and S.raid) or (dist == "WHISPER" and target == ME)) then
+    schedule(0.05, function() fire("CHAT_MSG_ADDON", "RosterRT", msg, dist, from) end)
+  end
+end
+S.bus = function(msg, dist, target) deliver(ME, msg, dist, target) end
+local function client(name, opts)
+  opts = opts or {}
+  local c = { name = name, guild = opts.guild ~= false, raid = opts.raid, groups = {}, applied = {}, notes = {}, sent = {}, on = true, chars = opts.chars or { name } }
+  local cns = { L = ns.L, N = ns.N, Crypto = ns.Crypto, SITE_KEYS = ns.SITE_KEYS }
+  assert(loadfile("addon/shared/Share.lua"))("Roster", cns)
+  c.Sh = cns.Share
+  c.Sh.random = function() return opts.rand or 0.5 end
+  c.Sh.Setup({
+    kind = "RRG",
+    send = function(msg, dist, target)
+      assert(#msg <= 255, "message de plus de 255 octets : " .. #msg)
+      c.sent[#c.sent + 1] = { msg = msg, dist = dist, target = target }
+      deliver(name, msg, dist, target)
+    end,
+    blocks = function()
+      local out = {}
+      for id, g in pairs(c.groups) do out[id] = { at = g.at, text = g.text } end
+      return out
+    end,
+    apply = function(text, sender, dist)
+      local i = c.Sh.Parse(text, "RRG")
+      c.groups[i.group] = { at = i.at, text = text }
+      c.applied[#c.applied + 1] = { group = i.group, at = i.at, from = sender, dist = dist }
+      return true
+    end,
+    mine = function(list)
+      for _, n in ipairs(list) do for _, m in ipairs(c.chars) do if n == m then return true end end end
+      return false
+    end,
+    notify = function(text) c.notes[#c.notes + 1] = text end,
+    enabled = function() return c.on end,
+  })
+  clients[#clients + 1] = c
+  return c
+end
+local function hold(c, text) local i = c.Sh.Parse(text, "RRG") c.groups[i.group] = { at = i.at, text = text } end
+local function msgs(list, pattern, from)
+  local n = 0
+  for i = from or 1, #list do if list[i].msg:find(pattern) then n = n + 1 end end
+  return n
+end
+local function lastAt(c, group) return c.groups[group] and c.groups[group].at end
+local function myGroup(id) for _, g in ipairs(G.List()) do if g.id == id then return g end end end
+local function raidOf(g, id) for _, r in ipairs(g.raids) do if r.id == id then return r end end end
+local function received() local n = 0 for _, l in ipairs(printed) do if l:find("reçues de", 1, true) then n = n + 1 end end return n end
+
+-- Mes données de g1 (collées, sans signature) : inscrit « present » avec Kaeldra au raid RAID_ID, pas au raid r2
+assert(D.Load(table.concat({ "RRG;1;g1;" .. BASE .. ";Les Veilleurs",
+  "R;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "R;r2;" .. (T + 7 * 86400) .. ";Kith'ix;mythic;20;;;journal", "END;2" }, "\n")))
+local g1 = myGroup("g1")
+assert(g1 and g1.at == BASE and not g1.text and raidOf(g1, RAID_ID).status == "present", "g1 collé sans signature")
+assert(Sh.Announce("GUILD") == 0, "rien de signé : aucune annonce")
+-- Version T2 détenue par Tharok (copiée par lui : ses champs personnels), T3 par Vex
+local T2, T3 = BASE + 1000, BASE + 2000
+local MEMBERS = { ME, "Tharok-Hyjal", "Ilyra-Hyjal", "Vex-Kael'Thas" }
+local function raids(status)
+  return { "R;" .. RAID_ID .. ";" .. T .. ";Faille de Sporefall;heroic;20;" .. status .. ";Tharok-Hyjal;council",
+    "R;r2;" .. (T + 7 * 86400) .. ";Kith'ix;mythic;20;;;journal",
+    "R;r4;" .. (T + 14 * 86400) .. ";Manaforge Omega;heroic;20;present;Tharok-Hyjal;council" }
+end
+local V2 = block("g1", T2, raids("absent"), { "O;Tharok-Hyjal" }, MEMBERS)
+local V3 = block("g1", T3, raids("late"), { "O;Tharok-Hyjal,Vex-Kael'Thas" }, MEMBERS)
+local tharok = client("Tharok-Hyjal", { rand = 0 })
+local ilyra = client("Ilyra-Hyjal")
+local vex = client("Vex-Kael'Thas", { rand = 0.9 })
+local zeph = client("Zephyra-Hyjal") -- de la guilde, pas membre du groupe
+hold(tharok, V2) hold(vex, V3)
+
+-- Tharok annonce : moi (plus ancien) et Ilyra (rien) demandons, Zephyra (rien, pas membre) aussi une fois ; Vex (plus
+-- récent) ne demande pas mais répond par son annonce
+local sent0 = #S.sent
+assert(tharok.Sh.Announce("GUILD") == 1 and tharok.sent[1].msg == "SHV;RRG;g1;" .. T2 .. ";" .. #Sh.Parse(V2, "RRG").shared, "annonce SHV")
+advance(0.3)
+assert(msgs(S.sent, "^SHQ;g1;" .. BASE .. ";GUILD$", sent0 + 1) == 1 and S.sent[#S.sent].dist == "WHISPER" and S.sent[#S.sent].target == "Tharok-Hyjal", "données plus anciennes : demande chuchotée à Tharok")
+assert(msgs(ilyra.sent, "^SHQ;g1;0;GUILD$") == 1 and msgs(zeph.sent, "^SHQ;g1;0;GUILD$") == 1, "sans données : demande (une fois)")
+assert(msgs(vex.sent, "^SHQ") == 0, "données plus récentes : pas de demande")
+advance(2)
+assert(msgs(tharok.sent, "^SHD;g1;" .. T2 .. ";1;") == 1, "trois demandes, une seule diffusion")
+for _, e in ipairs(tharok.sent) do if e.msg:find("^SHD") then assert(e.dist == "GUILD" and #e.msg <= 255, "diffusion sur la guilde") end end
+-- Appliqué chez moi : nouvelles données, mon inscription gardée (raid RAID_ID), inconnue pour le raid nouveau
+g1 = myGroup("g1")
+assert(g1.at == T2 and g1.text and g1.origin.from == "Tharok-Hyjal" and Sh.Status(g1.text, "RRG") == "ok", "reçu de Tharok : appliqué et gardé signé")
+local mine1 = raidOf(g1, RAID_ID)
+assert(mine1.status == "present" and mine1.char == ME and not mine1.unknown, "mon inscription gardée (pas celle de Tharok)")
+assert(raidOf(g1, "r2").status == nil and not raidOf(g1, "r2").unknown and raidOf(g1, "r4").unknown and raidOf(g1, "r4").status == nil, "pas inscrit / raid nouveau : inconnu")
+assert(#g1.officers == 1 and g1.officers[1] == "Tharok-Hyjal" and #g1.members == 4, "lignes O et M")
+assert(lastPrinted("Données de Les Veilleurs reçues de Tharok (site : ", 1, true) and received() == 1, "message dans le chat, une fois")
+local origins = D.Origins()
+assert(#origins == 2 and origins[1]:find("^Les Veilleurs : reçues de Tharok le ") and not origins[1]:find("non partagées", 1, true)
+  and origins[2]:find("^Pasta : collées le .* · non partagées : pas signées par le site$"), "onglet Synchro : origine de chaque groupe")
+assert(ilyra.applied[1] and ilyra.applied[1].at == T2 and ilyra.notes[1]:find("reçues de Tharok-Hyjal", 1, true), "Ilyra : appliqué")
+buildPages(nil)
+local unknownShown = false
+for text in pairs(TEXTS) do if type(text) == "string" and text:find("inscription inconnue (données reçues d'un autre joueur)", 1, true) then unknownShown = true end end
+assert(unknownShown and errors() == 0, "onglet Raids : inscription inconnue pour le raid nouveau")
+assert(#zeph.applied == 0 and zeph.Sh.State().outsider.g1 and zeph.Sh.last.result == "member", "Zephyra pas membre : jamais appliqué")
+assert(#vex.applied == 0, "Vex : version plus ancienne ignorée")
+-- Vex répond par son annonce (T3) : tous la demandent, sauf Zephyra (déjà demandé sans données cette session)
+advance(5)
+assert(msgs(vex.sent, "^SHV;RRG;g1;" .. T3 .. ";") == 1, "réponse à une annonce plus ancienne")
+advance(5)
+assert(msgs(vex.sent, "^SHD;g1;" .. T3 .. ";1;") == 1 and msgs(zeph.sent, "^SHQ") == 1, "une diffusion ; Zephyra ne redemande pas")
+assert(myGroup("g1").at == T3 and lastAt(tharok, "g1") == T3 and lastAt(ilyra, "g1") == T3, "tout le monde à T3")
+mine1 = raidOf(myGroup("g1"), RAID_ID)
+assert(mine1.status == "present" and mine1.char == ME and raidOf(myGroup("g1"), "r4").unknown and received() == 2, "inscription toujours gardée")
+-- Plus personne ne demande : une annonce de la même version ne fait rien
+local before = #S.sent
+advance(Sh.QUIET + 1)
+vex.Sh.Announce("GUILD")
+advance(5)
+assert(msgs(S.sent, "^SH", before + 1) == 0 and msgs(ilyra.sent, "^SHQ") == 2, "même version : ni demande ni diffusion")
+
+-- 11.3 Morceaux dans le désordre, doublons, délai dépassé (messages reçus de Orvane, hors du canal simulé)
+local function feed(list, from, dist) for _, m in ipairs(list) do fire("CHAT_MSG_ADDON", "RosterRT", m, dist or "GUILD", from or "Orvane-Hyjal") end end
+local shuffled = {}
+for i = #chunks, 1, -1 do
+  shuffled[#shuffled + 1] = chunks[i]
+  if i == 3 then shuffled[#shuffled + 1] = chunks[2] end -- doublon
+end
+feed(shuffled)
+local big = myGroup(bigInfo.group)
+assert(big and big.at == bigInfo.at and #big.raids == 24 and big.raids[24].name == "Sanctum Žarkov Žžž 24" and big.origin.from == "Orvane-Hyjal", "désordre et doublon : remis en ordre, appliqué")
+assert(received() == 3 and next(Sh.State().rx) == nil, "appliqué une fois, rien en attente")
+feed(shuffled)
+assert(received() == 3, "même version renvoyée : ignorée")
+-- Délai : le dernier morceau arrive 121 s après les autres
+local SLOW = block("g6", BASE + 3000, { bigRaids[1], bigRaids[2], bigRaids[3] }, nil, { ME })
+local slowInfo = Sh.Parse(SLOW, "RRG")
+local slow = Sh.Chunks("g6", slowInfo.at, slowInfo.shared)
+assert(#slow >= 2, "texte en plusieurs morceaux")
+feed({ unpack(slow, 1, #slow - 1) })
+advance(Sh.TIMEOUT + 1)
+feed({ slow[#slow] })
+assert(not myGroup("g6"), "délai dépassé : abandonné")
+local pendingRx = 0
+for _ in pairs(Sh.State().rx) do pendingRx = pendingRx + 1 end
+assert(pendingRx == 1, "le morceau en retard attend seul")
+advance(Sh.TIMEOUT + 1)
+feed({ "SHV;FRG;x;1;1" })
+assert(next(Sh.State().rx) == nil, "puis abandonné à son tour")
+
+-- 11.4 Refusés, jamais appliqués : signature fausse, clé inconnue, pas membre, sans signature, lignes ajoutées, plus ancien
+local function try(text, label, from)
+  local i = Sh.Parse(text, "RRG")
+  local shared = i.shared or (i.canonical .. "\n" .. i.endLine)
+  local before = received()
+  feed(Sh.Chunks(i.group, i.at, shared), from)
+  assert(received() == before and not myGroup(i.group), label)
+  return Sh.last and Sh.last.result
+end
+local T4 = BASE + 4000
+local forged = block("g7", T4, raids("present"), nil, MEMBERS):gsub("Kith'ix", "Kith'ix (faux)")
+assert(try(forged, "texte modifié : refusé") == "signature", "signature fausse")
+assert(try((block("g7", T4 + 1, raids("present"), nil, MEMBERS, { key = "deadbeef" })), "clé inconnue : refusé") == "key", "clé inconnue")
+assert(try((block("g7", T4 + 2, raids("present"), nil, { "Mordak-Ysondre", "Orvane-Hyjal" })), "pas membre : refusé") == "member", "pas membre")
+assert(try((block("g7", T4 + 3, raids("present"), nil, MEMBERS, { unsigned = true })), "sans signature : refusé") == "invalid", "sans signature")
+assert(try((block("g7", T4 + 4, raids("present"), nil, MEMBERS, { after = { "O;Mordak-Ysondre" } })), "ligne ajoutée après Z : refusé") == "signature", "ligne ajoutée")
+local noM = block("g7", T4 + 5, raids("present"), nil, MEMBERS):gsub("\nM;[^\n]*", "")
+assert(try(noM, "sans ligne M : refusé") == "members", "sans ligne M")
+local OLD = block("g1", T2, raids("present"), nil, MEMBERS)
+local oldInfo = Sh.Parse(OLD, "RRG")
+feed(Sh.Chunks("g1", T2, oldInfo.shared))
+assert(myGroup("g1").at == T3 and next(Sh.State().rx) == nil, "plus ancien que le mien : ignoré")
+feed(Sh.Chunks(bigInfo.group, bigInfo.at + 1, (bigInfo.shared:gsub(tostring(bigInfo.at), tostring(bigInfo.at + 1), 1))), "Orvane-Hyjal", "WHISPER")
+assert(myGroup(bigInfo.group).at == bigInfo.at, "données chuchotées : ignorées (guilde et raid seulement)")
+-- Un texte forgé ne fait pas ignorer la vraie version (même groupe, même date) envoyée ensuite par un autre joueur
+local GENUINE = block("g7", T4, raids("present"), nil, MEMBERS)
+before = received()
+feed(Sh.Chunks("g7", T4, Sh.Parse(GENUINE, "RRG").shared), "Vex-Kael'Thas")
+assert(myGroup("g7") and myGroup("g7").at == T4 and received() == before + 1, "vraie version appliquée malgré le texte forgé")
+-- Version signée que l'addon ne sait pas lire (format plus récent) : refusée, plus jamais demandée ; la suivante oui
+local NEWER = block("g9", T4, raids("present"), nil, MEMBERS, { version = 2 })
+assert(try(NEWER, "format plus récent : refusé") == "apply" and Sh.State().refused.g9[T4] == "apply", "format plus récent")
+before = #S.sent
+feed({ "SHV;RRG;g9;" .. T4 .. ";500" })
+advance(1)
+assert(msgs(S.sent, "^SHQ;g9;", before + 1) == 0, "version refusée : pas redemandée")
+feed({ "SHV;RRG;g9;" .. (T4 + 10) .. ";500" })
+advance(1)
+assert(msgs(S.sent, "^SHQ;g9;0;GUILD", before + 1) == 1, "version suivante : demandée")
+feed({ "SHV;RRG;g10;" .. (time() + 3 * 86400) .. ";500", "SHV;RRG;g10;" .. (T4 + 10) .. ";70000" })
+advance(1)
+assert(msgs(S.sent, "^SHQ;g10;", before + 1) == 0, "date dans le futur, texte trop long : pas demandés")
+
+-- 11.5 Moi comme source : collage signé → annonce à la guilde ; demandes → une diffusion (file de Comm), relayée ensuite
+local T5 = BASE + 5000
+local MINE = block("g1", T5, raids("present"), { "O;Kaeldra-Hyjal" }, MEMBERS)
+before = #S.sent
+local okLoad = D.Load(MINE)
+assert(okLoad and myGroup("g1").at == T5 and myGroup("g1").origin.from == nil and myGroup("g1").text, "collé : gardé signé")
+assert(raidOf(myGroup("g1"), "r4").status == "present" and not raidOf(myGroup("g1"), "r4").unknown, "collé : mes inscriptions du site")
+advance(4)
+assert(msgs(S.sent, "^SHV;RRG;g1;" .. T5 .. ";", before + 1) == 1 and msgs(S.sent, "^SHV;RRG;" .. bigInfo.group:gsub("%-", "%%-"), before + 1) == 1, "annonce à la guilde après le collage (blocs signés)")
+assert(msgs(S.sent, "^SHV;RRG;g2;", before + 1) == 0, "bloc sans signature : jamais annoncé")
+advance(40)
+local mineInfo = Sh.Parse(MINE, "RRG")
+assert(msgs(S.sent, "^SHD;g1;" .. T5 .. ";1;", before + 1) == 1 and msgs(S.sent, "^SHD;g1;" .. T5 .. ";", before + 1) == #Sh.Chunks("g1", T5, mineInfo.shared), "une diffusion complète (trois demandes)")
+assert(lastAt(tharok, "g1") == T5 and lastAt(vex, "g1") == T5 and lastAt(ilyra, "g1") == T5 and lastAt(zeph, "g1") == nil, "reçu par les membres")
+assert(Sh.Canonical(tharok.groups.g1.text, "RRG") == mineInfo.canonical and not tharok.groups.g1.text:find(";present;", 1, true), "mes champs personnels ne partent pas")
+for i = before + 1, #S.sent do assert(#S.sent[i].msg <= 255, "≤ 255 octets") end
+-- Connexion : annonce à la guilde 20 à 40 s après
+advance(Sh.QUIET)
+before = #S.sent
+fire("PLAYER_LOGIN")
+advance(19)
+assert(msgs(S.sent, "^SHV", before + 1) == 0, "pas avant 20 s")
+advance(22)
+assert(msgs(S.sent, "^SHV;RRG;g1;" .. T5, before + 1) == 1 and S.sent[#S.sent].dist == "GUILD", "annonce 20 à 40 s après la connexion")
+assert(RosterDB.chars and RosterDB.chars[F.Fold(ME)] == ME, "perso noté parmi ceux du compte")
+-- Arrivée dans un raid (Brumelune n'est pas de la guilde) : annonce au raid ; elle demande et reçoit
+local brume = client("Brumelune-Ysondre", { guild = false, raid = true, chars = { "Brumelune-Ysondre" } })
+MEMBERS[#MEMBERS + 1] = "Brumelune-Ysondre"
+local T6 = BASE + 6000
+local RAIDV = block("g1", T6, raids("present"), nil, MEMBERS)
+D.Load(RAIDV)
+advance(Sh.QUIET + 5)
+before = #S.sent
+S.raid = true
+S.members[#S.members + 1] = { name = "Brumelune", realm = "Ysondre", class = "DRUID", subgroup = 1 }
+rosterUpdate()
+advance(10)
+assert(msgs(S.sent, "^SHV;RRG;g1;" .. T6, before + 1) >= 1, "annonce au raid à l'arrivée")
+for i = before + 1, #S.sent do if S.sent[i].msg:find("^SHV") then assert(S.sent[i].dist == "RAID", "annonce sur le canal du raid") end end
+advance(30)
+assert(lastAt(brume, "g1") == T6 and brume.applied[1].dist == "RAID", "joueur hors guilde : reçu par le raid")
+-- Données reçues par le raid : relayées à la guilde (Brumelune n'en est pas, mais un joueur de la guilde dans le raid oui)
+local T7 = BASE + 7000
+local fromRaid = block("g1", T7, raids("present"), nil, MEMBERS)
+hold(brume, fromRaid)
+before = #S.sent
+brume.Sh.Announce("RAID")
+advance(30)
+assert(myGroup("g1").at == T7 and myGroup("g1").origin.from == "Brumelune-Ysondre", "reçu par le raid")
+assert(msgs(S.sent, "^SHV;RRG;g1;" .. T7, before + 1) == 1 and lastAt(tharok, "g1") == T7, "relayé à la guilde, reçu par Tharok")
+
+-- 11.6 File de Comm : un message du butin passe avant une diffusion retenue (rencontre de boss)
+local T8 = BASE + 8000
+D.Load(block("g1", T8, raids("present"), nil, MEMBERS))
+advance(Sh.QUIET + 5)
+S.lockdown = true
+before = #S.sent
+ilyra.groups.g1 = nil
+ilyra.Sh.Reset()
+ilyra.Sh.OnMessage(ME, "SHV;RRG;g1;" .. T8 .. ";100", "GUILD")
+advance(5)
+assert(#S.sent == before and #Cm.queue >= 2 and Cm.Held() == 0, "diffusion retenue (pas comptée dans les messages en attente)")
+Cm.Send("XF;1")
+assert(Cm.Held() == 1 and Cm.queue[1].msg == "XF;1", "message du butin devant la diffusion")
+S.lockdown = false
+advance(30)
+assert(S.sent[before + 1].msg == "XF;1" and msgs(S.sent, "^SHD;g1;" .. T8, before + 1) >= 1 and lastAt(ilyra, "g1") == T8, "parti d'abord, puis la diffusion")
+
+-- 11.7 Option coupée : ni annonce ni envoi ; la réception continue
+RosterDB.share = false
+advance(Sh.QUIET + 5)
+before = #S.sent
+local T9 = BASE + 9000
+D.Load(block("g1", T9, raids("present"), nil, MEMBERS))
+fire("PLAYER_LOGIN")
+advance(45)
+assert(msgs(S.sent, "^SH[VD]", before + 1) == 0 and Sh.Announce("GUILD") == 0 and Sh.Announce("RAID") == 0, "coupé : aucune annonce")
+ilyra.groups.g1 = nil
+ilyra.Sh.Reset()
+ilyra.Sh.OnMessage(ME, "SHV;RRG;g1;" .. T9 .. ";100", "GUILD") -- annonce entendue avant la coupure
+advance(10)
+assert(msgs(S.sent, "^SHD", before + 1) == 0 and lastAt(ilyra, "g1") ~= T9, "coupé : demande sans réponse")
+local T10 = BASE + 10000
+hold(vex, block("g1", T10, raids("present"), nil, MEMBERS))
+vex.Sh.Announce("GUILD")
+advance(10)
+assert(myGroup("g1").at == T10 and msgs(S.sent, "^SHQ;g1;" .. T9 .. ";GUILD", before + 1) == 1, "coupé : réception (demande et application)")
+assert(msgs(S.sent, "^SH[VD]", before + 1) == 0, "coupé : rien relayé")
+RosterDB.share = nil
+
+-- 11.8 Pas de tempête : deux sources de la même version, une seule diffusion ; annonces en double évitées
+local T11 = BASE + 11000
+local STORM = block("g8", T11, raids("present"), nil, { "Vex-Kael'Thas", "Ilyra-Hyjal", "Mirwen-Hyjal" })
+local h1 = client("Sylvane-Hyjal", { rand = 0, raid = true })
+local h2 = client("Orvane2-Hyjal", { rand = 0.9, raid = true })
+hold(h1, STORM) hold(h2, STORM)
+advance(Sh.QUIET + 5)
+h1.Sh.OnMessage("Ilyra-Hyjal", "SHQ;g8;0;GUILD", "WHISPER")
+h2.Sh.OnMessage("Vex-Kael'Thas", "SHQ;g8;0;GUILD", "WHISPER")
+advance(5)
+assert(msgs(h1.sent, "^SHD;g8;" .. T11 .. ";1;") == 1 and msgs(h2.sent, "^SHD") == 0, "la seconde source voit la diffusion et annule la sienne")
+assert(lastAt(ilyra, "g8") == T11 and lastAt(vex, "g8") == T11 and not myGroup("g8"), "une diffusion pour tous (les membres)")
+h1.Sh.OnMessage("Tharok-Hyjal", "SHQ;g8;0;GUILD", "WHISPER")
+h2.Sh.OnMessage("Tharok-Hyjal", "SHQ;g8;0;GUILD", "WHISPER")
+advance(5)
+assert(msgs(h1.sent, "^SHD;g8;" .. T11 .. ";1;") == 1 and msgs(h2.sent, "^SHD") == 0, "pas deux fois en moins de 60 s")
+-- Annonces : celle d'un autre il y a moins de 60 s suffit ; au raid (later), refaite à la fin du délai
+assert(h1.Sh.Announce("RAID") == 1, "première annonce au raid")
+advance(0.1)
+assert(h2.Sh.Announce("RAID", true) == 0 and msgs(h2.sent, "^SHV") == 0, "même version annoncée à l'instant : pas d'annonce")
+advance(Sh.QUIET + 6)
+assert(msgs(h2.sent, "^SHV;RRG;g8;" .. T11) == 1, "refaite à la fin du délai (nouveaux venus)")
+assert(h1.Sh.Announce("GUILD") == 1 and h1.Sh.Announce("GUILD") == 0, "pas deux annonces de suite")
+-- Plusieurs joueurs plus récents entendent une annonce ancienne : une seule réponse
+local olderC = client("Mirwen-Hyjal", { rand = 0.1 })
+hold(olderC, (block("g8", T11 - 500, raids("present"), nil, { "Mirwen-Hyjal" })))
+advance(Sh.QUIET + 5)
+local answers = 0
+for _, c in ipairs(clients) do answers = answers + msgs(c.sent, "^SHV;RRG;g8;" .. T11) end
+olderC.Sh.Announce("GUILD")
+advance(8)
+local after8 = 0
+for _, c in ipairs(clients) do after8 = after8 + msgs(c.sent, "^SHV;RRG;g8;" .. T11) end
+assert(after8 - answers == 1 and lastAt(olderC, "g8") == T11, "une seule réponse à une annonce ancienne, puis mise à jour")
+
+-- 11.9 Vraie signature du site (clé de test, addon/tests/fixtures) : vérifiée par Crypto.lua une fois fusionné
+local REAL_SIG = "wdCuNRiT5QTvkUzGHnSsAAd1ti78hVLYZrVv7+0MSLMbJ6gm7vy7C7ozapF+b1i7I57sRuBW4fbYvrhznq6U7f9Y3CJGBhNZow6xlJjFYBrrD+zDmiUL3lubtg/gGOuGi1efCivBCuNP+dKqkW5VEWvgfzalhosDnFa1XiiaeFU0aAbODc8XX4VHYWoFBUHDZbOwE4xVf6NgSQcqJR8HPj6OTJAWt8cMj9Fzksq8Hvc0mN5rWiuL5c1RUT1/bD0iQgZsYnV8BYGJVjSRDVAHYkpg/tiHF7fuu+M+v0bmwShYnwhQS4ZB/EX1uWMovyWMBSzFoBxtp7Ii45WHXCyQbg=="
+local REAL = table.concat({
+  "RRG;1;5e1f0c2a-0000-4000-8000-0000000000aa;1794600000;Les Veilleurs",
+  "R;9b1c2a10-0000-4000-8000-0000000000bb;1794700000;Faille de Sporefall;heroic;20;present;Kaeldra-Hyjal;council",
+  "O;Kaeldra-Hyjal",
+  "M;Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre",
+  "Z;a3de5db8;" .. REAL_SIG,
+  "END;1",
+}, "\n")
+if realVerify then
+  assert(loadfile("addon/tests/fixtures/SiteKeyTest.lua"))("Roster", ns)
+  assert(Sh.Verify(REAL, "RRG"), "vraie signature du site (clé de test) : valide")
+  assert(not Sh.Verify((REAL:gsub("heroic", "mythic")), "RRG"), "vraie signature, texte modifié : refusée")
+  local ri = Sh.Parse(REAL, "RRG")
+  feed(Sh.Chunks(ri.group, ri.at, ri.shared))
+  assert(myGroup(ri.group) and myGroup(ri.group).raids[1].unknown, "bloc signé par le site : appliqué")
+  realChecked = true
+end
+ns.Crypto.VerifyRSA = realVerify
+S.bus, S.guild, S.raid = nil, false, false
+S.members = { S.members[1] }
+assert(errors() == 0, "partage sans erreur : " .. tostring(lastPrinted("erreur")))
+end
+sharing()
 assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
 -- Données du test autorisées par le contrôle des textes : noms de groupe et de raid écrits ici, noms d'objets du test
 -- coupés à 14 octets dans la bande d'objets (LootUI, objet sans icône)
 local LOOT_NAMES = { "Jambières de", "Anneau des spo", "Cuirasse de la", "Objet au nom v", "Objet au conse", "Objet chuchot", "Objet pas enco" }
 LOCALE_AUDIT.check("Roster", { "Les Veilleurs", "Raid à définir", unpack(LOOT_NAMES) })
 print = function(...) io.stdout:write(table.concat({ ... }, " "), "\n") end
-print("roster_sim : tout est bon" .. (#stubbed > 0 and (" (socle simulé : " .. table.concat(stubbed, ", ") .. ")") or ""))
+print("roster_sim : tout est bon" .. (#stubbed > 0 and (" (socle simulé : " .. table.concat(stubbed, ", ") .. ")") or "")
+  .. (realChecked and " ; partage : vraie signature du site vérifiée" or " ; partage : signature simulée (pas de ns.Crypto.VerifyRSA)"))

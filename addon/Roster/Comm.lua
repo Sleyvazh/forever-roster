@@ -1,4 +1,5 @@
--- Messages entre addons Roster (préfixe RosterRT, champs séparés par « ; », canal du raid ou du groupe) et qui a l'addon.
+-- Messages entre addons Roster (préfixe RosterRT, champs séparés par « ; », canal du raid ou du groupe ; guilde et
+-- chuchotements pour le partage des données du site, Groups.lua) et qui a l'addon.
 -- WoW 12.x : pendant une rencontre de boss (et quand le jeu restreint les messages d'addon), SendAddonMessage renvoie
 -- AddOnMessageLockdown. Les messages attendent alors dans une file et partent dès que le jeu le permet (fin de rencontre,
 -- ADDON_RESTRICTION_STATE_CHANGED, ou nouvel essai toutes les quelques secondes), au rythme permis : 10 messages d'affilée
@@ -211,26 +212,35 @@ function flush()
 end
 C.Flush = function() flush() end
 
--- Envoi : channel (RAID, PARTY, WHISPER…) ou celui du groupe au moment de l'envoi ; onSent appelé quand il est parti
-function C.Send(msg, dist, target, onSent)
+-- Envoi : channel (RAID, PARTY, GUILD, WHISPER…) ou celui du groupe au moment de l'envoi ; onSent appelé quand il est
+-- parti. low : message de fond (partage des données du site, Share.lua) qui passe après tous les autres en attente.
+function C.Send(msg, dist, target, onSent, low)
   if not usable(msg) then return false end
   if not dist and not channel() then return false end
-  C.queue[#C.queue + 1] = { msg = msg, channel = dist, target = target, at = now(), onSent = onSent }
+  local q = C.queue
+  local pos = #q + 1
+  if not low then while pos > 1 and q[pos - 1].low do pos = pos - 1 end end
+  table.insert(q, pos, { msg = msg, channel = dist, target = target, at = now(), onSent = onSent, low = low and true or nil })
   flush()
   return true
 end
--- Messages en attente (combat de boss, limite du jeu)
-function C.Held() return #C.queue end
+-- Messages en attente (combat de boss, limite du jeu), sans ceux du partage des données du site
+function C.Held()
+  local n = 0
+  for _, e in ipairs(C.queue) do if not e.low then n = n + 1 end end
+  return n
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Réception
 --------------------------------------------------------------------------------------------------------------------
 local handlers = {}
+-- fn(expéditeur, champs, canal, message entier)
 function C.On(cmd, fn) handlers[cmd] = fn end
 function C.Deliver(sender, msg, dist)
   local f = F.split(msg)
   local fn = handlers[f[1]]
-  if fn then ns.safe("message " .. tostring(f[1]), fn, sender, f, dist) end
+  if fn then ns.safe("message " .. tostring(f[1]), fn, sender, f, dist, msg) end
 end
 
 local function register()

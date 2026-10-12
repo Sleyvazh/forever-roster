@@ -86,8 +86,11 @@ local function buildSynchro(p)
   p.loadStatus:SetPoint("TOPLEFT", 6, -118) p.loadStatus:SetWidth(526) p.loadStatus:SetJustifyH("LEFT")
   p.summary = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.summary:SetPoint("TOPLEFT", 6, -134) p.summary:SetWidth(526) p.summary:SetJustifyH("LEFT")
-  headerBar(p, -156, L["2 · Du jeu vers le site"])
-  p.text = textArea(p, 6, -198, 526, 164)
+  -- Origine des données de chaque groupe : collées ou reçues d'un joueur (partage), et quand (3 lignes au plus)
+  p.origins = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.origins:SetPoint("TOPLEFT", 6, -148) p.origins:SetWidth(526) p.origins:SetJustifyH("LEFT")
+  headerBar(p, -186, L["2 · Du jeu vers le site"])
+  p.text = textArea(p, 6, -228, 526, 164)
   p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
   p.text:SetScript("OnEscapePressed", function(self) self:ClearFocus() if main then main:Hide() end end)
   p.text:SetScript("OnKeyDown", function(_, key)
@@ -98,14 +101,14 @@ local function buildSynchro(p)
     end
   end)
   p.status = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  p.status:SetPoint("TOPLEFT", 6, -372) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
+  p.status:SetPoint("TOPLEFT", 6, -402) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
   p.all = false
   p.toggleAll = button(p, L["Tout renvoyer"], 190, function() p.all = not p.all p.sent = false U.Refresh() end)
-  p.toggleAll:SetPoint("TOPLEFT", 4, -400)
+  p.toggleAll:SetPoint("TOPLEFT", 4, -430)
   local again = button(p, L["Actualiser"], 120, function() p.sent = false U.Refresh() end)
   again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
   p.foot = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  p.foot:SetPoint("TOPLEFT", 6, -434) p.foot:SetWidth(526) p.foot:SetJustifyH("LEFT")
+  p.foot:SetPoint("TOPLEFT", 6, -464) p.foot:SetWidth(526) p.foot:SetJustifyH("LEFT")
   p.foot:SetText(GREY .. L["Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide."] .. "|r")
 end
 refreshers.synchro = function(p)
@@ -113,6 +116,10 @@ refreshers.synchro = function(p)
   p.loadStatus:SetText(p.loadMessage or (GREY .. L["Colle ici (Ctrl+V) : c'est chargé tout seul dès que le texte est complet."] .. "|r"))
   local ok, summary = pcall(function() return D and D.Summary and D.Summary() end)
   p.summary:SetText(ok and summary and (GREY .. tostring(summary) .. "|r") or "")
+  local okO, origins = pcall(function() return D and D.Origins and D.Origins() end)
+  local lines = okO and type(origins) == "table" and origins or {}
+  if #lines > 3 then lines = { lines[1], lines[2], L("+ %d autres groupes", #lines - 2) } end
+  p.origins:SetText(#lines > 0 and (GREY .. table.concat(lines, "\n") .. "|r") or "")
   local value, count, err = export(p.all)
   p.value, p.count = value, count
   p.toggleAll:SetText(p.all and L["Seulement les changements"] or L["Tout renvoyer"])
@@ -132,7 +139,8 @@ refreshers.synchro = function(p)
   if count > 0 and not p.sent and not pasting then p.text:SetFocus() p.text:HighlightText() end
 end
 
--- Options : touches, habillage, bouton de la minicarte, relevé pendant les raids, passer automatiquement (butin)
+-- Options : touches, habillage, bouton de la minicarte, relevé pendant les raids, passer automatiquement (butin),
+-- partage des données du site
 local BINDINGS = {
   { action = "ROSTER_SYNC", label = N("Synchro rapide avec le site") },
   { action = "ROSTER_TOGGLE", label = N("Ouvrir ou fermer la fenêtre") },
@@ -279,6 +287,21 @@ refreshers.options = function(p)
     "\n" .. GREY .. L["Si tu coupes, passe toi-même sur chaque objet du butin de groupe : sinon il peut te revenir au lieu d'aller au chef de butin."] .. "|r",
     { { L["Oui"], 80, setAuto(true), { color = YES, selected = auto } },
       { L["Non"], 80, setAuto(false), { color = NO, selected = not auto } } })
+  -- Partage des données du site (Groups.lua, addon/shared/Share.lua) : nil = oui (par défaut), false = ni annonce ni envoi
+  list.Header(L["Partage entre joueurs"])
+  local share = R.share ~= false
+  local function setShare(on)
+    return function()
+      if on then R.share = nil else R.share = false end
+      local G = ns.Groups
+      if on and G and G.ShareSoon then G.ShareSoon("GUILD", 1, 3) G.ShareSoon("RAID", 1, 3) end
+      U.Refresh()
+    end
+  end
+  list.Add(L("Partager les données du site avec la guilde et le raid : %s", yesNo(share)) ..
+    "\n" .. GREY .. L["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] .. "|r",
+    { { L["Oui"], 80, setShare(true), { color = YES, selected = share } },
+      { L["Non"], 80, setShare(false), { color = NO, selected = not share } } })
   list.Done()
 end
 

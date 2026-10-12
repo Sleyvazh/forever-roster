@@ -206,7 +206,35 @@ check(F.BuildRRB({ raidId = "x;|y", name = "a\nb", people = {}, loot = {}, encou
 local out = io.open("addon/tests/sample.rrb", "w") out:write(rrb) out:close()
 
 -- Textes écrits par le test du site (même spécification), s'ils sont là
+-- Partage entre joueurs : lignes M (persos du groupe) et Z (signature du site) avant END, hors du compte ; un bloc
+-- signé garde son texte (lignes de l'en-tête à END) pour être relayé ; un bloc sans Z n'en garde pas
+local SIGNED = table.concat({
+  "RRG;1;g1;1791000000;Les Veilleurs",
+  "R;r1;1791100000;Faille de Sporefall;heroic;25;present;Kaeldra-Hyjal;council",
+  "O;Kaeldra-Hyjal",
+  "M;Kaeldra-Hyjal,Tharok-Hyjal, Vex-Kael'Thas",
+  "Z;a3de5db8;c2lnbmF0dXJl",
+  "END;1",
+  "après END : ignoré",
+  "RRG;1;g2;1791000000;Pasta",
+  "M;Brumelune-Ysondre",
+  "END;0",
+}, "\r\n")
+local sg = F.ParseRRG(SIGNED)
+check(sg and #sg == 2 and #sg[1].raids == 1 and sg[1].raids[1].status == "present", "bloc signé lu (M et Z hors du compte de END)")
+check(sg and #sg[1].members == 3 and sg[1].members[3] == "Vex-Kael'Thas" and sg[1].sig and sg[1].sig.key == "a3de5db8", "lignes M et Z")
+check(sg and sg[1].text == table.concat({ "RRG;1;g1;1791000000;Les Veilleurs", "R;r1;1791100000;Faille de Sporefall;heroic;25;present;Kaeldra-Hyjal;council",
+  "O;Kaeldra-Hyjal", "M;Kaeldra-Hyjal,Tharok-Hyjal, Vex-Kael'Thas", "Z;a3de5db8;c2lnbmF0dXJl", "END;1" }, "\n"), "texte du bloc signé gardé, sans ce qui suit END")
+check(sg and sg[2].text == nil and sg[2].sig == nil and #sg[2].members == 1, "bloc sans signature : pas de texte gardé")
+
 local function read(path) local f = io.open(path) if not f then return nil end local t = f:read("*a") f:close() return t end
+-- Vérification de la signature du site (addon/shared : Crypto.lua, Share.lua ; clé de test des fixtures)
+local SNS = {}
+for _, path in ipairs({ "addon/shared/Crypto.lua", "addon/shared/SiteKey.lua", "addon/tests/fixtures/SiteKeyTest.lua", "addon/shared/Share.lua" }) do
+  assert(loadfile(path))("Roster", SNS)
+end
+local canVerify = SNS.Crypto and SNS.Crypto.VerifyRSA ~= nil
+local verified = 0
 local siteRRG = read("addon/tests/sample.rrg")
 if siteRRG then
   local list, e = F.ParseRRG(siteRRG)
@@ -225,6 +253,18 @@ if siteRRG then
     -- Ligne D du site : rattachée à l'entrée N du même joueur (persos joints par « + »)
     local k = F.CountFor(grp.counts, "Vex-Kael'Thas")
     if k then check(k.n >= k.bis + k.up + k.ms and k.bis + k.up + k.ms > 0, "ligne D de sample.rrg rattachée au joueur (Kaeldra + Vex)") end
+    -- Partage : persos du groupe (M) en « Prénom-Royaume » ; bloc signé par le site avec la clé de test : signature
+    -- valide sur le texte canonique calculé par Share.lua (même règle que le site), et fausse si le texte change
+    for _, n in ipairs(grp.members or {}) do check(full(n), "persos du groupe (M) : " .. n) end
+    if grp.text and canVerify then
+      local ok, why = SNS.Share.Verify(grp.text, "RRG")
+      check(ok, "signature du site de sample.rrg (" .. grp.id .. ") : " .. tostring(why))
+      check(not SNS.Share.Verify(grp.text:gsub("\nR;", "\nR;x", 1), "RRG"), "sample.rrg modifié : signature refusée")
+      -- Mes champs personnels (statut, perso) ne sont pas signés : les changer ne change rien
+      local mine = grp.text:gsub("(\nR;[^;\n]*;[^;\n]*;[^;\n]*;[^;\n]*;[^;\n]*;)[^;\n]*;[^;\n]*;", "%1absent;Autre-Hyjal;")
+      check(SNS.Share.Verify(mine, "RRG"), "sample.rrg : champs personnels hors de la signature")
+      verified = verified + 1
+    end
   end
 end
 local siteRRR = read("addon/tests/sample.rrr")
@@ -235,4 +275,5 @@ if siteRRR then
 end
 
 if failures > 0 then os.exit(1) end
-print("roster_format_test : tout est bon" .. ((siteRRG or siteRRR) and " (textes du site relus)" or ""))
+print("roster_format_test : tout est bon" .. ((siteRRG or siteRRR) and " (textes du site relus)" or "")
+  .. (verified > 0 and (" ; signature du site vérifiée (" .. verified .. " groupe" .. (verified > 1 and "s" or "") .. ")") or ""))
