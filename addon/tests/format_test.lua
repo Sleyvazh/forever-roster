@@ -62,6 +62,61 @@ check(x and x.officers[2] == "Brunehilde" and x.council.r1[1] == "Thalwen", "off
 check(x and x.consumables.r1[1].itemId == 13457 and x.consumables.r1[1].n == 5 and x.consumables.r1[1].target == "all", "consommables")
 check(x and x.bosses.r1[1].encounterId == 672 and x.bosses.r1[1].npcIds[2] == 11503 and #x.bosses.r1[1].rows == 2 and x.bosses.r1[1].rows[1].names[1] == "Grumdal", "fiche de boss")
 check(x and x.roster.r1.Gorrak.role == "DPS" and F.Concerns("melee", x.roster.r1.Gorrak) and not F.Concerns("tank", x.roster.r1.Gorrak) and F.Concerns("all", nil), "inscrits et consommables concernés")
+-- Partage entre joueurs : lignes M (persos du groupe, prénoms) et Z (signature du site) avant END, hors du compte ; un
+-- bloc signé garde son texte (lignes de l'en-tête à END) pour être relayé ; un bloc sans Z (soft reserve cachée, ancien
+-- site) n'en garde pas : il ne se partage pas
+local SIGNED = table.concat({
+  "FRG;1;g1;1791000000;Les Veilleurs",
+  "R;r1;1791100000;Molten Core;present;Greta;softres",
+  "B;16866;Thalwen",
+  "S;r1;18814;Greta:10",
+  "M;Brindille,Greta, Thalwen",
+  "Z;a3de5db8;c2lnbmF0dXJl",
+  "END;2",
+  "après END : ignoré",
+  "FRG;1;g2;1791000000;Soft reserve cachée",
+  "R;r2;0;Onyxia;;;softres",
+  "M;Greta",
+  "END;1",
+}, "\r\n")
+local sg = F.ParseFRG(SIGNED)
+check(sg and #sg == 2 and #sg[1].raids == 1 and sg[1].raids[1].status == "present" and sg[1].raids[1].char == "Greta", "bloc signé lu (M et Z hors du compte de END)")
+check(sg and #sg[1].members == 3 and sg[1].members[1] == "Brindille" and sg[1].sig and sg[1].sig.key == "a3de5db8", "lignes M et Z")
+check(sg and sg[1].text == table.concat({ "FRG;1;g1;1791000000;Les Veilleurs", "R;r1;1791100000;Molten Core;present;Greta;softres", "B;16866;Thalwen",
+  "S;r1;18814;Greta:10", "M;Brindille,Greta, Thalwen", "Z;a3de5db8;c2lnbmF0dXJl", "END;2" }, "\n"), "texte du bloc signé gardé, sans ce qui suit END")
+check(sg and sg[2].text == nil and sg[2].sig == nil and #sg[2].members == 1, "bloc sans signature : pas de texte gardé")
+local many = {}
+for i = 1, 120 do many[i] = "Perso" .. i end
+local big = F.ParseFRG("FRG;1;g;1;G\nM;" .. table.concat(many, ",") .. "\nEND;0")
+check(big and #big[1].members == 120, "ligne M : plus de 40 persos")
+
+-- sample.frg écrit par le test du site (packages/game-data/src/share.test.ts), signé avec la clé de test : signature
+-- valide sur le texte canonique calculé par Share.lua (même règle que le site), fausse si le texte change, et les champs
+-- personnels (5 et 6 des lignes R) hors de la signature
+local function read(path) local f = io.open(path) if not f then return nil end local t = f:read("*a") f:close() return t end
+local SNS = {}
+for _, path in ipairs({ "addon/shared/Crypto.lua", "addon/shared/SiteKey.lua", "addon/tests/fixtures/SiteKeyTest.lua", "addon/shared/Share.lua" }) do
+  assert(loadfile(path))("ForeverRoster", SNS)
+end
+local verified = 0
+local siteFRG = read("addon/tests/sample.frg")
+if siteFRG then
+  local list, e = F.ParseFRG(siteFRG)
+  check(list and #list >= 1, "sample.frg du site lu : " .. tostring(e))
+  for _, grp in ipairs(list or {}) do
+    check(grp.members and #grp.members >= 1, "persos du groupe (M) : " .. grp.id)
+    for _, n in ipairs(grp.members or {}) do check(not n:find("[%-%s]"), "prénoms seuls dans M : " .. n) end
+    if grp.text and SNS.Crypto and SNS.Crypto.VerifyRSA then
+      local ok, why = SNS.Share.Verify(grp.text, "FRG")
+      check(ok, "signature du site de sample.frg (" .. grp.id .. ") : " .. tostring(why))
+      check(not SNS.Share.Verify(grp.text:gsub("\nR;", "\nR;x", 1), "FRG"), "sample.frg modifié : signature refusée")
+      local mine = grp.text:gsub("(\nR;[^;\n]*;[^;\n]*;[^;\n]*;)[^;\n]*;[^;\n]*;", "%1absent;Autre;")
+      check(mine ~= grp.text and SNS.Share.Verify(mine, "FRG"), "sample.frg : champs personnels hors de la signature")
+      verified = verified + 1
+    end
+  end
+end
+
 -- Jets de dés lus d'après le texte du jeu, en français, en anglais ou positionnel
 local fr = F.RollParser("%s obtient un %d (%d-%d).")
 local n1, r1, lo1, hi1 = fr("Gorrak obtient un 61 (1-100).")
@@ -73,4 +128,4 @@ local n3, r3b = F.RollParser("%1$s würfelt. Ergebnis: %2$d (%3$d-%4$d)")("Nyx w
 check(n3 == "Nyx" and r3b == 5, "jet positionnel")
 
 if failures > 0 then os.exit(1) end
-print("format_test : tout est bon")
+print("format_test : tout est bon" .. (verified > 0 and (" ; signature du site vérifiée (" .. verified .. " groupes de sample.frg)") or ""))

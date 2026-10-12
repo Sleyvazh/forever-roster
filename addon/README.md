@@ -10,12 +10,12 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 
 | Onglet | Rôle |
 |---|---|
-| **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul. En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
+| **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul, et d'où viennent les données de chaque groupe (collées, Roster Companion, reçues d'un joueur). En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
 | **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
 | **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
-| **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), persos à retirer de l'export |
+| **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), partage des données du site avec la guilde et le raid, persos à retirer de l'export |
 
 | Commande | Rôle |
 |---|---|
@@ -49,6 +49,18 @@ Raid d'essai (1.1) : `/fr test`, hors groupe. Un panneau propose chaque étape a
 
 Infobulles : « Recherché par », « Connu par », « BiS de » sur les objets suivis, et « SR (raid) : … » sur les objets réservés. Butin : alerte avec **Annoncer au groupe** quand tu ramasses un patron suivi ou un BiS recherché.
 
+## Partage des données du site entre joueurs
+
+Un seul joueur colle « Copier pour le jeu » (ou reçoit les données par Roster Companion) : son addon partage les données de ses groupes avec les joueurs de sa guilde et de son raid qui ont Forever Roster. Code commun avec Roster : `addon/shared/Share.lua` (protocole), `Crypto.lua` (vérification) et `SiteKey.lua` (clé publique du site) ; branchement de Forever Roster : fin de `Group.lua` (données) et `Raid.lua` (messages `SHV`, `SHQ`, `SHD` du préfixe `FRoster`, file de fond).
+
+- **Signature du site** : le site signe chaque bloc `FRG` (lignes `M`, prénoms des persos du groupe, et `Z`, signature, juste avant `END` ; `docs/addon-format.md`). Un bloc sans signature (ancien site, pas de clé, groupe avec une soft reserve cachée, où chacun reçoit d'autres réservations) n'est jamais partagé : chacun colle le sien comme avant. Reçu d'un autre joueur, un bloc n'est appliqué que si sa signature est valide, s'il est plus récent que le tien et si l'un de tes persos est dans la ligne `M` (prénoms seuls : ce perso, ceux du compte déjà vus par l'addon, ceux de tes inscriptions). Tout le reste est ignoré, de qui que ce soit.
+- **Quand** : annonce à la guilde 20 à 40 s après la connexion, et à la guilde et au raid juste après un collage ou des nouveautés de Roster Companion ; au raid à l'arrivée dans un raid et quand il s'agrandit. Des données reçues par la guilde sont relayées au raid, et inversement. Ceux qui ont une version plus ancienne (ou rien) la demandent ; une seule diffusion par version et par canal, en messages de 255 octets au plus, par une file de fond : après les messages du raid (6 messages de la limite du jeu toujours laissés libres), au rythme permis (10 d'affilée puis 1 par seconde), jamais en combat.
+- **Appliqué** : les données du groupe sont remplacées, mais ton inscription sur le site (statut et perso) est gardée pour chaque raid que tu avais déjà, et tes inscriptions faites en jeu restent en attente d'envoi ; un raid nouveau affiche « inscription inconnue » dans l'onglet **Raids** jusqu'à tes prochaines données à toi (collage ou Roster Companion). Un message dans le chat : « Données de Les Veilleurs reçues de Greta (site : 12/10 21:04). »
+- **Option** (onglet **Options**, « Partager les données du site avec la guilde et le raid », `ForeverRosterDB.share = false` pour couper) : coupée, ton addon n'annonce ni n'envoie plus rien ; il reçoit toujours les données des autres.
+- **Onglet Synchro** : pour chaque groupe, « collées le … », « chargées par Roster Companion le … » ou « reçues de Greta le … », et pourquoi elles ne se partagent pas (« pas signées par le site », « clé du site inconnue »).
+
+**À vérifier sur le client de Forever** : messages d'addon sur la guilde (`GUILD`) et chuchotés au prénom seul, limite du jeu (10 messages puis 1 par seconde), texte partagé en plusieurs messages (accents), annonce à la connexion, après un collage, à l'arrivée dans un raid ; message dans le chat à la réception ; option coupée.
+
 ## Installation
 
 Télécharger le zip sur la page **Addon** du site, puis copier le dossier `ForeverRoster` dans `World of Warcraft\_classic_beta_\Interface\AddOns\` (après la sortie : `_classic_`), puis relancer le jeu ou taper `/reload`.
@@ -71,8 +83,8 @@ La boîte à outils des fenêtres (`Kit.lua` : fenêtres, boutons, listes, table
 
 ```bash
 for f in addon/ForeverRoster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
-lua5.1 addon/tests/format_test.lua   # formats d'échange avec le site
-lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'addon et commandes
+lua5.1 addon/tests/format_test.lua   # formats d'échange avec le site (lignes M et Z, signature de sample.frg)
+lua5.1 addon/tests/wow_sim.lua       # API de WoW simulée : chargement de l'addon, commandes, partage entre joueurs (plusieurs joueurs simulés)
 ```
 
 Conseil du butin (1.2) : la fenêtre des votes est un tableau, une ligne par joueur (réponse, objet porté, précision, objets reçus, voix et qui a voté, **Voter** / **Donner**), redimensionnable par le coin en bas à droite (taille gardée d'une session à l'autre). La colonne **Reçus** additionne le compte du site sur la période choisie par les officiers (saison, 30 derniers jours ou X derniers raids ; par joueur ou par perso) et les objets de ce soir pas encore envoyés au site ; ne comptent que la spé principale (soft reserve, jets MS, conseil BiS / Upgrade).

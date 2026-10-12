@@ -800,6 +800,466 @@ do
   ForeverRosterData = nil
 end
 
+-- 8 ter. Partage des données du site entre joueurs (addon/shared/Share.lua, branché en bas de Group.lua ; file de fond
+-- de Raid.lua) : annonces, demandes, morceaux, vraie signature du site (sample.frg, clé de test des fixtures), refus,
+-- mes champs personnels et mes inscriptions faites en jeu gardés, raid, relais, option coupée, combat, pas de tempête,
+-- Roster Companion. Les autres joueurs sont d'autres exemplaires de Share.lua (même horloge, mêmes minuteurs) reliés
+-- par un canal simulé ; Tournicoti (moi) est l'addon complet. Tout est remis en place à la fin (section 9 ensuite).
+local function sharing()
+  local G, RA, Sh, E = ns.Group, ns.Raid, ns.Share, ns.Export
+  local ME = "Tournicoti"
+  local c = ns.charDB()
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInGuild = IsInGuild, IsInRaid = IsInRaid,
+    IsInGroup = IsInGroup, GetNumGroupMembers = GetNumGroupMembers, InCombatLockdown = InCombatLockdown, random = Sh.random,
+    verify = ns.Crypto.VerifyRSA, groups = ForeverRosterDB.groups, lastLoad = ForeverRosterDB.lastLoad, companion = ForeverRosterDB.companion,
+    noRecord = ForeverRosterDB.noRecord, signups = c.signups, raidLogs = ForeverRosterDB.raidLogs, handover = ForeverRosterDB.handover }
+  -- Tables propres pendant la section (l'horloge y est 46 jours plus loin : les bilans relevés plus haut seraient effacés)
+  ForeverRosterDB.groups, ForeverRosterDB.noRecord, c.signups, ForeverRosterDB.raidLogs, ForeverRosterDB.handover = {}, true, {}, {}, {}
+  local errorsBefore = errors()
+  -- Horloge et minuteurs : le temps avance à la demande
+  local clock = 1794000000 + 2 * 3600 -- sample.frg : généré à 1794000000
+  local timers = {}
+  local function schedule(delay, fn) timers[#timers + 1] = { at = clock + math.max(0, delay or 0), fn = fn } end
+  local function advance(sec)
+    local target = clock + sec
+    while true do
+      local best, bi
+      for i, t in ipairs(timers) do if t.at <= target and (not best or t.at < best.at) then best, bi = t, i end end
+      if not best then break end
+      table.remove(timers, bi)
+      clock = math.max(clock, best.at)
+      best.fn()
+    end
+    clock = target
+  end
+  time = function() return math.floor(clock) end
+  GetTime = function() return clock end
+  C_Timer = { After = function(delay, fn) schedule(delay, fn) end, NewTicker = function() return {} end }
+  Sh.random = function() return 0.5 end
+  local function esc(s) return (tostring(s):gsub("%p", "%%%0")) end
+  local function lastPrinted(text) for i = #printed, 1, -1 do if printed[i]:find(text, 1, true) then return printed[i] end end return nil end
+  local function received() local n = 0 for _, l in ipairs(printed) do if l:find("reçues de", 1, true) then n = n + 1 end end return n end
+
+  -- Canal simulé : guilde, raid, chuchotements (50 ms de trajet) ; mes messages de guilde et de raid me reviennent (écho,
+  -- comme dans le jeu). Le jeu limite les messages d'addon : 10 d'affilée par préfixe, puis 1 par seconde.
+  local S = { guild = true, raid = false, members = 0, combat = false }
+  IsInGuild = function() return S.guild end
+  IsInRaid = function() return S.raid end
+  IsInGroup = function() return S.raid end
+  GetNumGroupMembers = function() return S.raid and S.members or 0 end
+  InCombatLockdown = function() return S.combat end
+  local clients, mine, throttled = {}, {}, 0
+  local allowance, allowanceAt = 10, clock
+  local function deliver(from, msg, dist, target)
+    for _, cl in ipairs(clients) do
+      if cl.name ~= from and ((dist == "GUILD" and cl.guild) or (dist == "RAID" and cl.raid) or (dist == "WHISPER" and cl.name == target)) then
+        schedule(0.05, function() cl.Sh.OnMessage(from, msg, dist) end)
+      end
+    end
+    if (dist == "GUILD" and S.guild) or (dist == "RAID" and S.raid) or (dist == "WHISPER" and target == ME and from ~= ME) then
+      schedule(0.05, function() fire("CHAT_MSG_ADDON", "FRoster", msg, dist, from .. "-Forever EU") end)
+    end
+  end
+  C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end,
+    SendAddonMessage = function(prefix, msg, dist, target)
+      assert(prefix == "FRoster" and #msg <= 255, "message d'addon de plus de 255 octets : " .. #msg)
+      allowance = math.min(10, allowance + (clock - allowanceAt)) allowanceAt = clock
+      if allowance < 1 then throttled = throttled + 1 return 3 end
+      allowance = allowance - 1
+      mine[#mine + 1] = { msg = msg, dist = dist, target = target, t = clock }
+      deliver(ME, msg, dist, target)
+      return 0
+    end }
+  local function client(name, opts)
+    opts = opts or {}
+    local cl = { name = name, guild = opts.guild ~= false, raid = opts.raid, groups = {}, applied = {}, notes = {}, sent = {}, chars = opts.chars or { name } }
+    local cns = { L = ns.L, N = ns.N, Crypto = ns.Crypto, SITE_KEYS = ns.SITE_KEYS }
+    assert(loadfile("addon/shared/Share.lua"))("ForeverRoster", cns)
+    cl.Sh = cns.Share
+    cl.Sh.random = function() return opts.rand or 0.5 end
+    cl.Sh.Setup({
+      kind = "FRG",
+      send = function(msg, dist, target)
+        assert(#msg <= 255, "message de plus de 255 octets : " .. #msg)
+        cl.sent[#cl.sent + 1] = { msg = msg, dist = dist, target = target }
+        deliver(name, msg, dist, target)
+      end,
+      blocks = function()
+        local out = {}
+        for id, g in pairs(cl.groups) do out[id] = { at = g.at, text = g.text } end
+        return out
+      end,
+      apply = function(text, sender, dist)
+        local i = cl.Sh.Parse(text, "FRG")
+        cl.groups[i.group] = { at = i.at, text = text }
+        cl.applied[#cl.applied + 1] = { group = i.group, at = i.at, from = sender, dist = dist }
+        return true
+      end,
+      mine = function(list)
+        for _, n in ipairs(list) do for _, m in ipairs(cl.chars) do if n == m then return true end end end
+        return false
+      end,
+      notify = function(text) cl.notes[#cl.notes + 1] = text end,
+    })
+    clients[#clients + 1] = cl
+    return cl
+  end
+  local function hold(cl, text) local i = cl.Sh.Parse(text, "FRG") cl.groups[i.group] = { at = i.at, text = text } end
+  local function count(list, pattern, from)
+    local n = 0
+    for i = from or 1, #list do if list[i].msg:find(pattern) then n = n + 1 end end
+    return n
+  end
+  local function lastAt(cl, group) return cl.groups[group] and cl.groups[group].at end
+  local function myGroup(id) return ForeverRosterDB.groups[id] end
+  local function raidOf(g, id) for _, r in ipairs(g and g.raids or {}) do if r.id == id then return r end end end
+
+  -- Clés : la vraie clé de test du site (sample.frg, vérifiée par Crypto.lua) et une clé simulée « test0001 » (somme de
+  -- contrôle du texte canonique) pour les versions écrites ici
+  assert(loadfile("addon/tests/fixtures/SiteKeyTest.lua"))("ForeverRoster", ns)
+  local realVerify, realChecks = ns.Crypto.VerifyRSA, 0
+  local function checksum(s)
+    local a, b = 1, 0
+    for i = 1, #s do a = (a + s:byte(i)) % 65521 b = (b + a) % 65521 end
+    return "T" .. (b * 65536 + a) .. "=="
+  end
+  ns.SITE_KEYS.test0001 = { n = "00", e = 65537 }
+  ns.Crypto.VerifyRSA = function(keyId, message, sig)
+    if keyId == "test0001" then return sig == checksum(message) end
+    local ok, why = realVerify(keyId, message, sig)
+    if ok == true then realChecks = realChecks + 1 end
+    return ok, why
+  end
+  -- Bloc FRG comme le site l'écrit : en-tête, lignes (R avec les champs personnels de celui qui l'a copié), M, Z, END
+  local function canon(lines)
+    local out = {}
+    for _, l in ipairs(lines) do
+      if l:sub(1, 2) == "R;" then
+        local f = {}
+        for x in (l .. ";"):gmatch("([^;]*);") do f[#f + 1] = x end
+        f[5], f[6] = "", ""
+        l = table.concat(f, ";")
+      end
+      out[#out + 1] = l
+    end
+    return table.concat(out, "\n")
+  end
+  local function block(group, at, name, body, members, opts)
+    opts = opts or {}
+    local lines, n = { "FRG;1;" .. group .. ";" .. at .. ";" .. name }, 0
+    for _, l in ipairs(body) do
+      lines[#lines + 1] = l
+      if l:match("^[RPB];") then n = n + 1 end
+    end
+    lines[#lines + 1] = "M;" .. table.concat(members, ",")
+    if not opts.unsigned then lines[#lines + 1] = "Z;" .. (opts.key or "test0001") .. ";" .. (opts.sig or checksum(canon(lines))) end
+    lines[#lines + 1] = "END;" .. n
+    return table.concat(lines, "\n")
+  end
+  -- Vrais blocs du site : sample.frg (deux groupes, signés avec la clé de test)
+  local f = assert(io.open("addon/tests/sample.frg")) local SAMPLE = f:read("*a") f:close()
+  local REAL = {}
+  for blk in (SAMPLE .. "\n"):gmatch("(FRG;.-\nEND;%d+)") do REAL[#REAL + 1] = blk end
+  assert(#REAL == 2 and Sh.Verify(REAL[1], "FRG") and Sh.Verify(REAL[2], "FRG"), "sample.frg : deux groupes, vraie signature du site")
+  local info1, info2 = Sh.Parse(REAL[1], "FRG"), Sh.Parse(REAL[2], "FRG")
+  local G1, G2, AT = info1.group, info2.group, info1.at
+  local sg = ns.Format.ParseFRG(REAL[1])[1]
+  local R1, R2 = sg.raids[1].id, sg.raids[2].id
+  assert(sg.raids[1].name == "Molten Core" and sg.raids[1].status == "present" and sg.raids[1].char == "Greta" and sg.raids[2].name == "Onyxia", "raids de sample.frg")
+  local RT1 = sg.raids[1].time
+
+  -- 1. Mes données de G1 (collées, sans signature, plus anciennes) : en retard avec Tournicoti à Molten Core (R1), pas
+  -- inscrit à Onyxia (R2), un raid R0 que le site a retiré depuis
+  local T0 = AT - 10000
+  local R0 = "0a1b2c3d-0000-4000-8000-000000000000"
+  assert(ns.UI.LoadFromSite(block(G1, T0, "Les Veilleurs", { "R;" .. R0 .. ";" .. (clock + 3 * 86400) .. ";Zul'Gurub;;;journal",
+    "R;" .. R1 .. ";" .. RT1 .. ";Molten Core;late;Tournicoti;softres", "R;" .. R2 .. ";0;Onyxia;;;council" }, { "Greta", "Tournicoti" }, { unsigned = true })))
+  local g = myGroup(G1)
+  assert(g and g.at == T0 and not g.text and g.origin and not g.origin.from and g.mineAt == T0, "mes données collées, sans signature")
+  advance(5)
+  assert(count(mine, "^SHV") == 0 and Sh.Announce("GUILD") == 0, "rien de signé : aucune annonce")
+  -- Inscriptions faites en jeu : Onyxia reçue par le site après mes données (T0) mais avant la version partagée (AT) ;
+  -- Molten Core « Présent » pas encore envoyée
+  G.SignUp(G1, R2, "tentative", 0)
+  G.MarkReceived(c, nil, T0 + 5000)
+  G.SignUp(G1, R1, "present", RT1)
+  assert(c.signups[R2].sent and c.signups[R2].sentAt == T0 + 5000 and c.signups[R1] and not c.signups[R1].sent, "inscriptions en jeu : une reçue par le site, une en attente")
+
+  -- 2. Greta annonce la vraie version du site (plus récente que la mienne) : moi, Thalwen et Brindille (membres) et Zephyra
+  -- (pas membre, sans données : une fois) demandons ; une seule diffusion en plusieurs morceaux, vérifiée par Crypto.lua
+  local greta = client("Greta", { rand = 0 })
+  local brindille = client("Brindille", { rand = 0.9 })
+  local thalwen = client("Thalwen")
+  local zeph = client("Zephyra")
+  hold(greta, REAL[1]) hold(brindille, REAL[2])
+  local m0 = #mine
+  assert(greta.Sh.Announce("GUILD") == 1 and greta.sent[1].msg == "SHV;FRG;" .. G1 .. ";" .. AT .. ";" .. #info1.shared, "annonce SHV de Greta")
+  advance(0.3)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T0 .. ";GUILD$", m0 + 1) == 1 and mine[#mine].dist == "WHISPER" and mine[#mine].target == "Greta", "données plus anciennes : demande chuchotée à Greta")
+  assert(count(thalwen.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(zeph.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(brindille.sent, "^SHQ;" .. esc(G1) .. ";0;") == 1, "sans données : demande")
+  advance(4)
+  local parts = count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";")
+  assert(parts >= 4 and parts == #Sh.Chunks(G1, AT, info1.shared) and count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";1;") == 1, "quatre demandes, une seule diffusion (" .. parts .. " morceaux)")
+  g = myGroup(G1)
+  assert(g.at == AT and g.text and Sh.Status(g.text, "FRG") == "ok" and g.origin.from == "Greta" and g.mineAt == T0, "reçu de Greta : appliqué et gardé signé")
+  assert(realChecks >= 1, "vraie signature vérifiée par Crypto.lua (clé de test)")
+  local r1 = raidOf(g, R1)
+  assert(r1.status == "late" and r1.char == "Tournicoti" and not r1.unknown, "mon inscription sur le site gardée (pas celle de Greta)")
+  assert(raidOf(g, R2) and raidOf(g, R2).status == nil and not raidOf(g, R2).unknown and not raidOf(g, R0), "pas inscrit : rien ; raid retiré du site : parti")
+  assert(#g.officers == 1 and #g.members == 4 and g.reserves[R1] and g.counts and g.council[R2], "lignes du site (O, S, L, N, M)")
+  assert(c.signups[R1] and c.signups[R1].status == "present" and not c.signups[R1].sent, "inscription en jeu en attente : gardée")
+  assert(c.signups[R2] and c.signups[R2].sent, "inscription reçue par le site : gardée (mes champs personnels datent de mes données, pas de la version reçue)")
+  assert(E.Build():find("\nS;" .. esc(G1) .. ";" .. esc(R1) .. ";present\n"), "inscription en attente : toujours dans l'export")
+  local e1
+  for _, e in ipairs(G.Raids()) do if e.raid.id == R1 then e1 = e end end
+  assert(e1 and e1.status == "present" and e1.state == "todo" and e1.onSite == "late" and not e1.unknown, "onglet Raids : en jeu en attente, site en retard")
+  assert(lastPrinted("Données de Les Veilleurs reçues de Greta (site : ") and received() == 1, "message dans le chat, une fois")
+  assert(thalwen.applied[1] and thalwen.applied[1].at == AT and brindille.applied[1] and brindille.applied[1].group == G1, "Thalwen et Brindille : appliqué")
+  assert(#zeph.applied == 0 and zeph.Sh.State().outsider[G1] and zeph.Sh.last.result == "member", "Zephyra pas membre : jamais appliqué")
+  for _, x in ipairs(mine) do assert(not (x.dist == "WHISPER" and x.target == ME), "jamais de demande à moi-même (écho filtré)") end
+
+  -- 3. Groupe que je n'avais pas (G2, vraie signature) : demandé une fois, appliqué ; ses raids : inscription inconnue
+  local m1 = #mine
+  brindille.Sh.Announce("GUILD")
+  advance(5)
+  local g2 = myGroup(G2)
+  assert(count(mine, "^SHQ;" .. esc(G2) .. ";0;GUILD$", m1 + 1) == 1, "sans données : demande")
+  assert(g2 and g2.at == AT and g2.origin.from == "Brindille" and g2.mineAt == 0 and raidOf(g2, R2).unknown and raidOf(g2, R2).status == nil, "reçu de Brindille ; raid inconnu pour moi")
+  assert(myGroup(G1).at == AT and received() == 2, "l'autre groupe ne bouge pas")
+  run("raids")
+  local unknownShown = false
+  for text in pairs(TEXTS) do if type(text) == "string" and text:find("inscription inconnue (données reçues d'un autre joueur)", 1, true) then unknownShown = true end end
+  assert(unknownShown, "onglet Raids : inscription inconnue")
+  run("synchro")
+  local origins = ns.UI.pages.synchro.origins:GetText()
+  assert(origins:find("Les Retardataires : reçues de Brindille le ", 1, true) and origins:find("Les Veilleurs : reçues de Greta le ", 1, true)
+    and not origins:find("non partagées", 1, true), "onglet Synchro : origine de chaque groupe")
+
+  -- 4. Version plus ancienne annoncée (Mirwen) : pas de demande ; une seule réponse (la première fait taire les autres)
+  advance(Sh.QUIET + 1)
+  local mirwen = client("Mirwen", { rand = 0.2, chars = { "Mirwen", "Thalwen" } })
+  hold(mirwen, block(G1, AT - 500, "Les Veilleurs", { "R;" .. R1 .. ";" .. RT1 .. ";Molten Core;;;softres" }, { "Thalwen", "Tournicoti" }))
+  local function snapshot() local s = { [0] = #mine } for _, cl in ipairs(clients) do s[cl] = #cl.sent end return s end
+  local function since(snap, pattern)
+    local n = count(mine, pattern, snap[0] + 1)
+    for _, cl in ipairs(clients) do n = n + count(cl.sent, pattern, (snap[cl] or 0) + 1) end
+    return n
+  end
+  local m2, s2 = #mine, snapshot()
+  mirwen.Sh.Announce("GUILD")
+  advance(10)
+  assert(count(mine, "^SHQ", m2 + 1) == 0, "version plus ancienne que la mienne : pas de demande")
+  assert(since(s2, "^SHV;FRG;" .. esc(G1) .. ";" .. AT .. ";") == 1 and lastAt(mirwen, G1) == AT, "une seule réponse à l'annonce ancienne, puis mise à jour")
+
+  -- 5. Moi comme source : collage signé (plus récent, gros) → annonce à la guilde ; demandes → une diffusion, par la file
+  -- de fond, au rythme permis ; mes champs personnels ne partent pas ; mes inscriptions suivent mes données
+  advance(Sh.QUIET + 1)
+  local T2 = AT + 3000
+  local MEMBERS = { "Brindille", "Greta", "Ilyra", "Thalwen", "Tournicoti" }
+  local body = { "R;" .. R1 .. ";" .. RT1 .. ";Molten Core;absent;Tournicoti;softres", "R;" .. R2 .. ";0;Onyxia;tentative;Tournicoti;council", "O;Greta" }
+  for i = 1, 40 do body[#body + 1] = "B;" .. (17000 + i) .. ";Greta,Thalwen,Brindille,Tournicoti" end
+  local MINE = block(G1, T2, "Les Veilleurs", body, MEMBERS)
+  local mineInfo = Sh.Parse(MINE, "FRG")
+  local m3 = #mine
+  assert(ns.UI.LoadFromSite(MINE))
+  g = myGroup(G1)
+  assert(g.at == T2 and g.text and not g.origin.from and g.mineAt == T2 and raidOf(g, R1).status == "absent", "collé : gardé signé, mes champs du site")
+  assert(c.signups[R2] == nil and c.signups[R1] and c.signups[R1].status == "present", "mes données : inscription enregistrée par le site oubliée, l'autre gardée")
+  advance(4)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T2 .. ";", m3 + 1) == 1 and count(mine, "^SHV;FRG;" .. esc(G2) .. ";" .. AT .. ";", m3 + 1) == 1, "annonce à la guilde après le collage (blocs signés)")
+  advance(40)
+  local chunksT2 = Sh.Chunks(G1, T2, mineInfo.shared)
+  assert(#chunksT2 >= 8 and count(mine, "^SHD;" .. esc(G1) .. ";" .. T2 .. ";1;", m3 + 1) == 1 and count(mine, "^SHD;" .. esc(G1) .. ";" .. T2 .. ";", m3 + 1) == #chunksT2, "une diffusion complète (quatre demandes)")
+  for i = m3 + 1, #mine do if mine[i].msg:find("^SHD") then assert(mine[i].dist == "GUILD", "diffusion sur la guilde") end end
+  assert(lastAt(greta, G1) == T2 and lastAt(thalwen, G1) == T2 and lastAt(brindille, G1) == T2 and lastAt(mirwen, G1) == T2 and not zeph.groups[G1], "reçu par les membres")
+  assert(Sh.Canonical(greta.groups[G1].text, "FRG") == mineInfo.canonical and not greta.groups[G1].text:find("absent;Tournicoti", 1, true), "mes champs personnels ne partent pas")
+  assert(throttled == 0, "jamais au-delà de la limite du jeu")
+
+  -- 6. Raid : à l'arrivée, annonce au raid ; Ilyra (pas de la guilde) demande et reçoit par le raid. Pendant la diffusion,
+  -- les messages du raid (versions : ma question, puis ma réponse à son écho) partent tout de suite : la file en laisse
+  -- toujours 6
+  local ilyra = client("Ilyra", { guild = false, raid = true })
+  advance(Sh.QUIET + 5)
+  local m4 = #mine
+  S.raid, S.members = true, 2
+  fire("GROUP_ROSTER_UPDATE")
+  advance(7.6)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T2 .. ";", m4 + 1) == 1, "annonce au raid à l'arrivée")
+  for i = m4 + 1, #mine do if mine[i].msg:find("^SHV") then assert(mine[i].dist == "RAID", "annonce sur le canal du raid") end end
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T2 .. ";", m4 + 1) >= 1 and #RA.lowQueue > 0, "diffusion au raid commencée, la suite attend")
+  local m4b = #mine
+  for _ = 1, 3 do RA.AskVersions(true) end
+  advance(0.06)
+  assert(throttled == 0 and count(mine, "^VQ$", m4b + 1) == 3 and count(mine, "^VR;", m4b + 1) == 3, "messages du raid partis tout de suite pendant la diffusion")
+  advance(30)
+  assert(lastAt(ilyra, G1) == T2 and ilyra.applied[1].dist == "RAID" and #RA.lowQueue == 0 and throttled == 0, "joueur hors guilde : reçu par le raid")
+  -- Reçu par le raid : appliqué, relayé à la guilde (Greta le demande et le reçoit)
+  local T3 = T2 + 1000
+  hold(ilyra, block(G1, T3, "Les Veilleurs", body, MEMBERS))
+  local m5 = #mine
+  ilyra.Sh.Announce("RAID")
+  advance(30)
+  g = myGroup(G1)
+  assert(g.at == T3 and g.origin.from == "Ilyra" and g.mineAt == T2 and raidOf(g, R1).status == "absent" and raidOf(g, R1).char == "Tournicoti", "reçu par le raid, mes champs gardés")
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T3 .. ";", m5 + 1) == 1 and lastAt(greta, G1) == T3, "relayé à la guilde, reçu par Greta")
+  for i = m5 + 1, #mine do if mine[i].msg:find("^SHV;FRG;" .. esc(G1)) then assert(mine[i].dist == "GUILD", "relais sur l'autre canal") end end
+  -- Le raid s'agrandit : version annoncée il y a moins de 60 s, l'annonce est refaite à la fin du délai
+  local m6 = #mine
+  S.members = 3
+  fire("GROUP_ROSTER_UPDATE")
+  advance(10)
+  hold(ilyra, block(G1, T3, "Les Veilleurs", body, MEMBERS))
+  ilyra.Sh.Announce("RAID")
+  advance(10)
+  local before6 = count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T3 .. ";", m6 + 1)
+  advance(Sh.QUIET + 10)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T3 .. ";", m6 + 1) == before6 + 1, "raid agrandi : annonce refaite à la fin du délai")
+  S.raid, S.members = false, 0
+  fire("GROUP_ROSTER_UPDATE")
+  advance(Sh.QUIET + 5)
+  assert(throttled == 0 and #RA.lowQueue == 0, "raid quitté, file vide")
+
+  -- 7. Refusés, jamais appliqués (messages d'Orvane, hors du canal simulé) : vraie signature sur un texte modifié, sans
+  -- signature, clé inconnue, pas membre, plus ancien, chuchoté
+  local function feed(text, dist, from)
+    local i = Sh.Parse(text, "FRG")
+    local shared = i.shared or (i.canonical .. "\n" .. i.endLine)
+    for _, m in ipairs(Sh.Chunks(i.group, i.at, shared)) do fire("CHAT_MSG_ADDON", "FRoster", m, dist or "GUILD", (from or "Orvane") .. "-Forever EU") end
+  end
+  local function try(text, label)
+    local before = received()
+    feed(text)
+    assert(received() == before and myGroup(G1).at == T3, label)
+    return Sh.last and Sh.last.result
+  end
+  local T4 = T3 + 100
+  assert(try((REAL[1]:gsub(";" .. AT .. ";Les Veilleurs", ";" .. T4 .. ";Les Veilleurs", 1)), "vraie signature, texte modifié : refusé") == "signature", "signature fausse")
+  assert(try(block(G1, T4 + 1, "Les Veilleurs", body, MEMBERS, { unsigned = true }), "sans signature : refusé") == "invalid", "sans signature")
+  assert(try(block(G1, T4 + 2, "Les Veilleurs", body, MEMBERS, { key = "deadbeef" }), "clé inconnue : refusé") == "key", "clé inconnue")
+  assert(try(block(G1, T4 + 3, "Les Veilleurs", body, { "Brindille", "Thalwen" }), "pas membre : refusé") == "member", "pas membre")
+  feed(block(G1, T2 + 10, "Les Veilleurs", body, MEMBERS))
+  assert(myGroup(G1).at == T3 and next(Sh.State().rx) == nil, "plus ancien que le mien : ignoré")
+  feed(block(G1, T4 + 4, "Les Veilleurs", body, MEMBERS), "WHISPER")
+  assert(myGroup(G1).at == T3, "données chuchotées : ignorées (guilde et raid seulement)")
+  -- Soft reserve cachée : le site ne signe pas ce bloc (réservations propres à chacun) ; collé, il ne se partage pas, et
+  -- une version sans signature reçue d'un autre ne le remplace pas
+  local HIDDEN = block("g-sr", clock - 100, "Soft reserve cachée", { "R;rsr;" .. (clock + 86400) .. ";Blackwing Lair;present;Tournicoti;softres",
+    "S;rsr;19019;Tournicoti:0" }, { "Tournicoti" }, { unsigned = true })
+  assert(ns.UI.LoadFromSite(HIDDEN) and myGroup("g-sr") and not myGroup("g-sr").text and myGroup(G1).at == T3, "soft reserve cachée : collée, les autres groupes restent")
+  advance(Sh.QUIET + 5)
+  assert(Sh.Announce("GUILD") == 2, "seuls les blocs signés s'annoncent")
+  local before7 = received()
+  feed(block("g-sr", clock, "Soft reserve cachée", { "R;rsr;" .. (clock + 86400) .. ";Blackwing Lair;;;softres", "S;rsr;19019;Greta:0" }, { "Tournicoti" }, { unsigned = true }))
+  assert(received() == before7 and myGroup("g-sr").reserves.rsr[19019][1].name == "Tournicoti", "bloc sans signature reçu : ne remplace rien")
+  run("synchro")
+  origins = ns.UI.pages.synchro.origins:GetText()
+  assert(origins:find("Soft reserve cachée : collées le .- · non partagées : pas signées par le site"), "onglet Synchro : soft reserve cachée non partagée")
+
+  -- 8. Option coupée (onglet Options) : ni annonce ni envoi ; la réception continue ; remise depuis l'onglet Options
+  local function optionRow()
+    for text, fr in pairs(TEXTS) do
+      if type(text) == "string" and fr:GetText() == text and text:find("Partager les données du site avec la guilde et le raid : ", 1, true) then return text end
+    end
+  end
+  run("options")
+  assert(optionRow() and optionRow():find("activé", 1, true) and TEXTS["Couper"], "onglet Options : partage activé par défaut")
+  rawget(TEXTS["Couper"], "scripts").OnClick(TEXTS["Couper"])
+  assert(ForeverRosterDB.share == false and optionRow():find("coupé", 1, true), "partage coupé depuis l'onglet Options")
+  advance(Sh.QUIET + 5)
+  local m7 = #mine
+  assert(ns.UI.LoadFromSite(block(G1, T4 + 10, "Les Veilleurs", body, MEMBERS)))
+  fire("PLAYER_LOGIN")
+  advance(45)
+  assert(count(mine, "^SH[VD]", m7 + 1) == 0 and Sh.Announce("GUILD") == 0 and Sh.Announce("RAID") == 0, "coupé : aucune annonce")
+  thalwen.groups[G1] = nil
+  thalwen.Sh.Reset()
+  thalwen.Sh.OnMessage(ME, "SHV;FRG;" .. G1 .. ";" .. (T4 + 10) .. ";100", "GUILD") -- annonce entendue avant la coupure
+  advance(10)
+  assert(count(thalwen.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD") >= 1 and count(mine, "^SHD", m7 + 1) == 0, "coupé : demande sans réponse")
+  local T5 = T4 + 500
+  hold(brindille, block(G1, T5, "Les Veilleurs", body, MEMBERS))
+  brindille.Sh.Announce("GUILD")
+  advance(10)
+  assert(myGroup(G1).at == T5 and count(mine, "^SHQ;" .. esc(G1) .. ";" .. (T4 + 10) .. ";GUILD", m7 + 1) == 1, "coupé : réception (demande et application)")
+  assert(count(mine, "^SH[VD]", m7 + 1) == 0, "coupé : rien relayé")
+  run("options")
+  assert(optionRow():find("coupé", 1, true) and TEXTS["Activer"], "onglet Options : partage coupé")
+  advance(Sh.QUIET + 5)
+  local m8 = #mine
+  rawget(TEXTS["Activer"], "scripts").OnClick(TEXTS["Activer"])
+  assert(ForeverRosterDB.share == nil, "partage remis (option par défaut)")
+  advance(4)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T5 .. ";", m8 + 1) == 1, "remis : annonce tout de suite")
+  advance(20)
+
+  -- 9. Combat : la diffusion attend la fin du combat (file de fond), puis part
+  advance(Sh.QUIET + 5)
+  local m9 = #mine
+  S.combat = true
+  thalwen.groups[G1] = nil
+  thalwen.Sh.Reset()
+  thalwen.Sh.OnMessage(ME, "SHV;FRG;" .. G1 .. ";" .. T5 .. ";100", "GUILD")
+  advance(10)
+  assert(count(mine, "^SHD", m9 + 1) == 0 and #RA.lowQueue > 0, "en combat : diffusion retenue")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  advance(20)
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T5 .. ";", m9 + 1) == #Sh.Chunks(G1, T5, Sh.Parse(myGroup(G1).text, "FRG").shared) and lastAt(thalwen, G1) == T5 and #RA.lowQueue == 0, "fin du combat : diffusion partie")
+
+  -- 10. Pas de tempête : deux sources de la même version, une seule diffusion ; pas deux fois en moins de 60 s
+  advance(Sh.QUIET + 5)
+  local m10, g10 = #mine, #greta.sent
+  fire("CHAT_MSG_ADDON", "FRoster", "SHQ;" .. G1 .. ";0;GUILD", "WHISPER", "Sylvane-Forever EU")
+  greta.Sh.OnMessage("Ulric", "SHQ;" .. G1 .. ";0;GUILD", "WHISPER")
+  advance(10)
+  assert(count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. T5 .. ";1;", g10 + 1) == 1 and count(mine, "^SHD", m10 + 1) == 0, "la seconde source voit la diffusion et annule la sienne")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHQ;" .. G1 .. ";0;GUILD", "WHISPER", "Sylvane-Forever EU")
+  advance(10)
+  assert(count(mine, "^SHD", m10 + 1) == 0, "pas deux diffusions en moins de 60 s")
+  assert(Sh.Announce("GUILD") >= 1 and Sh.Announce("GUILD") == 0, "pas deux annonces de suite")
+
+  -- 11. Connexion : annonce à la guilde 20 à 40 s après
+  advance(Sh.QUIET + 5)
+  local m11 = #mine
+  fire("PLAYER_LOGIN")
+  advance(19)
+  assert(count(mine, "^SHV", m11 + 1) == 0, "pas avant 20 s")
+  advance(22)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T5 .. ";", m11 + 1) == 1 and mine[#mine].dist == "GUILD", "annonce 20 à 40 s après la connexion")
+  advance(Sh.QUIET + 5)
+
+  -- 12. Roster Companion : ses blocs (signés par le site) remplacent mes groupes et se partagent ; mes champs personnels
+  -- viennent de ses données (les plus récentes à moi), le reste de la version la plus récente de la guilde
+  ForeverRosterDB.companion = {}
+  ForeverRosterData = { v = 1, at = clock, app = "0.3.0", frgAt = clock + 1, frg = SAMPLE, acks = {} }
+  ns.Companion.Apply()
+  g = myGroup(G1)
+  assert(g and g.at == AT and g.text and g.origin.companion and Sh.Status(g.text, "FRG") == "ok" and myGroup(G2).text and not myGroup("g-sr"), "Roster Companion : tous les groupes remplacés, blocs signés gardés")
+  assert(table.concat(G.Origins(), "\n"):find("Les Veilleurs : chargées par Roster Companion le ", 1, true), "origine : Roster Companion")
+  local m12 = #mine
+  assert(Sh.Announce("GUILD") == 2, "Roster Companion : les deux groupes s'annoncent")
+  advance(30)
+  g = myGroup(G1)
+  assert(g.at == T5 and g.origin.from and g.mineAt == AT and raidOf(g, R1).status == "present" and raidOf(g, R1).char == "Greta", "version plus récente de la guilde reprise, mes champs de Roster Companion")
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. AT .. ";GUILD", m12 + 1) == 1, "demandée à la réponse d'un autre")
+  ForeverRosterData = nil
+  ForeverRosterDB.companion = keep.companion
+
+  advance(300)
+  assert(#RA.lowQueue == 0 and throttled == 0, "file vide, jamais au-delà de la limite du jeu")
+  assert(errors() == errorsBefore, "partage sans erreur : " .. tostring(lastPrinted("erreur")))
+  -- Remise en place pour la suite
+  time, GetTime, C_Timer, C_ChatInfo = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo
+  IsInGuild, IsInRaid, IsInGroup, GetNumGroupMembers, InCombatLockdown = keep.IsInGuild, keep.IsInRaid, keep.IsInGroup, keep.GetNumGroupMembers, keep.InCombatLockdown
+  Sh.random, ns.Crypto.VerifyRSA = keep.random, keep.verify
+  ns.SITE_KEYS.test0001, ns.SITE_KEYS.a3de5db8 = nil, nil
+  ForeverRosterDB.groups, ForeverRosterDB.lastLoad, ForeverRosterDB.noRecord, ForeverRosterDB.share = keep.groups, keep.lastLoad, keep.noRecord, nil
+  ForeverRosterDB.raidLogs, ForeverRosterDB.handover = keep.raidLogs, keep.handover
+  c.signups = keep.signups
+  return realChecks
+end
+local shareChecks = sharing()
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
@@ -980,7 +1440,7 @@ assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 -- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai,
 -- groupes écrits par Roster Companion dans l'aller-retour de la section 9 (test Rust de l'appli : RC_HELPER)
 local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4",
-  "Les Retardataires", "Soirée" }
+  "Les Retardataires", "Soirée", "Soft reserve cachée" }
 LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
-print("wow_sim : tout est bon")
+print("wow_sim : tout est bon ; partage : vraie signature du site vérifiée (" .. shareChecks .. " fois)")

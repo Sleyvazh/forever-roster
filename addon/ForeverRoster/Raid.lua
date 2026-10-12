@@ -104,35 +104,115 @@ function RA.Current()
 end
 
 --------------------------------------------------------------------------------------------------------------------
--- Messages entre addons (même groupe de raid). Champs séparés par « ; », 255 caractères au plus.
+-- Messages entre addons (même groupe de raid ; guilde et chuchotements pour le partage des données du site, plus bas).
+-- Champs séparés par « ; », 255 caractères au plus. Le jeu limite les messages d'addon par préfixe : 10 d'affilée,
+-- puis 1 par seconde (au-delà, refusés) ; les messages du raid partent tout de suite et sont comptés (allocation), pour
+-- que la file de fond du partage leur laisse toujours de la place.
 --------------------------------------------------------------------------------------------------------------------
 local handlers = {}
+local BURST, RESERVE = 10, 6 -- allocation du préfixe ; messages toujours laissés aux messages du raid
+local allowance, allowanceAt = BURST, nil
+local function clock() return (GetTime and GetTime()) or time() end
+local function refill()
+  local t = clock()
+  allowanceAt = allowanceAt or t
+  allowance = math.min(BURST, allowance + math.max(0, t - allowanceAt))
+  allowanceAt = t
+  return allowance
+end
+local function spend() refill() allowance = allowance - 1 end
 local function send(msg, dist, target)
   local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
   dist = dist or channel()
   if not api or not dist then return false end
   if dist == "WHISPER" and target == me() then -- à soi-même : traité tout de suite
     local f = ns.Format.split(msg)
-    if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER") end
+    if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER", msg) end
     return true
   end
   if RA.test then return RA.test.send(msg, dist, target) end
+  spend()
   return (pcall(api, PREFIX, msg, dist, target))
 end
 -- Message reçu d'un joueur (raid d'essai : réponses simulées des autres addons)
 function RA.Deliver(sender, msg, dist)
   local f = ns.Format.split(msg)
-  if handlers[f[1]] then ns.safe("message", handlers[f[1]], sender, f, dist or "RAID") end
+  if handlers[f[1]] then ns.safe("message", handlers[f[1]], sender, f, dist or "RAID", msg) end
 end
 ns.on("PLAYER_LOGIN", function()
   local reg = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
   if reg then pcall(reg, PREFIX) end
 end)
+-- handlers[code](expéditeur (prénom seul), champs, canal, message entier)
 ns.on("CHAT_MSG_ADDON", function(prefix, text, dist, sender)
   if prefix ~= PREFIX or type(text) ~= "string" then return end
   local f = ns.Format.split(text)
-  if handlers[f[1]] then handlers[f[1]](short(sender), f, dist) end
+  if handlers[f[1]] then handlers[f[1]](short(sender), f, dist, text) end
 end)
+
+--------------------------------------------------------------------------------------------------------------------
+-- Partage des données du site entre joueurs (addon/shared/Share.lua, branché en bas de Group.lua) : SHV, SHQ, SHD sur
+-- la guilde, le raid et en chuchotant. Ces messages de fond passent par leur propre file : après les messages du raid
+-- (6 messages de l'allocation toujours laissés libres), au rythme permis (10 d'affilée puis 1 par seconde), jamais en
+-- combat, et en attendant si le jeu bloque les messages d'addon (AddOnMessageLockdown) ; abandonnés après 10 min.
+-- Le raid d'essai n'y touche pas (ses messages simulés passent par RA.test).
+--------------------------------------------------------------------------------------------------------------------
+local RESULT = (Enum and Enum.SendAddonMessageResult) or {}
+local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
+local THROTTLED = { [RESULT.AddonMessageThrottle or 3] = true, [RESULT.ChannelThrottle or 8] = true }
+local LOW_MAX_WAIT = 10 * 60
+RA.lowQueue = {}
+local lowTimer, lowFlushing = false, false
+local lowFlush
+local function lowLater(delay)
+  if lowTimer then return end
+  lowTimer = true
+  C_Timer.After(delay, function() lowTimer = false lowFlush() end)
+end
+local function inCombat()
+  return (InCombatLockdown and InCombatLockdown()) or (UnitAffectingCombat and UnitAffectingCombat("player")) or false
+end
+local function lowDrain()
+  local q = RA.lowQueue
+  local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
+  while #q > 0 do
+    local e = q[1]
+    if clock() - e.at > LOW_MAX_WAIT or not api then table.remove(q, 1) -- trop vieux (ou plus d'API) : abandonné
+    else
+      if inCombat() then return lowLater(2) end
+      if refill() < 1 + RESERVE then return lowLater(math.max(0.25, 1 + RESERVE - allowance)) end
+      local ok, res = pcall(api, PREFIX, e.msg, e.dist, e.target)
+      if ok and res == LOCKDOWN then return lowLater(3) end
+      if ok and THROTTLED[res] then allowance = 0 return lowLater(1) end
+      spend()
+      table.remove(q, 1)
+    end
+  end
+end
+function lowFlush()
+  if lowFlushing then return end
+  lowFlushing = true
+  local ok, err = pcall(lowDrain)
+  lowFlushing = false
+  if not ok then error(err, 0) end
+end
+-- Envoi d'un message du partage (≤ 255 octets) : dist "GUILD", "RAID" ou "WHISPER" (target : prénom)
+function RA.SendLow(msg, dist, target)
+  if type(msg) ~= "string" or #msg > 255 or not dist then return false end
+  if dist == "WHISPER" and not target then return false end
+  local q = RA.lowQueue
+  q[#q + 1] = { msg = msg, dist = dist, target = target, at = clock() }
+  lowFlush()
+  return true
+end
+ns.on("PLAYER_REGEN_ENABLED", function() lowFlush() end)
+-- Message d'un autre joueur (pas l'écho des miens, renvoyés par la guilde et le raid)
+for _, code in ipairs({ "SHV", "SHQ", "SHD" }) do
+  handlers[code] = function(sender, _, dist, msg)
+    if not (ns.Share and ns.Share.OnMessage) or type(msg) ~= "string" or sender == "" or sender == short(me()) then return end
+    ns.Share.OnMessage(sender, msg, dist)
+  end
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Qui a l'addon (et quelle version)

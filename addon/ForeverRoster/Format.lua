@@ -1,7 +1,7 @@
 -- Formats d'échange avec le site (une information par ligne, champs séparés par « ; ») :
 --   FRR v1 : compo d'un raid, du site vers le jeu (docs/addon-format.md)
 --   FRC v1 : un perso, du jeu vers le site
---   FRG v1 : données d'un groupe (raids à venir, patrons recherchés), du site vers le jeu
+--   FRG v1 : données d'un groupe (raids à venir, patrons recherchés), du site vers le jeu ; signé par le site (M, Z)
 -- Ce fichier n'utilise aucune fonction du jeu : il est testé hors jeu (addon/tests).
 local _, ns = ...
 ns = ns or {}
@@ -56,9 +56,9 @@ function F.ParseFRR(text)
 end
 
 -- Données d'un groupe (FRG v1) : raids à venir (R) et patrons recherchés / connus (P), indexés par l'objet patron.
-local function names(field)
+local function names(field, max)
   local out = {}
-  for n in tostring(field or ""):gmatch("[^,]+") do if #out < 40 then out[#out + 1] = txt(n, 40) end end
+  for n in tostring(field or ""):gmatch("[^,]+") do if #out < (max or 40) then out[#out + 1] = txt(n, 40) end end
   return out
 end
 -- Un ou plusieurs groupes à la suite (la page Addon du site donne tous les groupes du joueur d'un coup).
@@ -66,6 +66,9 @@ end
 -- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
 -- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
 -- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 »).
+-- Partage entre joueurs (1.6) : M (persos du groupe : members) et Z (signature du site : sig = { key }) juste avant END ;
+-- un bloc signé garde son texte (text : lignes de l'en-tête à END), relayé tel quel aux autres joueurs (Share.lua). Un
+-- bloc sans Z (ancien site, pas de clé, soft reserve cachée) n'a pas de texte : il ne se partage pas.
 local function per(t, raidId) t[raidId] = t[raidId] or {} return t[raidId] end
 local function ids(field)
   local out = {}
@@ -73,21 +76,27 @@ local function ids(field)
   return out
 end
 function F.ParseFRG(text)
-  local groups, cur, count, n = {}, nil, nil, 0
+  local groups, cur, count, n, lines = {}, nil, nil, 0, nil
   local function close()
     if not cur then return true end
     if count ~= n then return false end
+    if cur.sig then cur.text = table.concat(lines, "\n") end
     groups[#groups + 1] = cur
     return true
   end
   for line in tostring(text or ""):gmatch("[^\r\n]+") do
     line = line:gsub("^%s+", ""):gsub("%s+$", "")
     local f = split(line)
+    if lines and count == nil and line ~= "" then lines[#lines + 1] = line end
     if f[1] == "FRG" then
       if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
       if tonumber(f[2]) ~= 1 then return nil, L("Version non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
-      cur, count, n = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
-        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil }, nil, 0
+      cur, count, n, lines = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil }, nil, 0, { line }
+    elseif cur and f[1] == "M" and count == nil then
+      cur.members = names(f[2], 1000)
+    elseif cur and f[1] == "Z" and count == nil then
+      cur.sig = { key = txt(f[2], 16) }
     elseif cur and f[1] == "R" then
       n = n + 1
       cur.raids[#cur.raids + 1] = { id = txt(f[2], 40), time = tonumber(f[3]) or 0, name = txt(f[4], 60), status = (f[5] or "") ~= "" and txt(f[5], 12) or nil,

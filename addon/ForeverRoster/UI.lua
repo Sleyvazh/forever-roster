@@ -64,6 +64,8 @@ refreshers.raids = function(p)
     for _, e in ipairs(raids) do
       local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or L["date à définir"]
       local site = e.onSite and (GREY .. "  " .. L("site : %s", G.StatusLabel(e.onSite)) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
+      -- Raid arrivé avec les données d'un autre joueur (partage) : mon inscription sur le site n'y est pas
+      if e.unknown and not e.onSite then site = GREY .. "  " .. L("site : %s", L["inscription inconnue (données reçues d'un autre joueur)"]) .. "|r" end
       -- Inscription faite en jeu, en attendant que le site l'enregistre (elle est alors oubliée : 1.5.4)
       local game = ""
       if e.status then
@@ -192,6 +194,8 @@ function U.LoadFromSite(text)
       local raids, patterns = 0, 0
       for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
       ForeverRosterDB.lastLoad = { at = time(), groups = #ok, raids = raids, patterns = patterns }
+      -- Données neuves : partagées avec la guilde et le raid (seulement les blocs signés par le site, Group.lua)
+      ns.Group.ShareNew()
     end
   elseif text:find("FRR;", 1, true) then
     ok, err = ns.Compo.Load(text)
@@ -234,8 +238,11 @@ local function buildSynchro(p)
   end)
   p.pull:SetScript("OnLeave", function() GameTooltip:Hide() end)
   p.pull:Hide()
-  headerBar(p, -140, L["2 · Du jeu vers le site"])
-  p.text = textArea(p, 6, -182, 526, 180)
+  -- Origine des données de chaque groupe : collées, Roster Companion ou reçues d'un joueur (partage), et quand (3 lignes au plus)
+  p.origins = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.origins:SetPoint("TOPLEFT", 6, -136) p.origins:SetWidth(526) p.origins:SetJustifyH("LEFT")
+  headerBar(p, -172, L["2 · Du jeu vers le site"])
+  p.text = textArea(p, 6, -214, 526, 172)
   p.text:SetScript("OnTextChanged", function(self, user) if user then self:SetText(p.value or "") self:HighlightText() end end)
   p.text:SetScript("OnEscapePressed", function(self) self:ClearFocus() if main then main:Hide() end end)
   -- Ctrl+C dans l'export : copié, donc envoyé (à coller sur le site)
@@ -247,10 +254,10 @@ local function buildSynchro(p)
     end
   end)
   p.status = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-  p.status:SetPoint("TOPLEFT", 6, -372) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
+  p.status:SetPoint("TOPLEFT", 6, -396) p.status:SetWidth(526) p.status:SetJustifyH("LEFT")
   p.all = false
   p.toggleAll = button(p, L["Tout renvoyer"], 150, function() p.all = not p.all p.sent = false U.Refresh() end)
-  p.toggleAll:SetPoint("TOPLEFT", 4, -400)
+  p.toggleAll:SetPoint("TOPLEFT", 4, -424)
   local again = button(p, L["Actualiser"], 120, function() p.sent = false U.Refresh() end)
   again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
   -- Roster Companion (1.5) : les deux sens d'un coup, en rechargeant l'interface
@@ -265,7 +272,7 @@ local function buildSynchro(p)
   p.reload:SetScript("OnLeave", function() GameTooltip:Hide() end)
   p.reload:Hide()
   p.chars = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  p.chars:SetPoint("TOPLEFT", 6, -434) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
+  p.chars:SetPoint("TOPLEFT", 6, -458) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
 end
 refreshers.synchro = function(p)
   -- Roster Companion (lot K1) : l'appli fait la synchro ; le copier-coller reste possible pour forcer un envoi
@@ -278,6 +285,11 @@ refreshers.synchro = function(p)
   local last = ForeverRosterDB.lastLoad
   p.loadStatus:SetText(last and (GREEN .. L("Chargé le %s : %s", date("%d/%m %H:%M", last.at), ns.Companion.LoadText(last)) .. "|r")
     or (GREY .. L["Sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle ici : c'est chargé tout seul."] .. "|r"))
+  -- Partage entre joueurs : d'où viennent les données de chaque groupe (Group.lua)
+  local okO, origins = pcall(ns.Group.Origins)
+  local lines = okO and type(origins) == "table" and origins or {}
+  if #lines > 3 then lines = { lines[1], lines[2], L("+ %d autres groupes", #lines - 2) } end
+  p.origins:SetText(#lines > 0 and (GREY .. table.concat(lines, "\n") .. "|r") or "")
   local ok, value, included = pcall(ns.Export.Build, { all = p.all })
   if not ok then ns.print("|cffff6060" .. L("erreur (%s)", "export") .. "|r " .. tostring(value)) return end
   p.value, p.included = value, included
@@ -303,7 +315,8 @@ refreshers.synchro = function(p)
   if #names > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
 end
 
--- Options : touches, habillage, langue, bouton de la minicarte, rappels de raid, persos de l'export
+-- Options : touches, habillage, langue, bouton de la minicarte, rappels de raid, relevé, partage des données du site,
+-- persos de l'export
 local BINDINGS = {
   { action = "FOREVERROSTER_SYNC", label = N("Synchro rapide avec le site") },
   { action = "FOREVERROSTER_TOGGLE", label = N("Ouvrir ou fermer la fenêtre") },
@@ -435,6 +448,15 @@ refreshers.options = function(p)
   rows.Add(L("Butin noté à partir de : %s", GOLD .. L[ns.Recorder.QUALITY_LABEL[q]] .. "|r"), {
     { L["Rare"], 90, setQ(3), { color = QC[3], selected = q == 3 } }, { L["Épique"], 90, setQ(4), { color = QC[4], selected = q == 4 } },
     { L["Légendaire"], 110, setQ(5), { color = QC[5], selected = q == 5 } } })
+  -- Partage des données du site (Group.lua, addon/shared/Share.lua) : nil = oui (par défaut), false = ni annonce ni envoi
+  rows.Header(L["Partage entre joueurs"])
+  local share = ForeverRosterDB.share ~= false
+  rows.Add(L("Partager les données du site avec la guilde et le raid : %s", share and (GREEN .. L["activé"] .. "|r") or (GREY .. L["coupé"] .. "|r")) ..
+    "\n" .. GREY .. L["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Forever Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] .. "|r",
+    { { share and L["Couper"] or L["Activer"], 100, function()
+      if share then ForeverRosterDB.share = false else ForeverRosterDB.share = nil ns.Group.ShareNew() end
+      U.Refresh()
+    end } })
   rows.Header(L["Persos de l'export"])
   local chars = ns.Export.Characters()
   if #chars == 0 then rows.Add(GREY .. L["Aucun perso relevé pour l'instant."] .. "|r") end

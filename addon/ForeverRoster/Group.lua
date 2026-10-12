@@ -1,5 +1,6 @@
 -- Données des groupes (FRG v1, collées depuis le site) : inscriptions aux raids en jeu,
--- patrons recherchés et BiS (infobulles, sacs, alerte au butin), patrons « recherchés » marqués en jeu.
+-- patrons recherchés et BiS (infobulles, sacs, alerte au butin), patrons « recherchés » marqués en jeu ; partage des
+-- groupes signés par le site avec la guilde et le raid (addon/shared/Share.lua, en bas de ce fichier).
 local _, ns = ...
 local L, N = ns.L, ns.N
 local G = {}
@@ -22,22 +23,31 @@ local function db()
   return ForeverRosterDB.groups
 end
 
+-- Groupes lus (ParseFRG) rangés dans la sauvegarde ; replace : ils remplacent tous ceux déjà chargés
+local function store(groups, replace)
+  if replace then wipe(db()) end
+  for _, g in ipairs(groups) do db()[g.id] = g end
+  ns.safe(N("consommables"), G.CountConsumables)
+  ns.safe(N("inscriptions"), G.Reconcile)
+end
+
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.
 -- replace (Roster Companion) : tous les groupes du joueur, qui remplacent toujours ceux chargés ; quiet : sans message.
-function G.Load(text, replace, quiet)
+-- how : d'où viennent les données, noté dans chaque groupe (origin, onglet Synchro) : "companion" (Roster Companion),
+-- sinon collées. Ce sont mes données : mes champs personnels (statut et perso de chaque raid) datent de g.at (mineAt).
+function G.Load(text, replace, quiet, how)
   local groups, err = ns.Format.ParseFRG(text)
   if not groups then return nil, err end
-  if #groups > 1 or replace then wipe(db()) end
   local raids, patterns, bis = 0, 0, 0
   for _, g in ipairs(groups) do
-    db()[g.id] = g
+    g.origin = { at = time(), companion = how == "companion" or nil }
+    g.mineAt = g.at
     raids = raids + #g.raids
     for _ in pairs(g.patterns) do patterns = patterns + 1 end
     for _ in pairs(g.bis) do bis = bis + 1 end
   end
+  store(groups, #groups > 1 or replace)
   if not quiet then ns.print(L("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
-  ns.safe(N("consommables"), G.CountConsumables)
-  ns.safe(N("inscriptions"), G.Reconcile)
   return groups
 end
 
@@ -82,7 +92,9 @@ function G.Raids()
     for _, r in ipairs(g.raids or {}) do
       if r.time == 0 or r.time > now - 3 * 3600 then
         local s = mine[r.id]
-        out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, state = s and G.SignupState(s) or nil, onSite = r.status, siteChar = r.char }
+        -- unknown : raid arrivé avec les données d'un autre joueur (partage), mon inscription sur le site n'y est pas
+        out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, state = s and G.SignupState(s) or nil, onSite = r.status, siteChar = r.char,
+          unknown = r.unknown or nil }
       end
     end
   end
@@ -149,6 +161,8 @@ end
 -- Après chaque chargement des données du site : oublie les inscriptions faites en jeu que le site a enregistrées
 -- (même statut), celles qu'il a reçues puis changées (données plus récentes que l'accusé : le site a le dernier mot),
 -- celles d'un raid retiré, et celles d'un raid passé depuis plus de 24 h. Sans faire repartir le perso.
+-- Données reçues d'un autre joueur (partage) : mes champs personnels y datent de mes dernières données à moi
+-- (g.mineAt), pas de g.at ; un raid nouveau pour moi (r.unknown) ne dit rien de mon inscription.
 function G.Reconcile()
   local now = time()
   for key, c in pairs(ForeverRosterDB.chars or {}) do
@@ -163,7 +177,7 @@ function G.Reconcile()
           if not drop and g then
             drop = not r
               or (r.status == s.status and (r.char == nil or r.char == nameOf(key)))
-              or (s.sent and (g.at or 0) > (s.sentAt or 0))
+              or (s.sent and not r.unknown and (g.mineAt or g.at or 0) > (s.sentAt or 0))
           end
           if drop then c.signups[raidId] = nil end
         end
@@ -472,3 +486,156 @@ function G.OnLoot(msg, playerName, _, _, playerName2)
   if ns.UI and ns.UI.LootAlert then ns.UI.LootAlert(id, link) end
 end
 ns.on("CHAT_MSG_LOOT", function(...) G.OnLoot(...) end)
+
+--------------------------------------------------------------------------------------------------------------------
+-- Partage entre joueurs (addon/shared/Share.lua) : un joueur colle les données du site (ou les reçoit de Roster
+-- Companion), son addon les annonce à la guilde et au raid ; les addons qui ont une version plus ancienne (ou rien)
+-- la demandent, la vérifient (signature du site, ligne M : un de mes persos est membre du groupe) et l'appliquent en
+-- gardant mes champs personnels. Option : ForeverRosterDB.share (nil : oui, par défaut ; false : ni annonce ni envoi,
+-- la réception continue). Messages SHV, SHQ, SHD (préfixe FRoster, file de fond de Raid.lua) : docs/addon-format.md.
+-- Un groupe dont le bloc n'est pas signé (ancien site, pas de clé, soft reserve cachée : chacun y reçoit d'autres
+-- réservations) n'est jamais annoncé, et un bloc reçu sans signature n'est jamais appliqué.
+--------------------------------------------------------------------------------------------------------------------
+local Sh = ns.Share or {} -- Share.lua absent ou cassé : pas de partage, le reste de l'addon marche
+
+function G.ShareOn()
+  return not (ForeverRosterDB and ForeverRosterDB.share == false)
+end
+
+-- Prénom seul, en minuscules, comme le reste de l'addon : sans royaume ni nom de famille de Forever
+-- (« Greta Coulé », « Greta-Forever EU » → greta)
+local function first(name)
+  return ((tostring(name or ""):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
+end
+
+-- Mes persos (prénoms en minuscules) : celui-ci, ceux du compte déjà vus par l'addon (ForeverRosterDB.chars, clés
+-- « Prénom-Royaume ») et ceux de mes inscriptions dans les données du site
+function G.MyChars()
+  local out = {}
+  local function add(name) local k = first(name) if k ~= "" then out[k] = true end end
+  add(UnitName and UnitName("player"))
+  for key in pairs(ForeverRosterDB and ForeverRosterDB.chars or {}) do add(key) end
+  for _, g in pairs(db()) do
+    for _, r in ipairs(g.raids or {}) do if r.char then add(r.char) end end
+  end
+  return out
+end
+
+local function inGuild()
+  local ok, r = pcall(function() return IsInGuild and IsInGuild() end)
+  return ok and r and true or false
+end
+local function inRaid()
+  local ok, r = pcall(function() return IsInRaid and IsInRaid() end)
+  return ok and r and true or false
+end
+
+-- Annonce sur la guilde ou le raid dans min à max secondes (une annonce déjà prévue plus tôt suffit)
+local soonAt = {}
+function G.ShareSoon(dist, min, max)
+  if not (Sh.Announce and Sh.Jitter) then return false end
+  local delay = Sh.Jitter(min or 1, max or 3)
+  local at = time() + delay
+  if soonAt[dist] and soonAt[dist] <= at then return false end
+  soonAt[dist] = at
+  local function go()
+    if soonAt[dist] == at then soonAt[dist] = nil end
+    if not G.ShareOn() then return end
+    if dist == "GUILD" and not inGuild() then return end
+    if dist == "RAID" and not inRaid() then return end
+    Sh.Announce(dist, dist == "RAID")
+  end
+  if C_Timer and C_Timer.After then C_Timer.After(delay, go) else go() end
+  return true
+end
+-- Données neuves (collage, nouveautés de Roster Companion) : annoncées à la guilde et au raid (blocs signés seulement)
+function G.ShareNew()
+  G.ShareSoon("GUILD", 1, 3)
+  G.ShareSoon("RAID", 1, 3)
+end
+
+-- Bloc reçu d'un autre joueur (déjà vérifié par Share.lua) : il remplace mes données de ce groupe (les autres groupes
+-- restent), en gardant mon inscription sur le site (statut et perso) pour chaque raid que j'avais déjà ; un raid
+-- nouveau pour moi : inscription inconnue (r.unknown). Mes champs personnels datent toujours de mes dernières données
+-- à moi (mineAt, pour G.Reconcile) ; mes inscriptions faites en jeu (c.signups) ne bougent pas. Puis relais sur
+-- l'autre canal (guilde → raid, raid → guilde).
+local function applyShared(text, sender, dist)
+  local list = ns.Format.ParseFRG(text)
+  local g = list and #list == 1 and list[1]
+  if not (g and g.text) then return false end -- jamais un bloc sans signature
+  local old = db()[g.id]
+  local before = {}
+  for _, r in ipairs(old and old.raids or {}) do before[r.id] = r end
+  for _, r in ipairs(g.raids) do
+    local o = before[r.id]
+    if o then r.status, r.char, r.unknown = o.status, o.char, o.unknown
+    else r.status, r.char, r.unknown = nil, nil, true end
+  end
+  g.mineAt = old and (old.mineAt or old.at) or 0
+  g.origin = { from = sender, at = time() }
+  store({ g }, false)
+  if ns.UI and ns.UI.Refresh then ns.safe(N("partage des données du site"), ns.UI.Refresh) end
+  if ns.Minimap and ns.Minimap.Update then ns.safe(N("minicarte"), ns.Minimap.Update) end
+  G.ShareSoon(dist == "RAID" and "GUILD" or "RAID", 2, 6)
+  return true
+end
+
+if Sh.Setup then Sh.Setup({
+  kind = "FRG",
+  -- File de fond de Raid.lua : après les messages du raid, au rythme permis par le jeu, jamais en combat
+  send = function(msg, dist, target) return ns.Raid ~= nil and ns.Raid.SendLow(msg, dist, target) end,
+  blocks = function()
+    local out = {}
+    for id, g in pairs(db()) do out[id] = { at = tonumber(g.at) or 0, text = g.text } end
+    return out
+  end,
+  apply = applyShared,
+  mine = function(list)
+    local own = G.MyChars()
+    for _, name in ipairs(list) do if own[first(name)] then return true end end
+    return false
+  end,
+  notify = function(text) ns.print(text) end,
+  enabled = G.ShareOn,
+  stamp = function(at) return date("%d/%m %H:%M", at) end,
+}) end
+
+-- Origine des données de chaque groupe (onglet Synchro) : collées, chargées par Roster Companion ou reçues d'un joueur,
+-- et quand ; pourquoi elles ne se partagent pas (bloc sans signature du site, clé du site pas encore dans l'addon)
+local NOT_SHARED = { unsigned = N("pas signées par le site"), invalid = N("pas signées par le site"), key = N("clé du site inconnue") }
+function G.Origins()
+  local out = {}
+  for _, g in ipairs(G.List()) do
+    local o = type(g.origin) == "table" and g.origin or nil
+    if not o then -- groupe chargé avant le partage : date du dernier chargement des données du site
+      local last = ForeverRosterDB.lastLoad
+      o = (last and last.groups) and { at = last.at, companion = last.companion } or {}
+    end
+    local when = o.at and date("%d/%m %H:%M", o.at)
+    local how
+    if o.from then how = when and L("reçues de %s le %s", o.from, when) or L("reçues de %s", o.from)
+    elseif o.companion then how = when and L("chargées par Roster Companion le %s", when) or L["chargées par Roster Companion"]
+    else how = when and L("collées le %s", when) or L["collées"] end
+    local status = (g.text and Sh.Status) and Sh.Status(g.text, "FRG") or "unsigned"
+    local why = G.ShareOn() and NOT_SHARED[status]
+    out[#out + 1] = L("%s : %s", g.name or "?", how) .. (why and (" · " .. L("non partagées : %s", L[why])) or "")
+  end
+  return out
+end
+
+-- Connexion : annonce à la guilde 20 à 40 s après (le temps que tout charge). Les données de Roster Companion lues à
+-- la connexion partent avec elle ; celles chargées ensuite (actualisation) sont annoncées tout de suite (G.ShareNew).
+ns.on("PLAYER_LOGIN", function() G.ShareSoon("GUILD", 20, 40) end)
+
+-- Arrivée dans un raid, ou raid qui s'agrandit : annonce au raid (pour ceux qui ne sont pas de la guilde)
+local wasRaid, lastCount = false, 0
+ns.on("GROUP_ROSTER_UPDATE", function()
+  local raid = inRaid()
+  local n = 0
+  if raid and GetNumGroupMembers then
+    local ok, c = pcall(GetNumGroupMembers)
+    if ok and type(c) == "number" then n = c end
+  end
+  if raid and (not wasRaid or n > lastCount) then G.ShareSoon("RAID", 3, 8) end
+  wasRaid, lastCount = raid, n
+end)

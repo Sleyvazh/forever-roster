@@ -144,6 +144,17 @@ T["Retiré de tes recherchés (à envoyer)"] = "Removed from your wanted list (t
 T["infobulle"] = "tooltip"
 T["infobulles"] = "tooltips"
 T["ramassé : %s"] = "looted: %s"
+-- Group : partage des données du site entre joueurs (origine de chaque groupe, onglet Synchro)
+T["partage des données du site"] = "website data sharing"
+T["reçues de %s le %s"] = "received from %s on %s"
+T["reçues de %s"] = "received from %s"
+T["chargées par Roster Companion le %s"] = "loaded by Roster Companion on %s"
+T["chargées par Roster Companion"] = "loaded by Roster Companion"
+T["collées le %s"] = "pasted on %s"
+T["collées"] = "pasted"
+T["non partagées : %s"] = "not shared: %s"
+T["pas signées par le site"] = "not signed by the website"
+T["clé du site inconnue"] = "website key unknown to the addon"
 
 -- Companion : Roster Companion (actualisations sans /reload, rechargement, ligne de l'onglet Synchro)
 T["%d groupe(s), %d raid(s), %d patron(s) suivis"] = "%d group(s), %d raid(s), %d recipe(s) tracked"
@@ -197,6 +208,7 @@ T["en jeu : %s, pas encore envoyé"] = "in game: %s, not sent yet"
 T["en jeu : %s, part avec ton prochain export"] = "in game: %s, goes with your next export"
 T["Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), puis Roster Companion le transmet au site."] = "To send it right away: the interface reloads (a few seconds), then Roster Companion passes it on to the website."
 T["Envoyer maintenant"] = "Send now"
+T["inscription inconnue (données reçues d'un autre joueur)"] = "sign-up unknown (data received from another player)"
 -- Onglet Compo
 T["Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet %sSynchro|r."] = "On the website: raid page, \"Export pour le jeu\", \"Copier\", then paste in the %sSync|r tab."
 T["Inviter"] = "Invite"
@@ -251,6 +263,7 @@ T["%sÀ envoyer|r : %s%s   Ctrl+C puis Échap.|r"] = "%sTo send|r: %s%s   Ctrl+C
 T["envoyé le %s"] = "sent on %s"
 T["jamais envoyé"] = "never sent"
 T["%sPersos relevés : |r%s%s. Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r"] = "%sCharacters recorded: |r%s%s. To remove a deleted character: /fr forget Name-Realm.|r"
+T["+ %d autres groupes"] = "+ %d more groups"
 -- Onglet Options
 T["Synchro rapide avec le site"] = "Quick sync with the website"
 T["pas de changement de touche en combat."] = "no key binding changes in combat."
@@ -290,6 +303,10 @@ T["Relevé pendant les raids du site : %s"] = "Attendance & loot log (REC) durin
 T["en cours : %s"] = "running: %s"
 T["Qui est dans le raid (chaque minute) et le butin. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier."] = "Who is in the raid (every minute) and the loot. The raid summary goes with your sync; the website only keeps an officer's."
 T["Butin noté à partir de : %s"] = "Loot logged from: %s"
+T["Partage entre joueurs"] = "Sharing between players"
+T["Partager les données du site avec la guilde et le raid : %s"] = "Share website data with the guild and the raid: %s"
+T["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Forever Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] =
+  "Pasted (or received) data goes to the players of your guild and raid who have Forever Roster; each keeps only their own groups, checked against the website's signature. Off: you still receive other players' data."
 T["Persos de l'export"] = "Characters in the export"
 T["Aucun perso relevé pour l'instant."] = "No character recorded yet."
 T["envoyé au site le %s"] = "sent to the website on %s"

@@ -93,7 +93,7 @@ function C.Apply()
       st.frgAt = frgAt
       ForeverRosterDB.lastLoad = { at = frgAt, none = true, companion = true }
     else
-      local ok = ns.Group.Load(d.frg, true, true)
+      local ok = ns.Group.Load(d.frg, true, true, "companion")
       if ok then
         local raids, patterns = 0, 0
         for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
@@ -167,6 +167,8 @@ function C.Refresh()
         local msg
         if changed then
           msg = L("données du site actualisées : %s.", ForeverRosterDB.lastLoad and C.LoadText(ForeverRosterDB.lastLoad) or L["groupes"])
+          -- Données neuves : partagées avec la guilde et le raid (blocs signés par le site, Group.lua)
+          if ns.Group.ShareNew then ns.Group.ShareNew() end
         elseif d and (tonumber(d.at) or 0) > at0 then
           msg = L["envois confirmés par le site, rien de nouveau dans les groupes."]
         else
