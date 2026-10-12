@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 44, date: "2026-10-12", kind: "addon", version: "1.5", title: "Un seul « Copier pour le jeu » pour tout le monde",
+    text: "Plus besoin que chacun colle « Copier pour le jeu » avant le raid : un seul joueur le fait (ou reçoit les données par Roster Companion), et l'addon les transmet à tous ceux de la guilde et du raid qui ont l'addon à jour. Le site signe ces données : l'addon refuse tout ce qui a été modifié en route, ne garde que les groupes dont tu fais partie, et ton inscription reste la tienne. Seule exception : tant qu'un raid du groupe est en soft reserve cachée, ce groupe n'est pas partagé (chacun ne doit voir que ses réservations) et chacun colle ses propres données. L'onglet Synchro dit d'où viennent tes données ; pour ne rien transmettre, décoche le partage dans l'onglet Options. Version 1.5.7." },
   { n: 43, date: "2026-10-11", kind: "addon", version: "1.5", title: "L'addon en français ou en anglais",
     text: "L'addon suit maintenant la langue de ton jeu : en français si ton client est en français, en anglais sinon. Pour en choisir une autre : onglet Options, « Langue » (ou /fr langue fr, en ou jeu), puis recharge l'interface. Les commandes ont aussi leur nom anglais (/fr loot, /fr sync…). Version 1.5.6." },
   { n: 42, date: "2026-10-10", kind: "site", title: "Nouvelles icônes de classes et de spés, par Pahpool",
