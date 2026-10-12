@@ -1,0 +1,3 @@
+-- Partage des données du site entre joueurs (guilde et raid), vérifiées par la signature du site.
+local _, ns = ...
+ns.Share = ns.Share or {}

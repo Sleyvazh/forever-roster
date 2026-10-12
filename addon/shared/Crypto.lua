@@ -1,0 +1,3 @@
+-- Cryptographie pour vérifier les données signées par le site (SHA-256, base64, signature RSA) : voir Share.lua.
+local _, ns = ...
+ns.Crypto = ns.Crypto or {}

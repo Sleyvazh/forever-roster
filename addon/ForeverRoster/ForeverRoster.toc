@@ -13,6 +13,9 @@ Locale_en_Kit.lua
 Locale_en.lua
 Core.lua
 Kit.lua
+Crypto.lua
+SiteKey.lua
+Share.lua
 Format.lua
 Compo.lua
 Talents.lua
