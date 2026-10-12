@@ -3,7 +3,7 @@
 ## Notes: Raid comp, sign-ups, loot (soft reserve, council), boss sheets and consumables from the Forever Roster website; character export to the website.
 ## Notes-frFR: Compo de raid, inscriptions, butin (soft reserve, conseil), fiches de boss et consommables du site Forever Roster ; export du perso vers le site.
 ## Author: Sleyvazh
-## Version: 1.5.6
+## Version: 1.5.7
 ## SavedVariables: ForeverRosterDB
 ## OptionalDeps: ForeverRoster_Data
 ## IconTexture: Interface\AddOns\ForeverRoster\Media\Logo

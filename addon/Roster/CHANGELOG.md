@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.3.3
+
+- **Shared data**: one player pastes "Copier pour le jeu" (or receives it from the Roster Companion app) and the addon passes the group data to every guildmate and raid member who has the addon. The website signs the data and each addon checks the signature: data changed by anyone, even by one character, is refused. Option in the Options tab (on by default); the Sync tab says where your data comes from.
+- Council: BiS, Upgrade and Off-spec only for weapons your class can use (exact weapon types, shields and off-hand items); otherwise only Transmog or Pass. A whispered "bis" for such a weapon counts as Transmog, and the council greys it out.
+
+Français :
+
+- **Données partagées** : un seul joueur colle « Copier pour le jeu » (ou les reçoit de l'appli Roster Companion), et l'addon transmet les données du groupe à tous ceux de la guilde et du raid qui ont l'addon. Le site signe les données et chaque addon vérifie la signature : des données modifiées par quelqu'un, même d'un seul caractère, sont refusées. Option dans l'onglet Options (activée par défaut) ; l'onglet Synchro dit d'où viennent tes données.
+- Conseil : BiS, Upgrade et Off-spec seulement pour les armes que ta classe peut porter (type d'arme exact, boucliers et objets de main gauche) ; sinon seulement Transmo ou Passer. Un « bis » chuchoté pour une telle arme compte comme Transmo, et le conseil le grise.
+
 ## 0.3.2
 
 - The interface follows the game client's language: French on a French client, English otherwise. Options tab, "Language" (or `/roster language fr | en | auto`) to pick another one; it applies after a UI reload.
