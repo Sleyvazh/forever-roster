@@ -93,6 +93,8 @@ local STOP = { "le", "la", "les", "des", "du", "une", "un", "pour", "avec", "dan
 local STOPSET = {}
 for _, w in ipairs(STOP) do STOPSET[w] = true end
 local function french(s)
+  -- Hexadécimal (clé du site dans SiteKey.lua, empreintes) : « ce », « a »… y apparaissent par hasard
+  if #s >= 16 and s:find("^%x+$") then return false end
   if s:find("\195[\128-\191]") or s:find("\197[\146\147]") or s:find("\194[\171\187]") then return true end
   for w in s:lower():gmatch("%a+") do
     if STOPSET[w] then return true end
