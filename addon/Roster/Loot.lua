@@ -7,16 +7,17 @@
 --     (6 au plus) ; remis quand ils ont quitté les sacs à la fermeture. « Échanger » sans fenêtre : message du jeu ou marche
 --     à suivre (Lo.Trade, Lo.OnTradeShow, Lo.FillTrade, Lo.OnTradeClosed, Lo.Handover) ;
 --   - objets portables : BiS, Upgrade, Off-spec seulement sur ce qu'on peut porter (Lo.CanUse : armure du type exact de la
---     classe, sinon infobulle du jeu) ; chez le chef de butin et le conseil, la règle de l'armure fait d'une telle réponse
---     d'un autre joueur une réponse Transmo (Lo.CanUseClass) ;
+--     classe, armes que la classe manie (retours du raid du 11/10/2026), sinon infobulle du jeu) ; chez le chef de butin
+--     et le conseil, la règle de l'armure et des armes fait d'une telle réponse d'un autre joueur une réponse Transmo
+--     (Lo.CanUseClass) ;
 --   - tout au conseil d'un coup, numéroté (Lo.StartAllCouncils, Lo.Councils) ; « bis 2 » chuchoté vise l'objet 2 ;
 --   - colonne « Reçus » détaillée : BiS · Upgrade · Jets MS (ligne D du site, Lo.Category, Lo.Received).
 -- WoW 12.x : messages d'addon et chat bloqués pendant une rencontre de boss (file de Comm.lua), textes du chat
 -- (jets, chuchotements) secrets pendant le verrou du chat : jamais comparés ni gardés.
 -- Raid d'essai (Test.lua) : ns.Loot.test remplace le raid, ses membres, les messages, le chat et l'échange ; rien n'est
 -- écrit dans le bilan ni dans la sauvegarde. Crochets : send, say, trade(entry), reroll, et facultatifs tradeShow(partner,
--- objets) (échange ouvert par un gagnant fictif) et armorRule (true : la règle de l'armure s'applique aussi aux réponses
--- des joueurs fictifs) ; counts (objets reçus, avec bis / up / ms par entrée si voulu).
+-- objets) (échange ouvert par un gagnant fictif) et armorRule (true : la règle de l'armure et des armes s'applique aussi
+-- aux réponses des joueurs fictifs) ; counts (objets reçus, avec bis / up / ms par entrée si voulu).
 -- Langue (addon/shared/Locale.lua) : L["texte"] et L("format", …) traduisent à l'affichage ; le module s'appelle donc Lo.
 -- Annonces et chuchotements partent dans la langue du chef de butin ; les chuchotements reçus sont lus en français et en
 -- anglais (Lo.ParseWhisper). Restent en français : messages entre addons et détails pour le site (« gardé », « MS 87 »).
@@ -937,13 +938,82 @@ local function myClass()
 end
 Lo.MyClass = myClass
 
--- Règle de l'armure seule, pour la réponse d'un autre joueur : false (pas son type), true, nil (pas une armure, classe
--- ou objet inconnus)
+-- Armes, boucliers et objets tenus en main gauche (retours du raid du 11/10/2026 : pas de BiS sur une arme que la classe
+-- ne peut pas équiper, sauf Transmo). Règles de Retail (Midnight 12.x), relues le 12/10/2026 :
+--   - warcraft.wiki.gg, encadré « Weapon skills » de chaque page de classe (Death knight, Demon hunter, Druid, Evoker,
+--     Hunter, Mage, Monk, Paladin, Priest, Rogue, Shaman, Warlock, Warrior), recoupé avec le texte des pages (paladin :
+--     « cannot … wield daggers, fist weapons or staves » ; voleur : « cannot equip two-handed weapons or shields » ;
+--     chasseur : « all weapons except wands, maces, two-handed maces, and warglaives ») et la page « Proficiency »
+--     (boucliers : guerrier, paladin et chaman seulement) ;
+--   - patch 12.1 (août 2026, notes reprises par Icy Veins et Skill Capped) : « Demon Hunters can now equip daggers » ;
+--   - objets tenus en main gauche : listes « Off-hand Frill » des guides de transmogrification d'Icy Veins (druide, mage,
+--     moine, paladin, prêtre, chaman, démoniste ; aucune pour guerrier, voleur, chasseur, chevalier de la mort, chasseur
+--     de démons) ; l'évocateur, venu après, en porte (main gauche de ses guides BiS, sans double maniement).
+-- Pas sûr : pas d'avis (nil, on laisse faire ; chez moi, l'infobulle du jeu tranche) : guerrier et voleur avec arc, arme
+-- à feu ou arbalète (le wiki les donne encore, sans usage depuis 5.0.4) ; chasseur de démons avec un objet tenu en main
+-- gauche (Dévoreur, spécialisation d'intelligence de 12.0). Cannes à pêche, armes « diverses » et types disparus (armes
+-- de jet, lances) : pas d'avis non plus.
+-- Sous-classe d'arme (Enum.ItemClass.Weapon = 2, Enum.ItemWeaponSubclass) → type ; bouclier (armure, sous-classe 6) et
+-- objet tenu en main gauche (INVTYPE_HOLDABLE) en plus
+local WEAPON_KIND = { [0] = "axe1", [1] = "axe2", [2] = "bow", [3] = "gun", [4] = "mace1", [5] = "mace2", [6] = "polearm", [7] = "sword1",
+  [8] = "sword2", [9] = "warglaive", [10] = "staff", [13] = "fist", [15] = "dagger", [18] = "crossbow", [19] = "wand" }
+local KIND_NAME = { axe1 = N("hache à une main"), axe2 = N("hache à deux mains"), bow = N("arc"), gun = N("arme à feu"),
+  mace1 = N("masse à une main"), mace2 = N("masse à deux mains"), polearm = N("arme d'hast"), sword1 = N("épée à une main"),
+  sword2 = N("épée à deux mains"), warglaive = N("glaive de guerre"), staff = N("bâton"), fist = N("arme de pugilat"), dagger = N("dague"),
+  crossbow = N("arbalète"), wand = N("baguette"), shield = N("bouclier"), frill = N("objet tenu en main gauche") }
+-- Ce que chaque classe manie ; les autres types sont refusés, sauf ceux pas sûrs (DOUBT)
+local WIELDS = {
+  DEATHKNIGHT = "axe1 axe2 mace1 mace2 sword1 sword2 polearm",
+  DEMONHUNTER = "axe1 sword1 warglaive fist dagger",
+  DRUID = "mace1 mace2 polearm staff fist dagger frill",
+  EVOKER = "axe1 axe2 mace1 mace2 sword1 sword2 staff fist dagger frill",
+  HUNTER = "axe1 axe2 sword1 sword2 polearm staff fist dagger bow gun crossbow",
+  MAGE = "sword1 staff dagger wand frill",
+  MONK = "axe1 mace1 sword1 polearm staff fist frill",
+  PALADIN = "axe1 axe2 mace1 mace2 sword1 sword2 polearm shield frill",
+  PRIEST = "mace1 staff dagger wand frill",
+  ROGUE = "axe1 mace1 sword1 fist dagger",
+  SHAMAN = "axe1 axe2 mace1 mace2 staff fist dagger shield frill",
+  WARLOCK = "sword1 staff dagger wand frill",
+  WARRIOR = "axe1 axe2 mace1 mace2 sword1 sword2 polearm staff fist dagger shield",
+}
+local DOUBT = { WARRIOR = "bow gun crossbow", ROGUE = "bow gun crossbow", DEMONHUNTER = "frill" }
+-- Lo.WEAPONS_OF[classe][type] : true (la classe le manie), false (non), nil (pas d'avis)
+Lo.WEAPONS_OF = {}
+for class, list in pairs(WIELDS) do
+  local t = {}
+  for kind in pairs(KIND_NAME) do t[kind] = false end
+  for kind in list:gmatch("%S+") do t[kind] = true end
+  for kind in (DOUBT[class] or ""):gmatch("%S+") do t[kind] = nil end
+  Lo.WEAPONS_OF[class] = t
+end
+-- Type d'arme (clé de KIND_NAME) d'un objet, sinon nil (pas une arme, type sans règle, objet inconnu)
+local function weaponKind(item)
+  local id, loc, classID, subID = itemInfo(item)
+  if not id then return nil end
+  if classID == 2 then return WEAPON_KIND[subID or -1] end
+  if loc == "INVTYPE_SHIELD" or (classID == 4 and subID == 6) then return "shield" end
+  if loc == "INVTYPE_HOLDABLE" then return "frill" end
+  return nil
+end
+-- Règle des armes pour une classe : true, false, nil (pas d'avis) ; et le type de l'arme
+local function wields(item, class)
+  local kind = weaponKind(item)
+  local prof = kind and usable(class) and Lo.WEAPONS_OF[class:upper()]
+  if not prof then return nil, kind end
+  return prof[kind], kind
+end
+
+-- Règle de l'armure et des armes, pour la réponse d'un autre joueur : false (pas son type d'armure, arme qu'il ne manie
+-- pas), true, nil (ni armure ni arme soumise à la règle, classe ou objet inconnus, pas d'avis)
 function Lo.CanUseClass(item, class)
   local sub = armorType(item)
-  local want = usable(class) and Lo.ARMOR_OF[class:upper()] or nil
-  if not (sub and want) then return nil end
-  return sub == want
+  if sub then
+    local want = usable(class) and Lo.ARMOR_OF[class:upper()] or nil
+    if not want then return nil end
+    return sub == want
+  end
+  return (wields(item, class))
 end
 
 -- Couleur rouge d'une ligne d'infobulle (texte « pas pour toi » du jeu : arme non maniée, classes d'un jeton…)
@@ -989,10 +1059,11 @@ local function tooltipCheck(item, id)
 end
 
 -- Puis-je porter cet objet ? usable (true, false, nil si inconnu : on laisse tout), raison (texte court). Mon perso :
--- classe du jeu (UnitClass, raid d'essai compris). Un objet que je porte déjà (même identifiant) est portable.
+-- classe du jeu (UnitClass, raid d'essai compris). Armure : règle du type ; arme, bouclier ou objet tenu en main gauche
+-- que ma classe ne manie pas : non ; sinon l'infobulle du jeu (lignes rouges : jeton ou arme réservés à des classes…).
 function Lo.CanUse(item)
   local ok, usableNow, reason = pcall(function()
-    local id, loc = itemInfo(item)
+    local id = itemInfo(item)
     if not id then
       local want = F.ItemId(item)
       if want and C_Item and C_Item.RequestLoadItemDataByID then call(C_Item.RequestLoadItemDataByID, want) end
@@ -1005,6 +1076,8 @@ function Lo.CanUse(item)
       if sub == want then return true end
       return false, L("armure en %s : pas ton type d'armure", L[ARMOR_NAME[sub]])
     end
+    local can, kind = wields(item, myClass())
+    if can == false then return false, L("%s : pas pour ta classe", L[KIND_NAME[kind]]) end
     return tooltipCheck(item, id)
   end)
   if not ok then return nil end
@@ -1043,8 +1116,9 @@ function Lo.Answer(session, response, note)
   return true
 end
 
--- Règle de l'armure sur la réponse d'un autre joueur (chef de butin et conseil) : BiS, Upgrade ou Off-spec sur une
--- armure qui n'est pas du type de sa classe devient Transmo. Raid d'essai : seulement si test.armorRule.
+-- Règle de l'armure et des armes sur la réponse d'un autre joueur (chef de butin et conseil) : BiS, Upgrade ou Off-spec
+-- sur une armure qui n'est pas du type de sa classe, ou sur une arme qu'elle ne manie pas, devient Transmo. Raid
+-- d'essai : seulement si test.armorRule.
 local function armorRuleOn() return not Lo.test or Lo.test.armorRule == true end
 local function classOf(name)
   local m = member(name)
@@ -1118,7 +1192,7 @@ function Lo.OnWhisper(text, sender)
   if n then for _, x in ipairs(open) do if x.num == n then c = x end end
   elseif #open == 1 then c = open[1] end
   if not c then remind(who, n and L(Lo.REMIND_UNKNOWN, n) or L[Lo.REMIND]) return end
-  -- Règle de l'armure appliquée avant le relais : le conseil (même avec un addon 0.2) reçoit déjà Transmo
+  -- Règle de l'armure et des armes appliquée avant le relais : le conseil (même avec un addon 0.2) reçoit déjà Transmo
   local asked = r
   r = checked(c, who, r)
   local msg = "LA;" .. c.session .. ";" .. r .. ";;chuchoté;" .. who -- nolocale (message entre addons)
@@ -1245,7 +1319,7 @@ function Lo.Council(session)
     closed = c.closed == true, winner = c.winner, myVote = myVote, cands = {}, waiting = {}, council = Lo.CouncilNames(), isMaster = same(c.master, me()) }
   local _, _, counts = Lo.Received(me())
   out.counts = counts
-  -- Classes des membres (règle de l'armure), lues une fois
+  -- Classes des membres (règle de l'armure et des armes), lues une fois
   local members, classes, rule = Lo.Members(), {}, armorRuleOn()
   for _, m in ipairs(members) do if usable(m.class) then classes[m.key] = m.class end end
   for k, x in pairs(c.cands) do
@@ -1254,7 +1328,7 @@ function Lo.Council(session)
     local gear = {}
     for _, g in ipairs(x.gear or {}) do gear[#gear + 1] = { id = g.id, ilvl = g.ilvl, link = Lo.LinkFor(g.id) } end
     local site, tonight, _, d = Lo.Received(x.name)
-    -- Peut-il le porter ? false : la règle de l'armure dit non pour sa classe (réponse devenue Transmo s'il voulait BiS…)
+    -- Peut-il le porter ? false : la règle de l'armure ou des armes dit non pour sa classe (réponse devenue Transmo s'il voulait BiS…)
     local canUse = x.canUse
     if canUse == nil and rule then canUse = Lo.CanUseClass(c.itemString, classes[k] or (same(x.name, me()) and myClass() or nil)) end
     out.cands[#out.cands + 1] = { name = x.name, response = x.response, asked = x.asked, canUse = canUse, gear = gear, note = x.note or "",

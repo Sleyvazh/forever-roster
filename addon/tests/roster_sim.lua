@@ -94,8 +94,9 @@ local S = {
   -- Butin (R3b) : jets du butin de groupe en cours, sacs, objets portés, échange
   loot = {}, rollCalls = {}, confirms = {}, bags = { [0] = {}, {}, {}, {}, {} }, equipped = {}, tradeLeft = {}, items = {}, ilvl = {}, equipLoc = {},
   -- Objets portables (0.3) : sous-classe d'armure (1 tissu… 4 plaques ; sinon objet divers), ligne rouge de l'infobulle,
-  -- objets que le jeu ne connaît pas du tout
-  armor = {}, redLine = {}, unknownItem = {}, itemClass = {},
+  -- objets que le jeu ne connaît pas du tout ; classe et sous-classe d'un objet qui n'est pas une armure à type (armes :
+  -- classe 2 et Enum.ItemWeaponSubclass, bouclier : classe 4 et sous-classe 6)
+  armor = {}, redLine = {}, unknownItem = {}, itemClass = {}, itemSub = {},
 }
 local function fullOf(m) return m.name .. "-" .. m.realm end
 local function findMember(full) for i, m in ipairs(S.members) do if fullOf(m) == full then return m, i end end end
@@ -199,7 +200,7 @@ local BLIZZARD = {
       local id = idOf(item)
       if not id or S.unknownItem[id] then return nil end
       local a = S.armor[id]
-      return id, a and "Armure" or "Divers", a and ({ "Tissu", "Cuir", "Mailles", "Plaques" })[a] or "Divers", S.equipLoc[id] or "", 1234, S.itemClass[id] or (a and 4 or 15), a or 0
+      return id, a and "Armure" or "Divers", a and ({ "Tissu", "Cuir", "Mailles", "Plaques" })[a] or "Divers", S.equipLoc[id] or "", 1234, S.itemClass[id] or (a and 4 or 15), a or S.itemSub[id] or 0
     end,
     GetItemInfo = function(item)
       local link = S.items[idOf(item) or 0]
@@ -1319,16 +1320,22 @@ assert(relic.status == "awarded", "annulé : toujours à remettre")
 -- 10c. Objets portables : armure du type de la classe, cape pour tous, infobulle (ligne rouge), objet inconnu
 local PLATE, CLOTH, CAPE = item(242420, "Cuirasse de la Faille"), item(242421, "Capuche des spores"), item(242422, "Cape des spores")
 local POLEARM, CLASSTOKEN = item(242423, "Hallebarde de Kith'ix"), item(242424, "Jeton de Kith'ix")
+local THROWN = item(242427, "Hachette de lancer de Kith'ix")
 local UNKNOWN = "|cnIQ4:|Hitem:242425::::::::90:::::|h[Objet pas encore connu]|h|r"
 S.armor[242420], S.armor[242421], S.armor[242422] = 4, 1, 1
 S.equipLoc[242420], S.equipLoc[242421], S.equipLoc[242422], S.equipLoc[242423] = "INVTYPE_CHEST", "INVTYPE_HEAD", "INVTYPE_CLOAK", "INVTYPE_2HWEAPON"
+S.itemClass[242423], S.itemSub[242423] = 2, 6 -- arme d'hast
+S.itemClass[242427], S.itemSub[242427], S.equipLoc[242427] = 2, 16, "INVTYPE_THROWN" -- arme de jet (type disparu : pas de règle)
 S.redLine[242423] = { right = "Arme d'hast" }
+S.redLine[242427] = { right = "Armes de jet" }
 S.redLine[242424] = { left = "|cffff2020Classes : Guerrier, Paladin, Chevalier de la mort|r" }
 local can, why = Lo.CanUse(PLATE)
 assert(can == false and why == "armure en plaques : pas ton type d'armure", "prêtre : pas de plaques (" .. tostring(why) .. ")")
 assert(Lo.CanUse(CLOTH) == true and Lo.CanUse(CAPE) == true and Lo.CanUse(RING) == true, "tissu, cape, anneau : portables")
 can, why = Lo.CanUse(POLEARM)
-assert(can == false and why == "Arme d'hast", "arme non maniée : ligne rouge à droite")
+assert(can == false and why == "arme d'hast : pas pour ta classe", "arme d'hast pour un prêtre : règle des armes, avant l'infobulle (" .. tostring(why) .. ")")
+can, why = Lo.CanUse(THROWN)
+assert(can == false and why == "Armes de jet", "arme sans règle : ligne rouge à droite de l'infobulle")
 can, why = Lo.CanUse(CLASSTOKEN)
 assert(can == false and why == "Classes : Guerrier, Paladin, Chevalier de la mort", "jeton d'autres classes : ligne rouge à gauche")
 assert(Lo.CanUse(UNKNOWN) == nil, "objet pas encore connu du jeu : nil")
@@ -1341,7 +1348,52 @@ S.members[1].class = secretValue("UnitClass")
 assert(Lo.CanUse(PLATE) == nil, "classe secrète : nil")
 S.members[1].class = "PRIEST"
 assert(Lo.CanUseClass(PLATE, "WARRIOR") == true and Lo.CanUseClass(PLATE, "HUNTER") == false and Lo.CanUseClass(CLOTH, "mage") == true, "règle de l'armure d'un autre joueur")
-assert(Lo.CanUseClass(CAPE, "WARRIOR") == nil and Lo.CanUseClass(POLEARM, "PRIEST") == nil and Lo.CanUseClass(PLATE, nil) == nil and Lo.CanUseClass(PLATE, "INCONNU") == nil, "règle de l'armure : sans avis")
+assert(Lo.CanUseClass(CAPE, "WARRIOR") == nil and Lo.CanUseClass(CLASSTOKEN, "PRIEST") == nil and Lo.CanUseClass(PLATE, nil) == nil and Lo.CanUseClass(PLATE, "INCONNU") == nil, "règle de l'armure : sans avis")
+
+-- 10c bis. Règle des armes (retours du raid du 11/10/2026) : type d'arme, bouclier, objet tenu en main gauche ; pas
+-- d'avis quand ce n'est pas sûr
+local MACE2, STAFF, SHIELD, FRILL = item(242450, "Maillet de Kith'ix"), item(242451, "Bâton des spores"), item(242452, "Rempart de la Faille"), item(242453, "Orbe des spores")
+local BOW, DAGGER, GLAIVE, WAND = item(242454, "Arc de la Faille"), item(242455, "Dague des spores"), item(242456, "Glaive de Kith'ix"), item(242457, "Baguette des spores")
+local FISHPOLE = item(242458, "Canne à pêche de la Faille")
+for id, cs in pairs({ [242450] = { 2, 5, "INVTYPE_2HWEAPON" }, [242451] = { 2, 10, "INVTYPE_2HWEAPON" }, [242452] = { 4, 6, "INVTYPE_SHIELD" },
+  [242453] = { 4, 0, "INVTYPE_HOLDABLE" }, [242454] = { 2, 2, "INVTYPE_RANGED" }, [242455] = { 2, 15, "INVTYPE_WEAPON" },
+  [242456] = { 2, 9, "INVTYPE_WEAPON" }, [242457] = { 2, 19, "INVTYPE_RANGEDRIGHT" }, [242458] = { 2, 20, "INVTYPE_2HWEAPON" } }) do
+  S.itemClass[id], S.itemSub[id], S.equipLoc[id] = cs[1], cs[2], cs[3]
+end
+-- Moi (prêtre) : bâton, dague, baguette, objet tenu en main gauche oui ; masse à deux mains, bouclier, arc, glaive non
+assert(Lo.CanUse(STAFF) == true and Lo.CanUse(DAGGER) == true and Lo.CanUse(WAND) == true and Lo.CanUse(FRILL) == true, "prêtre : bâton, dague, baguette, main gauche")
+for _, x in ipairs({ { MACE2, "masse à deux mains" }, { SHIELD, "bouclier" }, { BOW, "arc" }, { GLAIVE, "glaive de guerre" } }) do
+  can, why = Lo.CanUse(x[1])
+  assert(can == false and why == x[2] .. " : pas pour ta classe", "prêtre : " .. x[2] .. " refusé (" .. tostring(why) .. ")")
+end
+assert(Lo.CanUse(FISHPOLE) == true, "canne à pêche : pas de règle, l'infobulle décide")
+S.members[1].class = secretValue("UnitClass")
+assert(Lo.CanUse(MACE2) == true, "classe secrète : pas de règle des armes, l'infobulle décide")
+S.members[1].class = "PRIEST"
+-- Les autres classes (classes du jeu, en majuscules ou non)
+for _, x in ipairs({
+  { MACE2, "WARRIOR", true }, { MACE2, "druid", true }, { MACE2, "HUNTER", false }, { MACE2, "PALADIN", true }, { MACE2, "ROGUE", false },
+  { POLEARM, "DRUID", true }, { POLEARM, "EVOKER", false }, { POLEARM, "MONK", true }, { POLEARM, "SHAMAN", false },
+  { STAFF, "HUNTER", true }, { STAFF, "PALADIN", false }, { STAFF, "DEATHKNIGHT", false },
+  { SHIELD, "SHAMAN", true }, { SHIELD, "PALADIN", true }, { SHIELD, "WARRIOR", true }, { SHIELD, "DEATHKNIGHT", false }, { SHIELD, "EVOKER", false },
+  { FRILL, "EVOKER", true }, { FRILL, "MONK", true }, { FRILL, "PALADIN", true }, { FRILL, "WARRIOR", false }, { FRILL, "HUNTER", false },
+  { FRILL, "DEMONHUNTER", nil }, { BOW, "HUNTER", true }, { BOW, "MAGE", false }, { BOW, "WARRIOR", nil }, { BOW, "ROGUE", nil },
+  { DAGGER, "DEMONHUNTER", true }, { DAGGER, "MONK", false }, { DAGGER, "PALADIN", false }, { GLAIVE, "DEMONHUNTER", true }, { GLAIVE, "WARRIOR", false },
+  { WAND, "MAGE", true }, { WAND, "WARRIOR", false }, { FISHPOLE, "MAGE", nil }, { THROWN, "WARRIOR", nil }, { MACE2, nil, nil }, { MACE2, "INCONNU", nil },
+}) do
+  assert(Lo.CanUseClass(x[1], x[2]) == x[3], "règle des armes : " .. x[1]:match("%[(.-)%]") .. " / " .. tostring(x[2]) .. " → " .. tostring(x[3]))
+end
+-- Table complète : les 13 classes, chacune avec un avis sur chaque type, sauf les doutes notés
+local nClasses = 0
+for _ in pairs(Lo.WEAPONS_OF) do nClasses = nClasses + 1 end
+assert(nClasses == 13, "règle des armes : 13 classes")
+for class, t in pairs(Lo.WEAPONS_OF) do
+  assert(Lo.ARMOR_OF[class], "classe de la règle des armes : " .. class)
+  local n = 0
+  for _ in pairs(t) do n = n + 1 end
+  local doubts = ({ WARRIOR = 3, ROGUE = 3, DEMONHUNTER = 1 })[class] or 0
+  assert(n == 17 - doubts, "règle des armes complète : " .. class .. " (" .. n .. ")")
+end
 
 -- 10d. Ma réponse : BiS / Upgrade / Off-spec refusés sur ce que je ne peux pas porter ; réponse changée
 local plate = receive(PLATE, 2, 10, "1 h 50 min")
@@ -1394,6 +1446,41 @@ addon("Tharok-Hyjal", "LC;88001;Mordak-Ysondre")
 assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
 Lo.Cancel(plate.key)
 advance(2)
+
+-- 10e bis. Règle des armes au conseil (retours du raid du 11/10/2026) : une arme d'hast (pas pour un prêtre ni un
+-- évocateur ; chasseur, druide et guerrier la manient)
+do
+  local hall = receive(POLEARM, 3, 9, "1 h 50 min")
+  local _, hsid = Lo.StartCouncil(hall.key)
+  local ho = offerOf(hsid)
+  assert(ho and ho.usable == false and ho.reason == "arme d'hast : pas pour ta classe", "proposition : arme que je ne manie pas, avec la raison")
+  local okW, wmsg = Lo.Answer(hsid, "bis", "")
+  assert(okW == false and wmsg:find("(arme d'hast : pas pour ta classe) : réponds Transmo ou Passer.", 1, true), "ma réponse BiS refusée sur une arme : " .. tostring(wmsg))
+  assert(not Lo.Answer(hsid, "off", "") and Lo.Answer(hsid, "transmo", ""), "Off-spec refusé, Transmo accepté")
+  -- Joueur sans l'addon : « bis » chuchoté par un évocateur → Transmo, relayé ainsi au conseil
+  mark = #S.sent
+  whisper("bis", "Orvane-Hyjal")
+  advance(10) -- file des messages : la proposition et ma réponse partent avant
+  local xw = cand(Lo.Council(hsid), "Orvane-Hyjal")
+  assert(xw and xw.response == "transmo" and xw.asked == "bis" and xw.canUse == false and xw.whispered, "« bis » chuchoté d'un évocateur sur une arme d'hast : Transmo")
+  assert(sentMsg("^LA;" .. hsid .. ";transmo;;chuchoté;Orvane%-Hyjal$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
+  -- Réponses d'addons : chasseur et druide la manient ; guerrier en Upgrade
+  addon("Sylvane-Hyjal", "LA;" .. hsid .. ";bis;;", "WHISPER")
+  addon("Brumelune-Ysondre", "LA;" .. hsid .. ";off;;", "WHISPER")
+  addon("Tharok-Hyjal", "LA;" .. hsid .. ";upgrade;;", "WHISPER")
+  local hc = Lo.Council(hsid)
+  assert(cand(hc, "Sylvane-Hyjal").response == "bis" and cand(hc, "Sylvane-Hyjal").canUse == true, "chasseur : arme d'hast, BiS gardé")
+  assert(cand(hc, "Brumelune-Ysondre").response == "off" and cand(hc, "Tharok-Hyjal").response == "upgrade" and cand(hc, "Tharok-Hyjal").canUse == true, "druide et guerrier : gardés")
+  -- Transmo chuchoté ensuite par l'évocateur : réponse inchangée, grisée au conseil (« ne peut pas le porter »)
+  whisper("transmo", "Orvane-Hyjal")
+  local xt2 = cand(Lo.Council(hsid), "Orvane-Hyjal")
+  assert(xt2.response == "transmo" and not xt2.asked and xt2.canUse == false, "Transmo d'un évocateur : signalé au conseil")
+  -- Ma réponse (prêtre) : Transmo, signalée aussi
+  assert(cand(Lo.Council(hsid), "Kaeldra-Hyjal").response == "transmo" and cand(Lo.Council(hsid), "Kaeldra-Hyjal").canUse == false, "ma réponse Transmo : signalée")
+  Lo.Cancel(hall.key)
+  S.bags[3][9] = nil
+  advance(2)
+end
 
 -- 10f. Tout au conseil : un LO par objet, une seule annonce (découpée si longue), numéros, chuchotements « bis 2 »
 clearItems()
@@ -1467,8 +1554,9 @@ assert(Lo.Vote(sessions[2], "Tharok-Hyjal"), "vote")
 -- Conseils de moins de 2 h (les précédents, terminés ou annulés, compris), dans l'ordre de proposition
 local all, cl = Lo.Councils(), {}
 for pos, x in ipairs(all) do for i, sid in ipairs(sessions) do if x.session == sid then cl[i], x.pos = x, pos end end end
-assert(#all == 7 and all[1].session == psid and all[1].closed and all[2].session == usid and all[3].session == "88001" and not all[3].isMaster, "Councils : tous ceux de moins de 2 h")
-assert(cl[1].pos == 4 and cl[4].pos == 7 and cl[1].num == 1 and cl[4].num == 4 and cl[2].link == long[2].link, "Councils : ordre de proposition et numéros")
+assert(#all == 8 and all[1].session == psid and all[1].closed and all[2].session == usid and all[3].session == "88001" and not all[3].isMaster
+  and all[4].link:find("Hallebarde", 1, true) and all[4].closed, "Councils : tous ceux de moins de 2 h (dont l'arme d'hast du 10e bis)")
+assert(cl[1].pos == 5 and cl[4].pos == 8 and cl[1].num == 1 and cl[4].num == 4 and cl[2].link == long[2].link, "Councils : ordre de proposition et numéros")
 assert(cl[2].answers == 1 and cl[2].waiting == #Lo.Members() - 1 and cl[2].myVote == "Tharok-Hyjal" and not cl[2].closed and cl[2].isMaster and cl[1].myVote == nil, "Councils : réponses, attente, mon vote")
 assert(Lo.Council(sessions[3]).num == 3, "Council : numéro")
 -- Un conseil de plus : numéro suivant, annonce numérotée

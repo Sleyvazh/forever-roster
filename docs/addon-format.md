@@ -342,6 +342,25 @@ Préfixe `RosterRT`, champs séparés par `;`, canal du raid (ou du groupe ; `IN
 - **Tout au conseil** : le chef de butin peut proposer d'un coup tous les objets à distribuer (un `LO` par objet). Une seule annonce numérote les objets (« 1 [A], 2 [B]… ») ; sans l'addon, on chuchote la réponse suivie du numéro (« bis 2 ») ; une réponse sans numéro ne vaut que s'il n'y a qu'un conseil ouvert (sinon le chef de butin rappelle la forme en chuchotant). Fenêtres de réponse et du conseil : on passe d'un objet à l'autre (bande d'objets en haut).
 - **Échange** : dès qu'une fenêtre d'échange s'ouvre avec un joueur à qui des objets sont attribués (qu'il l'ait ouverte ou que le chef de butin ait cliqué « Échanger »), l'addon du chef de butin y pose ces objets (6 au plus). « Échanger » sans fenêtre au bout de quelques secondes : le message d'erreur du jeu s'il y en a un, sinon la marche à suivre (le gagnant ouvre l'échange, l'objet sera posé tout seul).
 
+**Retours du raid du 11/10/2026 (Roster).** Pas de BiS, Upgrade ni Off-spec sur une arme que la classe ne peut pas équiper (Transmo et Passer seulement) : la règle de l'armure s'étend aux armes (sous-classe d'arme du jeu), aux boucliers et aux objets tenus en main gauche, chez le joueur (avant l'infobulle), chez le chef de butin (réponses chuchotées : devenues Transmo) et au conseil (réponse grisée, « ne peut pas le porter »). Règles de Retail (Midnight 12.x, sources dans `addon/Roster/Loot.lua`) :
+
+| Classe | Armes, bouclier, main gauche |
+|---|---|
+| Chevalier de la mort | haches, masses et épées (une et deux mains), armes d'hast |
+| Chasseur de démons | haches et épées à une main, glaives de guerre, armes de pugilat, dagues (12.1) ; main gauche : sans avis |
+| Druide | masses (une et deux mains), armes d'hast, bâtons, armes de pugilat, dagues, main gauche |
+| Évocateur | haches, masses et épées (une et deux mains), bâtons, armes de pugilat, dagues, main gauche |
+| Chasseur | haches et épées (une et deux mains), armes d'hast, bâtons, armes de pugilat, dagues, arcs, armes à feu, arbalètes |
+| Mage, démoniste | épées à une main, bâtons, dagues, baguettes, main gauche |
+| Moine | haches, masses et épées à une main, armes d'hast, bâtons, armes de pugilat, main gauche |
+| Paladin | haches, masses et épées (une et deux mains), armes d'hast, bouclier, main gauche |
+| Prêtre | masses à une main, bâtons, dagues, baguettes, main gauche |
+| Voleur | haches, masses et épées à une main, armes de pugilat, dagues ; arcs, armes à feu, arbalètes : sans avis |
+| Chaman | haches et masses (une et deux mains), bâtons, armes de pugilat, dagues, bouclier, main gauche |
+| Guerrier | haches, masses et épées (une et deux mains), armes d'hast, bâtons, armes de pugilat, dagues, bouclier ; arcs, armes à feu, arbalètes : sans avis |
+
+Tout autre type est refusé ; « sans avis » (pas sûr), cannes à pêche et types disparus : rien n'est refusé (chez le joueur, l'infobulle du jeu décide).
+
 **Distribution par Roster (R3b), comme RCLootCouncil.** Le chef de butin est le chef de raid, sauf s'il en désigne un autre (onglet En raid). Il active « Distribution par Roster » pour le raid (activée d'office quand le raid chargé est en mode `council` sur le site). Alors, à chaque jet du butin de groupe, l'addon de chacun attend le `LR` du chef de butin pour cet objet (20 s au plus) puis passe (`RollOnLoot`, passer) ; sans `LR` (chef de butin pas éligible à ce butin…), il ne passe pas et le dit au joueur. Chacun peut couper le passer automatique pour lui (Options, `RosterDB.autoPass = false`). Le chef de butin reçoit les objets, décide entre les pulls (conseil, jets MS / OS, jet libre, garder), puis échange l'objet au gagnant tant que le jeu le permet (2 h, joueurs présents au moment du butin ; minuteur lu dans l'infobulle de l'objet). À chaque attribution (un clic), l'addon l'annonce dans le canal du raid (« Brumelune reçoit [Objet] (conseil : BiS) ») **et** le chuchote au gagnant (« Tu reçois [Objet] : passe me voir pour l'échange »), choix de Flo. Les joueurs sans l'addon qui gagnent un objet au butin de groupe (ils n'ont pas passé) sont signalés au chef de butin, qui peut leur chuchoter de garder l'objet pour l'échange.
 
 Sur le site (lot R3a) : « Copier pour le jeu » donne RRG sur Roster (FRG sur Forever Roster ; `GET /api/sync/frg` suit la même règle), l'onglet Compo d'un raid de Roster donne RRR et des macros `/inv Prénom-Royaume`, et le Ctrl+V de Roster n'accepte que des bilans RRB (rencontres gardées dans `raid_logs.encounters`, difficulté dans `raid_logs.difficulty`, migration 0031). Un texte d'un addon collé sur le site de l'autre jeu est refusé avec l'adresse à utiliser. Roster Companion ne gère pas encore Roster.

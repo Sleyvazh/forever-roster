@@ -139,7 +139,7 @@ function SendChatMessage(text) LOCALE_AUDIT.show(text) realChat = realChat + 1 e
 local WORN = { [1] = { 237101, "Heaume du veilleur", "INVTYPE_HEAD", 4, 2 }, [3] = { 237103, "Spallières de l'aube", "INVTYPE_SHOULDER", 4, 4 },
   [5] = { 237105, "Cuirasse des cimes", "INVTYPE_CHEST", 4, 1 }, [7] = { 237107, "Jambières runiques", "INVTYPE_LEGS", 4, 2 },
   [11] = { 237111, "Anneau de braise", "INVTYPE_FINGER", 4, 0 }, [12] = { 237112, "Anneau de givre", "INVTYPE_FINGER", 4, 0 },
-  [16] = { 237116, "Lame du crépuscule", "INVTYPE_WEAPON", 2, 7 } }
+  [16] = { 237116, "Masse du crépuscule", "INVTYPE_WEAPON", 2, 4 } } -- masse à une main : le joueur est druide
 -- Objets de secours du raid d'essai, et ceux d'une autre armure (côté joueur : mailles 18817, cuir 16901)
 local ITEM = { [19019] = { "INVTYPE_WEAPON", 2, 7 }, [17076] = { "INVTYPE_2HWEAPON", 2, 8 }, [18814] = { "INVTYPE_NECK", 4, 0 },
   [16901] = { "INVTYPE_LEGS", 4, 2 }, [18817] = { "INVTYPE_HEAD", 4, 3 }, [32837] = { "INVTYPE_WEAPON", 2, 9 } }
@@ -1246,7 +1246,15 @@ advance(20)
 assert(#Lt.Council(entries()[1].session).cands >= 9, "réponses du conseil (site)")
 ow = win("offer")
 assert(ow:IsShown() and #chips(ow) == 3 and U.state.offer.band[1].text:find("Objet d'essai", 1, true), "bande (site) : nom court sans icône")
-answer("bis") answer("upgrade") answer("pass")
+-- Objets de secours : épées (à une main, à deux mains) qu'un druide ne manie pas, puis un collier
+assert(U.state.offer.usable == false and table.concat(U.state.offer.buttons, ",") == "transmo,pass"
+  and ow.warn:GetText():find("Tu ne peux pas porter cet objet : épée à une main : pas pour ta classe", 1, true), "épée pour un druide (site) : Transmo et Passer, raison")
+answer("bis")
+assert(not respOf(U.state.offer.session), "épée pour un druide : BiS refusé")
+RosterDB.lang = "en"
+assert(select(2, Lt.CanUse("item:17076")) == "two-handed sword, not for your class", "raison en anglais")
+RosterDB.lang = nil
+answer("transmo") answer("pass") answer("bis")
 assert(U.state.offer.done and ow.close:IsShown(), "tout répondu (site)")
 script(ow.close, "OnClick")
 assert(not ow:IsShown(), "« Fermer » (site)")
