@@ -8,6 +8,7 @@ mod runner;
 mod secrets;
 mod tray;
 mod ui;
+mod update;
 mod windows;
 
 use std::sync::{Arc, OnceLock};
@@ -74,6 +75,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        // Mises à jour : liste des versions lue sur GitHub, installateur vérifié avec la clé publique (update.rs)
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             let data_dir = app.path().app_data_dir()?;
@@ -92,6 +95,8 @@ pub fn run() {
             }
             tray::create(&handle)?;
             runner::spawn(handle.clone());
+            app.manage(update::Updates::default());
+            update::spawn(handle.clone());
             // Fenêtre : lancée à la main, ou appairage pas terminé
             let setup_done = { ctx.state().setup_done && ctx.state().device.is_some() };
             if !hidden || !setup_done {
@@ -133,6 +138,10 @@ pub fn run() {
             commands::window_close,
             commands::window_minimize,
             commands::quit,
+            update::update_status,
+            update::check_update,
+            update::install_update,
+            update::dismiss_update,
         ])
         .build(tauri::generate_context!());
     match result {

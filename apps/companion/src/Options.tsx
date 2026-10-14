@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call, errorText, type Settings, type Status } from "./api";
 import { Toggle } from "./components";
+import { UpdateOptions } from "./Update";
 
 export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) {
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +92,7 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
             <div className="row"><button className="btn danger sm" type="button" onClick={() => void unlink()}>Délier</button><button className="btn ghost sm" type="button" onClick={() => setConfirmUnlink(false)}>Annuler</button></div></div>
         )}
       </div>
+      <UpdateOptions running={s.games.some(g => g.running)} />
       <div className="row" style={{ justifyContent: "space-between" }}>
         <span className="small muted">Version {s.version}</span>
         <button className="btn ghost sm" type="button" onClick={onJournal}>Journal</button>

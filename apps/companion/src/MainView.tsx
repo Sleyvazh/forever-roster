@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ago, atLeast, call, CLASS_FR, errorText, hhmm, when, type GameView, type Status } from "./api";
 import { Box, Dot, Mark } from "./components";
+import { UpdateBanner } from "./Update";
 
 const STATUS_TEXT: Record<string, string> = { kept: "gardé : celui du chef de raid", refused: "refusé", ignored: "ignoré", skipped: "ignoré", unknown: "inconnu du site" };
 
@@ -135,6 +136,7 @@ export function Main({ s }: { s: Status }) {
   const g = s.games.find(x => x.game === tab)!;
   return (
     <>
+      <UpdateBanner running={s.games.some(x => x.running)} />
       <div className="seg" role="tablist">
         <button type="button" role="tab" aria-selected={tab === "forever"} onClick={() => setTab("forever")}>Forever</button>
         <button type="button" role="tab" aria-selected={tab === "retail"} className="rt" onClick={() => setTab("retail")}>Retail <span className="tag azure">Bientôt</span></button>

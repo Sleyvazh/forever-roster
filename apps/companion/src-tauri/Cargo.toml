@@ -35,6 +35,9 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "std"] }
 tracing-appender = "0.2"
+# Mises à jour (update.rs) : même TLS que rc-core (celui du système) et proxy de Windows ; pas de zip (installateur
+# NSIS signé tel quel)
+tauri-plugin-updater = { version = "2.13.3", default-features = false, features = ["native-tls", "system-proxy"] }
 
 # Jeton de l'appareil : Gestionnaire d'identification de Windows (jamais dans un fichier)
 [target.'cfg(windows)'.dependencies]

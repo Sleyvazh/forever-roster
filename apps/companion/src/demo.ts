@@ -1,8 +1,8 @@
 /**
  * Faux appareil pour voir l'interface dans un navigateur (npm run dev) et faire les aperçus :
- * ?ecran=appairage | dossiers | principal | probleme | inconnus | options | journal
+ * ?ecran=appairage | dossiers | principal | probleme | inconnus | options | journal | maj (mise à jour disponible)
  */
-import type { GameView, Install, Settings, Status } from "./api";
+import type { GameView, Install, Settings, Status, UpdateView } from "./api";
 
 const now = () => Math.floor(Date.now() / 1000);
 const params = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
@@ -23,7 +23,7 @@ function game(): GameView {
   const t = now();
   return {
     game: "forever", label: "Forever", enabled: true, site: "https://forever-roster.sleyvazh.fr", install: { ...forever, dataAddon: demoScreen !== "dossiers" },
-    running: demoScreen !== "probleme", restartNeeded: false, closedWithoutSave: demoScreen === "probleme" ? t - 2400 : null,
+    running: !["probleme", "maj"].includes(demoScreen), restartNeeded: false, closedWithoutSave: demoScreen === "probleme" ? t - 2400 : null,
     accounts: demoScreen === "probleme"
       ? [{ name: "12345678#1", savedAt: t - 3600, error: null }, { name: "12345678#2", savedAt: null, error: "ligne 3 : « } » attendu" }]
       : [{ name: "12345678#1", savedAt: t - 180, error: null }],
@@ -59,6 +59,19 @@ let state: Status = {
 const listeners = new Set<(s: Status) => void>();
 const push = () => { state = { ...state, now: now() }; listeners.forEach(f => f(state)); };
 
+// Mises à jour de l'appli : ?ecran=maj montre le bandeau (installation simulée)
+let update: UpdateView = {
+  keyConfigured: true, current: "0.3.0", lastCheck: now() - 7200, checking: false,
+  available: demoScreen === "maj" ? { version: "0.3.1", notes: "- Mises à jour automatiques signées.\n- Corrections de fiabilité (renvoi sans fin, clics perdus, erreurs trompeuses).", date: now() - 86400 } : null,
+  dismissed: false, installing: false, progress: null, error: null,
+};
+const updateListeners = new Set<(u: UpdateView) => void>();
+const pushUpdate = () => updateListeners.forEach(f => f(update));
+export function demoListenUpdate(fn: (u: UpdateView) => void) {
+  updateListeners.add(fn);
+  return () => { updateListeners.delete(fn); };
+}
+
 const JOURNAL = [
   "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.0 démarre (avec la session)",
   "2026-10-06T19:40:03Z  INFO dossiers trouvés : _classic_beta_ (Forever), _retail_ (Retail)",
@@ -82,6 +95,16 @@ export async function demoInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "send_manual": case "dismiss_manual": state = { ...state, games: state.games.map(g => ({ ...g, manual: [] })) }; break;
     case "ignored_list": return ["Banquier-Forever EU"] as T;
     case "unlink": state = { ...state, device: null, setupDone: false }; return null as T;
+    case "update_status": return update as T;
+    case "check_update": update = { ...update, lastCheck: now() }; pushUpdate(); return update as T;
+    case "dismiss_update": update = { ...update, dismissed: true }; pushUpdate(); return undefined as T;
+    case "install_update": {
+      if (state.games.some(g => g.running)) throw "Ferme le jeu d'abord : l'installateur remplace l'appli puis la relance.";
+      update = { ...update, installing: true, progress: 0 }; pushUpdate();
+      for (let p = 20; p <= 100; p += 20) { await new Promise(r => setTimeout(r, 300)); update = { ...update, progress: p }; pushUpdate(); }
+      update = { ...update, installing: false, progress: null, error: "démo : l'installateur ne se lance pas dans un navigateur" }; pushUpdate();
+      throw "Mise à jour non installée : démo.";
+    }
     default: break;
   }
   push();

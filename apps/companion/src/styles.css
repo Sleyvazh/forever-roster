@@ -115,6 +115,13 @@ code, .mono { font-family: var(--f-mono); font-size: .92em; }
 .alert.ok { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, transparent); }
 .alert.info { color: var(--ink-2); border-color: var(--line-2); background: var(--panel-2); }
 
+/* Mise à jour de l'appli : bandeau (fenêtre principale) et barre de téléchargement */
+.upd { border: 1px solid var(--gold); border-radius: 6px; padding: 10px 12px; display: grid; gap: 8px; background: color-mix(in srgb, var(--gold) 8%, transparent); }
+.upd b { font-weight: 600; }
+.upd .notes { margin: 0; font: 12.5px/1.45 var(--f-body); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; max-height: 130px; overflow-y: auto; scrollbar-width: thin; }
+.bar { flex: 1; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--gold); transition: width .2s; }
+
 /* Dossiers du jeu */
 .inst { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 6px; }
 .inst.off { opacity: .7; border-style: dashed; }

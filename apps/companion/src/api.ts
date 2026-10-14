@@ -4,7 +4,7 @@
  */
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import { demoInvoke, demoListen } from "./demo";
+import { demoInvoke, demoListen, demoListenUpdate } from "./demo";
 
 export type Game = "forever" | "retail";
 export type Overall = "active" | "idle" | "paused" | "error" | "unlinked";
@@ -57,6 +57,15 @@ export interface Status {
   syncing: boolean; syncRequested: boolean;
 }
 
+/** Mises à jour de l'appli (src-tauri/src/update.rs) : commande `update_status`, événement « update ». */
+export interface UpdateView {
+  /** Clé publique de signature dans tauri.conf.json : sans elle, aucune vérification. */
+  keyConfigured: boolean;
+  current: string; lastCheck: number | null; checking: boolean;
+  available: { version: string; notes: string | null; date: number | null } | null;
+  dismissed: boolean; installing: boolean; progress: number | null; error: string | null;
+}
+
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function call<T = void>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -71,7 +80,14 @@ export function onStatus(fn: (s: Status) => void): () => void {
   return () => { cancelled = true; stop?.(); };
 }
 
-/** Message d'erreur d'une commande (texte renvoyé par Rust). */
+export function onUpdate(fn: (u: UpdateView) => void): () => void {
+  if (!inTauri) return demoListenUpdate(fn);
+  let stop: (() => void) | null = null;
+  let cancelled = false;
+  void tauriListen<UpdateView>("update", e => fn(e.payload)).then(u => { if (cancelled) u(); else stop = u; });
+  return () => { cancelled = true; stop?.(); };
+}
+
 /** Version de l'addon au moins égale à `min` (« 1.4.0 » ≥ « 1.4 »). */
 export function atLeast(version: string | null | undefined, min: string) {
   if (!version) return false;
