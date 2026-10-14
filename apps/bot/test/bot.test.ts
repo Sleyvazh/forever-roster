@@ -79,16 +79,43 @@ describe("annonce", () => {
     expect(e.title).toBe("Molten Core");
     expect(e.description).toContain("<t:1794513600:F>");
     expect(e.fields?.[0]).toMatchObject({ name: "🛡️ Tank — 1", value: "**Tournicoti** · Feral Bear" });
-    expect(e.fields?.[1]?.value).toBe("**Bob** · Holy Heal ⏰ ✱");
+    expect(e.fields?.[1]?.value).toBe("**Bob** · Holy Heal ⏰");
     expect(e.fields?.find(f => f.name.startsWith("Absent"))?.value).toBe("Zed\\_\\*");
     expect(e.fields?.find(f => f.name.startsWith("Peut-être"))?.value).toContain("Annie");
-    expect(e.footer?.text).toBe("Les Testeurs · 2 inscrits · 2/9 classes · ✱ inscrit sans compte");
+    expect(e.footer?.text).toBe("Les Testeurs · 2 inscrits · 2/9 classes · 1 sans compte");
     expect(p.allowedMentions).toEqual({ parse: [] });
     const ids = p.components.flatMap(r => r.components).map(c => ("custom_id" in c ? c.custom_id : "url" in c ? c.url : ""));
     expect(ids).toContain(`fr|st|${RAID}|present`);
     expect(ids).toContain(`fr|off|${RAID}`);
     expect(ids).toContain("https://x.test/groups/g/raids/r");
     expect(p.components.every(r => r.components.length <= 5)).toBe(true);
+  });
+  it("avec les émojis : icône et nom seulement, tri par classe ; sans icône : la spé en toutes lettres", () => {
+    const emoji = makeLookup(new Map([["fr_druid_feral_bear", "1"], ["fr_priest", "2"]]));
+    const e = renderAnnouncement(view({
+      signups: [
+        { displayName: "Ann", characterName: "Annie", cls: "Mage", spec: "Frost", role: "DPS", status: "present", note: "", guest: false, group: null },
+        { displayName: "Bob", characterName: null, cls: "Priest", spec: "Holy Heal", role: "DPS", status: "present", note: "", guest: true, group: null },
+        { displayName: "Aldric", characterName: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "DPS", status: "present", note: "", guest: false, group: null },
+      ],
+    }), emoji).embeds[0]!;
+    // Druide (icône de spé) < Mage (pas d'icône : spé écrite) < Prêtre (icône de classe)
+    expect(e.fields?.[2]?.value).toBe("<:fr_druid_feral_bear:1> **Tournicoti**\n**Annie** · Frost\n<:fr_priest:2> **Bob**");
+    expect(e.footer?.text).toContain("1 sans compte");
+  });
+  it("beaucoup de DPS : tanks et heals dans la première colonne, DPS sur deux colonnes", () => {
+    const dps = Array.from({ length: 8 }, (_, i) => ({ displayName: `D${i}`, characterName: `Dps${i}`, cls: "Mage", spec: "Frost", role: "DPS" as const, status: "present" as const, note: "", guest: false, group: null }));
+    const e = renderAnnouncement(view({ signups: [...view().signups.filter(s => s.status === "present" || s.status === "late"), ...dps] })).embeds[0]!;
+    const f = e.fields!;
+    expect(f[0]).toMatchObject({ name: "🛡️ Tank — 1", inline: true });
+    expect(f[0]!.value).toBe("**Tournicoti** · Feral Bear\n**✚ Heal — 1**\n**Bob** · Holy Heal ⏰");
+    expect(f[1]!.name).toBe("⚔️ DPS — 8");
+    expect(f[1]!.value.split("\n")).toHaveLength(4);
+    expect(f[2]!.name).toBe("\u200b");
+    expect(f[2]!.value.split("\n")).toHaveLength(4);
+    // Six DPS : trois colonnes classiques
+    const e6 = renderAnnouncement(view({ signups: [...view().signups, ...dps.slice(0, 6)] })).embeds[0]!;
+    expect(e6.fields!.slice(0, 3).map(x => x.name)).toEqual(["🛡️ Tank — 1", "✚ Heal — 1", "⚔️ DPS — 6"]);
   });
   it("neutralise mentions et mise en forme, et tronque les longues listes", () => {
     expect(escapeMd("@everyone")).toBe("@​everyone");
@@ -269,8 +296,8 @@ describe("compo publiée, rappels et émojis", () => {
     });
     const f = renderAnnouncement(v, emoji).embeds[0]!.fields!;
     expect(f[0]).toMatchObject({ name: "✅ Compo validée — 1/40", value: "🛡️ 1 Tank · ✚ 0 Heal · ⚔️ 0 DPS" });
-    expect(f[1]).toEqual({ name: "Groupe 2", value: "<:fr_druid_2:22> **Tournicoti** · Feral Bear", inline: true });
-    expect(f[2]).toMatchObject({ name: "Inscrits non placés — 1", value: "**Bob** · Holy Heal ⏰ ✱" });
+    expect(f[1]).toEqual({ name: "Groupe 2", value: "<:fr_druid_2:22> **Tournicoti**", inline: true });
+    expect(f[2]).toMatchObject({ name: "Inscrits non placés — 1", value: "**Bob** · Holy Heal ⏰" });
     expect(f.some(x => x.name.startsWith("🛡️ Tank"))).toBe(false);
   });
 

@@ -50,22 +50,61 @@ const gameOf = (v: RaidView): Game => v.group.game ?? "forever";
 const specName = (g: Game, cls: string, spec: string) => specLabel(g, cls, spec, "fr");
 const clsName = (g: Game, cls: string) => classLabel(g, cls, "fr");
 
+/**
+ * Une ligne d'inscrit : l'icône de la spé (ou de la classe) puis le nom en gras. La spé n'est écrite qu'à défaut
+ * d'icône : chaque ligne tient sur une colonne de Discord (un tiers de la largeur), même « Maîtrise des bêtes ».
+ * Les inscrits sans compte sur le site ne sont plus marqués (seul leur nombre figure dans le pied de page).
+ */
 function line(s: ViewSignup, emoji: EmojiLookup, g: Game) {
   const icon = s.cls ? emoji(s.cls, s.spec) : "";
   const bits = [`${icon ? `${icon} ` : ""}**${who(s)}**`];
-  if (s.spec) bits.push(specName(g, s.cls, s.spec));
-  else if (s.cls) bits.push(clsName(g, s.cls));
+  if (!icon && s.spec) bits.push(specName(g, s.cls, s.spec));
+  else if (!icon && s.cls) bits.push(clsName(g, s.cls));
   let out = bits.join(" · ");
   if (s.status === "late") out += " ⏰";
-  if (s.guest) out += " ✱";
   return out;
+}
+
+/** Ordre de lecture d'une colonne : par classe (les icônes identiques se suivent), puis par spé, puis par nom. */
+function byClass(g: Game) {
+  const keys = (s: ViewSignup) => [s.cls ? clsName(g, s.cls) : "\uffff", s.spec ? specName(g, s.cls, s.spec) : "", who(s)];
+  return (a: ViewSignup, b: ViewSignup) => {
+    const ka = keys(a), kb = keys(b);
+    for (let i = 0; i < ka.length; i++) { const c = ka[i]!.localeCompare(kb[i]!, "fr"); if (c) return c; }
+    return 0;
+  };
+}
+
+/** À partir de combien de DPS les tanks et les heals partagent une colonne et les DPS en prennent deux. */
+const SPLIT_DPS_FROM = 7;
+
+/**
+ * Colonnes des inscrits qui viennent : une par rôle (Tank, Heal, DPS). Quand les DPS sont nombreux, les colonnes
+ * seraient déséquilibrées (deux tanks, deux heals, douze DPS) : tanks et heals partagent alors la première, les DPS
+ * sont répartis sur les deux autres.
+ */
+function roleFields(coming: ViewSignup[], emoji: EmojiLookup, g: Game): APIEmbedField[] {
+  const sort = byClass(g);
+  const lists = ROLES.map(({ role, icon }) => {
+    const list = coming.filter(s => s.role === role).sort(sort);
+    const e = emoji.role?.(role);
+    return { role, icon, list, head: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, lines: list.map(s => line(s, emoji, g)) };
+  });
+  const [tank, heal, dps] = lists as [typeof lists[number], typeof lists[number], typeof lists[number]];
+  if (dps.list.length < SPLIT_DPS_FROM) return lists.map(c => ({ name: c.head, value: fitLines(c.lines), inline: true }));
+  const half = Math.ceil(dps.lines.length / 2);
+  return [
+    { name: tank.head, value: fitLines([...tank.lines, `**${heal.head}**`, ...heal.lines], 1024), inline: true },
+    { name: dps.head, value: fitLines(dps.lines.slice(0, half)), inline: true },
+    { name: "\u200b", value: fitLines(dps.lines.slice(half)), inline: true },
+  ];
 }
 
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 
 function rosterLine(m: RosterMember, emoji: EmojiLookup, g: Game) {
   const icon = emoji(m.cls, m.spec);
-  return `${icon ? `${icon} ` : ""}**${escapeMd(m.name)}**${m.spec ? ` · ${specName(g, m.cls, m.spec)}` : ""}`;
+  return `${icon ? `${icon} ` : ""}**${escapeMd(m.name)}**${!icon && m.spec ? ` · ${specName(g, m.cls, m.spec)}` : ""}`;
 }
 
 /** Compo validée : un champ par groupe (3 par ligne), puis les inscrits non retenus. */
@@ -91,11 +130,7 @@ function rosterFields(v: RaidView, coming: ViewSignup[], emoji: EmojiLookup): AP
 export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed {
   const g = gameOf(v);
   const coming = v.signups.filter(s => COMING.includes(s.status));
-  const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : ROLES.map(({ role, icon }) => {
-    const list = coming.filter(s => s.role === role);
-    const e = emoji.role?.(role);
-    return { name: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, value: fitLines(list.map(s => line(s, emoji, g))), inline: true };
-  });
+  const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : roleFields(coming, emoji, g);
   const noRole = coming.filter(s => !s.role);
   if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji, g))), inline: false });
   for (const st of OTHERS) {
@@ -108,7 +143,7 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
   const desc: string[] = [];
   if (v.raid.scheduledAt) { const t = unix(v.raid.scheduledAt); desc.push(`📅 <t:${t}:F> · <t:${t}:R>`); }
   if (v.raid.description) desc.push(v.raid.description.slice(0, 1500));
-  const guests = v.signups.some(s => s.guest);
+  const guests = coming.filter(s => s.guest).length;
   const classes = new Set(coming.map(s => s.cls).filter(Boolean));
 
   return {
@@ -122,7 +157,7 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
         v.group.name,
         `${coming.length} inscrit${coming.length > 1 ? "s" : ""}`,
         classes.size ? `${classes.size}/${classesOf(g).length} classes` : null,
-        guests ? "✱ inscrit sans compte" : null,
+        guests ? `${guests} sans compte` : null,
       ].filter(Boolean).join(" · ").slice(0, 2048),
     },
     ...(v.raid.scheduledAt ? { timestamp: new Date(v.raid.scheduledAt).toISOString() } : {}),
