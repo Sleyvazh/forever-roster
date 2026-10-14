@@ -2,6 +2,14 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.5.9
+
+- Data from Roster Companion no longer overwrites a newer version received from a guildmate: each group keeps its newest version (your own sign-up and character still come from your latest data). After a refresh, the addon only announces its data to the guild and raid when a group actually came from the app.
+
+Français :
+
+- Les données de Roster Companion n'écrasent plus une version plus récente reçue d'un guildé : chaque groupe garde sa version la plus récente (ton inscription et ton perso viennent toujours de tes dernières données). Après une actualisation, l'addon n'annonce ses données à la guilde et au raid que si un groupe vient vraiment de l'appli.
+
 ## 1.5.8
 
 - Fix for "attempt to index a secret string value (execution tainted by 'ForeverRoster')": in instances the game now hides some values (the identity of the targeted NPC, chat during a boss fight). The addon checks them first and does without. In those places the boss sheet no longer opens when you target the boss: `/fr boss` shows it. Rolls and whispers hidden during a boss fight are reported once to the loot master.

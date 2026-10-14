@@ -32,7 +32,7 @@ local function store(groups, replace)
 end
 
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.
--- replace (Roster Companion) : tous les groupes du joueur, qui remplacent toujours ceux chargés ; quiet : sans message.
+-- replace : tous les groupes du joueur, qui remplacent toujours ceux chargés ; quiet : sans message.
 -- how : d'où viennent les données, noté dans chaque groupe (origin, onglet Synchro) : "companion" (Roster Companion),
 -- sinon collées. Ce sont mes données : mes champs personnels (statut et perso de chaque raid) datent de g.at (mineAt).
 function G.Load(text, replace, quiet, how)
@@ -49,6 +49,41 @@ function G.Load(text, replace, quiet, how)
   store(groups, #groups > 1 or replace)
   if not quiet then ns.print(L("%d groupe(s) chargé(s) : %d raid(s), %d patron(s) et %d objet(s) BiS suivis.", #groups, raids, patterns, bis)) end
   return groups
+end
+
+-- Roster Companion (1.5.9) : tous mes groupes du site, lus d'un coup (ParseFRG les sépare), et chacun ne remplace le
+-- mien que s'il est strictement plus récent (« généré le » de l'en-tête, g.at) : une version plus récente reçue d'un
+-- autre joueur (partage) reste, avec son texte signé et son origine, l'appli ayant pu relever le site avant lui.
+-- Ce sont mes données : dans un groupe gardé, mes champs personnels (statut et perso de chaque raid) viennent quand
+-- même de l'appli s'ils sont plus récents que mes derniers à moi (mineAt), comme un bloc partagé plus récent garde
+-- les miens. Un groupe absent du texte disparaît (quitté sur le site). Sans message.
+-- Renvoie les groupes lus et le nombre de ceux pris à l'appli ; nil et l'erreur si le texte est illisible.
+function G.LoadNewer(text, how)
+  local groups, err = ns.Format.ParseFRG(text)
+  if not groups then return nil, err end
+  local list, taken = {}, 0
+  for i, g in ipairs(groups) do
+    local old = db()[g.id]
+    if old and (tonumber(old.at) or 0) >= g.at then
+      if g.at > (tonumber(old.mineAt) or tonumber(old.at) or 0) then
+        local mine = {}
+        for _, r in ipairs(g.raids) do mine[r.id] = r end
+        for _, r in ipairs(old.raids or {}) do
+          local m = mine[r.id]
+          if m then r.status, r.char, r.unknown = m.status, m.char, nil end
+        end
+        old.mineAt = g.at
+      end
+      list[i] = old
+    else
+      g.origin = { at = time(), companion = how == "companion" or nil }
+      g.mineAt = g.at
+      list[i] = g
+      taken = taken + 1
+    end
+  end
+  store(list, true)
+  return groups, taken
 end
 
 function G.List()

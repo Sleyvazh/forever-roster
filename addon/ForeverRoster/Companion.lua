@@ -71,7 +71,9 @@ local function applyAcks(acks, at)
 end
 
 -- À la connexion (et à chaque actualisation) : accusés, puis données des groupes si elles sont plus récentes que
--- celles déjà chargées
+-- celles déjà chargées. Groupe par groupe (1.5.9, Group.LoadNewer) : un groupe dont j'ai déjà une version aussi récente
+-- (reçue d'un joueur par le partage, l'appli ayant relevé le site avant lui) reste ; un groupe absent des données de
+-- l'appli disparaît. Renvoie le nombre de groupes pris à l'appli (0 : plus aucun groupe), nil si rien n'a été chargé.
 function C.Apply()
   local d = C.Data()
   if not d then return end
@@ -86,24 +88,28 @@ function C.Apply()
   end
   local frgAt = tonumber(d.frgAt) or 0
   local last = math.max(st.frgAt or 0, ForeverRosterDB.lastLoad and ForeverRosterDB.lastLoad.at or 0)
+  local taken
   if type(d.frg) == "string" and frgAt > last then
     if d.frg == "" then
       -- Plus aucun groupe dans ce jeu
       wipe(ForeverRosterDB.groups or {})
       st.frgAt = frgAt
       ForeverRosterDB.lastLoad = { at = frgAt, none = true, companion = true }
+      taken = 0
     else
-      local ok = ns.Group.Load(d.frg, true, true, "companion")
+      local ok, n = ns.Group.LoadNewer(d.frg, "companion")
       if ok then
         local raids, patterns = 0, 0
         for _, g in ipairs(ok) do raids = raids + #g.raids for _ in pairs(g.patterns) do patterns = patterns + 1 end end
         st.frgAt = frgAt
         ForeverRosterDB.lastLoad = { at = frgAt, groups = #ok, raids = raids, patterns = patterns, companion = true }
+        taken = n
       end
     end
   end
   ns.safe(N("inscriptions"), ns.Group.Reconcile) -- accusés reçus : inscriptions faites en jeu à oublier
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
+  return taken
 end
 
 -- Dernier chargement des données du site (ForeverRosterDB.lastLoad), en texte dans la langue de l'interface :
@@ -162,13 +168,14 @@ function C.Refresh()
       local ok, loaded = pcall(load, name)
       if ok and loaded then
         refreshedAt = time()
-        C.Apply()
+        local taken = C.Apply()
         local d, changed = C.Data(), (state().frgAt or 0) > frg0
         local msg
         if changed then
           msg = L("données du site actualisées : %s.", ForeverRosterDB.lastLoad and C.LoadText(ForeverRosterDB.lastLoad) or L["groupes"])
-          -- Données neuves : partagées avec la guilde et le raid (blocs signés par le site, Group.lua)
-          if ns.Group.ShareNew then ns.Group.ShareNew() end
+          -- Données neuves : partagées avec la guilde et le raid (blocs signés par le site, Group.lua), seulement si un
+          -- groupe au moins vient de l'appli (1.5.9 : un groupe gardé, plus récent, a déjà été annoncé par son auteur)
+          if (taken or 0) > 0 and ns.Group.ShareNew then ns.Group.ShareNew() end
         elseif d and (tonumber(d.at) or 0) > at0 then
           msg = L["envois confirmés par le site, rien de nouveau dans les groupes."]
         else

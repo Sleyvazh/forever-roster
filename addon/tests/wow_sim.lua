@@ -1228,20 +1228,66 @@ local function sharing()
   assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T5 .. ";", m11 + 1) == 1 and mine[#mine].dist == "GUILD", "annonce 20 à 40 s après la connexion")
   advance(Sh.QUIET + 5)
 
-  -- 12. Roster Companion : ses blocs (signés par le site) remplacent mes groupes et se partagent ; mes champs personnels
-  -- viennent de ses données (les plus récentes à moi), le reste de la version la plus récente de la guilde
+  -- 12. Roster Companion : ses blocs (signés par le site) plus récents que les miens remplacent mes groupes et se
+  -- partagent ; un groupe absent de ses données disparaît ; mes champs personnels viennent de ses données (les plus
+  -- récentes à moi), le reste de la version la plus récente de la guilde. D'abord le vrai texte du site (sample.frg,
+  -- généré à AT) : plus ancien que tout ce que j'ai (G1 à T5, G2 à AT) → rien de pris, seul le groupe quitté s'en va
   ForeverRosterDB.companion = {}
   ForeverRosterData = { v = 1, at = clock, app = "0.3.0", frgAt = clock + 1, frg = SAMPLE, acks = {} }
-  ns.Companion.Apply()
+  assert(ns.Companion.Apply() == 0, "Roster Companion : rien de plus récent que mes groupes")
   g = myGroup(G1)
-  assert(g and g.at == AT and g.text and g.origin.companion and Sh.Status(g.text, "FRG") == "ok" and myGroup(G2).text and not myGroup("g-sr"), "Roster Companion : tous les groupes remplacés, blocs signés gardés")
+  assert(g.at == T5 and g.origin.from == "Brindille" and g.mineAt == T4 + 10 and myGroup(G2).at == AT and myGroup(G2).origin.from == "Brindille" and not myGroup("g-sr"),
+    "versions en place gardées (plus récentes ou aussi récentes), groupe quitté retiré")
+  assert(ForeverRosterDB.companion.frgAt == clock + 1 and ForeverRosterDB.lastLoad.at == clock + 1 and ForeverRosterDB.lastLoad.groups == 2 and ForeverRosterDB.lastLoad.companion, "chargement noté quand même (onglet Synchro)")
+  -- Puis des données plus récentes : prises, mes champs personnels avec
+  local T6 = T5 + 1000
+  local body12 = { "R;" .. R1 .. ";" .. RT1 .. ";Molten Core;present;Tournicoti;softres", "R;" .. R2 .. ";0;Onyxia;;;council", "O;Greta" }
+  local function app2(at, status) return block(G2, at, "Les Retardataires", { "R;" .. R2 .. ";0;Onyxia;" .. status .. ";Tournicoti;journal" }, { "Brindille", "Tournicoti" }) end
+  ForeverRosterData = { v = 1, at = clock, app = "0.3.0", frgAt = clock + 2, frg = block(G1, T6, "Les Veilleurs", body12, MEMBERS) .. "\n" .. app2(T6, "late"), acks = {} }
+  assert(ns.Companion.Apply() == 2, "Roster Companion : deux groupes pris")
+  g = myGroup(G1)
+  assert(g and g.at == T6 and g.text and g.origin.companion and Sh.Status(g.text, "FRG") == "ok" and myGroup(G2).at == T6 and myGroup(G2).text, "Roster Companion : groupes plus récents remplacés, blocs signés gardés")
+  assert(g.mineAt == T6 and raidOf(g, R1).status == "present" and raidOf(g, R1).char == "Tournicoti" and not raidOf(myGroup(G2), R2).unknown and raidOf(myGroup(G2), R2).status == "late", "mes champs personnels : ceux de l'appli")
   assert(table.concat(G.Origins(), "\n"):find("Les Veilleurs : chargées par Roster Companion le ", 1, true), "origine : Roster Companion")
   local m12 = #mine
   assert(Sh.Announce("GUILD") == 2, "Roster Companion : les deux groupes s'annoncent")
   advance(30)
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T6 .. ";1;", m12 + 1) == 1 and lastAt(greta, G1) == T6 and lastAt(thalwen, G1) == T6 and lastAt(brindille, G2) == T6, "la guilde reçoit la version de l'appli")
+  -- Version plus récente de la guilde reprise ensuite : mes champs de Roster Companion gardés
+  advance(Sh.QUIET + 5)
+  local T7 = T6 + 500
+  hold(greta, block(G1, T7, "Les Veilleurs", body12, MEMBERS))
+  local m12b = #mine
+  greta.Sh.Announce("GUILD")
+  advance(10)
   g = myGroup(G1)
-  assert(g.at == T5 and g.origin.from and g.mineAt == AT and raidOf(g, R1).status == "present" and raidOf(g, R1).char == "Greta", "version plus récente de la guilde reprise, mes champs de Roster Companion")
-  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. AT .. ";GUILD", m12 + 1) == 1, "demandée à la réponse d'un autre")
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T6 .. ";GUILD", m12b + 1) == 1, "demandée à l'annonce d'un autre")
+  assert(g.at == T7 and g.origin.from == "Greta" and g.mineAt == T6 and raidOf(g, R1).status == "present" and raidOf(g, R1).char == "Tournicoti", "version plus récente de la guilde reprise, mes champs de Roster Companion")
+
+  -- 13. Appli plus ancienne qu'un groupe reçu par partage (1.5.9) : l'appli a relevé le site avant Greta ; son bloc de G1
+  -- (plus ancien que T7) ne remplace pas la version reçue, qui garde son texte signé et son origine ; mes champs
+  -- personnels, plus récents que mes derniers à moi, en viennent quand même ; G2 (plus récent que le mien) est pris.
+  -- L'annonce qui suit ne dit jamais G1 à l'ancienne date, et la guilde garde T7
+  advance(Sh.QUIET + 5)
+  local T6b, T8 = T6 + 100, T7 + 300
+  local body13 = { "R;" .. R1 .. ";" .. RT1 .. ";Molten Core;late;Tournicoti;softres", "R;" .. R2 .. ";0;Onyxia;;;council", "O;Greta" }
+  ForeverRosterData = { v = 1, at = clock, app = "0.3.0", frgAt = clock + 1, acks = {}, frg = block(G1, T6b, "Les Veilleurs", body13, MEMBERS) .. "\n" .. app2(T8, "present") }
+  assert(ns.Companion.Apply() == 1, "un seul groupe pris à l'appli")
+  g = myGroup(G1)
+  assert(g.at == T7 and g.origin.from == "Greta" and g.text and Sh.Parse(g.text, "FRG").at == T7, "G1 : la version reçue de Greta, plus récente, reste (texte signé et origine compris)")
+  assert(g.mineAt == T6b and raidOf(g, R1).status == "late" and raidOf(g, R1).char == "Tournicoti" and raidOf(g, R2).status == nil and not raidOf(g, R2).unknown, "G1 gardé : mes champs personnels viennent de l'appli (plus récents que mes derniers)")
+  local g2b = myGroup(G2)
+  assert(g2b.at == T8 and g2b.origin.companion and g2b.mineAt == T8 and raidOf(g2b, R2).status == "present", "G2 : la version de l'appli, plus récente, prise")
+  assert(ForeverRosterDB.companion.frgAt == clock + 1 and ForeverRosterDB.lastLoad.at == clock + 1 and ForeverRosterDB.lastLoad.groups == 2 and ForeverRosterDB.lastLoad.companion, "chargement noté comme avant")
+  origins = table.concat(G.Origins(), "\n")
+  assert(origins:find("Les Veilleurs : reçues de Greta le ", 1, true) and origins:find("Les Retardataires : chargées par Roster Companion le ", 1, true), "onglet Synchro : origine de chaque groupe")
+  local m13 = #mine
+  G.ShareNew()
+  advance(30)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T6b .. ";", m13 + 1) == 0 and count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T6 .. ";", m13 + 1) == 0, "jamais d'annonce de G1 à une date ancienne")
+  assert(count(mine, "^SHV;FRG;" .. esc(G2) .. ";" .. T8 .. ";", m13 + 1) == 1 and lastAt(greta, G1) == T7 and lastAt(brindille, G2) == T8, "G2 annoncé et reçu par Brindille ; la guilde garde T7")
+  -- Relu avec les mêmes données (même frgAt) : rien ne bouge
+  assert(ns.Companion.Apply() == nil and myGroup(G1).at == T7 and myGroup(G2).at == T8, "mêmes données de l'appli : rien à faire")
   ForeverRosterData = nil
   ForeverRosterDB.companion = keep.companion
 

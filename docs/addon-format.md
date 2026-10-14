@@ -231,7 +231,7 @@ ForeverRosterData = { v = 1, at = <unix>, app = "0.1.0",
   report = { at = <unix>, items = { "Tournicoti", "bilan de « Vroum Vroum »" } } }
 ```
 
-- `frg` remplace tous les groupes chargés, sans message, s'il est plus récent que le dernier chargement (un collage manuel plus récent est gardé).
+- `frg` remplace les groupes chargés, sans message, s'il est plus récent que le dernier chargement (un collage manuel plus récent est gardé) ; groupe par groupe depuis l'addon 1.5.9 : un groupe dont l'addon a déjà une version aussi récente (reçue d'un joueur par le partage) reste, un groupe absent de `frg` disparaît.
 - `acks` : le perso est marqué envoyé (`sentSig`), le bilan aussi (`sentAt`) ; le compteur de la minicarte retombe.
 - `report` : affiché dans l'onglet Synchro (« Roster Companion s'en occupe »), textes nettoyés des codes du jeu. L'appli est considérée active si `at` date de moins de 3 jours.
 - Toutes les chaînes sont écrites par l'appli en chaînes Lua échappées octet par octet (`\\`, `\"`, `\ddd`), jamais en crochets longs.
