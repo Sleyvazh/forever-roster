@@ -236,6 +236,14 @@ pub(crate) fn forget_device(ctx: &Arc<Ctx>) {
     ctx.save();
 }
 
+/// Le site a refusé le jeton (appareil délié dans Compte & sécurité) : retour à l'appairage.
+pub(crate) fn unlinked(app: &AppHandle, ctx: &Arc<Ctx>) {
+    tracing::warn!("jeton refusé par le site : appareil délié");
+    forget_device(ctx);
+    notify::unlinked(app, ctx);
+    windows::show_main(app);
+}
+
 #[cfg(test)]
 mod tests {
     use super::tomorrow_at;
@@ -250,12 +258,4 @@ mod tests {
         // Sans décalage connu : 6 h UTC
         assert_eq!(tomorrow_at(now, 0, 6), 1_792_044_000);
     }
-}
-
-/// Le site a refusé le jeton (appareil délié dans Compte & sécurité) : retour à l'appairage.
-pub(crate) fn unlinked(app: &AppHandle, ctx: &Arc<Ctx>) {
-    tracing::warn!("jeton refusé par le site : appareil délié");
-    forget_device(ctx);
-    notify::unlinked(app, ctx);
-    windows::show_main(app);
 }
