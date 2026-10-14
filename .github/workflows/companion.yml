@@ -3,12 +3,21 @@ name: Roster Companion
 # Appli de bureau (apps/companion) : cœur Rust testé sous Linux (avec l'addon simulé en Lua 5.1),
 # puis installateur Windows construit sur un vrai Windows. L'installateur se télécharge dans
 # l'onglet Actions du dépôt : run « Roster Companion », section Artifacts.
+#
+# Sur un tag companion-v<version> (git tag companion-v0.3.0 && git push origin companion-v0.3.0) : en plus,
+# l'installateur est signé pour l'updater de l'appli (secrets TAURI_SIGNING_PRIVATE_KEY et
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD, la clé privée générée sur le PC de Flo et jamais dans le dépôt), puis une
+# GitHub Release du tag est créée avec l'installateur, sa signature, latest.json (ce que l'appli lit) et le SHA-256 ;
+# texte : section « ## <version> » de apps/companion/CHANGELOG.md. Détails : scripts/companion-release.mjs et
+# docs/operations.md (« Mises à jour de Roster Companion »). Sans tag : rien n'est signé, pas de Release.
 on:
   push:
     branches: [main]
-    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml"]
+    tags: ["companion-v*"]
+    # (les filtres paths ne s'appliquent pas aux tags)
+    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml", "scripts/companion-release.mjs"]
   pull_request:
-    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml"]
+    paths: ["apps/companion/**", "addon/**", ".github/workflows/companion.yml", "scripts/companion-release.mjs"]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +37,17 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@v7
+      # Sur un tag : tout ce qui ferait échouer la Release est vérifié ici, en une seconde, avant le build Windows
+      - name: Tag = version de l'appli, CHANGELOG, clé publique, secrets de signature
+        if: github.ref_type == 'tag'
+        working-directory: ${{ github.workspace }}
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          HAS_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD != '' }}
+        run: |
+          node scripts/companion-release.mjs --check "$GITHUB_REF_NAME"
+          if [ "$HAS_KEY" != "true" ]; then echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent (dépôt > Settings > Secrets and variables > Actions)."; exit 1; fi
+          if [ "$HAS_PASSWORD" != "true" ]; then echo "::warning::Secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD absent : la clé est supposée sans mot de passe."; fi
       # La commande tauri build refuse un crate tauri et un paquet @tauri-apps/api de versions 2.x différentes :
       # vérifié ici en une seconde plutôt qu'après 15 minutes sur Windows
       - name: Versions de Tauri (crate et paquet npm)
@@ -77,15 +97,64 @@ jobs:
           restore-keys: companion-win-
       - run: npm ci
       - run: npx tsc --noEmit -p .
+      # Sans tag : installateur seul, rien n'est signé (createUpdaterArtifacts reste à false dans tauri.conf.json, le
+      # build n'a pas besoin des secrets). Sur un tag : createUpdaterArtifacts ajouté à la configuration, tauri build
+      # signe l'installateur avec la clé privée des secrets (fichier .exe.sig à côté, clé publique = tauri.conf.json)
       - name: Installateur (NSIS)
+        if: github.ref_type != 'tag'
         run: npx tauri build --bundles nsis -- --locked
+      - name: Installateur (NSIS) signé pour l'updater
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}' -- --locked
       - uses: actions/upload-artifact@v4
         with:
           name: roster-companion-windows
-          path: apps/companion/target/release/bundle/nsis/*.exe
+          path: |
+            apps/companion/target/release/bundle/nsis/*.exe
+            apps/companion/target/release/bundle/nsis/*.exe.sig
           if-no-files-found: error
           retention-days: 30
       # Après l'installateur, pour qu'un avertissement ne bloque pas un essai : le code propre à Windows
       # (registre, heure locale, Gestionnaire d'identification) n'est compilé qu'ici
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked -p rc-core --lib
+
+  # Tag seulement : la GitHub Release. Le seul job qui écrit dans le dépôt (contents: write), et il ne construit rien :
+  # il reprend l'installateur signé du job windows
+  release:
+    runs-on: ubuntu-24.04
+    needs: windows
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - uses: actions/download-artifact@v4
+        with:
+          name: roster-companion-windows
+          path: ${{ runner.temp }}/nsis
+      - name: latest.json, SHA-256 et texte de la Release
+        run: node scripts/companion-release.mjs --tag "$GITHUB_REF_NAME" --dir "$RUNNER_TEMP/nsis" --out "$RUNNER_TEMP/release"
+      # gh est préinstallé sur les runners. Run relancé : les fichiers de la Release existante sont remplacés
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd "$RUNNER_TEMP/release"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber assets/*
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Roster Companion ${TAG#companion-v}" --notes-file notes.md --verify-tag --latest assets/*
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roster-companion-release
+          path: ${{ runner.temp }}/release
+          retention-days: 30

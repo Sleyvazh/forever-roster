@@ -46,7 +46,7 @@ cd apps/companion
 cargo test -p rc-core            # cœur + aller-retour avec l'addon (lua5.1 requis sur la CI)
 cargo clippy --workspace --all-targets -- -D warnings
 npm ci && npx tsc --noEmit -p .  # interface
-npm run dev                      # aperçus sans Tauri : http://localhost:1420/?ecran=principal (appairage, dossiers, probleme, inconnus, options, journal)
+npm run dev                      # aperçus sans Tauri : http://localhost:1420/?ecran=principal (appairage, dossiers, probleme, inconnus, maj, options, journal)
 ```
 
 Bout en bout contre le site de test (`node e2e/start.mjs` à la racine) : `RC_SITE=http://localhost:4173 RC_RAID=<id d'un raid> RC_GROUP=<nom du groupe> cargo run -p rc-core --example live_check`, puis valider le code affiché sur le site.
@@ -64,3 +64,9 @@ Construire sur son PC (Windows) :
 3. dans `apps\companion` : `npm ci`, puis `npx tauri build --bundles nsis` ; l'installateur est dans `target\release\bundle\nsis\`.
 
 Pour développer avec l'appli réelle : `npx tauri dev` (interface rechargée à chaud, journal dans `%LOCALAPPDATA%\fr.sleyvazh.rostercompanion\logs`, état dans `%APPDATA%\fr.sleyvazh.rostercompanion\state.json`).
+
+## Mises à jour
+
+L'appli se met à jour depuis les GitHub Releases du dépôt (`src-tauri/src/update.rs`, plugin `tauri-plugin-updater`, bandeau et bloc des options dans `src/Update.tsx`) : 20 s après le démarrage (installation terminée) puis une fois par jour, elle lit `latest.json` de la dernière Release (`tauri.conf.json`, `plugins > updater`) ; rien n'est envoyé, seul GitHub est contacté (`github.com` et son stockage de fichiers `objects.githubusercontent.com`). Version plus récente : notification (si activées) et bandeau « Version X disponible — Installer » ; l'installateur n'est téléchargé que sur un clic, vérifié avec la clé publique de signature (`plugins > updater > pubkey`) avant d'être lancé, jamais pendant que le jeu tourne ni pendant une synchro ; « Plus tard » cache le bandeau jusqu'au prochain démarrage. Tant que la clé publique n'est pas dans `tauri.conf.json`, l'appli ne vérifie rien et le dit dans ses options.
+
+Publier : version dans `Cargo.toml`, `src-tauri/tauri.conf.json` et `package.json`, section `## <version>` dans `CHANGELOG.md`, puis tag `companion-v<version>` : la CI signe l'installateur (secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, clé privée générée sur le PC de Flo) et crée la Release avec `scripts/companion-release.mjs`. Le build local (`npx tauri build --bundles nsis`) ne signe rien et n'a pas besoin des secrets. Clés, secrets, vérifications : [docs/operations.md](../../docs/operations.md), « Mises à jour de Roster Companion ». Aperçu du bandeau sans Tauri : `http://localhost:1420/?ecran=maj`.

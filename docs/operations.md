@@ -416,6 +416,67 @@ git push origin roster-v0.3.2
 
 L'Action relance les tests Lua des deux addons, vérifie que le tag reprend la version du `.toc`, retrouve les versions du jeu de `## Interface` (120100 → 12.1.0, 120105 → 12.1.5 ; celles que CurseForge n'a pas encore sont ignorées), puis envoie le fichier. Le zip et le texte envoyés restent 14 jours dans les artefacts du run. Lancement à la main (onglet Actions > CurseForge > Run workflow) : « Essai à blanc » coché par défaut, pour vérifier le zip et le texte sans rien envoyer. Essai en local : `node scripts/curseforge.mjs Roster --dry-run --out /tmp/cf`.
 
+## Mises à jour de Roster Companion
+
+L'appli de bureau (`apps/companion`) se met à jour toute seule depuis les **GitHub Releases** du dépôt : à chaque tag `companion-v<version>`, l'Action `.github/workflows/companion.yml` construit l'installateur Windows, le **signe** pour l'updater de Tauri et crée la Release du tag avec l'installateur (`Roster-Companion_<version>_x64-setup.exe`), sa signature (`.sig`), `latest.json` et le SHA-256 (`scripts/companion-release.mjs`). L'appli (plugin `tauri-plugin-updater`, `src-tauri/src/update.rs`) lit `https://github.com/Sleyvazh/forever-roster/releases/latest/download/latest.json` 20 s après son démarrage (une fois l'installation terminée, jamais pendant l'appairage) puis une fois par jour : rien n'est envoyé, l'appli ne contacte que GitHub (`github.com`, et `objects.githubusercontent.com` où GitHub range les fichiers des Releases) et lit seulement la liste des versions. Une version plus récente : notification Windows (si activées) et bandeau « Version X disponible — Installer » avec le texte des changements ; « Installer » télécharge l'installateur, vérifie sa signature avec la clé publique compilée dans l'appli, le lance (installation silencieuse pour l'utilisateur, l'appli redémarre toute seule) ; « Plus tard » cache le bandeau jusqu'au prochain démarrage. Jamais d'installation sans clic, jamais pendant que le jeu tourne (« Ferme le jeu d'abord » : l'installateur remplace l'exécutable), jamais pendant une synchro. Une erreur réseau ne gêne pas : journal seulement (options > Journal), et « Vérifier maintenant » dans les options dit pourquoi.
+
+Deux clés, comme pour le partage entre joueurs : la **clé privée** signe l'installateur sur la CI (secret GitHub) ; la **clé publique** est dans `apps/companion/src-tauri/tauri.conf.json`, `plugins > updater > pubkey`, et dans l'appli. Tant qu'elle est vide (c'est le cas tant que Flo ne l'a pas donnée), l'appli ne vérifie rien et le dit dans ses options (« Mises à jour : clé de signature pas encore configurée »), et un tag `companion-v*` échoue dès le premier job (le script refuse de publier sans clé). `requireSignedVersion` est activé : la signature porte la version signée, un `latest.json` falsifié ne peut pas faire installer une version plus ancienne.
+
+### Créer la clé de signature (une fois, sur le PC)
+
+Sur le **PC** (PowerShell, dans le dépôt) :
+
+```powershell
+cd apps\companion
+npx tauri signer generate -w $env:USERPROFILE\.tauri\roster-companion.key
+```
+
+La commande demande un **mot de passe** (en choisir un et le garder : il protège la clé privée, et il sera dans les secrets GitHub). Elle écrit deux fichiers dans `%USERPROFILE%\.tauri\` : `roster-companion.key` (**clé privée**, chiffrée par le mot de passe) et `roster-companion.key.pub` (clé publique). La clé privée et le mot de passe **ne quittent pas le PC, sauf vers les secrets GitHub** : jamais dans le dépôt, jamais dans une conversation, jamais sur Discord. Une clé perdue (ou un mot de passe oublié) = plus aucune mise à jour automatique possible : les joueurs réinstalleraient à la main une version signée avec une nouvelle clé (voir « Changer de clé »). Garder une copie du fichier `.key` et du mot de passe dans un gestionnaire de mots de passe.
+
+### Secrets GitHub (une fois)
+
+Dépôt GitHub > Settings > Secrets and variables > Actions > New repository secret :
+
+- `TAURI_SIGNING_PRIVATE_KEY` : le **contenu** de `roster-companion.key` (une seule ligne de base64 ; `Get-Content $env:USERPROFILE\.tauri\roster-companion.key | Set-Clipboard` le copie) ;
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` : le mot de passe choisi.
+
+Les secrets ne servent qu'au job `windows` de l'Action sur un tag `companion-v*` (sans tag, le build ne les reçoit pas et ne signe rien) ; GitHub ne les affiche plus jamais.
+
+### Mettre la clé publique dans l'appli
+
+Le contenu de `roster-companion.key.pub` (une ligne de base64 ; rien de secret, c'est la seule chose à envoyer à Claude) va dans `apps/companion/src-tauri/tauri.conf.json`, `plugins > updater > pubkey`, à la place de la chaîne vide :
+
+```json
+"plugins": {
+  "updater": {
+    "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IC4uLg==",
+```
+
+Commit, push. À partir de là, l'appli construite vérifie les mises à jour ; la première version qui contient la clé est à installer à la main (l'installateur d'un run de l'Action, ou de la première Release), les suivantes arrivent toutes seules.
+
+### Publier une version
+
+1. Version dans `apps/companion/Cargo.toml` (`[workspace.package]`), `src-tauri/tauri.conf.json` et `package.json` (`npm install --package-lock-only` dans `apps/companion` pour le `package-lock.json` ; `cargo update --workspace` pour `Cargo.lock`) ; section `## <version>` en tête de `apps/companion/CHANGELOG.md` (en français : c'est le texte de la Release et du bandeau de l'appli). Commit, push, CI verte.
+2. Tag :
+
+   ```bash
+   git tag companion-v0.3.0
+   git push origin companion-v0.3.0
+   ```
+
+L'Action vérifie en premier que le tag reprend la version des trois fichiers, que le CHANGELOG a sa section, que la clé publique est dans `tauri.conf.json` et que les secrets existent (sinon : échec immédiat, rien n'est construit), puis construit l'installateur signé sur Windows, et le job `release` (le seul avec `contents: write`) crée la Release `companion-v0.3.0` : titre « Roster Companion 0.3.0 », texte du CHANGELOG, fichiers `Roster-Companion_0.3.0_x64-setup.exe`, `.exe.sig`, `latest.json`, `SHA256SUMS.txt`. Run relancé sur le même tag : les fichiers de la Release sont remplacés. La Release la plus récente du dépôt doit rester celle de l'appli (`releases/latest`) : seuls les tags `companion-v*` créent des Releases (les addons partent sur CurseForge sans Release GitHub).
+
+### Vérifier
+
+- Sur la page de la Release : les quatre fichiers ; `latest.json` donne `version`, `notes`, `pub_date` et `platforms.windows-x86_64` (`url` de l'installateur de cette Release, `signature`).
+- `https://github.com/Sleyvazh/forever-roster/releases/latest/download/latest.json` répond (c'est ce que lit l'appli).
+- Sur un PC avec la version précédente (qui contient la clé) : options > Mises à jour > « Vérifier maintenant » → « Version X disponible », puis « Installer » (jeu fermé) : téléchargement, l'appli se ferme, l'installateur passe, l'appli redémarre en version X (options > Version). Journal : « mise à jour disponible », « installateur vérifié, lancement ».
+- En local, sans rien publier : `node scripts/companion-release.mjs --check companion-v0.3.0` (les mêmes contrôles que l'Action) ; `node scripts/companion-release.mjs --help` pour l'essai avec un faux installateur.
+
+### Changer de clé (clé perdue ou compromise)
+
+Nouvelle paire (commande ci-dessus avec `--force` ou un autre nom de fichier), nouveaux secrets, nouvelle clé publique dans `tauri.conf.json`, nouvelle version. Les applis déjà installées vérifient avec l'ancienne clé publique : elles **refuseront** la Release signée avec la nouvelle (« signature de l'installateur invalide : mise à jour refusée ») ; les joueurs installent cette version-là à la main (lien de la Release), et les suivantes repartent toutes seules. Clé compromise : supprimer les Releases signées avec elle.
+
 ## Bot Discord
 
 Le bot publie les raids dans un salon Discord, avec des boutons d'inscription sur le modèle de Raid-Helper. Il tourne dans le conteneur `bot`, sans port ouvert : il se connecte à Discord en sortie, et à l'API par le port interne 3001, qui n'est joignable que sur le réseau Docker. Tant que `DISCORD_BOT_TOKEN` est vide, il reste en veille.
