@@ -47,7 +47,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
             let ctx = app.state::<Arc<Ctx>>().inner().clone();
             match ev.id().as_ref() {
                 "open" => crate::windows::show_main(app),
-                "sync" => crate::sync_now(&ctx),
+                "sync" => crate::sync_now(app, &ctx),
                 "pause_1h" => crate::pause(app, &ctx, Some(rc_core::now() + 3600)),
                 "pause_tomorrow" => crate::pause(app, &ctx, Some(crate::tomorrow_morning())),
                 "resume" => crate::pause(app, &ctx, None),

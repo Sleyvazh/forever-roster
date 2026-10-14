@@ -7,6 +7,7 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
   const [ignored, setIgnored] = useState<string[] | null>(null);
   const [confirmUnlink, setConfirmUnlink] = useState(false);
   const [unlinkWarning, setUnlinkWarning] = useState<string | null>(null);
+  const [unignoring, setUnignoring] = useState<string | null>(null);
   const set = async (patch: Partial<Settings>) => {
     setError(null);
     try { await call("set_settings", { settings: { ...s.settings, ...patch } }); } catch (e) { setError(errorText(e)); }
@@ -17,8 +18,10 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
   const loadIgnored = async () => {
     try { setIgnored(await call<string[]>("ignored_list", { game: "forever" })); } catch (e) { setError(errorText(e)); }
   };
+  // Peut attendre la fin d'une passe de synchro en cours (jusqu'à 30 s) : le bouton le dit
   const unignore = async (key: string) => {
-    try { await call("unignore", { game: "forever", keys: [key] }); setIgnored(l => (l ?? []).filter(k => k !== key)); } catch (e) { setError(errorText(e)); }
+    setUnignoring(key); setError(null);
+    try { await call("unignore", { game: "forever", keys: [key] }); setIgnored(l => (l ?? []).filter(k => k !== key)); } catch (e) { setError(errorText(e)); } finally { setUnignoring(null); }
   };
   const unlink = async () => {
     try { setUnlinkWarning(await call<string | null>("unlink")); } catch (e) { setError(errorText(e)); }
@@ -77,7 +80,7 @@ export function Options({ s, onJournal }: { s: Status; onJournal: () => void }) 
         <div className="lbl">Persos ignorés</div>
         {ignored === null ? <button className="btn ghost sm" type="button" style={{ justifySelf: "start" }} onClick={() => void loadIgnored()}>Voir les persos ignorés</button>
           : ignored.length === 0 ? <p className="hint">Aucun perso ignoré.</p>
-            : ignored.map(k => <div className="who" key={k}><span>{k}</span><span className="acts"><button className="btn ghost sm" type="button" onClick={() => void unignore(k)}>Ne plus ignorer</button></span></div>)}
+            : ignored.map(k => <div className="who" key={k}><span>{k}</span><span className="acts"><button className="btn ghost sm" type="button" disabled={!!unignoring} onClick={() => void unignore(k)}>{unignoring === k ? (s.syncing ? "En attente de la synchro en cours…" : "Patiente…") : "Ne plus ignorer"}</button></span></div>)}
       </div>
       <div className="opt">
         <div className="lbl">Compte</div>

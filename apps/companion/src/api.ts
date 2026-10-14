@@ -26,9 +26,15 @@ export interface Install {
 
 export interface HistoryLine { at: number; key?: string; label: string; status: string; message: string }
 
+/** Un compte WoW (WTF\Account\<compte>) : dernière sauvegarde lue, erreur de lecture éventuelle. */
+export interface AccountView { name: string; savedAt: number | null; error: string | null }
+
 export interface GameView {
   game: Game; label: string; enabled: boolean; site: string;
   install: Install | null; running: boolean; restartNeeded: boolean;
+  /** Jeu fermé sans avoir réécrit sa sauvegarde : depuis quand il tournait. */
+  closedWithoutSave: number | null;
+  accounts: AccountView[];
   queue: number; queueErrors: string[];
   unknown: { key: string; name: string; cls: string | null; level: number | null }[];
   manual: { key: string; label: string }[];
@@ -47,6 +53,8 @@ export interface Status {
   settings: Settings; games: GameView[]; installs: Install[];
   pairing: { userCode: string; verifyUrl: string; expiresAt: number; status: string; message: string | null } | null;
   os: string;
+  /** Une passe de synchro est en cours ; « Synchroniser maintenant » demandé, pas encore pris par une passe. */
+  syncing: boolean; syncRequested: boolean;
 }
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

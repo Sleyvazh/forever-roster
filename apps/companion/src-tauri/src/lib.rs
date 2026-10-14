@@ -151,16 +151,11 @@ pub fn run() {
 
 /* ---------- Actions partagées (menu de l'icône, commandes) ---------- */
 
-pub(crate) fn sync_now(ctx: &Arc<Ctx>) {
-    {
-        let mut st = ctx.state();
-        for gs in st.games.values_mut() {
-            gs.retry_at = None;
-            gs.files.clear();
-        }
-    }
-    ctx.live().force_pull = true;
-    ctx.wake.notify_one();
+/// « Synchroniser maintenant » : une demande pour la boucle de fond, rien n'est modifié ici (une passe en cours
+/// écraserait la modification : voir l'en-tête de `runner.rs`) ; l'interface voit la demande tout de suite.
+pub(crate) fn sync_now(app: &AppHandle, ctx: &Arc<Ctx>) {
+    ctx.request_sync();
+    ui::emit(app, ctx);
 }
 
 pub(crate) fn pause(app: &AppHandle, ctx: &Arc<Ctx>, until: Option<i64>) {
@@ -174,10 +169,15 @@ pub(crate) fn pause(app: &AppHandle, ctx: &Arc<Ctx>, until: Option<i64>) {
     ui::emit(app, ctx);
 }
 
-/// Demain 6 h (heure du PC, au mieux) : fin de la pause « Jusqu'à demain ».
+/// Demain 6 h, heure du PC : fin de la pause « Jusqu'à demain ».
 pub(crate) fn tomorrow_morning() -> i64 {
-    let now = rc_core::now();
-    now - now.rem_euclid(86400) + 86400 + 4 * 3600
+    tomorrow_at(rc_core::now(), ui::local_offset_s(), 6)
+}
+
+/// Prochain lendemain à `hour` h en heure locale (`offset` : décalage de l'heure locale en secondes), en UTC.
+fn tomorrow_at(now: i64, offset: i64, hour: i64) -> i64 {
+    let local = now + offset;
+    local - local.rem_euclid(86400) + 86400 + hour * 3600 - offset
 }
 
 pub(crate) fn open_external(app: &AppHandle, url: &str) {
@@ -214,17 +214,33 @@ pub(crate) fn close_requested(app: &AppHandle, ctx: &Arc<Ctx>) {
     tray::update(app, ctx);
 }
 
-/// Oublie l'appareil (jeton effacé du coffre, état de synchro remis à zéro).
+/// Oublie l'appareil (jeton effacé du coffre, état de synchro remis à zéro ; une passe en cours n'y réinscrira rien).
 pub(crate) fn forget_device(ctx: &Arc<Ctx>) {
     ctx.set_token(None);
     {
         let mut st = ctx.state();
         st.device = None;
         st.setup_done = false;
-        st.games.clear();
     }
+    ctx.reset_games();
     ctx.live().pairing = None;
     ctx.save();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tomorrow_at;
+
+    #[test]
+    fn jusqu_a_demain_en_heure_locale() {
+        // 14/10/2026 21:30 UTC = 23:30 à Paris (UTC+2) : demain 6 h à Paris = 15/10 04:00 UTC
+        let now = 1_792_013_400;
+        assert_eq!(tomorrow_at(now, 7200, 6), 1_792_036_800);
+        // 14/10/2026 23:30 UTC = 15/10 01:30 à Paris : « demain » est le 16/10, 6 h à Paris = 16/10 04:00 UTC
+        assert_eq!(tomorrow_at(now + 7200, 7200, 6), 1_792_036_800 + 86400);
+        // Sans décalage connu : 6 h UTC
+        assert_eq!(tomorrow_at(now, 0, 6), 1_792_044_000);
+    }
 }
 
 /// Le site a refusé le jeton (appareil délié dans Compte & sécurité) : retour à l'appairage.

@@ -69,6 +69,15 @@ pub struct UiManual {
     pub label: String,
 }
 
+/// Un compte WoW (`WTF\Account\<compte>`) : dernière sauvegarde lue, erreur de lecture éventuelle.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UiAccount {
+    pub name: String,
+    pub saved_at: Option<i64>,
+    pub error: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UiGame {
@@ -80,7 +89,11 @@ pub struct UiGame {
     pub install: Option<UiInstall>,
     pub running: bool,
     pub restart_needed: bool,
+    /// Jeu fermé sans avoir réécrit sa sauvegarde : depuis quand il tournait.
+    pub closed_without_save: Option<i64>,
+    pub accounts: Vec<UiAccount>,
     pub queue: usize,
+    /// Blocs refusés ou restés sans réponse, avec la raison et l'heure du prochain essai.
     pub queue_errors: Vec<String>,
     pub unknown: Vec<UiUnknown>,
     pub manual: Vec<UiManual>,
@@ -121,6 +134,10 @@ pub struct UiStatus {
     pub installs: Vec<UiInstall>,
     pub pairing: Option<UiPairing>,
     pub os: &'static str,
+    /// Une passe de synchro est en cours.
+    pub syncing: bool,
+    /// « Synchroniser maintenant » demandé, pas encore pris par une passe.
+    pub sync_requested: bool,
 }
 
 /// État général (icône, infobulle) : délié, pause, erreur, synchro active (jeu lancé) ou veille.
@@ -137,7 +154,7 @@ pub fn overall(ctx: &Arc<Ctx>) -> (Overall, String) {
     let error = GAMES
         .iter()
         .filter_map(|g| st.games.get(g))
-        .find_map(|gs| gs.last_error.clone().or_else(|| gs.read_error.clone()));
+        .find_map(|gs| gs.last_error.clone().or_else(|| gs.data_error.clone()).or_else(|| gs.read_error()));
     if let Some(e) = error {
         return (Overall::Error, format!("Roster Companion · {}", short(&e, 90)));
     }
@@ -167,7 +184,7 @@ fn hhmm(t: i64) -> String {
 }
 
 /// Décalage de l'heure locale (Windows : heure d'été comprise, via l'API du système).
-fn local_offset_s() -> i64 {
+pub(crate) fn local_offset_s() -> i64 {
     #[cfg(windows)]
     {
         #[repr(C)]
@@ -231,9 +248,17 @@ pub fn snapshot(app: &AppHandle, ctx: &Arc<Ctx>) -> UiStatus {
     let _ = app;
     let (overall, tooltip) = overall(ctx);
     let now = rc_core::now();
-    let (installs, running, restart, pairing) = {
+    let (installs, running, restart, pairing, closed, syncing, sync_requested) = {
         let live = ctx.live();
-        (live.installs.clone(), live.running.clone(), live.restart_needed.clone(), live.pairing.clone())
+        (
+            live.installs.clone(),
+            live.running.clone(),
+            live.restart_needed.clone(),
+            live.pairing.clone(),
+            live.closed_without_save.clone(),
+            live.syncing,
+            !live.sync_requested.is_empty(),
+        )
     };
     let st = ctx.state().clone();
     let games = [Game::Forever, Game::Retail]
@@ -241,19 +266,44 @@ pub fn snapshot(app: &AppHandle, ctx: &Arc<Ctx>) -> UiStatus {
         .map(|g| {
             let gs = st.games.get(&g).cloned().unwrap_or_default();
             let enabled = GAMES.contains(&g);
+            let install = ctx.install_for(g);
+            // Une ligne par compte WoW du dossier du jeu (même sans sauvegarde encore)
+            let accounts = install
+                .as_ref()
+                .map(|i| i.accounts())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| {
+                    let read = gs.accounts.get(&a.name);
+                    UiAccount {
+                        name: a.name,
+                        saved_at: read.and_then(|r| r.saved_at),
+                        error: read.and_then(|r| r.error.as_ref()).filter(|e| e.confirmed).map(|e| e.message.clone()),
+                    }
+                })
+                .collect();
             UiGame {
                 game: g,
                 label: g.label(),
                 enabled,
                 site: ctx.client.sites.of(g).to_string(),
-                install: ctx.install_for(g).map(|i| UiInstall::of(&i)),
+                install: install.as_ref().map(UiInstall::of),
                 running: running.contains(&g),
                 restart_needed: restart.contains(&g),
+                closed_without_save: closed.get(&g).copied(),
+                accounts,
                 queue: gs.queue.len(),
                 queue_errors: gs
                     .queue
                     .values()
-                    .filter_map(|q| q.error.as_ref().map(|e| format!("{} : {e}", q.label)))
+                    .filter_map(|q| {
+                        let e = q.error.as_ref()?;
+                        let next = q
+                            .error_at
+                            .map(|at| format!(" · nouvel essai vers {}", hhmm(at + q.retry_delay())))
+                            .unwrap_or_default();
+                        Some(format!("{} : {e}{next}", q.label))
+                    })
                     .collect(),
                 unknown: gs
                     .unknown
@@ -280,8 +330,8 @@ pub fn snapshot(app: &AppHandle, ctx: &Arc<Ctx>) -> UiStatus {
                 has_frg: gs.frg.is_some(),
                 last_push: gs.last_push,
                 last_pull: gs.last_pull,
-                last_error: gs.last_error.clone(),
-                read_error: gs.read_error.clone(),
+                last_error: gs.last_error.clone().or_else(|| gs.data_error.clone()),
+                read_error: gs.read_error(),
                 retry_at: gs.retry_at,
             }
         })
@@ -305,6 +355,8 @@ pub fn snapshot(app: &AppHandle, ctx: &Arc<Ctx>) -> UiStatus {
             message: p.message,
         }),
         os: std::env::consts::OS,
+        syncing,
+        sync_requested,
     }
 }
 

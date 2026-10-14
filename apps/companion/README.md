@@ -27,7 +27,17 @@ apps/companion/
   src/           l'interface (React 19), avec un faux backend pour les aperçus (?ecran=…)
 ```
 
-La boucle de fond (`src-tauri/src/runner.rs`) tourne toutes les 5 secondes et dès qu'une sauvegarde de l'addon change (surveillance du dossier `SavedVariables`) : dossiers du jeu relus chaque minute, jeu lancé ou non, puis envoi, relevé si dû, écriture de `ForeverRoster_Data` si son contenu a changé (ou toutes les 12 h). Rien n'est envoyé ni écrit avant la fin de l'installation (« Installer et terminer »).
+La boucle de fond (`src-tauri/src/runner.rs`) tourne toutes les 5 secondes et dès qu'une sauvegarde de l'addon change (surveillance du dossier `SavedVariables`) : dossiers du jeu relus chaque minute, jeu lancé ou non, puis envoi, relevé si dû, écriture de `ForeverRoster_Data` si son contenu a changé (ou toutes les 12 h). Rien n'est envoyé ni écrit avant la fin de l'installation (« Installer et terminer »). Une passe travaille sur une copie de l'état puis la réinscrit : toute autre modification de l'état de synchro passe par le même verrou, et « Synchroniser maintenant » est une demande que la passe suivante prend (l'en-tête de `runner.rs` explique).
+
+## 0.3.0
+
+Ce qui change pour toi (fiabilité) :
+
+- **Un bloc que le site refuse n'est plus renvoyé en boucle.** Un perso ou un bilan resté sans réponse du site (export illisible, lot trop gros…) attend avant d'être renvoyé (30 s, 1 min, 2… jusqu'à 15 min) et la raison s'affiche dans « Vers le site », avec l'heure du prochain essai. Les envois sont découpés par 50 persos (limite du site). « Dernier envoi » n'avance que quand le site a reçu quelque chose.
+- **Sauvegarde illisible :** l'appli ne la relit plus toutes les 5 secondes. Une sauvegarde en cours d'écriture est relue au passage suivant sans rien dire ; une sauvegarde vraiment abîmée est signalée une fois (« Elle sera relue quand le jeu la réécrira ») et relue dès que le jeu l'écrit de nouveau. Avec plusieurs comptes WoW, la boîte Addon montre une ligne par compte (dernière sauvegarde lue, erreur éventuelle).
+- **« Synchroniser maintenant », « Ne plus ignorer », « Créer la fiche » ne sont plus perdus** quand une synchro est en cours : le bouton dit « En attente de la synchro en cours… » et la demande est prise juste après.
+- **Moins de fausses alertes :** un `Data.lua` verrouillé un instant par le jeu est simplement réessayé 5 s plus tard (erreur seulement après trois échecs de suite, effacée dès que l'écriture réussit). Si WoW se ferme sans avoir écrit sa sauvegarde (plantage), la boîte Addon le dit : ce qui a été fait en jeu partira à la prochaine déconnexion normale. « Jusqu'à demain » (pause) se termine à 6 h, heure du PC.
+- Plusieurs dossiers du même jeu : `_classic_` / `_retail_` sont préférés aux dossiers bêta et PTR tant que tu n'en as pas choisi un.
 
 ## Tests
 

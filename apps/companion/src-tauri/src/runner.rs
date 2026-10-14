@@ -1,16 +1,29 @@
 //! Boucle de fond : toutes les 5 secondes (ou dès qu'une sauvegarde change), regarde si le jeu tourne, lit les
 //! sauvegardes, envoie au site, relève les données du site (toutes les 5 minutes par défaut) et écrit
 //! `ForeverRoster_Data`. Une seule synchro à la fois (`sync_lock`).
+//!
+//! **Un seul chemin pour modifier l'état de synchro** (`AppState::games`). Une passe (`sync_game`) travaille sur
+//! une copie de l'état du jeu pendant ses requêtes (jusqu'à 30 s) puis la réinscrit : tout ce qui changerait
+//! `games` pendant ce temps serait écrasé. Donc :
+//! - les commandes qui modifient `games` (« Créer la fiche », « Envoyer », « Ne plus ignorer »…) prennent
+//!   `sync_lock` autour de leur modification : elles attendent la fin de la passe, jamais l'inverse ;
+//! - « Synchroniser maintenant » ne modifie rien : c'est une **demande** (`Live::sync_requested`) que la passe
+//!   consomme à son début, sous le verrou (sauvegardes relues, délai réseau ignoré, site relevé). Un clic pendant
+//!   une passe laisse la demande notée et le réveil gardé par `Notify` : une nouvelle passe suit aussitôt, et
+//!   l'interface affiche « en attente de la synchro en cours… » jusque-là ;
+//! - ce qui remet `games` à zéro (appareil oublié, nouvel appairage) avance `Ctx::generation` : une passe commencée
+//!   avant ne réinscrit pas sa copie, qui appartient à l'ancien appareil.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use notify::{RecursiveMode, Watcher};
 use rc_core::api::ApiError;
 use rc_core::datafile::write_data_addon;
-use rc_core::sync::Engine;
+use rc_core::sync::{Engine, file_stamp};
 use rc_core::wow::{Game, detect, is_inside};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
 use tauri::{AppHandle, Manager};
@@ -103,13 +116,43 @@ async fn tick(app: &AppHandle, ctx: &Arc<Ctx>, sys: &mut System, watch: &mut Wat
             running.push(g);
         }
     }
+    let stopped: Vec<(Game, i64)> = {
+        let live = ctx.live();
+        live.running
+            .iter()
+            .filter(|g| !running.contains(g))
+            .map(|g| (*g, live.started_at.get(g).copied().unwrap_or(now)))
+            .collect()
+    };
+    for (g, started) in &stopped {
+        // Jeu fermé : l'addon de données est maintenant pris en compte au prochain lancement
+        ctx.live().restart_needed.retain(|x| x != g);
+        // Fermé sans avoir réécrit sa sauvegarde depuis son lancement (plantage, fin de tâche) : ce qui a été
+        // fait en jeu ne partira qu'à la prochaine déconnexion normale, autant le dire (sans verrou sur `live`
+        // pendant la lecture des dossiers)
+        let saved = ctx
+            .install_for(*g)
+            .map(|i| {
+                i.accounts()
+                    .iter()
+                    .any(|a| file_stamp(&a.file).is_some_and(|s| s.modified.div_euclid(1000) >= *started))
+            })
+            .unwrap_or(true);
+        if !saved {
+            tracing::info!("{} fermé sans réécrire sa sauvegarde (lancé depuis {started})", g.label());
+            ctx.live().closed_without_save.insert(*g, *started);
+        }
+    }
     {
         let mut live = ctx.live();
-        let stopped: Vec<Game> = live.running.iter().copied().filter(|g| !running.contains(g)).collect();
+        for (g, _) in &stopped {
+            live.started_at.remove(g);
+        }
         if !stopped.is_empty() {
-            // Jeu fermé : l'addon de données est maintenant pris en compte au prochain lancement
-            live.restart_needed.retain(|g| !stopped.contains(g));
             ctx.wake.notify_one();
+        }
+        for g in &running {
+            live.started_at.entry(*g).or_insert(now);
         }
         if !running.is_empty() {
             live.last_running_at = now;
@@ -146,6 +189,9 @@ async fn tick(app: &AppHandle, ctx: &Arc<Ctx>, sys: &mut System, watch: &mut Wat
             }
         }
         watch.set(ctx, dirs);
+    } else {
+        // Pas de synchro possible : une demande « Synchroniser maintenant » n'attendrait rien
+        ctx.live().sync_requested.clear();
     }
 
     crate::tray::update(app, ctx);
@@ -153,24 +199,53 @@ async fn tick(app: &AppHandle, ctx: &Arc<Ctx>, sys: &mut System, watch: &mut Wat
     Ok(())
 }
 
+/// `Live::syncing` levé le temps d'une passe, retombé quoi qu'il arrive.
+struct Syncing<'a>(&'a Ctx);
+
+impl Drop for Syncing<'_> {
+    fn drop(&mut self) {
+        self.0.live().syncing = false;
+    }
+}
+
 /// Une passe de synchro pour un jeu : lecture, envoi, relevé (si dû ou forcé), écriture de ForeverRoster_Data.
+/// `force` (fin de l'installation) vaut une demande « Synchroniser maintenant ».
 pub async fn sync_game(app: &AppHandle, ctx: &Arc<Ctx>, game: Game, token: &str, now: i64, force: bool) -> Result<(), ApiError> {
-    let Some(inst) = ctx.install_for(game) else { return Ok(()) };
     let _guard = ctx.sync_lock.lock().await;
-    let running = ctx.live().running.contains(&game);
+    let generation = ctx.generation.load(Ordering::SeqCst);
+    // La demande « Synchroniser maintenant » est consommée ici, sous le verrou : une demande arrivée pendant la
+    // passe reste pour la suivante (voir l'en-tête du fichier)
+    let (requested, running) = {
+        let mut live = ctx.live();
+        live.syncing = true;
+        let n = live.sync_requested.len();
+        live.sync_requested.retain(|g| *g != game);
+        (force || live.sync_requested.len() != n, live.running.contains(&game))
+    };
+    let _syncing = Syncing(ctx);
+    let Some(inst) = ctx.install_for(game) else { return Ok(()) };
+    if requested {
+        crate::ui::emit(app, ctx);
+    }
     let (mut gs, interval) = {
         let mut st = ctx.state();
         let interval = st.settings.pull_interval_s(running);
         (st.game(game).clone(), interval)
     };
     let before = gs.clone();
-    let force_pull = force || std::mem::take(&mut ctx.live().force_pull);
-    if force {
+    let force_pull = requested;
+    if requested {
+        // Sauvegardes relues même si elles n'ont pas changé, délai d'attente réseau ignoré
         gs.retry_at = None;
+        gs.files.clear();
     }
 
     let accounts = inst.accounts();
     gs.collect(&accounts, now);
+    if gs.files != before.files {
+        // Une sauvegarde a changé : le jeu a bien écrit, l'avertissement de fermeture sans sauvegarde n'a plus lieu
+        ctx.live().closed_without_save.remove(&game);
+    }
     let engine = Engine { api: &ctx.client, game, token };
     let mut result = Ok(());
     let pushed = engine.push(&mut gs, now).await;
@@ -227,17 +302,21 @@ pub async fn sync_game(app: &AppHandle, ctx: &Arc<Ctx>, game: Game, token: &str,
                         }
                     }
                 }
+                // Le jeu verrouille parfois le fichier un instant : réessayé au passage suivant, signalé seulement
+                // au troisième échec de suite (et l'erreur disparaît dès qu'une écriture réussit)
                 Err(e) => {
-                    tracing::error!("ForeverRoster_Data non écrit : {e}");
-                    gs.last_error = Some(format!("Impossible d'écrire les données pour le jeu : {e}"));
+                    if gs.data_write_failed(&e.to_string()) {
+                        tracing::error!("ForeverRoster_Data non écrit : {e}");
+                    } else {
+                        tracing::warn!("ForeverRoster_Data non écrit ({e}) : nouvel essai au prochain passage");
+                    }
                 }
             }
         }
     }
 
     if gs != before {
-        ctx.state().games.insert(game, gs);
-        ctx.save();
+        ctx.store_game(game, gs, generation);
     }
     result
 }

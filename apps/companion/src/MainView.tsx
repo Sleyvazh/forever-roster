@@ -114,7 +114,17 @@ function Forever({ s, g }: { s: Status; g: GameView }) {
         <ul className="lines">
           <li>{i?.addonVersion ? <><span className="ck">✓</span><span>Forever Roster {i.addonVersion}</span><span className="r">installé</span></> : <><span className="ck b">✕</span><span>Forever Roster absent</span><span className="r"><button className="btn ghost sm" type="button" onClick={() => void call("open_site", { game: g.game, path: "/addon" })}>Le télécharger</button></span></>}</li>
           <li>{i?.dataAddon ? <><span className="ck">✓</span><span>ForeverRoster_Data</span><span className="r">installé</span></> : <><span className="ck w">…</span><span>ForeverRoster_Data</span><span className="r">installé à la prochaine synchro</span></>}</li>
+          {g.accounts.length > 1 && g.accounts.map(a => (
+            <li key={a.name} title={a.error ?? undefined}>
+              <span className={`ck${a.error ? " b" : a.savedAt ? "" : " w"}`}>{a.error ? "✕" : a.savedAt ? "✓" : "…"}</span>
+              <span>Compte {a.name}{a.error ? ` · sauvegarde illisible : ${a.error}` : ""}</span>
+              <span className="r">{a.savedAt ? `sauvegarde ${when(a.savedAt, s.now)}` : "pas encore de sauvegarde"}</span>
+            </li>
+          ))}
         </ul>
+        {g.closedWithoutSave != null && (
+          <div className="alert info">WoW s'est fermé sans écrire sa sauvegarde : ce que tu as fait en jeu depuis {hhmm(g.closedWithoutSave)} ne sera envoyé qu'à ta prochaine déconnexion normale.</div>
+        )}
       </Box>
     </>
   );

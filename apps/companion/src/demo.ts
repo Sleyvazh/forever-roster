@@ -23,7 +23,11 @@ function game(): GameView {
   const t = now();
   return {
     game: "forever", label: "Forever", enabled: true, site: "https://forever-roster.sleyvazh.fr", install: { ...forever, dataAddon: demoScreen !== "dossiers" },
-    running: demoScreen !== "probleme", restartNeeded: false, queue: 0, queueErrors: [],
+    running: demoScreen !== "probleme", restartNeeded: false, closedWithoutSave: demoScreen === "probleme" ? t - 2400 : null,
+    accounts: demoScreen === "probleme"
+      ? [{ name: "12345678#1", savedAt: t - 3600, error: null }, { name: "12345678#2", savedAt: null, error: "ligne 3 : « } » attendu" }]
+      : [{ name: "12345678#1", savedAt: t - 180, error: null }],
+    queue: demoScreen === "probleme" ? 1 : 0, queueErrors: demoScreen === "probleme" ? ["Brakka : Bloc ignoré : Brakka : export illisible pour cette fiche · nouvel essai vers 21:55"] : [],
     unknown: demoScreen === "inconnus" ? [{ key: "Brindille-Forever EU", name: "Brindille", cls: "Druid", level: 23 }, { key: "Banquier-Forever EU", name: "Banquier", cls: "Rogue", level: 1 }] : [],
     manual: demoScreen === "inconnus" ? [{ key: "frb:r2", label: "bilan de « Onyxia »" }] : [],
     history: [
@@ -40,23 +44,23 @@ function game(): GameView {
 }
 
 function retailGame(): GameView {
-  return { ...game(), game: "retail", label: "Retail", enabled: false, site: "https://roster.sleyvazh.fr", install: retail, running: false, history: [], report: null, groups: [], hasFrg: false, lastPush: null, lastPull: null, lastError: null, retryAt: null, unknown: [], manual: [] };
+  return { ...game(), game: "retail", label: "Retail", enabled: false, site: "https://roster.sleyvazh.fr", install: retail, running: false, history: [], report: null, groups: [], hasFrg: false, lastPush: null, lastPull: null, lastError: null, retryAt: null, unknown: [], manual: [], accounts: [], closedWithoutSave: null, queue: 0, queueErrors: [] };
 }
 
 let state: Status = {
-  version: "0.2.2", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
+  version: "0.3.0", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
   device: demoScreen === "appairage" ? null : { id: "d1", name: "PC-FLO", user: "Flo", linkedAt: now() - 3600 },
   setupDone: !["appairage", "dossiers"].includes(demoScreen), pausedUntil: null, settings, games: [game(), retailGame()],
   installs: [forever, retail, { ...forever, path: "C:\\Games\\World of Warcraft\\_classic_era_", dirName: "_classic_era_", version: "1.15.7.61000", game: null, test: false, addonVersion: null }],
   pairing: demoScreen === "appairage" ? { userCode: "KPTZ-RQMV", verifyUrl: "https://forever-roster.sleyvazh.fr/appairer?code=KPTZ-RQMV", expiresAt: now() + 582, status: "pending", message: null } : null,
-  os: "windows",
+  os: "windows", syncing: false, syncRequested: false,
 };
 
 const listeners = new Set<(s: Status) => void>();
 const push = () => { state = { ...state, now: now() }; listeners.forEach(f => f(state)); };
 
 const JOURNAL = [
-  "2026-10-06T19:40:02Z  INFO Roster Companion 0.2.2 démarre (avec la session)",
+  "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.0 démarre (avec la session)",
   "2026-10-06T19:40:03Z  INFO dossiers trouvés : _classic_beta_ (Forever), _retail_ (Retail)",
   "2026-10-06T21:42:11Z  INFO sauvegarde lue (compte 12345678#1) : 3 blocs",
   "2026-10-06T21:42:12Z  INFO envoyé au site : Tournicoti, Brakka, bilan de « Vroum Vroum »",
@@ -71,6 +75,7 @@ export async function demoInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "diagnostic": return `Roster Companion ${state.version} (démo)\n${JOURNAL.join("\n")}` as T;
     case "set_settings": state = { ...state, settings: args?.settings as Settings }; break;
     case "pause": state = { ...state, pausedUntil: now() + 3600, overall: "paused" }; break;
+    case "sync_now": state = { ...state, syncRequested: true }; setTimeout(() => { state = { ...state, syncRequested: false }; push(); }, 2000); break;
     case "pair_start": state = { ...state, pairing: { userCode: "KPTZ-RQMV", verifyUrl: "#", expiresAt: now() + 600, status: "pending", message: null } }; break;
     case "finish_setup": state = { ...state, setupDone: true }; break;
     case "resolve_unknown": state = { ...state, games: state.games.map(g => ({ ...g, unknown: [] })) }; break;

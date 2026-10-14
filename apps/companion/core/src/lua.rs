@@ -230,9 +230,13 @@ impl<'a> Parser<'a> {
                 None => Err(self.err("chaîne longue mal formée")),
             },
             Some(b'-') => {
+                // Le « - » compte dans la profondeur : une suite de milliers de « - » ne fait pas déborder la pile
+                if depth >= MAX_DEPTH {
+                    return Err(self.err("trop de « - » à la suite"));
+                }
                 self.pos += 1;
                 self.skip_space()?;
-                match self.value(depth)? {
+                match self.value(depth + 1)? {
                     LuaValue::Num(n) => Ok(LuaValue::Num(-n)),
                     _ => Err(self.err("nombre attendu après « - »")),
                 }
@@ -549,6 +553,12 @@ mod tests {
         assert!(e.message.contains("imbriquées"));
         let ok = format!("X = {}{}", "{".repeat(50), "}".repeat(50));
         assert!(parse_saved_variables(ok.as_bytes()).is_ok());
+        // Cent mille « - » à la suite (espacés : « -- » ouvrirait un commentaire) : une erreur propre, pas un
+        // débordement de pile
+        let minus = format!("X = {}1", "- ".repeat(100_000));
+        let e = parse_saved_variables(minus.as_bytes()).unwrap_err();
+        assert!(e.message.contains("« - »"), "{e}");
+        assert_eq!(one("X = --[[c]] - -2").as_num(), Some(2.0), "quelques « - » restent permis");
     }
 
     #[test]

@@ -138,28 +138,35 @@ pub fn data_addon_complete(addons_dir: &Path) -> bool {
 }
 
 /// Écrit un fichier sans jamais laisser une version à moitié écrite : fichier temporaire, puis renommage.
+/// En cas d'échec (disque plein, fichier verrouillé par le jeu…), le fichier temporaire ne reste pas.
 pub fn write_atomic(path: &Path, content: &[u8]) -> std::io::Result<()> {
     let dir = path.parent().ok_or_else(|| std::io::Error::other("chemin sans dossier"))?;
     fs::create_dir_all(dir)?;
     let tmp: PathBuf = dir.join(format!(".{}.tmp", path.file_name().and_then(|n| n.to_str()).unwrap_or("fichier")));
+    let result = write_then_rename(&tmp, path, content);
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn write_then_rename(tmp: &Path, path: &Path, content: &[u8]) -> std::io::Result<()> {
     {
-        let mut f = fs::File::create(&tmp)?;
+        let mut f = fs::File::create(tmp)?;
         f.write_all(content)?;
         f.sync_all()?;
     }
     // Windows refuse de remplacer un fichier que le jeu est en train de lire : on réessaie un court instant
+    // (cinq fois, moins d'une seconde) ; au-delà, l'appelant réessaie à son prochain passage
     let mut tries = 0;
     loop {
-        match fs::rename(&tmp, path) {
+        match fs::rename(tmp, path) {
             Ok(()) => return Ok(()),
             Err(_) if tries < 5 => {
                 tries += 1;
                 std::thread::sleep(std::time::Duration::from_millis(60 * tries));
             }
-            Err(e) => {
-                let _ = fs::remove_file(&tmp);
-                return Err(e);
-            }
+            Err(e) => return Err(e),
         }
     }
 }
@@ -261,6 +268,21 @@ mod tests {
         fs::write(addons.join(MAIN_ADDON).join("ForeverRoster.toc"), "## Interface: 16001\\n## Title: piege\n").unwrap();
         assert_eq!(main_addon_interface(addons), DEFAULT_INTERFACE);
         assert_eq!(toc_field("## Version: 1.3.1\n", "version").as_deref(), Some("1.3.1"));
+    }
+
+    #[test]
+    fn ecriture_en_echec_sans_fichier_temporaire_orphelin() {
+        let dir = tempfile::tempdir().unwrap();
+        // Un dossier non vide à la place du fichier : le renommage échoue, après ses essais
+        let target = dir.path().join("Data.lua");
+        fs::create_dir_all(target.join("dedans")).unwrap();
+        assert!(write_atomic(&target, b"x").is_err());
+        assert!(!dir.path().join(".Data.lua.tmp").exists(), "le .tmp ne reste pas");
+        assert!(target.is_dir(), "rien d'autre n'est touché");
+        // Un fichier à la place du dossier : l'écriture du temporaire échoue, rien ne reste non plus
+        let file = dir.path().join("fichier");
+        fs::write(&file, b"").unwrap();
+        assert!(write_atomic(&file.join("Data.lua"), b"x").is_err());
     }
 
     #[test]

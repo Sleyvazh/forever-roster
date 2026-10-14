@@ -48,7 +48,10 @@ export function App() {
           <><span>Roster Companion {s.version}</span><span>{s.device ? `Relié à ${s.device.user || "ton compte"}` : "Pas encore relié"}</span></>
         ) : (
           <>
-            <button className="btn sm" type="button" title="Envoie ce que le jeu a écrit (à chaque /reload ou déconnexion) et relève le site" onClick={() => void call("sync_now")}>Synchroniser maintenant</button>
+            {/* Une demande pendant une passe en cours est gardée : la passe suivante la prend aussitôt */}
+            <button className="btn sm" type="button" disabled={s.syncRequested || s.syncing} title="Envoie ce que le jeu a écrit (à chaque /reload ou déconnexion) et relève le site" onClick={() => void call("sync_now")}>
+              {s.syncRequested && s.syncing ? "En attente de la synchro en cours…" : s.syncRequested ? "Synchro demandée…" : s.syncing ? "Synchro en cours…" : "Synchroniser maintenant"}
+            </button>
             <span className="row">
               <button className="btn ghost sm" type="button" onClick={() => void call("open_site", { game: "forever", path: "/" })}>Site</button>
               <button className="btn ghost sm" type="button" aria-label="Options" title="Options" onClick={() => setView("options")}>⚙</button>

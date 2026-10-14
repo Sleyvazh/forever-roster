@@ -2,11 +2,12 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use rc_core::api::{ApiError, DeviceDescription, PairPoll};
 use rc_core::state::{LinkedDevice, Settings};
 use rc_core::sync::{Engine, dismiss_manual as dismiss};
-use rc_core::wow::{Game, scan_root};
+use rc_core::wow::{Game, preferred, scan_root};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -120,14 +121,13 @@ pub async fn pair_start(app: AppHandle, ctx: Ctxs<'_>) -> Result<(), String> {
                             user,
                             linked_at: rc_core::now(),
                         });
-                        // Nouveau compte : rien de l'ancien ne doit servir
-                        st.games.clear();
                     }
+                    // Nouveau compte : rien de l'ancien ne doit servir (une passe en cours n'y réinscrira rien)
+                    ctx.reset_games();
                     ctx.save();
                     tracing::info!("appareil relié : {}", device.name);
                     set("approved", None);
-                    ctx.live().force_pull = true;
-                    ctx.wake.notify_one();
+                    ctx.request_sync();
                     refresh(&app2, &ctx);
                     return;
                 }
@@ -177,7 +177,7 @@ pub async fn pick_folder(app: AppHandle, ctx: Ctxs<'_>, game: Game) -> Result<bo
         return Ok(false);
     };
     let found = scan_root(&picked);
-    let chosen = found.iter().find(|i| i.game == Some(game)).or_else(|| found.first()).cloned();
+    let chosen = preferred(&found, game).or_else(|| found.first()).cloned();
     let Some(inst) = chosen else {
         return Err("Aucun dossier de jeu ici : choisis le dossier « World of Warcraft » (celui qui contient _classic_ ou _retail_).".into());
     };
@@ -236,11 +236,11 @@ pub async fn finish_setup(app: AppHandle, ctx: Ctxs<'_>) -> Result<(), String> {
     Ok(())
 }
 
-/* ---------- Synchro ---------- */
+/* ---------- Synchro (toute modification de l'état d'un jeu se fait sous `sync_lock` : voir runner.rs) ---------- */
 
 #[tauri::command]
-pub fn sync_now(ctx: Ctxs<'_>) {
-    crate::sync_now(ctx.inner());
+pub fn sync_now(app: AppHandle, ctx: Ctxs<'_>) {
+    crate::sync_now(&app, ctx.inner());
 }
 
 fn engine_token(ctx: &Arc<Ctx>) -> Result<String, String> {
@@ -253,6 +253,7 @@ pub async fn resolve_unknown(app: AppHandle, ctx: Ctxs<'_>, game: Game, create: 
     let ctx = ctx.inner().clone();
     let token = engine_token(&ctx)?;
     let _g = ctx.sync_lock.lock().await;
+    let generation = ctx.generation.load(Ordering::SeqCst);
     let mut gs = ctx.state().game(game).clone();
     let r = Engine {
         api: &ctx.client,
@@ -261,8 +262,7 @@ pub async fn resolve_unknown(app: AppHandle, ctx: Ctxs<'_>, game: Game, create: 
     }
     .resolve(&mut gs, &create, &ignore, rc_core::now())
     .await;
-    ctx.state().games.insert(game, gs);
-    ctx.save();
+    ctx.store_game(game, gs, generation);
     drop(_g);
     ctx.wake.notify_one();
     refresh(&app, &ctx);
@@ -275,6 +275,7 @@ pub async fn send_manual(app: AppHandle, ctx: Ctxs<'_>, game: Game, key: String)
     let ctx = ctx.inner().clone();
     let token = engine_token(&ctx)?;
     let _g = ctx.sync_lock.lock().await;
+    let generation = ctx.generation.load(Ordering::SeqCst);
     let mut gs = ctx.state().game(game).clone();
     let r = Engine {
         api: &ctx.client,
@@ -283,8 +284,7 @@ pub async fn send_manual(app: AppHandle, ctx: Ctxs<'_>, game: Game, key: String)
     }
     .send_manual(&mut gs, &key, rc_core::now())
     .await;
-    ctx.state().games.insert(game, gs);
-    ctx.save();
+    ctx.store_game(game, gs, generation);
     drop(_g);
     ctx.wake.notify_one();
     refresh(&app, &ctx);
@@ -352,11 +352,15 @@ pub async fn ignored_list(ctx: Ctxs<'_>, game: Game) -> Result<Vec<String>, Stri
         .collect())
 }
 
+/// « Ne plus ignorer » : retiré sur le site, puis ces persos seront proposés de nouveau au prochain envoi.
+/// La modification de l'état attend la fin d'une passe de synchro en cours (jusqu'à 30 s), sinon elle serait
+/// écrasée ; l'interface le dit pendant ce temps.
 #[tauri::command]
-pub async fn unignore(ctx: Ctxs<'_>, game: Game, keys: Vec<String>) -> Result<u32, String> {
-    let token = engine_token(ctx.inner())?;
+pub async fn unignore(app: AppHandle, ctx: Ctxs<'_>, game: Game, keys: Vec<String>) -> Result<u32, String> {
+    let ctx = ctx.inner().clone();
+    let token = engine_token(&ctx)?;
     let n = ctx.client.unignore(game, &token, &keys).await.map_err(|e| e.to_string())?;
-    // Ces persos seront proposés de nouveau au prochain envoi
+    let _g = ctx.sync_lock.lock().await;
     {
         let mut st = ctx.state();
         let gs = st.game(game);
@@ -367,7 +371,9 @@ pub async fn unignore(ctx: Ctxs<'_>, game: Game, keys: Vec<String>) -> Result<u3
         gs.outbox_at.clear();
     }
     ctx.save();
+    drop(_g);
     ctx.wake.notify_one();
+    refresh(&app, &ctx);
     Ok(n)
 }
 
@@ -448,6 +454,9 @@ pub fn diagnostic(app: AppHandle, ctx: Ctxs<'_>) -> String {
             g.last_error,
             g.read_error
         ));
+        for a in &g.accounts {
+            out.push_str(&format!("  compte {} · sauvegarde {:?} · erreur {:?}\n", a.name, a.saved_at, a.error));
+        }
     }
     out.push_str("--- journal ---\n");
     let lines = journal(ctx);
