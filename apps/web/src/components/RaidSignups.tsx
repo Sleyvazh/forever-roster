@@ -73,7 +73,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="fld" style={{ flex: "1 1 180px" }}><label htmlFor="su-char">Perso</label>
               <select id="su-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
-                {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({c.cls})</option>)}
+                {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({gt.cls(c.cls)})</option>)}
               </select>
             </div>
             <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="su-spec">Spé pour ce raid</label>
