@@ -91,10 +91,13 @@ function dxt5Alpha(b: Buffer, px: Buffer) {
   for (let i = 0; i < 16; i++) px[i * 4 + 3] = a[Number((bits >> BigInt(3 * i)) & 7n)]!;
 }
 
-/** Fichier BLP du jeu par son identifiant, depuis wago.tools (branches essayées dans l'ordre), ou null. */
-export async function fetchBlp(fid: number, branches: string[]) {
+/**
+ * Fichier BLP du jeu par son identifiant, depuis wago.tools (branches essayées dans l'ordre : ce sont les produits,
+ * « wow_classic_beta », « wow »…), ou null s'il n'y est pas. `fetchImpl` : remplacé par les tests.
+ */
+export async function fetchBlp(fid: number, branches: string[], fetchImpl: typeof fetch = fetch) {
   for (const branch of branches) {
-    const res = await fetch(`https://wago.tools/api/casc/${fid}?download&branch=${encodeURIComponent(branch)}`, { signal: AbortSignal.timeout(20_000) });
+    const res = await fetchImpl(`https://wago.tools/api/casc/${fid}?download&branch=${encodeURIComponent(branch)}`, { signal: AbortSignal.timeout(20_000) });
     if (!res.ok) continue;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.toString("latin1", 0, 4) === "BLP2") return buf;
@@ -107,4 +110,10 @@ export async function blpToJpeg(blp: Buffer) {
   const img = decodeBlp(blp);
   return sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } })
     .resize(56, 56, { fit: "fill" }).flatten({ background: "#000000" }).jpeg({ quality: 90 }).toBuffer();
+}
+
+/** BLP → PNG carré (64×64 par défaut), transparence conservée : icônes des classes propres à Retail, comme celles de rôle. */
+export async function blpToPng(blp: Buffer, size = 64) {
+  const img = decodeBlp(blp);
+  return sharp(img.data, { raw: { width: img.width, height: img.height, channels: 4 } }).resize(size, size, { fit: "fill" }).png().toBuffer();
 }

@@ -2,19 +2,13 @@
  * Icônes de rôle du jeu (Tank, Heal, DPS) : ce sont des « atlas » de l'interface (UI-LFG-RoleIcon-*), c'est-à-dire
  * des morceaux d'une texture plus grande. Leur position vient des tables UiTextureAtlasMember et UiTextureAtlas du client.
  */
+import { col } from "./csv";
+
 export const ROLE_ATLAS = { tank: "UI-LFG-RoleIcon-Tank", heal: "UI-LFG-RoleIcon-Healer", dps: "UI-LFG-RoleIcon-DPS" } as const;
 export type RoleKey = keyof typeof ROLE_ATLAS;
 
 export interface AtlasCrop { fileDataId: number; atlasWidth: number; atlasHeight: number; left: number; right: number; top: number; bottom: number }
 
-/** Valeur d'une colonne, quel que soit l'intitulé exact (« CommittedName » ou « Name », casse ignorée). */
-function col(row: Record<string, string>, ...names: string[]) {
-  for (const n of names) {
-    const key = Object.keys(row).find(k => k.toLowerCase() === n.toLowerCase());
-    if (key !== undefined && row[key] !== "") return row[key]!;
-  }
-  return undefined;
-}
 const num = (v: string | undefined) => (v === undefined ? NaN : Number(v));
 
 /** Position de chaque icône de rôle dans sa texture (les rôles introuvables sont absents du résultat). */

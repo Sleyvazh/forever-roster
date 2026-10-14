@@ -1,8 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { classColor, classLabel, classesOf, computeCoverage, effectsOf, isValidSpecFor, resolveGameLang, roleOf, specLabel, specsOf } from "./index";
-import { realmSlug, retailDefaultSize, retailLinks, retailRaidOf, retailSizeRange, retailTargets, RETAIL_CLASSES } from "./retail";
+import { CLASS_NAMES, classColor, classLabel, classesOf, computeCoverage, effectsOf, isValidSpecFor, resolveGameLang, roleOf, specLabel, specSlug, specsOf, type ClassName } from "./index";
+import { realmSlug, retailDefaultSize, retailLinks, retailOnlyClassOfSlug, retailOnlyClassSlug, retailRaidOf, retailSizeRange, retailTargets, RETAIL_CLASS_NAMES, RETAIL_CLASSES, RETAIL_ONLY_CLASS_SLUGS } from "./retail";
 
 describe("WoW Retail (Roster)", () => {
+  it("classes propres à Retail : slugs des icônes officielles et de leurs spés", () => {
+    // Exactement les classes de Retail absentes de Forever, avec la même règle de slug que les spés
+    const only = RETAIL_CLASS_NAMES.filter(c => !CLASS_NAMES.includes(c as ClassName));
+    expect(Object.keys(RETAIL_ONLY_CLASS_SLUGS).sort()).toEqual(only.sort());
+    for (const [cls, slug] of Object.entries(RETAIL_ONLY_CLASS_SLUGS)) expect(slug).toBe(specSlug(cls));
+    expect([retailOnlyClassSlug("Death Knight"), retailOnlyClassSlug("Demon Hunter"), retailOnlyClassSlug("Evoker"), retailOnlyClassSlug("Monk")])
+      .toEqual(["death-knight", "demon-hunter", "evoker", "monk"]);
+    expect([retailOnlyClassSlug("Druid"), retailOnlyClassSlug("Paladin"), retailOnlyClassSlug("Inconnue"), retailOnlyClassSlug("")]).toEqual([null, null, null, null]);
+    expect([retailOnlyClassOfSlug("demon-hunter"), retailOnlyClassOfSlug("monk"), retailOnlyClassOfSlug("druid"), retailOnlyClassOfSlug("")]).toEqual(["Demon Hunter", "Monk", null, null]);
+    const specs = Object.keys(RETAIL_ONLY_CLASS_SLUGS).flatMap(c => RETAIL_CLASSES[c]!.specs.map(s => specSlug(s.name)));
+    expect(specs).toEqual(["blood", "frost", "unholy", "havoc", "vengeance", "devourer", "devastation", "preservation", "augmentation", "brewmaster", "mistweaver", "windwalker"]);
+    // Noms d'émojis Discord (fr_<classe>_<spé>, lettres, chiffres et « _ ») : 32 caractères au plus
+    for (const [c, slug] of Object.entries(RETAIL_ONLY_CLASS_SLUGS)) for (const s of RETAIL_CLASSES[c]!.specs) {
+      expect(`fr_${slug}_${specSlug(s.name)}`.replace(/-/g, "_")).toMatch(/^[a-z0-9_]{2,32}$/);
+    }
+  });
   it("13 classes, 40 spés, rôles", () => {
     expect(classesOf("retail")).toHaveLength(13);
     expect(Object.values(RETAIL_CLASSES).flatMap(c => c.specs)).toHaveLength(40);

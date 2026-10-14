@@ -1,18 +1,28 @@
-import { CLASSES, iconSpec, specSlug, type ClassName } from "@forever/game-data";
+import { CLASSES, iconSpec, retailOnlyClassSlug, retailSpec, specSlug, type ClassName } from "@forever/game-data";
 import { useState, type CSSProperties } from "react";
 
 /**
  * Icônes des classes et des spés, dessinées par Pahpool, servies par notre serveur (dossier icons/, hors dépôt Git) :
  *   /icons/class/<classe>.png   /icons/spec/<classe>-<spé>.png (ex. druid-feral-bear)
- * Sur Roster, les classes communes aux deux jeux prennent les mêmes (Holy du paladin → holy-heal, Guardian → feral-bear…).
+ * Sur Roster, les classes communes aux deux jeux prennent les mêmes (Holy du paladin → holy-heal, Guardian → feral-bear…) ;
+ * les quatre classes propres à Retail (chevalier de la mort, chasseur de démons, évocateur, moine) ont les icônes
+ * officielles de Blizzard, téléchargées sur le serveur par scripts/fetch-item-icons.sh :
+ *   /icons/retail/class/<classe>.png   /icons/retail/spec/<classe>-<spé>.png (ex. death-knight-blood)
  * Si un fichier manque, on affiche un repli (ancienne icône d'arbre, puis de classe, puis initiale) : rien ne casse.
  */
-/** À changer quand le jeu d'icônes change : les navigateurs gardent les icônes une semaine (Caddy). */
+/** À changer quand le jeu d'icônes de Pahpool change : les navigateurs gardent les icônes une semaine (Caddy). */
 const REV = "?v=2";
-export const classIconUrl = (cls: string) => { const c = CLASSES[cls as ClassName]; return c ? `/icons/class/${c.slug}.png${REV}` : null; };
+export const classIconUrl = (cls: string) => {
+  const c = CLASSES[cls as ClassName];
+  if (c) return `/icons/class/${c.slug}.png${REV}`;
+  const r = retailOnlyClassSlug(cls);
+  return r ? `/icons/retail/class/${r}.png` : null;
+};
 export const specIconUrl = (cls: string, spec: string) => {
   const c = CLASSES[cls as ClassName], d = iconSpec(cls, spec);
-  return c && d ? `/icons/spec/${c.slug}-${specSlug(d.name)}.png${REV}` : null;
+  if (c && d) return `/icons/spec/${c.slug}-${specSlug(d.name)}.png${REV}`;
+  const r = retailOnlyClassSlug(cls);
+  return r && retailSpec(cls, spec) ? `/icons/retail/spec/${r}-${specSlug(spec)}.png` : null;
 };
 /** Ancien emplacement (icônes rangées par numéro d'arbre), gardé en repli. */
 export const treeIconUrl = (cls: string, spec: string) => {

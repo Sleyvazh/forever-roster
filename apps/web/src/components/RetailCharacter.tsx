@@ -13,7 +13,10 @@ import { RoleIcon } from "./RoleIcon";
  * Battle.net et les sites de référence les ont déjà (import Battle.net : R2b).
  */
 
-/** Médaillon de la fiche : icône de la spé (ou de la classe) pour les classes communes aux deux jeux, sinon l'initiale. */
+/**
+ * Médaillon de la fiche : icône de la spé (ou de la classe) — celle de Pahpool pour les classes communes aux deux jeux,
+ * l'officielle pour les classes propres à Retail ; sans classe, l'initiale du nom (sans fichier, celle de la classe).
+ */
 function Avatar({ c }: { c: Character }) {
   const icon = !!c.cls && !!classIconUrl(c.cls);
   return (

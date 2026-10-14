@@ -1,4 +1,4 @@
-import { CLASS_SPECS, CLASSES, iconSpec, specSlug, type ClassName } from "@forever/game-data";
+import { CLASS_SPECS, CLASSES, iconSpec, RETAIL_CLASSES, RETAIL_ONLY_CLASS_SLUGS, retailOnlyClassOfSlug, retailOnlyClassSlug, retailSpec, specSlug, type ClassName } from "@forever/game-data";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,6 +7,8 @@ import path from "node:path";
  * Les fichiers viennent du dossier icons/ du serveur (monté en lecture seule) ; ils ne sont
  * jamais dans le dépôt. Émoji « fr_<classe> » pour la classe, « fr_<classe>_<spé> » pour une spé
  * (ex. fr_druid_feral_bear) ; « fr_<classe>_<n> » (arbre n, ancien rangement) reste reconnu en repli.
+ * Classes propres à WoW Retail (icônes officielles, retail/class/ et retail/spec/) : mêmes noms,
+ * ex. fr_death_knight, fr_death_knight_blood, fr_demon_hunter_devourer.
  * Rôles : roles/tank.png, heal.png, dps.png → « fr_role_tank », « fr_role_heal », « fr_role_dps ».
  */
 
@@ -22,24 +24,30 @@ export const roleEmojiName = (role: string) => `fr_role_${role.toLowerCase()}`;
 const MAX_BYTES = 256 * 1024; // limite de Discord pour un émoji
 const EXT = new Set([".png", ".jpg", ".jpeg", ".gif"]);
 
+/** Slug d'une classe pour les noms d'émojis : celui de Forever, ou celui d'une classe propre à Retail (« death_knight »). */
+const classStem = (cls: string) => (CLASSES[cls as ClassName]?.slug ?? retailOnlyClassSlug(cls))?.replace(/-/g, "_") ?? null;
+
 export function emojiName(cls: string, tree?: number | null) {
-  const c = CLASSES[cls as ClassName];
-  if (!c) return null;
-  return tree === undefined || tree === null ? `fr_${c.slug}` : `fr_${c.slug}_${tree + 1}`;
+  const stem = classStem(cls);
+  if (!stem) return null;
+  if (tree === undefined || tree === null) return `fr_${stem}`;
+  // Les classes propres à Retail n'ont pas d'arbres de talents (ancien rangement de Forever)
+  return CLASSES[cls as ClassName] ? `fr_${stem}_${tree + 1}` : null;
 }
 
 /** Nom d'émoji d'une spé (32 caractères au plus, limite de Discord). */
 export function specEmojiName(cls: string, spec: string) {
-  const c = CLASSES[cls as ClassName];
-  return c ? `fr_${c.slug}_${specSlug(spec).replace(/-/g, "_")}`.slice(0, 32) : null;
+  const stem = classStem(cls);
+  return stem ? `fr_${stem}_${specSlug(spec).replace(/-/g, "_")}`.slice(0, 32) : null;
 }
 
 /** Émoji de la spé si on l'a, sinon celui de son arbre, sinon celui de la classe, sinon rien. */
 export function makeLookup(ids: Map<string, string>): EmojiLookup {
   const lookup: EmojiLookup = (cls, spec) => {
-    // Spé de Roster : émoji de son équivalent sur Forever (Holy du paladin → Holy Heal…)
+    // Spé de Roster : émoji de son équivalent sur Forever (Holy du paladin → Holy Heal…) ; classe propre à Retail : la spé telle quelle
     const def = spec ? iconSpec(cls, spec) : null;
-    for (const name of [def ? specEmojiName(cls, def.name) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
+    const retail = spec && retailOnlyClassSlug(cls) ? retailSpec(cls, spec) : null;
+    for (const name of [def ? specEmojiName(cls, def.name) : retail ? specEmojiName(cls, retail.name) : null, def ? emojiName(cls, def.tree) : null, emojiName(cls)]) {
       const id = name && ids.get(name);
       if (id) return `<:${name}:${id}>`;
     }
@@ -53,11 +61,21 @@ export function makeLookup(ids: Map<string, string>): EmojiLookup {
   return lookup;
 }
 
+/** retail/spec/<classe>-<spé> (« death-knight-blood ») → classe et spé de Retail, ou null si le fichier n'est pas reconnu. */
+export function retailSpecOfFile(stem: string): { cls: string; spec: string } | null {
+  for (const [cls, slug] of Object.entries(RETAIL_ONLY_CLASS_SLUGS)) {
+    if (!stem.startsWith(`${slug}-`)) continue;
+    const spec = RETAIL_CLASSES[cls]?.specs.find(s => specSlug(s.name) === stem.slice(slug.length + 1));
+    return spec ? { cls, spec: spec.name } : null;
+  }
+  return null;
+}
+
 /** Fichiers d'icônes disponibles → nom d'émoji attendu. */
 export async function iconFiles(dir: string): Promise<{ name: string; file: string }[]> {
   const out: { name: string; file: string }[] = [];
   const slugToClass = new Map<string, string>(Object.entries(CLASSES).map(([k, v]) => [v.slug, k]));
-  for (const sub of ["class", "spec", "tree", "roles"]) {
+  for (const sub of ["class", "spec", "tree", "roles", "retail/class", "retail/spec"]) {
     let entries: string[];
     try { entries = await readdir(path.join(dir, sub)); } catch { continue; }
     for (const f of entries.sort()) {
@@ -70,6 +88,13 @@ export async function iconFiles(dir: string): Promise<{ name: string; file: stri
       } else if (sub === "class") {
         const cls = slugToClass.get(stem);
         name = cls ? emojiName(cls) : null;
+      } else if (sub === "retail/class") {
+        // Icônes officielles des classes propres à Retail (death-knight.png…)
+        const cls = retailOnlyClassOfSlug(stem);
+        name = cls ? emojiName(cls) : null;
+      } else if (sub === "retail/spec") {
+        const r = retailSpecOfFile(stem);
+        name = r ? specEmojiName(r.cls, r.spec) : null;
       } else if (sub === "tree") {
         const m = /^([a-z]+)-([123])$/.exec(stem);
         const cls = m && slugToClass.get(m[1]!);

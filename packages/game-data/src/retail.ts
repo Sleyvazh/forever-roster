@@ -45,6 +45,19 @@ export const RETAIL_CLASS_IDS: Record<number, string> = {
 };
 export const retailSpec = (cls: string, spec: string) => RETAIL_CLASSES[cls]?.specs.find(s => s.name === spec) ?? null;
 
+/**
+ * Classes propres à Retail (absentes de Forever, donc sans icône de Pahpool) : nom de fichier de leurs icônes officielles,
+ * téléchargées sur le serveur par scripts/fetch-item-icons.sh (jamais dans Git) : icons/retail/class/<slug>.png et
+ * icons/retail/spec/<slug>-<spé>.png (la spé par `specSlug` : blood, havoc, devourer, augmentation, mistweaver…).
+ * Le bot en tire ses émojis (fr_death_knight, fr_death_knight_blood…).
+ */
+export const RETAIL_ONLY_CLASS_SLUGS = { "Death Knight": "death-knight", "Demon Hunter": "demon-hunter", Evoker: "evoker", Monk: "monk" } as const;
+/** Slug d'une classe propre à Retail ; null pour les classes communes aux deux jeux (icônes de Pahpool) et les inconnues. */
+export const retailOnlyClassSlug = (cls: string): string | null => (RETAIL_ONLY_CLASS_SLUGS as Record<string, string>)[cls] ?? null;
+/** Classe propre à Retail d'après le slug de ses fichiers (« demon-hunter » → « Demon Hunter »), sinon null. */
+export const retailOnlyClassOfSlug = (slug: string): string | null =>
+  Object.entries(RETAIL_ONLY_CLASS_SLUGS).find(([, s]) => s === slug)?.[0] ?? null;
+
 /* ---------- Raids : difficultés, tailles, raids de Midnight ---------- */
 
 export const RETAIL_DIFFICULTIES = ["normal", "heroic", "mythic"] as const;

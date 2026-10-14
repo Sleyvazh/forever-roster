@@ -1,3 +1,12 @@
+/** Valeur d'une colonne d'une ligne lue par parseCsv, quel que soit l'intitulé exact (« CommittedName » ou « Name », casse ignorée). */
+export function col(row: Record<string, string>, ...names: string[]) {
+  for (const n of names) {
+    const key = Object.keys(row).find(k => k.toLowerCase() === n.toLowerCase());
+    if (key !== undefined && row[key] !== "") return row[key]!;
+  }
+  return undefined;
+}
+
 /** Lecteur CSV (RFC 4180) : champs entre guillemets, guillemets doublés, retours à la ligne dans un champ. */
 export function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];

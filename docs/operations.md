@@ -302,7 +302,7 @@ En développement : `npm run gamedata:import -w apps/api` (options `--build` ou 
 
 ## Icônes du jeu
 
-Les icônes de classes et de spécialisations sont l'œuvre de **Pahpool** (crédité en pied de page du site et dans les Nouveautés) ; les autres (métiers, rôles, objets) sont des fichiers de Blizzard. Toutes restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/` pour les deux adresses : Roster reprend celles des classes communes aux deux jeux (Holy du paladin → Holy Heal, Discipline → Discipline Heal, Feral → Feral Cat, Guardian → Feral Bear, Enhancement → Enhancement DPS, Outlaw → Combat ; `iconSpec` dans `packages/game-data`). Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
+Les icônes de classes et de spécialisations sont l'œuvre de **Pahpool** (crédité en pied de page du site et dans les Nouveautés) ; les autres (métiers, rôles, objets, classes propres à Retail) sont des fichiers de Blizzard. Toutes restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/` pour les deux adresses : Roster reprend celles des classes communes aux deux jeux (Holy du paladin → Holy Heal, Discipline → Discipline Heal, Feral → Feral Cat, Guardian → Feral Bear, Enhancement → Enhancement DPS, Outlaw → Combat ; `iconSpec` dans `packages/game-data`) et prend les icônes officielles de Blizzard pour les quatre classes qu'il est seul à avoir (voir « Icônes des classes propres à Retail »). Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
 
 Ajouter un lot d'icônes reçu sur le PC (PowerShell, seulement les images : le dossier peut contenir autre chose) :
 
@@ -331,6 +331,22 @@ En développement, copier le dossier `icons/` dans `apps/web/public/icons/` (lui
 `scripts/fetch-item-icons.sh` télécharge aussi les étendards de la Horde et de l'Alliance (icônes `inv_bannerpvp_01` et `inv_bannerpvp_02`) dans `icons/faction/`. Tant qu'ils manquent, le site affiche l'étiquette texte « HORDE » ou « ALLI ».
 
 Il extrait aussi les **icônes de rôle** du jeu (Tank, Heal, DPS) dans `icons/roles/` (`tank.png`, `heal.png`, `dps.png`) : ce sont des morceaux d'une texture de l'interface (atlas `UI-LFG-RoleIcon-*`), retrouvés dans les tables `UiTextureAtlasMember` et `UiTextureAtlas` du client, téléchargés en BLP depuis wago.tools puis découpés en PNG 64×64 transparents (`dist/role-icons.js`). Le bot en fait les émojis `fr_role_tank`, `fr_role_heal` et `fr_role_dps` (au plus 6 h après, ou en redémarrant le bot). Tant qu'elles manquent, le site et le bot écrivent le rôle en toutes lettres.
+
+### Icônes des classes propres à Retail
+
+Les quatre classes que Roster est seul à avoir — chevalier de la mort, chasseur de démons, évocateur, moine — et leurs douze spés ne sont pas dessinées par Pahpool : `scripts/fetch-item-icons.sh` télécharge les **icônes officielles de Blizzard** dans `icons/retail/` (`dist/retail-icons.js`, dans un conteneur `api` temporaire ; jamais dans Git) :
+
+- `icons/retail/class/<classe>.png` (`death-knight`, `demon-hunter`, `evoker`, `monk`), depuis le serveur d'images de Blizzard (`classicon_deathknight`…) ;
+- `icons/retail/spec/<classe>-<spé>.png` (`death-knight-blood`, `evoker-augmentation`…), depuis les fichiers du client **Retail** sur wago.tools (produit `wow`, pas Forever ; `WAGO_RETAIL_BRANCHES` pour en essayer d'autres) : la table `ChrSpecialization` de la dernière version publiée donne, par nom anglais de spé, l'identifiant du fichier de l'icône (`SpellIconFileID`), téléchargé en BLP puis converti.
+
+Tout est en PNG 64×64, comme les icônes de rôle. Le script ne retélécharge que ce qui manque. Une spé introuvable (nouvelle spé absente de la table, fichier non servi) reçoit une **copie de l'icône de sa classe**, signalée dans la sortie (« icône de spé introuvable : … ») et réessayée à chaque appel suivant (une copie se reconnaît à son contenu, identique à l'icône de la classe). Si wago.tools ou le serveur d'images est injoignable, le script le dit et continue : le site affiche l'initiale de la classe, le bot se passe d'émoji.
+
+```bash
+bash scripts/fetch-item-icons.sh     # relançable à tout moment (ne refait que ce qui manque)
+sudo docker compose restart bot      # émojis Discord tout de suite (sinon sous 6 h)
+```
+
+Les slugs (`RETAIL_ONLY_CLASS_SLUGS`, `specSlug` dans `packages/game-data`) sont partagés par le script, le site (`/icons/retail/…`) et le bot (émojis `fr_death_knight`, `fr_death_knight_blood`, `fr_demon_hunter_devourer`…). Pour remplacer une icône, supprimer le fichier et relancer le script.
 
 ### Icônes des objets
 
@@ -559,7 +575,7 @@ Fonction autonome : un serveur Discord l'utilise sans groupe ni compte sur le si
 
 **Autres serveurs :** le bot est privé (« Public Bot » décoché) : seul toi peux l'inviter. Pour qu'une autre guilde l'ajoute elle-même, cocher **Public Bot** et lui donner le lien d'invitation ci-dessus. Les commandes de raid restent inutiles sans groupe lié sur le site.
 
-**Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/spec/` comme émojis de l'application (`fr_druid`, `fr_druid_feral_bear`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
+**Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/spec/` (et, pour les classes propres à Retail, de `icons/retail/class/` et `icons/retail/spec/`) comme émojis de l'application (`fr_druid`, `fr_druid_feral_bear`, `fr_death_knight_blood`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
 
 **Si le bot ne publie pas :** `sudo docker compose logs --tail=30 bot`. « Salon … inaccessible » ou « Missing Access » signifie qu'il manque des droits au bot dans ce salon ; il réessaie de lui-même, de plus en plus espacé (jusqu'à 10 minutes). « jeton du bot invalide » : régénérer le jeton et relancer le bloc ci-dessus.
 

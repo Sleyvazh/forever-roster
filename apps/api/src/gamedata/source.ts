@@ -4,10 +4,11 @@ import { parseCsv } from "./csv";
 import { checkDetailTable, DETAIL_TABLES, ITEM_TABLES, TABLES, type DetailTableName, type DetailTables, type TableName, type Tables } from "./extract";
 
 const WAGO = "https://wago.tools";
-const UA = { "User-Agent": "forever-roster (+https://github.com/Sleyvazh/forever-roster)" };
+export const UA = { "User-Agent": "forever-roster (+https://github.com/Sleyvazh/forever-roster)" };
 
 const versionKey = (v: string) => v.split(".").map(n => Number(n));
-const newer = (a: string, b: string) => {
+/** `a` est une version plus récente que `b` (« 1.60.1.70009 » > « 1.60.1.69913 »). */
+export const newer = (a: string, b: string) => {
   const x = versionKey(a), y = versionKey(b);
   for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
   return false;
@@ -19,11 +20,16 @@ export const isForeverBuild = (v: string) => { const [maj, min] = versionKey(v);
 /** Classic Era (1.13 à 1.15) : sert à compléter les objets absents du client Forever. */
 export const isEraBuild = (v: string) => { const [maj, min] = versionKey(v); return maj === 1 && (min ?? 0) >= 13 && (min ?? 0) < 60; };
 
-/** Dernière version de Classic Era (hors serveurs de test) publiée sur wago.tools. */
-export async function latestEraBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string } | null> {
+/** Versions publiées sur wago.tools, par produit (« wow », « wow_classic_beta », « wow_classic_era »…). */
+export async function listBuilds(fetchImpl: typeof fetch = fetch): Promise<Record<string, { version: string }[]>> {
   const res = await fetchImpl(`${WAGO}/api/builds`, { headers: UA });
   if (!res.ok) throw new Error(`wago.tools /api/builds : HTTP ${res.status}`);
-  const data = await res.json() as Record<string, { version: string }[]>;
+  return await res.json() as Record<string, { version: string }[]>;
+}
+
+/** Dernière version de Classic Era (hors serveurs de test) publiée sur wago.tools. */
+export async function latestEraBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string } | null> {
+  const data = await listBuilds(fetchImpl);
   let best: { product: string; version: string } | null = null;
   for (const [product, list] of Object.entries(data)) {
     if (!Array.isArray(list) || !product.startsWith("wow_classic_era") || product.includes("ptr")) continue;
@@ -40,9 +46,7 @@ const isRegional = (product: string) => /_(cn|kr|tw)(_|$)/.test(product);
  * sauf s'il n'existe qu'eux.
  */
 export async function latestBuild(fetchImpl: typeof fetch = fetch): Promise<{ product: string; version: string }> {
-  const res = await fetchImpl(`${WAGO}/api/builds`, { headers: UA });
-  if (!res.ok) throw new Error(`wago.tools /api/builds : HTTP ${res.status}`);
-  const data = await res.json() as Record<string, { version: string }[]>;
+  const data = await listBuilds(fetchImpl);
   const pick = (allowRegional: boolean) => {
     let best: { product: string; version: string } | null = null;
     for (const [product, list] of Object.entries(data)) {
