@@ -16,6 +16,28 @@ updates:
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
 
+  # Roster Companion (apps/companion, hors des workspaces npm de la racine) : Rust et npm. Quand Tauri passe une
+  # version mineure, les deux PR (crate tauri et paquet @tauri-apps/api) se fusionnent ensemble : la CI refuse des
+  # versions 2.x différentes (job core de companion.yml).
+  - package-ecosystem: cargo
+    directory: /apps/companion
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /apps/companion
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }

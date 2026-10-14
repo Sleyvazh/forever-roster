@@ -64,6 +64,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cargo/bin/cargo-audit
             apps/companion/target
           key: companion-core-${{ runner.os }}-${{ hashFiles('apps/companion/Cargo.lock') }}
           restore-keys: companion-core-${{ runner.os }}-
@@ -71,6 +72,13 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked -p rc-core --all-targets -- -D warnings
       - run: cargo test --locked -p rc-core
+      # Avis de sécurité RustSec sur les dépendances (Cargo.lock). Un avis sans correctif publié ne doit pas bloquer
+      # une livraison : le pas est en avertissement (continue-on-error) ; à corriger ensuite par cargo update -p <crate>
+      - name: cargo audit (avis RustSec, n'empêche pas la livraison)
+        continue-on-error: true
+        run: |
+          command -v cargo-audit > /dev/null || cargo install --locked cargo-audit
+          cargo audit
 
   windows:
     runs-on: windows-2025
