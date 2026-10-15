@@ -1,4 +1,4 @@
--- Fenêtre unique à onglets (Synchro, Raids, En raid, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
+-- Fenêtre unique à onglets (Synchro, Raids, Sorties, En raid, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
 -- Deux habillages au choix (Options) : celui de l'interface de Forever, ou celui du site (sombre, liserés dorés).
 -- Fenêtres, listes et habillages : boîte à outils commune avec l'addon Roster (addon/shared/Kit.lua).
 local ADDON, ns = ...
@@ -31,6 +31,7 @@ local main
 local TABS = {
   { key = "synchro", label = N("Synchro"), icon = "Interface\\Icons\\INV_Letter_15" },
   { key = "raids", label = N("Raids"), icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
+  { key = "sorties", label = N("Sorties"), icon = "Interface\\Icons\\INV_Torch_Lit" },
   { key = "enraid", label = N("En raid"), icon = "Interface\\Icons\\INV_Misc_Bag_10_Blue" },
   { key = "compo", label = N("Compo"), icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
   { key = "patrons", label = N("Patrons"), icon = "Interface\\Icons\\INV_Scroll_03" },
@@ -91,6 +92,17 @@ refreshers.raids = function(p)
     end
   end
   rows.Done()
+end
+
+-- Onglet Sorties (1.6.1) : sorties donjon du jour et de demain (Outings.lua) ; l'inscription se fait sur le site ou Discord
+local function buildSorties(p)
+  hint(p, L["Sorties donjon du jour et de demain de tes groupes. Pour t'inscrire ou te retirer : sur le site ou sur Discord."])
+  p.list = list(p, -40)
+end
+refreshers.sorties = function(p)
+  p.list.Reset()
+  if ns.Outings and ns.Outings.FillTab then ns.Outings.FillTab(p.list) end
+  p.list.Done()
 end
 
 local function buildCompo(p)
@@ -489,7 +501,8 @@ refreshers.enraid = function(p)
   p.list.Done()
 end
 
-local builders = { synchro = buildSynchro, raids = buildRaids, enraid = buildEnRaid, compo = buildCompo, patrons = buildPatrons, options = buildOptions }
+local builders = { synchro = buildSynchro, raids = buildRaids, sorties = buildSorties, enraid = buildEnRaid, compo = buildCompo, patrons = buildPatrons,
+  options = buildOptions }
 
 -- Onglet à icône sur le côté, comme ceux de la fiche de perso de Forever
 local function sideTab(parent, index, t)
@@ -528,7 +541,8 @@ local function sideTab(parent, index, t)
 end
 
 -- Onglet du site : texte sur la bande sous le titre, souligné d'or avec un losange quand il est choisi
-local TOP_W = 98
+-- (sept onglets dans les 600 px de la fenêtre : 85 px chacun)
+local TOP_W = math.min(98, math.floor(598 / #TABS))
 local function topTab(parent, index, t)
   local b = CreateFrame("Button", nil, parent)
   b:SetSize(TOP_W, 28)
@@ -609,7 +623,7 @@ function U.ShowGroup() U.Show("raids") end
 U.RefreshCompo = U.Refresh
 U.RefreshGroup = U.Refresh
 
-ns.on("GROUP_ROSTER_UPDATE", function() if ForeverRosterDB and ForeverRosterDB.tab == "compo" then U.Refresh() end end)
+ns.on("GROUP_ROSTER_UPDATE", function() if ForeverRosterDB and (ForeverRosterDB.tab == "compo" or ForeverRosterDB.tab == "sorties") then U.Refresh() end end)
 ns.on("BAG_UPDATE_DELAYED", function() if ForeverRosterDB and ForeverRosterDB.tab == "patrons" then U.Refresh() end end)
 
 -- Alerte : patron suivi ou BiS ramassé (portrait : l'icône de l'objet)

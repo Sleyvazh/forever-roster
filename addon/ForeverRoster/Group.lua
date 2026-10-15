@@ -29,6 +29,8 @@ local function store(groups, replace)
   for _, g in ipairs(groups) do db()[g.id] = g end
   ns.safe(N("consommables"), G.CountConsumables)
   ns.safe(N("inscriptions"), G.Reconcile)
+  -- Sorties donjon (lignes X, 1.6.1) : bandeau dû peut-être tout de suite (Outings.lua)
+  if ns.Outings and ns.Outings.Check then ns.safe(N("sorties"), ns.Outings.Check) end
 end
 
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.

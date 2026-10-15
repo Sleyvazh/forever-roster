@@ -121,7 +121,7 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.debug = nil
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", Companion = "Apply", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Guild = "ReadRoster", Minimap = "Create" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", Companion = "Apply", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Guild = "ReadRoster", Outings = "Check", Minimap = "Create" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060" .. L("modules non chargés : %s|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)", table.concat(missing, ", "))) end
@@ -129,8 +129,8 @@ end)
 
 -- Aide de /fr : traduite à l'affichage (en anglais, elle donne les commandes anglaises)
 local HELP = {
-  N("/fr : ouvrir la fenêtre (onglets Synchro, Raids, En raid, Compo, Patrons, Options) ; aussi par le bouton de la minicarte"),
-  N("/fr synchro | raids | enraid | compo | patrons | options : ouvrir directement un onglet"),
+  N("/fr : ouvrir la fenêtre (onglets Synchro, Raids, Sorties, En raid, Compo, Patrons, Options) ; aussi par le bouton de la minicarte"),
+  N("/fr synchro | raids | sorties | enraid | compo | patrons | options : ouvrir directement un onglet"),
   N("/fr butin : fenêtre du maître du butin (jets SR, MS / OS, libre, conseil) ; /fr butin <lien> pour un objet déjà dans tes sacs"),
   N("/fr boss : fiche du boss ciblé (sinon la première du raid) ; /fr conso : appel aux consommables"),
   N("/fr test : raid d'essai (9 joueurs fictifs) pour tout essayer seul : butin, conseil, fiches de boss, consommables"),
@@ -164,7 +164,7 @@ end
 
 -- Onglets de /fr : mots français, et leurs équivalents anglais
 local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", enraid = "enraid", raid = "enraid", inraid = "enraid",
-  compo = "compo", comp = "compo", patrons = "patrons", recipes = "patrons", options = "options" }
+  compo = "compo", comp = "compo", patrons = "patrons", recipes = "patrons", options = "options", sorties = "sorties", sortie = "sorties", runs = "sorties" }
 -- /fr langue : fr, en, ou la langue du jeu (false)
 local LANGS = { fr = "fr", french = "fr", francais = "fr", ["français"] = "fr", en = "en", english = "en", anglais = "en", -- nolocale
   jeu = false, game = false, client = false, auto = false }

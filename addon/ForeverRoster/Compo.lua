@@ -4,8 +4,16 @@ local L = ns.L
 local C = {}
 ns.Compo = C
 
-local InviteUnit = (C_PartyInfo and C_PartyInfo.InviteUnit) or InviteUnit
-local ConvertToRaid = (C_PartyInfo and C_PartyInfo.ConvertToRaid) or ConvertToRaid
+-- Fonctions du jeu cherchées au moment de l'appel (API de Retail : C_PartyInfo ; anciennes globales sinon)
+local function InviteUnit(name)
+  local fn = (C_PartyInfo and C_PartyInfo.InviteUnit) or _G.InviteUnit
+  if fn then fn(name) end
+end
+local function ConvertToRaid()
+  local fn = (C_PartyInfo and C_PartyInfo.ConvertToRaid) or _G.ConvertToRaid
+  if fn then fn() end
+end
+C.InviteUnit = InviteUnit
 local INVITABLE = { present = true, late = true, tentative = true, alt = true, [""] = true }
 
 local function short(name) return name and (Ambiguate and Ambiguate(name, "none") or name:gsub("%-.*$", "")) end
@@ -76,12 +84,18 @@ function C.Status()
 end
 
 -- Invitations : persos placés, pas encore dans le groupe ; passage en raid dès que le groupe est formé.
-local pending = {}
-function C.Invite()
+-- Peut inviter : seul, ou chef du groupe (ou assistant) ; sinon le dit dans le chat (aussi pour les sorties, Outings.lua)
+function C.CanInvite()
   if IsInGroup() and not (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")) then
     ns.print(L["seul le chef du groupe ou un assistant peut inviter."])
-    return
+    return false
   end
+  return true
+end
+
+local pending = {}
+function C.Invite()
+  if not C.CanInvite() then return end
   local roster = C.Roster()
   local _, members = C.Get()
   local me, sent, manual = lower(UnitName("player")), 0, {}

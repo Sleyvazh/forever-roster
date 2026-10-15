@@ -2,6 +2,14 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.1
+
+- **Dungeon runs in game**: the new Runs tab (`/fr runs`) shows today's and tomorrow's dungeon runs from your groups on the website: open places by role, who signed up, waiting list and note, with your own characters recognised. 15 minutes before the start (or as soon as an "as soon as full" run is full), a small banner shows up once per run: "Invite all 4" if you created it (characters only, out of combat; Discord-only sign-ups are listed to invite manually), "Whisper <creator>" if you signed up (it only opens the whisper box). Never in combat or during an encounter, and nothing is sent to other players. Signing up is done on the website or on Discord.
+
+Français :
+
+- **Sorties donjon en jeu** : le nouvel onglet Sorties (`/fr sorties`) montre les sorties du jour et de demain de tes groupes du site : places par rôle, inscrits, liste d'attente et note, avec tes persos reconnus. 15 minutes avant l'heure (ou dès qu'une sortie « dès que complet » est complète), un petit bandeau s'affiche une fois par sortie : « Inviter les 4 » si tu l'as créée (les persos seulement, hors combat ; les inscrits Discord sans compte sont à inviter à la main), « Chuchoter <créateur> » si tu es inscrit (ça ouvre seulement la saisie du chuchotement). Jamais en combat ni pendant une rencontre, et rien n'est envoyé aux autres joueurs. L'inscription se fait sur le site ou sur Discord.
+
 ## 1.6.0
 
 - **Guild scan (trial)**: the addon now quietly reads your guild: roster (rank, level, class, notes, last online; officer notes only if your rank can see them), guild log, guild bank (only while you have it open: visible tabs, gold and logs) and your characters' level and XP, with the exact time of each level-up. Never in combat or during a boss encounter. Nothing is sent yet, neither to the website nor to other players: `/fr guild` shows what was read and gives the text to copy ("Copy the scan").

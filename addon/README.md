@@ -6,12 +6,13 @@ Addon WoW pour le client de WoW Forever (interface 16001). Il fait le lien avec 
 
 **Roster Companion** (appli en option, en bêta) : elle fait la synchro sans copier-coller. L'addon range ce qui est à envoyer dans sa sauvegarde à chaque déconnexion ou `/reload`, et lit les données que l'appli dépose dans l'addon `ForeverRoster_Data` à la connexion. Depuis la 1.5, les données de l'appli arrivent sans `/reload`, toutes seules (ouverture de la fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, au moins toutes les heures) ou avec « Charger les nouveautés » (onglet Synchro, une touche, `/fr actualiser`), jusqu'à 20 fois par session, puis l'addon propose de recharger l'interface ; « Synchroniser » (ou sa touche) recharge l'interface pour faire les deux sens d'un coup (`docs/addon-format.md`, section Roster Companion). Sans l'appli, rien ne change.
 
-La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six onglets :
+La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a sept onglets :
 
 | Onglet | Rôle |
 |---|---|
 | **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul, et d'où viennent les données de chaque groupe (collées, Roster Companion, reçues d'un joueur). En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté |
+| **Sorties** | Sorties donjon du jour et de demain de tes groupes : places par rôle, inscrits, attente, note, ta place ; **Inviter les N** (ta sortie, le jour même) ou **Chuchoter <créateur>**. Inscription sur le site ou sur Discord |
 | **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
 | **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
@@ -21,7 +22,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 |---|---|
 | Raccourcis (AddOns > Forever Roster) | « Synchro rapide avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/fr` | Ouvrir ou fermer la fenêtre |
-| `/fr synchro`, `raids`, `enraid`, `compo`, `patrons`, `options` | Ouvrir un onglet |
+| `/fr synchro`, `raids`, `sorties`, `enraid`, `compo`, `patrons`, `options` | Ouvrir un onglet |
 | `/fr butin` | Fenêtre du maître du butin (s'ouvre seule en ouvrant un corps en butin de maître) ; `/fr butin <lien>` pour un objet déjà dans tes sacs |
 | `/fr boss` | Fiche du boss ciblé, sinon la première du raid |
 | `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
@@ -101,3 +102,5 @@ Correctif 1.5.3 : la 1.5.1 réassignait `StaticPopupDialogs` (variable de l'inte
 Inscriptions faites en jeu (1.5.4) : l'heure du clic compte dans l'empreinte du perso (un clic qui remet un statut déjà envoyé repart bien au site), et l'inscription est oubliée dès que les données du site l'ont enregistrée, ou qu'elles sont plus récentes que l'accusé de réception (le site a alors le dernier mot), sans faire repartir le perso. La ligne du raid dit où elle en est : pas encore envoyée (avec Roster Companion, bouton **Envoyer maintenant** : rechargement de l'interface), envoi en cours, reçue par le site. Le statut déjà enregistré sur le site n'est pas renvoyé.
 
 Relève de la guilde (1.6.0, en essai) : l'addon relève sa guilde en silence (`Guild.lua`) : liste à la connexion puis au plus toutes les 10 min, journal de guilde, banque pendant qu'elle est ouverte (onglets visibles, or, journaux), niveau et XP de chaque perso du compte avec l'heure de chaque montée de niveau ; jamais en combat ni pendant une rencontre. Le relevé reste dans la sauvegarde : rien ne part aux autres joueurs ni à Roster Companion. `/fr guilde` montre ce qui a été lu et donne le texte FRL v1 (`docs/addon-format.md`), que le site lira dans un lot suivant.
+
+Sorties donjon (1.6.1) : l'addon lit les lignes `X` des données du site (`Outings.lua`, `docs/addon-format.md`) : onglet **Sorties**, et un bandeau une fois par sortie, 15 min avant l'heure (ou dès qu'une sortie « dès que complet » est complète), jamais en combat ni pendant une rencontre : **Inviter les N** chez le créateur (persos inscrits pas déjà dans le groupe ni hors ligne, hors combat ; les inscrits Discord sans compte sont à inviter à la main), **Chuchoter <créateur>** chez les inscrits (ouvre la saisie, n'envoie rien). Rien ne part aux autres joueurs ; l'inscription se fait sur le site ou sur Discord.

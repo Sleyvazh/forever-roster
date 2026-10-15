@@ -68,7 +68,8 @@ end
 -- Lignes : R raid à venir, P patron suivi (recherché par, connu par), B objet BiS recherché (par qui).
 -- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
 -- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
--- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 »).
+-- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 ») ;
+-- 1.6.1 : X sortie donjon du jour ou de demain (outings, plus haut).
 -- Partage entre joueurs (1.6) : M (persos du groupe : members) et Z (signature du site : sig = { key }) juste avant END ;
 -- un bloc signé garde son texte (text : lignes de l'en-tête à END), relayé tel quel aux autres joueurs (Share.lua). Un
 -- bloc sans Z (ancien site, pas de clé, soft reserve cachée) n'a pas de texte : il ne se partage pas.
@@ -77,6 +78,45 @@ local function ids(field)
   local out = {}
   for id in plain(field):gmatch("%d+") do if #out < 8 then out[#out + 1] = tonumber(id) end end
   return out
+end
+
+-- Sorties donjon (1.6.1) : ligne X, hors du compte de END (un addon plus ancien l'ignore), une par sortie du jour ou de
+-- demain (docs/addon-format.md) :
+--   X;<id>;<heure>;<donjon>;<titre>;<niv min>;<niv max>;<créateur>;<places T/H/D>;<tanks>;<heals>;<dps>;<attente>;<note>
+-- heure 0 : « dès que complet ». Inscrits : prénoms séparés par « , » ; « @pseudo » : inscrit Discord sans compte (à
+-- inviter à la main). Attente dans l'ordre : « rôle:prénom ». Aucun champ personnel : l'addon reconnaît mes persos.
+-- Texte borné en octets sans couper un caractère UTF-8 (notes et titres accentués), sans « | » (codes du jeu)
+local function utf8txt(s, max)
+  s = plain(s):gsub("|", ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if #s > max then s = s:sub(1, max):gsub("[\192-\255][\128-\191]*$", "") end
+  return s
+end
+local ROLE = { tank = "Tank", heal = "Heal", healer = "Heal", dps = "DPS" }
+local function people(field, max)
+  local out = {}
+  for name in plain(field):gmatch("[^,]+") do
+    name = utf8txt(name, 40)
+    if name ~= "" and #out < max then out[#out + 1] = name end
+  end
+  return out
+end
+local function outing(f)
+  local id = txt(f[2], 40)
+  if id == "" then return nil end
+  local t, h, d = plain(f[9]):match("^%s*(%d+)%s*/%s*(%d+)%s*/%s*(%d+)%s*$")
+  local places = t and { math.min(tonumber(t), 5), math.min(tonumber(h), 5), math.min(tonumber(d), 5) } or { 1, 1, 3 }
+  local wait = {}
+  for part in plain(f[13]):gmatch("[^,]+") do
+    local role, name = part:match("^%s*([^:]-)%s*:(.+)$")
+    name = name and utf8txt(name, 40) or ""
+    if name ~= "" and #wait < 20 then wait[#wait + 1] = { role = ROLE[(role or ""):lower()] or "", name = name } end
+  end
+  return {
+    id = id, time = tonumber(f[3]) or 0, dungeon = txt(f[4], 40), title = utf8txt(f[5], 120),
+    min = tonumber(f[6]), max = tonumber(f[7]), creator = utf8txt(f[8], 40), places = places,
+    tanks = people(f[10], 5), heals = people(f[11], 5), dps = people(f[12], 5), wait = wait,
+    note = utf8txt(f[14], 240),
+  }
 end
 function F.ParseFRG(text)
   local groups, cur, count, n, lines = {}, nil, nil, 0, nil
@@ -95,7 +135,7 @@ function F.ParseFRG(text)
       if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
       if tonumber(f[2]) ~= 1 then return nil, L("Version non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
       cur, count, n, lines = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
-        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil }, nil, 0, { line }
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil, outings = {} }, nil, 0, { line }
     elseif cur and f[1] == "M" and count == nil then
       cur.members = names(f[2], 1000)
     elseif cur and f[1] == "Z" and count == nil then
@@ -144,6 +184,10 @@ function F.ParseFRG(text)
         end
       end
       cur.counts = c
+    elseif cur and f[1] == "X" and count == nil then
+      -- Sortie donjon (1.6.1), hors du compte de END ; 30 par groupe sur le site
+      local o = #cur.outings < 40 and outing(f)
+      if o then cur.outings[#cur.outings + 1] = o end
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])

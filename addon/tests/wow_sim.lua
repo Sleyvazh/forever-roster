@@ -1636,6 +1636,226 @@ do
   ForeverRosterDB.raidLogs, c.signups = keep.raidLogs, keep.signups
 end
 
+-- 8 sexies. Sorties donjon (1.6.1) : bloc FRG avec des lignes X (sorties du jour, de demain, « dès que complet », passées),
+-- onglet Sorties dans les deux habillages (états vides compris), bandeau chez le créateur (« Inviter les N », caché en
+-- combat et pendant une rencontre, mis à jour quand le groupe change, invitations hors combat seulement, « @pseudo » à
+-- inviter à la main) et chez un inscrit (« Chuchoter <créateur> » : saisie ouverte, rien d'envoyé), une fois par sortie.
+-- Mes persos : Tournicoti (connecté) et Brindille (autre perso du compte). Guilde et groupe simulés ; tout est remis en
+-- place à la fin.
+local function sorties()
+  local O = ns.Outings
+  local keep = { time = time, UnitName = UnitName, InCombatLockdown = InCombatLockdown, IsInGroup = IsInGroup, GetNumGroupMembers = GetNumGroupMembers,
+    GetNumSubgroupMembers = GetNumSubgroupMembers, groups = ForeverRosterDB.groups, raidLogs = ForeverRosterDB.raidLogs, skin = ForeverRosterDB.skin,
+    lastLoad = ForeverRosterDB.lastLoad, tab = ForeverRosterDB.tab }
+  ForeverRosterDB.groups, ForeverRosterDB.raidLogs, ForeverRosterDB.outingsSeen = {}, {}, nil
+  ForeverRosterDB.chars["Brindille-Forever EU"] = ForeverRosterDB.chars["Brindille-Forever EU"] or { recipes = {} }
+  local before, sentBefore, saidBefore = errors(), #sent, #said
+  local function quiet(what) assert(errors() == before and failures == 0, what .. " : " .. tostring(printed[#printed])) end
+  local function shownText(...)
+    local wanted = { ... }
+    for t, f in pairs(TEXTS) do
+      if type(t) == "string" and rawget(f, "text") == t then
+        local all = true
+        for _, w in ipairs(wanted) do if not t:find(w, 1, true) then all = false break end end
+        if all then return t end
+      end
+    end
+  end
+  local function lastPrinted(text) for i = #printed, 1, -1 do if printed[i]:find(text, 1, true) then return printed[i] end end end
+
+  -- Jeudi 16/10, 20:30 (heure locale) ; groupe généré une heure plus tôt
+  local base = os.time({ year = 2026, month = 10, day = 16, hour = 20, min = 30 })
+  local clock = base
+  time = function() return clock end
+  -- Guilde : Bramm et Kaelys en ligne, Zorg hors ligne ; Tiblou n'est pas de la guilde (inconnu)
+  local S = { combat = false, party = nil, rosterAsks = 0 }
+  C_GuildInfo = { GuildRoster = function() S.rosterAsks = S.rosterAsks + 1 end }
+  local GUILD = { { "Bramm", "WARRIOR", true }, { "Kaelys-ForeverEU", "PRIEST", true }, { "Zorg Lebrun", "ROGUE", false }, { "Pikou", "MAGE", true } }
+  IsInGuild = function() return true end
+  GetNumGuildMembers = function() return #GUILD, 3, 3 end
+  GetGuildRosterInfo = function(i) local m = GUILD[i] if m then return m[1], "Membre", 3, 30, "Classe", "Zone", "", "", m[3], 0, m[2] end end
+  InCombatLockdown = function() return S.combat end
+  UnitName = function(unit) if unit == "party1" then return S.party end return "Tournicoti" end
+  UnitIsConnected = function() return true end
+  IsInGroup = function() return S.party ~= nil end
+  GetNumSubgroupMembers = function() return S.party and 1 or 0 end
+  GetNumGroupMembers = function() return S.party and 2 or 0 end
+  local invited, tells = {}, {}
+  C_PartyInfo = { InviteUnit = function(name) invited[#invited + 1] = name end }
+  ChatFrame_SendTell = function(name) tells[#tells + 1] = name end
+
+  local ID = { gnome = "0f6c1d2e-0000-4000-8000-000000000001", elite = "0f6c1d2e-0000-4000-8000-000000000002", mara = "s-mara", brd = "s-brd", old = "s-old", later = "s-later" }
+  local function frg(eliteDps)
+    return table.concat({
+      "FRG;1;g-sorties;" .. (base - 3600) .. ";Les Veilleurs",
+      "R;r-mc;" .. (base + 7200) .. ";Molten Core;;;journal",
+      "X;" .. ID.gnome .. ";" .. (base + 1800) .. ";gnomeregan;Gnomeregan;29;38;Tournicoti;1/1/3;Bramm;Kaelys;Tournicoti,Zorg,@mirka;DPS:@vex;Toutes les quêtes : prenez-les avant d'entrer.",
+      "X;" .. ID.elite .. ";0;other;Élite de la Vallée;;;Torvin;1/1/3;Brindille;Torvin;" .. eliteDps .. ";;",
+      "X;" .. ID.mara .. ";" .. (base + 3600) .. ";maraudon;Maraudon;46;55;Pikou;1/1/3;Pikou;;Tournicoti,Tiblou;;",
+      "X;" .. ID.brd .. ";" .. (base + 86400 - 1800) .. ";brd;Blackrock Depths;52;60;Pikou;1/1/3;Pikou;Kaelys;Aldo,Bea,Cid;Heal:Brindille;",
+      "X;" .. ID.old .. ";" .. (base - 3 * 3600) .. ";wc;Wailing Caverns;17;24;Tournicoti;1/1/3;Tournicoti;;;;",
+      "X;s-rfc;" .. (base + 12000) .. ";rfc;Ragefire Chasm;13;18;Torvin;1/1/3;Torvin;;;;",
+      "X;" .. ID.later .. ";" .. (base + 2 * 86400) .. ";sm;Scarlet Monastery;30;40;Tournicoti;1/1/3;Tournicoti;;;;",
+      "M;Tournicoti,Pikou,Torvin",
+      "END;1",
+    }, "\n")
+  end
+  assert(ns.UI.LoadFromSite(frg("Aldo,Bea")), "bloc FRG avec des sorties chargé")
+  local list = O.List()
+  local order = {}
+  for _, e in ipairs(list) do order[#order + 1] = e.day .. ":" .. e.o.title end
+  assert(table.concat(order, ",") == "0:Élite de la Vallée,0:Gnomeregan,0:Maraudon,0:Ragefire Chasm,1:Blackrock Depths", "sorties du jour et de demain, dans l'ordre : " .. table.concat(order, ","))
+  -- Une sortie commencée juste avant minuit reste du jour après minuit, jusqu'à 2 h après son heure
+  local function has(now, title) for _, e in ipairs(O.List(now)) do if e.o.title == title then return e.day end end end
+  assert(has(base + 12000 + 3600, "Ragefire Chasm") == 0 and has(base + 12000 + 2 * 3600 + 60, "Ragefire Chasm") == nil, "sortie de 23:50 encore là à 00:50, plus à 01:51")
+  assert(has(base + 86400, "Blackrock Depths") == 0 and has(base + 2 * 86400 + 3600, "Élite de la Vallée") == nil, "le lendemain : demain devient aujourd'hui ; « dès que complet » finie")
+  local mine = ns.Group.MyChars()
+  local me = O.Me(list[2].o, mine)
+  assert(me.creator and me.role == "DPS" and O.Me(list[1].o, mine).char == "Brindille" and O.Me(list[5].o, mine).wait == 1, "mes persos reconnus par leur prénom")
+  assert(O.Check() == false and not (O.Banner() and O.Banner():IsShown()), "20:30 : pas encore de bandeau")
+
+  -- Onglet Sorties (habillage Forever, celui de la fenêtre construite plus haut)
+  ns.UI.Show("sorties")
+  assert(ForeverRosterDB.tab == "sorties" and ns.UI.pages.sorties:IsShown(), "onglet Sorties ouvert")
+  assert(shownText("Aujourd'hui") and shownText("Demain"), "aujourd'hui et demain")
+  assert(shownText("Gnomeregan", "29-38", "21:00", "5/5", "complet", "Bramm", "Kaelys", "@mirka", "En attente : @vex (DPS)", "« Toutes les quêtes", "Créée par Tournicoti", "ta sortie"),
+    "sortie du créateur : places, inscrits, attente, note")
+  assert(shownText("Maraudon", "21:30", "3/5", "libre", "Créée par Pikou", "tu viens en DPS"), "sortie d'un inscrit")
+  assert(shownText("Élite de la Vallée", "dès que complet", "4/5", "tu viens en Tank avec Brindille"), "sortie « dès que complet », autre perso du compte")
+  assert(shownText("Blackrock Depths", "tu es en attente (n° 1)"), "en attente demain")
+  assert(not shownText("Wailing Caverns") and not shownText("Scarlet Monastery"), "sorties passées ou trop loin : pas affichées")
+  assert(TEXTS["Inviter les 2"] and TEXTS["Inviter les 2"]:IsShown() and TEXTS["Chuchoter Pikou"] and TEXTS["Chuchoter Pikou"]:IsShown(), "boutons de l'onglet")
+  quiet("onglet Sorties")
+
+  -- 20:46 : bandeau du créateur (Gnomeregan, 21:00) : Bramm et Kaelys en ligne, Zorg hors ligne, @mirka à la main
+  clock = base + 16 * 60
+  assert(O.Check() == true, "15 min avant : bandeau")
+  local b = O.Banner()
+  assert(b and b:IsShown() and b.kind == "creator" and b.id == ID.gnome and not b.skin, "bandeau du créateur (habillage Forever)")
+  assert(b.head:GetText():find("Gnomeregan", 1, true) and b.head:GetText():find("à 21:00", 1, true) and b.head:GetText():find("complet", 1, true), "Gnomeregan à 21:00, complet")
+  local info = b.info:GetText()
+  assert(info:find("2 en ligne sur 3", 1, true) and info:find("aucun déjà dans ton groupe", 1, true) and info:find("@mirka", 1, true), "en ligne, déjà là, à inviter à la main : " .. info)
+  assert(b.go:GetText() == "Inviter les 2" and b.go:IsShown() and b.later:GetText() == "Plus tard", "Inviter les 2 · Plus tard")
+  local names = {}
+  for _, s in ipairs(b.slots) do if s.text:IsShown() then names[#names + 1] = s.text:GetText() end end
+  local dots = 0
+  for _, s in ipairs(b.slots) do if s.dot:IsShown() then dots = dots + 1 end end
+  assert(#names == 4 and table.concat(names, ","):find("Bramm", 1, true) and table.concat(names, ","):find("Zorg", 1, true) and table.concat(names, ","):find("@mirka", 1, true)
+    and dots == 3, "ligne des inscrits : losange pour les persos, pas pour le pseudo Discord")
+  assert(lastPrinted("Gnomeregan à 21:00 : 2 en ligne sur 3."), "ligne dans le chat (pour moi seul)")
+  -- Liste de guilde redemandée au jeu une fois ; Zorg se connecte : bandeau à jour, à la même place
+  assert(S.rosterAsks == 1, "liste de guilde redemandée à l'ouverture du bandeau")
+  GUILD[3][3] = true
+  fire("GUILD_ROSTER_UPDATE", true)
+  assert(b:IsShown() and b.info:GetText():find("3 en ligne sur 3", 1, true) and b.go:GetText() == "Inviter les 3" and S.rosterAsks == 1, "Zorg en ligne : bandeau à jour")
+  GUILD[3][3] = false
+  fire("GUILD_ROSTER_UPDATE", true)
+  assert(b.go:GetText() == "Inviter les 2", "Zorg reparti")
+  -- Combat : bandeau caché, aucune invitation ; il revient après
+  S.combat = true
+  fire("PLAYER_REGEN_DISABLED")
+  assert(not b:IsShown() and not (ForeverRosterDB.outingsSeen or {})[ID.gnome], "combat : bandeau caché, pas oublié")
+  assert(O.Check() == false and not b:IsShown(), "pas de bandeau en combat")
+  assert(O.Invite(ID.gnome) == 0 and #invited == 0 and lastPrinted("impossible en combat."), "pas d'invitation en combat")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  assert(b:IsShown(), "fin du combat : bandeau revenu")
+  -- Rencontre de boss (hors combat) : pareil
+  fire("ENCOUNTER_START", 1, "Mekgineer Thermaplugg", 1, 5)
+  assert(not b:IsShown(), "rencontre : bandeau caché")
+  fire("PLAYER_REGEN_ENABLED")
+  assert(not b:IsShown() and O.Invite(ID.gnome) == 0 and #invited == 0, "rencontre en cours : ni bandeau ni invitation")
+  fire("ENCOUNTER_END", 1, "Mekgineer Thermaplugg", 1, 5, 1)
+  assert(b:IsShown(), "fin de la rencontre : bandeau revenu")
+  -- Kaelys rejoint mon groupe : bandeau mis à jour
+  S.party = "Kaelys"
+  fire("GROUP_ROSTER_UPDATE")
+  assert(b:IsShown() and b.info:GetText():find("1 déjà dans ton groupe", 1, true) and b.go:GetText() == "Inviter Bramm", "groupe changé : bandeau à jour")
+  -- Pas chef du groupe : rien d'envoyé, le bandeau reste (le chat dit pourquoi)
+  local leader = UnitIsGroupLeader
+  UnitIsGroupLeader = function() return false end
+  rawget(b.go, "scripts").OnClick(b.go)
+  assert(#invited == 0 and b:IsShown() and lastPrinted("seul le chef du groupe ou un assistant peut inviter."), "pas chef du groupe : bandeau gardé")
+  UnitIsGroupLeader = leader
+  -- « Inviter Bramm » : une invitation (Kaelys déjà là, Zorg hors ligne, @mirka à la main), bandeau fermé pour de bon
+  rawget(b.go, "scripts").OnClick(b.go)
+  assert(table.concat(invited, ",") == "Bramm", "invitations : " .. table.concat(invited, ","))
+  assert(lastPrinted("1 invitation(s) envoyée(s).") and lastPrinted("à inviter à la main (inscrits Discord) : @mirka"), "invitations dites dans le chat")
+  assert(not b:IsShown() and ForeverRosterDB.outingsSeen[ID.gnome], "bandeau fermé, une fois par sortie")
+  clock = clock + 60
+  assert(O.Check() == false and not b:IsShown(), "pas deux fois")
+  quiet("bandeau du créateur")
+
+  -- 21:16 : bandeau d'un inscrit (Maraudon, 21:30, créée par Pikou) : « Chuchoter Pikou » ouvre la saisie, n'envoie rien
+  clock = base + 46 * 60
+  assert(O.Check() == true and b:IsShown() and b.kind == "member" and b.id == ID.mara, "bandeau d'un inscrit")
+  assert(b.head:GetText():find("Maraudon", 1, true) and b.head:GetText():find("3/5 inscrits", 1, true), "Maraudon à 21:30, 3/5 inscrits")
+  assert(b.info:GetText():find("Créée par Pikou · tu viens en DPS", 1, true) and b.go:GetText() == "Chuchoter Pikou" and b.later:GetText() == "OK", "Créée par Pikou · Chuchoter Pikou · OK")
+  for _, s in ipairs(b.slots) do assert(not s.text:IsShown(), "pas de ligne des inscrits chez un inscrit") end
+  rawget(b.go, "scripts").OnClick(b.go)
+  assert(table.concat(tells, ",") == "Pikou" and not b:IsShown() and ForeverRosterDB.outingsSeen[ID.mara], "saisie du chuchotement ouverte, bandeau fermé")
+  -- Sans fonction du jeu pour ouvrir la saisie : la commande à taper ; jamais pour un « @pseudo »
+  ChatFrame_SendTell = nil
+  assert(O.Whisper("Pikou") == false and lastPrinted("pour chuchoter à Pikou : /w Pikou"), "chuchotement : commande donnée")
+  assert(O.Whisper("@mirka") == false, "pas de chuchotement à un pseudo Discord")
+  -- Pikou dans mon groupe : plus rien à lui dire (pas de bandeau ; ouvert, il se ferme pour de bon)
+  ForeverRosterDB.outingsSeen[ID.mara] = nil
+  S.party = "Pikou"
+  assert(O.Check() == false and not b:IsShown(), "créateur déjà dans mon groupe : pas de bandeau")
+  S.party = nil
+  assert(O.Check() == true and b:IsShown() and b.id == ID.mara, "bandeau revenu (jamais fermé)")
+  S.party = "Pikou"
+  fire("GROUP_ROSTER_UPDATE")
+  assert(not b:IsShown() and ForeverRosterDB.outingsSeen[ID.mara], "invité par Pikou : bandeau fermé pour de bon")
+  S.party = nil
+  quiet("bandeau d'un inscrit")
+
+  -- « Dès que complet » : l'Élite se complète (nouvelles données du site) → bandeau tout de suite (Brindille, mon autre perso)
+  clock = clock + 60
+  assert(ns.UI.LoadFromSite(frg("Aldo,Bea,Cid")), "données mises à jour")
+  assert(b:IsShown() and b.id == ID.elite and b.head:GetText():find("Élite de la Vallée", 1, true) and b.head:GetText():find("complet", 1, true)
+    and b.info:GetText():find("tu viens en Tank avec Brindille", 1, true) and b.go:GetText() == "Chuchoter Torvin", "sortie complète : bandeau")
+  rawget(b.later, "scripts").OnClick(b.later)
+  assert(not b:IsShown() and ForeverRosterDB.outingsSeen[ID.elite], "« OK » : fermé")
+  assert(ns.UI.LoadFromSite(frg("Aldo,Bea,Cid")) and O.Check() == false and not b:IsShown(), "mêmes données rechargées : pas de nouveau bandeau")
+  quiet("dès que complet")
+
+  -- Habillage du site : onglet et bandeau (reconstruits), bouton principal plein doré
+  ForeverRosterDB.skin = "site"
+  assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
+  ns.UI.Show("sorties")
+  assert(shownText("Gnomeregan", "ta sortie") and shownText("Maraudon", "tu viens en DPS"), "onglet Sorties, habillage du site")
+  ForeverRosterDB.outingsSeen[ID.mara] = nil
+  clock = base + 50 * 60
+  assert(O.Check() == true, "bandeau, habillage du site")
+  local b2 = O.Banner()
+  assert(b2 ~= b and b2.skin and b2:IsShown() and b2.go.label:GetText() == "Chuchoter Pikou" and b2.go.selected, "bandeau reconstruit, bouton doré")
+  rawget(b2.later, "scripts").OnClick(b2.later)
+  -- États vides : aucun groupe, puis un groupe sans sortie ; ancien groupe gardé sans le champ outings
+  ForeverRosterDB.groups = {}
+  ns.UI.Refresh()
+  assert(shownText("Aucun groupe chargé"), "onglet vide : aucun groupe")
+  ForeverRosterDB.skin = keep.skin
+  assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
+  assert(ns.UI.LoadFromSite("FRG;1;g-vide;" .. base .. ";Les Veilleurs\nR;r1;" .. (base + 7200) .. ";Molten Core;;\nEND;1"))
+  ForeverRosterDB.groups.ancien = { id = "ancien", at = 1, name = "Ancien", raids = {}, patterns = {}, bis = {} }
+  ns.UI.Show("sorties")
+  assert(#O.List() == 0 and shownText("Aucune sortie aujourd'hui ni demain.", "inscris-toi sur le site ou sur Discord"), "onglet vide : aucune sortie")
+  assert(O.Check() == false, "ancien groupe sans sorties : rien")
+  quiet("habillages et états vides")
+
+  -- Rien envoyé aux autres joueurs ni au chat (seulement des lignes pour moi)
+  assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat")
+
+  -- Remise en place
+  time, UnitName, InCombatLockdown, IsInGroup, GetNumGroupMembers, GetNumSubgroupMembers = keep.time, keep.UnitName, keep.InCombatLockdown, keep.IsInGroup,
+    keep.GetNumGroupMembers, keep.GetNumSubgroupMembers
+  IsInGuild, GetNumGuildMembers, GetGuildRosterInfo, UnitIsConnected, C_PartyInfo, ChatFrame_SendTell, C_GuildInfo = nil, nil, nil, nil, nil, nil, nil
+  ForeverRosterDB.groups, ForeverRosterDB.raidLogs, ForeverRosterDB.lastLoad, ForeverRosterDB.tab = keep.groups, keep.raidLogs, keep.lastLoad, keep.tab
+  ForeverRosterDB.outingsSeen, ForeverRosterDB.chars["Brindille-Forever EU"] = nil, nil
+end
+sorties()
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
@@ -1818,7 +2038,7 @@ assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 -- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai,
 -- groupes écrits par Roster Companion dans l'aller-retour de la section 9 (test Rust de l'appli : RC_HELPER)
 local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4",
-  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé" }
+  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé", "Élite de la Vallée", "Toutes les quêtes : prenez-les avant d'entrer." }
 LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon ; partage : vraie signature du site vérifiée (" .. shareChecks .. " fois)")

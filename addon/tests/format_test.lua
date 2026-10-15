@@ -106,6 +106,9 @@ if siteFRG then
   for _, grp in ipairs(list or {}) do
     check(grp.members and #grp.members >= 1, "persos du groupe (M) : " .. grp.id)
     for _, n in ipairs(grp.members or {}) do check(not n:find("[%-%s]"), "prénoms seuls dans M : " .. n) end
+    -- Sorties donjon (1.6.1) : si le site en met dans l'exemple, chaque ligne X est lue
+    local xs = select(2, ("\n" .. (grp.text or "")):gsub("\nX;", ""))
+    check(#grp.outings == xs, "sample.frg : lignes X lues (" .. grp.id .. ")")
     if grp.text and SNS.Crypto and SNS.Crypto.VerifyRSA then
       local ok, why = SNS.Share.Verify(grp.text, "FRG")
       check(ok, "signature du site de sample.frg (" .. grp.id .. ") : " .. tostring(why))
@@ -116,6 +119,46 @@ if siteFRG then
     end
   end
 end
+
+-- Sorties donjon (1.6.1) : lignes X (les deux lignes d'échantillon du contrat du lot), après les lignes non comptées et
+-- avant M et Z, hors du compte de END, gardées telles quelles dans le texte signé (texte canonique de Share.lua)
+local X1 = "X;0f6c1d2e-0000-4000-8000-000000000001;1792105200;gnomeregan;Gnomeregan;29;38;Pikou;1/1/3;Bramm;Kaelys;Pikou,Tiblou,@mirka;Heal:Brindille;Toutes les quêtes : prenez-les avant d'entrer."
+local X2 = "X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1/3;Torvin;;;;"
+local XBLOCK = table.concat({ "FRG;1;g1;1792100000;Les Veilleurs", "R;r1;1792200000;Molten Core;present;Greta;journal", "N;saison;depuis le 05/11/2026;Greta:1",
+  X1, X2, "M;Pikou,Torvin", "Z;a3de5db8;c2lnbmF0dXJl", "END;1" }, "\n")
+local xg = F.ParseFRG(XBLOCK)
+local o1, o2 = xg and xg[1].outings[1], xg and xg[1].outings[2]
+check(xg and #xg == 1 and #xg[1].raids == 1 and #xg[1].outings == 2, "lignes X lues, hors du compte de END")
+check(o1 and o1.id == "0f6c1d2e-0000-4000-8000-000000000001" and o1.time == 1792105200 and o1.dungeon == "gnomeregan" and o1.title == "Gnomeregan"
+  and o1.min == 29 and o1.max == 38 and o1.creator == "Pikou", "sortie : en-tête")
+check(o1 and table.concat(o1.places, "/") == "1/1/3" and o1.tanks[1] == "Bramm" and #o1.tanks == 1 and o1.heals[1] == "Kaelys"
+  and table.concat(o1.dps, ",") == "Pikou,Tiblou,@mirka", "sortie : places et inscrits par rôle, « @pseudo » gardé")
+check(o1 and #o1.wait == 1 and o1.wait[1].role == "Heal" and o1.wait[1].name == "Brindille" and o1.note == "Toutes les quêtes : prenez-les avant d'entrer.",
+  "sortie : attente et note")
+check(o2 and o2.time == 0 and o2.dungeon == "other" and o2.title == "Élite de la Vallée" and o2.min == nil and o2.max == nil and o2.creator == "Torvin"
+  and o2.tanks[1] == "Torvin" and #o2.heals == 0 and #o2.dps == 0 and #o2.wait == 0 and o2.note == "", "sortie « dès que complet », autre, champs vides")
+check(xg and xg[1].text and xg[1].text:find("\n" .. X1 .. "\n", 1, true) and xg[1].text:find("\n" .. X2 .. "\n", 1, true), "lignes X dans le texte signé gardé")
+-- Attente dans l'ordre, rôles écrits autrement, inscrit Discord ; ligne courte (site plus ancien) ; champs abîmés
+local xw = F.ParseFRG("FRG;1;g;1;G\nX;s1;0;other;|cffff0000Titre|r;;;Bob;x;;;;DPS:@vex,heal:Kaelys, Tank :Bramm,:Zed,Sans rôle;\nX;s2;1792105200;rfc\nX;;0;other;Sans id\nEND;0")
+local w1, w2 = xw and xw[1].outings[1], xw and xw[1].outings[2]
+check(xw and #xw[1].outings == 2, "ligne X sans identifiant ignorée")
+check(w1 and not w1.title:find("|", 1, true) and table.concat(w1.places, "/") == "1/1/3", "titre sans codes du jeu, places illisibles : 1/1/3")
+check(w1 and #w1.wait == 4 and w1.wait[1].role == "DPS" and w1.wait[1].name == "@vex" and w1.wait[2].role == "Heal" and w1.wait[3].role == "Tank"
+  and w1.wait[3].name == "Bramm" and w1.wait[4].role == "" and w1.wait[4].name == "Zed", "attente : ordre, rôles, « @pseudo »")
+check(w2 and w2.time == 1792105200 and w2.title == "" and w2.creator == "" and #w2.tanks == 0 and w2.note == "", "ligne X courte : champs vides")
+-- Note de 80 caractères accentués : bornée sans couper un caractère
+local long = F.ParseFRG("FRG;1;g;1;G\nX;s;0;other;T;;;Bob;1/1/3;;;;;" .. string.rep("é", 200) .. "\nEND;0")
+local ln = long and long[1].outings[1].note
+check(ln and #ln <= 240 and #ln % 2 == 0 and ln:match("^[\195\169]+$"), "note bornée sans couper un caractère")
+-- Ligne X après END (hors du bloc) : ignorée ; bloc d'un site plus ancien : aucune sortie
+local after = F.ParseFRG("FRG;1;g;1;G\nEND;0\nX;s;0;other;Hors bloc;;;Bob;1/1/3;;;;;")
+check(after and #after[1].outings == 0, "ligne X après END ignorée")
+check(gs and #gs[1].outings == 0, "bloc sans ligne X : aucune sortie")
+-- Lignes X : dans le texte canonique (ce que le site signe), telles quelles ; une sortie changée change ce texte
+local canon = SNS.Share and SNS.Share.Canonical(XBLOCK, "FRG")
+check(canon and canon:find("\n" .. X1 .. "\n", 1, true) and canon:find("\n" .. X2 .. "\nM;", 1, true), "lignes X dans le texte canonique")
+local changed = SNS.Share and SNS.Share.Canonical((XBLOCK:gsub("Bramm", "Brammo")), "FRG")
+check(canon and changed and changed ~= canon and changed:find("\nX;[^\n]*;Brammo;"), "sortie changée : autre texte canonique")
 
 -- FRL v1 (relève de la guilde, 1.6.0, en essai) : chaque partie, échappement, notes d'officier, forme stable, parties absentes
 local function frlData()

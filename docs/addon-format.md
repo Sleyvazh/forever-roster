@@ -166,6 +166,11 @@ X;0f6c1d2e-0000-4000-8000-000000000001;1792105200;gnomeregan;Gnomeregan;29;38;Pi
 X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1/3;Torvin;;;;
 ```
 
+**Ce que l'addon fait des lignes `X` (sorties donjon, addon 1.6.1).** L'addon lit chaque ligne `X` d'un bloc (avant `END` seulement ; hors du compte de `END`, un addon plus ancien l'ignore). Elle fait partie du texte signé, sans champ personnel : un bloc reçu d'un autre joueur apporte les mêmes sorties. Rien n'est envoyé au site ni aux autres joueurs, et il n'y a pas d'inscription en jeu en v1 (site ou Discord) :
+
+- **onglet Sorties** (`/fr sorties`) : sorties du jour et de demain des groupes chargés (heure locale du jeu), « dès que complet » en tête du jour, puis par heure ; places par rôle (« libre » pour une place vide), inscrits, liste d'attente, note, créateur. Une sortie passée depuis plus de 2 h disparaît ; une sortie « dès que complet » reste jusqu'à la fin du lendemain du jour où le bloc a été généré. Mes persos (celui connecté et ceux du compte déjà vus par l'addon) sont reconnus par leur prénom : « ta sortie », « tu viens en DPS », « tu es en attente ». Sans sortie : « Crée-en une ou inscris-toi sur le site ou sur Discord. » ;
+- **bandeau**, une fois par sortie (fermé : plus jamais pour elle), 15 min avant l'heure et jusqu'à 1 h après, ou dès qu'elle est complète pour « dès que complet » ; jamais en combat ni pendant une rencontre (caché, il revient après). Chez le **créateur** (un de mes persos) : « Gnomeregan à 21:00, complet », les inscrits (en ligne ou non, d'après la liste de guilde du jeu ; déjà dans mon groupe) et **Inviter les N** : `C_PartyInfo.InviteUnit` pour les inscrits qui sont des persos, pas déjà dans le groupe ni hors ligne, hors combat, seul ou chef du groupe, 5 au plus (pas de passage en raid) ; un `@pseudo` est donné « à inviter à la main ». Le même bouton est dans l'onglet, le jour même. Chez un **inscrit** : **Chuchoter <créateur>** ouvre la saisie d'un chuchotement au créateur, vide (rien n'est envoyé tout seul).
+
 
 
 # FRB, versions 1 et 2 : bilan d'un raid (jeu → site)
