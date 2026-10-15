@@ -143,7 +143,9 @@ describe("absences déclarées (lot F)", () => {
 
   it("chaque semaine : jours de la semaine, motif visible de tout le groupe, groupe rejoint ensuite", async () => {
     const { gm, g, inv } = await group("Hebdo");
+    // Midi UTC : « +7 jours » tombe le même jour de la semaine à Paris même si un changement d'heure est entre les deux
     const at = new Date(Date.now() + 3 * 86400e3);
+    at.setUTCHours(12, 0, 0, 0);
     const wd = zonedParts(at).weekday;
     const raid = (await gm.c.post(`/api/groups/${g.id}/raids`, { name: "MC", scheduledAt: at.toISOString() })).json().raid;
     const other = (await gm.c.post(`/api/groups/${g.id}/raids`, { name: "BWL", scheduledAt: new Date(at.getTime() + 86400e3).toISOString() })).json().raid;

@@ -7,8 +7,10 @@ S;6b3a4f5e-d6c7-48b9-ac9d-8e7f6a5b4c3d;18814;Greta:10,Thalwen:0
 O;Thalwen
 L;7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e;Brindille,Thalwen
 N;saison;depuis le 05/10/2026;Greta+Brindille:2,Thalwen:1
+X;0f6c1d2e-0000-4000-8000-000000000001;1792105200;gnomeregan;Gnomeregan;29;38;Pikou;1/1/3;Bramm;Kaelys;Pikou,Tiblou,@mirka;Heal:Brindille;Toutes les quêtes : prenez-les avant d'entrer.
+X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1/3;Torvin;;;;
 M;Brindille,Greta,Thalwen,Tournicoti
-Z;a3de5db8;otG0AOTqpTLrRCnOPHQRtbpnRbVb1W5zB8gzCmSD7+Y3rWukZHYMo3PdVPU/60ki8JgAf+QfzyA4wdsnPSqmrzpkwMExEkg0W4/Ano7Y7KqLVFRJgSIKyzOliw/EGYBujKqrGZuzq8mRcmmnHTSluxjTuT/Tr6tr+KLRucid7wXcDwT1dEFE99PTI2q6K3CVkMT4Rv6jzXtUUKIsC9d3gWwPnUAuS1j4GunY/C4YDtZkTQXrG/a/KaCBEyeFyiVpBAT4lBvyqfwvJ95HovMbmahhMXNR4sqYCof6qh+t4iOb/2ngWCF4bDdw483v0lQRDGqUI5Vhla/7vvRzo5kFAg==
+Z;a3de5db8;hwVmkI4KYFZppo2ZNz/EziQhDf+7KlGAYBTUiR03a40QRqSmDrO2hb/yNIz3k8VMDW7edKcMp2JPnXJxGCB0amr/LKbH1uVB487MHc672qd2pXyY4yDLdOTf64r1f3iXxxHhDCA4hMR0UPBM3E3riEKdA8JzVBW/znZ2HwGFML5IDSuZ8H0Txoz0pI1SmmBStcb1hr3whTz/eKJwbQoe724ZK/dSjAI+z2AXrs6rDPjF3e4k6APZb8eH72qOSO2IqFr0q/91M5MwxYDzbbfPf5sFkFAKK708rVj3glV1vPv3uAXoO6HuwYqkdabQqRrEH2OM0ywAFQSrdoPOqwuYdw==
 END;4
 FRG;1;5a2f3e4d-c5b6-47a8-9b8c-7d6e5f4a3b2c;1794000000;Les Retardataires
 R;7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e;0;Onyxia;;;journal

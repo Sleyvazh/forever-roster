@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupAddonExport, type GroupExportRaid } from "./addon";
+import { groupAddonExport, type GroupExportOuting, type GroupExportRaid } from "./addon";
 import { buildRRG, type RosterGroupRaid } from "./roster-addon";
 import { canonicalGroupBlock, groupBlockSignature, sealGroupBlock, splitGroupBlocks, type GroupBlockSigner } from "./share";
 import { TEST_KEY_ID, testSigner, verifyWithTestKey } from "./test-signer";
@@ -19,7 +19,7 @@ const R1 = "6b3a4f5e-d6c7-48b9-ac9d-8e7f6a5b4c3d", R2 = "7c4b5a6f-e7d8-49ca-bdae
 const AT = 1_794_000_000;
 
 /** FRG d'un joueur : `me` donne son inscription (statut, perso) à chaque raid. */
-const frg = (me: [GroupExportRaid["status"], string | null][], sign?: GroupBlockSigner) =>
+const frg = (me: [GroupExportRaid["status"], string | null][], sign?: GroupBlockSigner, outings: GroupExportOuting[] = []) =>
   groupAddonExport(G1, AT, [
     { id: R1, name: "Molten Core", at: AT + 86400, status: me[0]![0], character: me[0]![1], lootMode: "softres",
       reserves: [{ itemId: 18814, by: [{ name: "Greta Coulé", bonus: 10 }, { name: "Thalwen", bonus: 0 }] }] },
@@ -29,7 +29,17 @@ const frg = (me: [GroupExportRaid["status"], string | null][], sign?: GroupBlock
   [{ itemId: 16866, characters: ["Thalwen"] }],
   ["Thalwen"],
   { short: "saison", label: "depuis le 05/10/2026", entries: [{ names: ["Greta Coulé", "Brindille"], n: 2 }, { names: ["Thalwen"], n: 1 }] },
-  { members: ["Thalwen", "Greta Coulé", "Brindille", "Tournicoti", "Greta Coulé"], sign });
+  { members: ["Thalwen", "Greta Coulé", "Brindille", "Tournicoti", "Greta Coulé"], sign }, outings);
+
+/** Les deux sorties de l'échantillon du contrat (lignes X), mises dans sample.frg pour les tests Lua. */
+const OUTINGS: GroupExportOuting[] = [
+  { id: "0f6c1d2e-0000-4000-8000-000000000001", at: 1792105200, dungeon: "gnomeregan", title: "Gnomeregan", min: 29, max: 38, creator: "Pikou",
+    places: { tank: 1, heal: 1, dps: 3 }, tanks: [{ name: "Bramm" }], heals: [{ name: "Kaelys" }],
+    dps: [{ name: "Pikou" }, { name: "Tiblou" }, { name: "mirka", guest: true }], waiting: [{ role: "Heal", name: "Brindille" }],
+    note: "Toutes les quêtes : prenez-les avant d'entrer." },
+  { id: "0f6c1d2e-0000-4000-8000-000000000002", at: 0, dungeon: "other", title: "Élite de la Vallée", min: null, max: null, creator: "Torvin",
+    places: { tank: 1, heal: 1, dps: 3 }, tanks: [{ name: "Torvin" }], heals: [], dps: [], waiting: [], note: "" },
+];
 
 const rrgRaid = (status: RosterGroupRaid["status"], character: RosterGroupRaid["character"]): RosterGroupRaid =>
   ({ id: R1, name: "Flèche du Vide", at: AT + 86400, difficulty: "heroic", size: 20, status, character, lootMode: "council" });
@@ -140,7 +150,7 @@ describe("exemple partagé avec les tests Lua de l'addon", () => {
   it("écrit addon/tests/sample.frg : deux groupes signés avec la clé de test du site (déterministe)", async () => {
     const { sign } = await testSigner();
     const two = groupAddonExport(G2, AT, [{ id: R2, name: "Onyxia", at: 0, status: null, character: null, lootMode: "journal" }], [], [], [], undefined, { members: ["Brindille", "Tournicoti"], sign });
-    const text = `${frg([["present", "Greta Coulé"], ["late", "Thalwen"]], sign)}\n${two}\n`;
+    const text = `${frg([["present", "Greta Coulé"], ["late", "Thalwen"]], sign, OUTINGS)}\n${two}\n`;
     (await fs()).writeFileSync(sample("sample.frg"), text);
     expect(splitGroupBlocks(text, "FRG").length).toBe(2);
   });
