@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 49, date: "2026-10-16", kind: "site", title: "Sorties donjon : un groupe de 5 pour ce soir ou demain",
+    text: "Nouvel onglet « Sorties » dans les groupes de Forever Roster : propose un donjon pour aujourd'hui ou demain avec « + Sortie » (la liste est triée pour ton perso, avec le nombre de persos de la guilde qui ont le niveau), ou inscris-toi d'un clic dans un rôle libre avec ton perso qui a le niveau. Complète, on se met en attente : la première place libérée revient au premier en attente, prévenu en MP. Le créateur change l'heure (les inscrits restent et sont prévenus) ou annule. Sur Discord, chaque sortie a son annonce avec des boutons Tank, Soigneur et DPS, et /sortie en crée une ; un MP part au créateur quand c'est complet et à chaque inscrit 15 min avant. Les officiers peuvent lier un salon à part pour les sorties et choisir qui crée les raids et les sorties (Administration → « Discord et relances »)." },
   { n: 48, date: "2026-10-15", kind: "site", title: "Tous les salons Discord au même endroit",
     text: "Administration → « Discord et relances » réunit maintenant tous les salons Discord du groupe : celui des raids, celui de chaque raid récurrent (le même réglage que dans l'onglet Raids) et celui des commandes d'artisanat. Chacun affiche son nom, comme #raids, pour voir d'un coup d'œil quel salon sert à quoi ; s'il est renommé sur Discord, le site suit en quelques minutes." },
   { n: 47, date: "2026-10-15", kind: "bot", title: "Un salon Discord par raid récurrent",

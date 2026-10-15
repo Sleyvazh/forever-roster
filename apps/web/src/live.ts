@@ -8,6 +8,7 @@ export type LiveEvent =
   | { t: "group"; g: string }
   | { t: "chars"; g: string }
   | { t: "feedback"; g: string }
+  | { t: "outings"; g: string }
   | { t: "membership" };
 
 const LIVE = "fr-live";
@@ -18,9 +19,10 @@ function refresh(qc: QueryClient, e: LiveEvent) {
   switch (e.t) {
     case "raid": inv(["raids", e.g]); inv(["raid", e.r]); inv(["softres", e.r]); inv(["reach", e.r]); inv(["prep", e.r]); inv(["council", e.r]); inv(["week"]); inv(["attendance", e.g]); break;
     case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
-    case "group": inv(["group", e.g]); inv(["orders", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
-    case "chars": inv(["group-chars", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
+    case "group": inv(["group", e.g]); inv(["orders", e.g]); inv(["outings", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
+    case "chars": inv(["group-chars", e.g]); inv(["outings", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
     case "feedback": inv(["feedback", e.g]); inv(["group", e.g]); inv(["group-audit", e.g]); break;
+    case "outings": inv(["outings", e.g]); break;
     case "membership": inv(["groups"]); inv(["week"]); break;
   }
 }

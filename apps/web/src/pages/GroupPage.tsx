@@ -11,6 +11,7 @@ import { ItemHover, ItemIcon } from "../components/ItemTooltip";
 import { NumberField } from "../components/NumberField";
 import { GroupAddonExport } from "../components/GroupAddonExport";
 import { GroupRaids } from "../components/GroupRaids";
+import { GroupOutings } from "../components/Outings";
 import { GroupFeedback } from "../components/GroupFeedback";
 import { CraftOrders, type OrderPrefill } from "../components/CraftOrders";
 import { GroupCharacters } from "../components/GroupRoster";
@@ -28,11 +29,15 @@ interface GroupDetail {
     id: string; name: string; game: Game; site: { name: string; origin: string };
     /** Salons liés et leur nom (null : inconnu, rapporté par le bot sous peu). */
     discordLinked: boolean; discordChannelName: string | null; ordersLinked: boolean; ordersChannelName: string | null;
+    outingsLinked: boolean; outingsChannelName: string | null;
+    /** Qui crée les raids et les sorties (réglage des officiers), et si je le peux. */
+    creators: { raids: Creators; outings: Creators; canCreateRaid: boolean; canCreateOuting: boolean };
   };
   role: GroupRole; members: Member[];
   /** Chef et officiers : avis Discord suivis par le groupe (null pour un membre). */
   feedback: { linked: boolean; unseen: number } | null;
 }
+type Creators = "officers" | "members";
 interface Invite { id: string; maxUses: number; uses: number; expiresAt: string; createdAt: string }
 interface GroupEvent { id: number; type: string; actor: string | null; meta: Record<string, unknown>; createdAt: string }
 
@@ -48,13 +53,14 @@ const EVENT_LABEL: Record<string, string> = {
   group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin", loot_history_imported: "a importé un historique de butin",
   group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
   group_feedback_linked: "a relié les avis d'un serveur Discord", group_feedback_unlinked: "a retiré les avis d'un serveur Discord",
+  group_outings_linked: "a lié le salon des sorties", group_outings_unlinked: "a délié le salon des sorties", group_creators: "a changé qui crée les raids et les sorties",
 };
 
-type GroupTab = "raids" | "members" | "characters" | "crafters" | "presence" | "admin";
-const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", crafters: "artisans", presence: "presence", admin: "admin" };
+type GroupTab = "raids" | "outings" | "members" | "characters" | "crafters" | "presence" | "admin";
+const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", outings: "sorties", members: "membres", characters: "persos", crafters: "artisans", presence: "presence", admin: "admin" };
 
 export function GroupPage() {
-  const { groupId = "", tab: tabSlug } = useParams();
+  const { groupId = "", tab: tabSlug, sub } = useParams();
   const qc = useQueryClient();
   const nav = useNavigate();
   const me = useMe();
@@ -86,7 +92,8 @@ export function GroupPage() {
     </div>
   );
 
-  const tabs: [GroupTab, string][] = [["raids", "Raids"], ["members", `Membres (${members.length})`], ["characters", "Personnages"],
+  // Sorties donjon : propres à Forever (masquées sur Roster)
+  const tabs: [GroupTab, string][] = [["raids", "Raids"], ...(site.game === "forever" ? [["outings", "Sorties"] as [GroupTab, string]] : []), ["members", `Membres (${members.length})`], ["characters", "Personnages"],
     // Roster (WoW Retail) : présence relevée par l'addon Roster (R3a) ; les métiers (Artisans) viendront plus tard
     ...(site.game === "retail" ? [["presence", "Présence & butin"]] : [["crafters", "Artisans"], ["presence", "Présence & butin"]]) as [GroupTab, string][], ...(isOfficer ? [["admin", "Administration"] as [GroupTab, string]] : [])];
   // Onglet dans l'adresse (/groups/:id/artisans…) : retour arrière, lien direct à partager
@@ -117,7 +124,10 @@ export function GroupPage() {
           {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}{k === "admin" && !!unseen && <span className="av-badge" aria-label={`${unseen} avis avec du nouveau`}>{unseen}</span>}</button>)}
         </div>
         <div className="pane">
-          {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} discordLinked={group.discordLinked} />}
+          {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} canCreate={group.creators.canCreateRaid} guard={guard} discordLinked={group.discordLinked} />}
+          {tab === "outings" && <GroupOutings groupId={groupId} guard={guard} creating={sub === "nouvelle"}
+            channelName={group.outingsLinked ? group.outingsChannelName : group.discordChannelName} discordLinked={group.outingsLinked || group.discordLinked}
+            onCreate={() => nav(`/groups/${groupId}/sorties/nouvelle`)} onClose={() => nav(`/groups/${groupId}/sorties`)} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} groupName={group.name} members={members} myId={myId} myRole={role} />}
           {tab === "crafters" && <Crafters groupId={groupId} myId={myId} />}
@@ -127,7 +137,9 @@ export function GroupPage() {
               invites: <Invites groupId={groupId} guard={guard} />,
               loot: <LootSettingsPanel groupId={groupId} />,
               discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} name={group.discordChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
-                <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} /></>,
+                {site.game === "forever" && <OutingsChannel groupId={groupId} linked={group.outingsLinked} name={group.outingsChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />}
+                <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
+                <CreatorsSettings groupId={groupId} creators={group.creators} guard={guard} /></>,
               feedback: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,
               addon: <GroupAddonExport groupId={groupId} />,
               journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
@@ -386,7 +398,7 @@ function DiscordChannel({ groupId, linked, name, hasDiscord, guard }: { groupId:
         Le bot publie chaque raid à venir dans ce salon, avec des boutons d'inscription. Les inscriptions faites sur Discord et sur le site sont les mêmes.
         Les joueurs sans compte peuvent aussi s'inscrire (classe et spé), marqués ✱.
       </p>
-      <p className="hint" style={{ margin: 0 }}>Un raid récurrent peut aussi avoir son propre salon, renommé chaque semaine avec la date du raid : voir ci-dessous.</p>
+      <p className="hint" style={{ margin: 0 }}>Un raid récurrent peut aussi avoir son propre salon, renommé chaque semaine avec la date du raid : voir ci-dessous.{game === "forever" && " Les sorties donjon y sont aussi annoncées tant que leur salon n'est pas lié."}</p>
       {!hasDiscord && (!linked || wantCode) && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
         <button className="btn primary sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
@@ -454,6 +466,64 @@ function OrdersChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: 
         })}>Délier le salon</button>}
       </div>
       {code && <LinkCodeBox key={code.code} game={game} code={code} intro="Dans le salon Discord des commandes, tape cette commande" label="Commande de liaison du salon des commandes" />}
+    </section>
+  );
+}
+
+/** Salon des sorties donjon (Forever) : facultatif, lié par code comme celui des commandes ; sans lui, le salon du groupe. */
+function OutingsChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: string; linked: boolean; name: string | null; hasDiscord: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [wantCode, setWantCode] = useState(false);
+  return (
+    <section className="stack admin-sec" aria-labelledby="sc-title">
+      <div className="row between">
+        <h3 id="sc-title" style={{ margin: 0 }}>Salon des sorties</h3>
+        <ChannelTag linked={linked} name={name} />
+      </div>
+      <p className="hint" style={{ margin: 0 }}>{linked
+        ? "Une annonce par sortie donjon, avec des boutons pour s'inscrire ; elle est effacée 2 h après l'heure de la sortie."
+        : "Facultatif. Sans lui, les sorties vont dans le salon du groupe."}</p>
+      {!hasDiscord && wantCode && <div className="alert info">Lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
+      <div className="row">
+        <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/outings-code`));
+        }); }}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
+        {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
+          await del(`/groups/${groupId}/discord/outings`); setCode(null);
+          await qc.invalidateQueries({ queryKey: ["group", groupId] });
+        })}>Délier le salon</button>}
+      </div>
+      {code && <LinkCodeBox key={code.code} game="forever" code={code} intro="Dans le salon Discord des sorties, tape cette commande" label="Commande de liaison du salon des sorties" />}
+    </section>
+  );
+}
+
+/** Qui peut créer les raids et les sorties (site, /raid et /sortie) : les officiers, ou tous les membres. */
+function CreatorsSettings({ groupId, creators, guard }: { groupId: string; creators: { raids: Creators; outings: Creators }; guard: Guard }) {
+  const qc = useQueryClient();
+  const forever = useSite().game === "forever";
+  const save = (b: Partial<{ raids: Creators; outings: Creators }>) => void guard(async () => {
+    await put(`/groups/${groupId}/creators`, b);
+    await qc.invalidateQueries({ queryKey: ["group", groupId] });
+  });
+  const seg = (label: string, value: Creators, on: (v: Creators) => void) => (
+    <div className="seg" role="group" aria-label={label}>
+      {([["officers", "Officiers"], ["members", "Tous les membres"]] as const).map(([k, l]) => (
+        <button key={k} type="button" className={value === k ? "on" : ""} aria-pressed={value === k} onClick={() => value !== k && on(k)}>{l}</button>
+      ))}
+    </div>
+  );
+  return (
+    <section className="stack admin-sec" aria-labelledby="cr-title">
+      <h3 id="cr-title" style={{ margin: 0 }}>{forever ? "Qui crée les raids et les sorties" : "Qui crée les raids"}</h3>
+      <div className="cr-set">
+        <span>Qui peut créer des raids</span>{seg("Qui peut créer des raids", creators.raids, v => save({ raids: v }))}
+        {forever && <><span>Qui peut créer des sorties</span>{seg("Qui peut créer des sorties", creators.outings, v => save({ outings: v }))}</>}
+      </div>
+      <p className="hint" style={{ margin: 0 }}>
+        Sur le site comme sur Discord ({forever ? "/raid et /sortie" : "/raid"}).{forever && " Une sortie se modifie ou s'annule par son créateur et par les officiers."} Un raid se modifie par les officiers ; un raid récurrent se crée par les officiers.
+      </p>
     </section>
   );
 }

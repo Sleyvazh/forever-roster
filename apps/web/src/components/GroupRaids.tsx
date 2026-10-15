@@ -31,7 +31,9 @@ type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 const PAST_AFTER_MS = 6 * 3600e3;
 const MONTH_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
-export function GroupRaids({ groupId, canEdit, guard, discordLinked = true }: { groupId: string; canEdit: boolean; guard: Guard; /** Salon Discord du groupe lié */ discordLinked?: boolean }) {
+export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, discordLinked = true }: {
+  groupId: string; canEdit: boolean; /** Créer un raid : selon le réglage du groupe (officiers, ou tous les membres) */ canCreate?: boolean; guard: Guard; /** Salon Discord du groupe lié */ discordLinked?: boolean;
+}) {
   const { data } = useQuery({ queryKey: ["raids", groupId], queryFn: () => get<{ raids: RaidSummary[] }>(`/groups/${groupId}/raids`) });
   const tpl = useRaidTemplates(groupId);
   const [when, setWhen] = useState<"next" | "past">("next");
@@ -56,12 +58,12 @@ export function GroupRaids({ groupId, canEdit, guard, discordLinked = true }: { 
         {(canEdit || templates.length > 0) && (
           <button type="button" className="btn ghost sm" aria-expanded={showRec} onClick={() => setShowRec(s => !s)}>↻ Récurrents ({templates.length})</button>
         )}
-        {canEdit && !form && <button type="button" className="btn primary" onClick={() => setForm(true)}>+ Nouveau raid</button>}
+        {canCreate && !form && <button type="button" className="btn primary" onClick={() => setForm(true)}>+ Nouveau raid</button>}
       </div>
-      {form && <NewRaid groupId={groupId} raids={raids} guard={guard} onClose={() => setForm(false)} />}
+      {form && <NewRaid groupId={groupId} raids={raids} guard={guard} weeklyAllowed={canEdit} onClose={() => setForm(false)} />}
       {showRec && <RecurringList groupId={groupId} templates={templates} canEdit={canEdit} guard={guard} groupLinked={discordLinked} />}
       {list.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>{when === "next" ? (canEdit ? "Aucun raid prévu. Crée le premier avec « + Nouveau raid »." : "Aucun raid prévu.") : "Aucun raid passé."}</p>
+        <p className="muted" style={{ margin: 0 }}>{when === "next" ? (canCreate ? "Aucun raid prévu. Crée le premier avec « + Nouveau raid »." : "Aucun raid prévu.") : "Aucun raid passé."}</p>
       ) : (
         <div className="gr-list">{list.map(r => <RaidCard key={r.id} groupId={groupId} r={r} past={when === "past"} />)}</div>
       )}
@@ -103,7 +105,7 @@ function RaidCard({ groupId, r, past }: { groupId: string; r: RaidSummary; past:
 }
 
 /** Formulaire compact : quoi, quel jour, quelle heure, combien, quel butin ; « Chaque semaine » en option. */
-function NewRaid({ groupId, raids, guard, onClose }: { groupId: string; raids: RaidSummary[]; guard: Guard; onClose: () => void }) {
+function NewRaid({ groupId, raids, guard, onClose, weeklyAllowed = true }: { groupId: string; raids: RaidSummary[]; guard: Guard; onClose: () => void; /** Raid récurrent : officiers seulement */ weeklyAllowed?: boolean }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const recent = useMemo(() => [...new Set([...raids].sort((a, b) => (b.scheduledAt ?? "").localeCompare(a.scheduledAt ?? "")).map(r => r.name))].slice(0, 5), [raids]);
@@ -163,7 +165,7 @@ function NewRaid({ groupId, raids, guard, onClose }: { groupId: string; raids: R
         </div>)}
       </div>
       <div className="gr-line"><span className="lbl">Butin</span><LootModePicker mode={loot.mode} hidden={loot.hidden} idPrefix="gr" onChange={(mode, hidden) => setLoot({ mode, hidden })} /></div>
-      <div className="gr-line"><span className="lbl">Récurrent</span>
+      {weeklyAllowed && <div className="gr-line"><span className="lbl">Récurrent</span>
         <div className="row" style={{ gap: 12 }}>
           <label className="gr-tog"><input type="checkbox" checked={weekly} onChange={e => setWeekly(e.target.checked)} /><i aria-hidden="true" />
             Chaque semaine{day ? `, le ${WEEKDAYS[wd - 1]!.toLowerCase()}` : ""}</label>
@@ -171,7 +173,7 @@ function NewRaid({ groupId, raids, guard, onClose }: { groupId: string; raids: R
             <span style={{ width: 120 }}><NumberField id="gr-lead" min={1} max={28} value={lead} onChange={setLead} /></span>
             <span className="muted small">jours avant · annoncé sur Discord si un salon est lié</span></span>}
         </div>
-      </div>
+      </div>}
       <div className="gr-line"><span className="lbl">Description</span>
         {desc === null
           ? <button type="button" className="gr-link" onClick={() => setDesc("")}>+ Ajouter une description (visible sur Discord)</button>
