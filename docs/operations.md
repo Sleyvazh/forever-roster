@@ -2,6 +2,8 @@
 
 Procédures pour faire tourner Forever Roster en production : https://forever-roster.sleyvazh.fr, et sa deuxième adresse Roster (WoW Retail) : https://roster.sleyvazh.fr.
 
+Lancement de WoW Forever (5 novembre 2026) : liste à suivre dans [lancement-forever.md](lancement-forever.md), contrôle du serveur en lecture seule avec [`scripts/launch-check.sh`](../scripts/launch-check.sh).
+
 ## Serveur
 
 | Élément | Choix |
