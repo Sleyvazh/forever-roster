@@ -15,6 +15,8 @@ import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { applyAbsencesToRaid } from "./lib/absences";
 import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
+import { mayCreate, retireOutingMessages } from "./lib/outings";
+import { outingRoutes } from "./internal-outings";
 import { bindReportsChannel, reportDiscordView, reportsChannel } from "./lib/reports";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
@@ -56,9 +58,12 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return { user: u, role: m?.role ?? null };
   }
 
-  /** Groupe lié à ce salon : son salon des raids, ou le salon à part de l'un de ses raids récurrents. */
+  /** Groupe lié à ce salon : son salon des raids, son salon des sorties, ou le salon à part de l'un de ses raids récurrents. */
   async function groupForChannel(guildId: string, channelId: string) {
-    const [g] = await db.select().from(groups).where(and(eq(groups.discordGuildId, guildId), eq(groups.discordChannelId, channelId)));
+    const [g] = await db.select().from(groups).where(or(
+      and(eq(groups.discordGuildId, guildId), eq(groups.discordChannelId, channelId)),
+      and(eq(groups.outingsGuildId, guildId), eq(groups.outingsChannelId, channelId)),
+    )).limit(1);
     if (g) return g;
     const [t] = await db.select({ group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
       .where(and(eq(raidTemplates.discordGuildId, guildId), eq(raidTemplates.discordChannelId, channelId)));
@@ -80,7 +85,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       .where(eq(raidTemplates.discordChannelId, channelId));
     return t ?? null;
   }
-  /** Refus de lier au groupe (raids ou commandes) un salon déjà pris par un raid récurrent. */
+  /** Refus de lier au groupe (raids, commandes ou sorties) un salon déjà pris par un raid récurrent. */
   async function refuseTemplateChannel(channelId: string, groupId: string, what: string) {
     const t = await templateOnChannel(channelId);
     if (t) throw badRequest(t.groupId === groupId
@@ -173,8 +178,10 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       await db.update(groups).set({
         discordGuildId: body.guildId, discordChannelId: body.channelId, discordChannelName: body.channelName ?? null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null,
       }).where(eq(groups.id, g.id));
-      // Les annonces restées dans l'ancien salon sont effacées (celles des raids récurrents qui ont leur salon restent)
+      // Les annonces restées dans l'ancien salon sont effacées (celles des raids récurrents qui ont leur salon restent),
+      // et celles des sorties si elles n'ont pas leur salon
       await retireAnnouncements(db, g.id);
+      await retireOutingMessages(db, g.id);
       // Les raids à venir seront (re)publiés dans ce salon
       await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
       await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
@@ -196,6 +203,22 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       bus.group({ t: "group", g: o.id });
       return { group: { id: o.id, name: o.name }, kind: "orders" as const };
     }
+    // Code du salon des sorties donjon (Forever)
+    const [so] = await db.select().from(groups).where(and(eq(groups.outingsLinkCodeHash, hash), gt(groups.outingsLinkCodeExpiresAt, now)));
+    if (so) {
+      const user = await officer(body.discordUserId, so.id);
+      await refuseTemplateChannel(body.channelId, so.id, "les sorties");
+      if (so.discordChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des raids du groupe : sans salon à part, les sorties y vont déjà. Choisis un autre salon pour les sorties.");
+      if (so.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon pour les sorties.");
+      await db.update(groups).set({
+        outingsGuildId: body.guildId, outingsChannelId: body.channelId, outingsChannelName: body.channelName ?? null, outingsLinkCodeHash: null, outingsLinkCodeExpiresAt: null,
+      }).where(eq(groups.id, so.id));
+      // Les annonces restées dans l'ancien salon sont effacées, puis republiées ici
+      await retireOutingMessages(db, so.id);
+      await audit(db, req, "group_outings_linked", { userId: user.id, groupId: so.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+      bus.group({ t: "group", g: so.id });
+      return { group: { id: so.id, name: so.name }, kind: "outings" as const };
+    }
     // Code du salon à part d'un raid récurrent
     const [t] = await db.select({ template: raidTemplates, group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
       .where(and(eq(raidTemplates.discordLinkCodeHash, hash), gt(raidTemplates.discordLinkCodeExpiresAt, now)));
@@ -205,6 +228,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const what = "pour ce raid récurrent";
     if (group.discordChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui du groupe : choisis un autre salon ${what}.`);
     if (group.ordersChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon ${what}.`);
+    if (group.outingsChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui des sorties : choisis un autre salon ${what}.`);
     const other = await templateOnChannel(body.channelId);
     if (other && other.id !== template.id) {
       throw badRequest(other.groupId === group.id
@@ -212,7 +236,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         : `Ce salon est déjà celui d'un raid récurrent d'un autre groupe : choisis un autre salon ${what}.`);
     }
     const [taken] = await db.select({ id: groups.id }).from(groups)
-      .where(and(ne(groups.id, group.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId)))).limit(1);
+      .where(and(ne(groups.id, group.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId), eq(groups.outingsChannelId, body.channelId)))).limit(1);
     if (taken) throw badRequest(`Ce salon sert déjà à un autre groupe : choisis un autre salon ${what}.`);
     try {
       await db.update(raidTemplates).set({
@@ -274,9 +298,11 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       .from(groups).where(isNotNull(groups.ordersChannelId));
     const t = await db.select({ id: raidTemplates.id, guildId: raidTemplates.discordGuildId, channelId: raidTemplates.discordChannelId, name: raidTemplates.discordChannelName })
       .from(raidTemplates).where(isNotNull(raidTemplates.discordChannelId));
+    const so = await db.select({ id: groups.id, guildId: groups.outingsGuildId, channelId: groups.outingsChannelId, name: groups.outingsChannelName })
+      .from(groups).where(isNotNull(groups.outingsChannelId));
     const of = (kind: LinkedKind) => (r: { id: string; guildId: string | null; channelId: string | null; name: string | null }) =>
       ({ kind, id: r.id, guildId: r.guildId, channelId: r.channelId!, name: r.name });
-    return [...g.map(of("group")), ...o.map(of("orders")), ...t.map(of("template"))];
+    return [...g.map(of("group")), ...o.map(of("orders")), ...t.map(of("template")), ...so.map(of("outings"))];
   });
 
   /** Le bot rapporte le nom actuel d'un salon lié (seulement s'il est toujours lié : un rapport tardif est ignoré). */
@@ -292,6 +318,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       : body.kind === "orders"
         ? db.update(groups).set({ ordersChannelName: body.name })
           .where(and(eq(groups.id, body.id), eq(groups.ordersChannelId, body.channelId), differs(groups.ordersChannelName))).returning({ groupId: groups.id })
+        : body.kind === "outings"
+        ? db.update(groups).set({ outingsChannelName: body.name })
+          .where(and(eq(groups.id, body.id), eq(groups.outingsChannelId, body.channelId), differs(groups.outingsChannelName))).returning({ groupId: groups.id })
         // Raid récurrent : seulement le nom (l'erreur de renommage reste celle rapportée par le renommage)
         : db.update(raidTemplates).set({ discordChannelName: body.name })
           .where(and(eq(raidTemplates.id, body.id), eq(raidTemplates.discordChannelId, body.channelId), differs(raidTemplates.discordChannelName)))
@@ -311,7 +340,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const g = await groupForChannel(body.guildId, body.channelId);
     const { user, role } = await linkedMember(body.discordUserId, g.id);
     if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
-    if (!role || RANK[role] < RANK.officer) throw forbidden("Seuls les officiers du groupe peuvent créer un raid.");
+    if (!role) throw forbidden("Tu n'es pas membre de ce groupe.");
+    // Qui crée les raids : réglage du groupe (officiers par défaut, ou tous les membres)
+    if (!mayCreate(g.raidCreators, role)) throw forbidden("Seuls les officiers du groupe peuvent créer un raid.");
     // Un raid créé ici est ponctuel : il est annoncé dans le salon du groupe, même tapé dans celui d'un raid récurrent
     if (!g.discordChannelId) throw badRequest("Le groupe n'a pas de salon Discord pour ses raids ponctuels : lie-en un sur le site (Administration → Discord et relances).");
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raids).where(eq(raids.groupId, g.id));
@@ -650,6 +681,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   });
 
   feedbackRoutes(app, db, cfg);
+  outingRoutes(app, db, cfg, { linkedMember, groupForChannel });
   return app;
 }
 

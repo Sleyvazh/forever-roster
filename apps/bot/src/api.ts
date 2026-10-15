@@ -47,6 +47,36 @@ export interface ReportView {
   kind: "bug" | "idea" | "question"; area: "site" | "addon" | "bot" | "companion"; title: string; body: string; author: string;
   site: string; page: string; browser: string; addonVersion: string | null; hasImage: boolean; status: "new" | "wip" | "done" | "refused"; reply: string; repliedBy: string | null;
 }
+/* ---------- Sorties donjon (Forever) ---------- */
+
+export type OutingRole = "Tank" | "Heal" | "DPS";
+export interface OutingMember { role: OutingRole; name: string; cls: string; spec: string; guest: boolean }
+/** Sortie dans son salon Discord : de quoi dessiner l'annonce compacte. */
+export interface OutingView {
+  id: string; group: { id: string; name: string }; channelId: string; messageId: string | null; changedAt: string;
+  /** Jour (Paris) au moment de la vue : renvoyé à la publication (le lendemain, « demain » devient « ce soir »). */
+  today: string; url: string;
+  dungeon: string; title: string; levels: string; day: string; at: string | null; note: string; creator: string;
+  places: { tank: number; heal: number; dps: number };
+  signups: OutingMember[]; waiting: OutingMember[];
+}
+export interface OutingCurrent { role: OutingRole; waiting: boolean; characterId: string | null; cls: string; spec: string }
+export type OutingChoices =
+  | { mode: "member"; linked: true; current: OutingCurrent | null; creator: boolean; levels: string; anyAtLevel: boolean; characters: { id: string; name: string; cls: string; level: number; spec: string }[] }
+  | { mode: "guest"; linked: boolean; current: OutingCurrent | null; levels: string };
+export interface OutingJoin { state: "in" | "waiting"; role: OutingRole; name: string; position: number | null }
+export interface OutingSignupBody { role: OutingRole; characterId?: string | null; cls?: string; spec?: string; wait?: boolean }
+export type OutingNoticeKind = "full" | "soon" | "moved" | "cancelled" | "promoted";
+/** MP à envoyer (le texte est rendu par le bot). */
+export interface OutingNotice {
+  id: number; discordUserId: string; kind: OutingNoticeKind;
+  payload: {
+    outingId: string; groupName: string; title: string; levels: string; day: string; at: string | null; url: string; creator: string;
+    oldDay?: string; oldAt?: string | null; isCreator?: boolean; role?: string; character?: string; count?: number; waiting?: number;
+  };
+}
+export interface DungeonChoice { key: string; name: string; levels: string; count: number; fits: boolean }
+
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
@@ -56,11 +86,11 @@ export interface SignupBody { status: SignupStatus; characterId?: string | null;
 export interface Deletion { id: number; channelId: string; messageId: string }
 /** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
 export interface ChannelName { templateId: string; guildId: string; channelId: string; name: string }
-/** Salon lié (celui du groupe, des commandes ou d'un raid récurrent) et le nom que le site en connaît (null : inconnu). */
-export interface LinkedChannel { kind: "group" | "orders" | "template"; id: string; guildId: string | null; channelId: string; name: string | null }
-/** Liaison d'un salon : raids du groupe, commandes d'artisanat, ou salon à part d'un raid récurrent. */
+/** Salon lié (celui du groupe, des commandes, d'un raid récurrent ou des sorties) et le nom que le site en connaît (null : inconnu). */
+export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings"; id: string; guildId: string | null; channelId: string; name: string | null }
+/** Liaison d'un salon : raids du groupe, commandes d'artisanat, sorties donjon, ou salon à part d'un raid récurrent. */
 export type BindResult =
-  | { group: { id: string; name: string }; kind: "raids" | "orders" }
+  | { group: { id: string; name: string }; kind: "raids" | "orders" | "outings" }
   | { group: { id: string; name: string }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
 /** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
 export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string }
@@ -177,6 +207,28 @@ export class InternalApi {
   feedbackOutbox() { return this.req<{ replies: FeedbackReplyOut[]; statuses: FeedbackStatusOut[] }>("GET", "/internal/feedback/outbox"); }
   feedbackReplyDone(id: number, delivered: boolean) { return this.req<{ ok: true }>("POST", `/internal/feedback/replies/${id}`, { delivered }); }
   feedbackSynced(id: string, changedAt: string) { return this.req<{ ok: true }>("POST", `/internal/feedback/${id}/synced`, { changedAt }); }
+  /* Sorties donjon (Forever) */
+  outingsOutbox() { return this.req<{ outings: OutingView[] }>("GET", "/internal/discord/outings/outbox"); }
+  outingPublished(id: string, b: { channelId: string; messageId: string; changedAt: string; renderedOn: string }) {
+    return this.req<{ ok: true }>("POST", `/internal/discord/outings/${id}/published`, b);
+  }
+  outingChoices(id: string, discordUserId: string, role: OutingRole) {
+    return this.req<OutingChoices>("GET", `/internal/discord/outings/${id}/choices?discordUserId=${encodeURIComponent(discordUserId)}&role=${role}`);
+  }
+  outingSignup(id: string, b: OutingSignupBody & { discordUserId: string; discordName: string }) {
+    return this.req<{ result: OutingJoin; view: OutingView }>("POST", `/internal/discord/outings/${id}/signup`, b);
+  }
+  outingUnsign(id: string, discordUserId: string) {
+    return this.req<{ removed: boolean; view: OutingView }>("DELETE", `/internal/discord/outings/${id}/signup/${discordUserId}`);
+  }
+  createOuting(b: { guildId: string; channelId: string; discordUserId: string; dungeon: string; day: string; at: string | null; note?: string }) {
+    return this.req<{ view: OutingView; character: string; role: OutingRole; open: { mine: number; max: number } }>("POST", "/internal/discord/outings", b);
+  }
+  dungeonChoices(b: { guildId: string; channelId: string; discordUserId: string; q: string }) {
+    const qs = new URLSearchParams({ ...b, q: b.q.slice(0, 60) });
+    return this.req<{ choices: DungeonChoice[] }>("GET", `/internal/discord/outings/dungeons?${qs}`);
+  }
+  claimOutingNotices() { return this.req<{ notices: OutingNotice[] }>("POST", "/internal/discord/outings/notices/claim", {}); }
   unsign(raidId: string, discordUserId: string) {
     return this.req<RaidView>("DELETE", `/internal/discord/raids/${raidId}/signup/${discordUserId}`);
   }

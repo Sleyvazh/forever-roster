@@ -1,9 +1,10 @@
-import { buildRRG, dpsType, groupAddonExport, IMPORT_PARTS, specDef, type Game, type GroupExportBis, type GroupExportPattern } from "@forever/game-data";
-import { and, asc, eq, gte, inArray, isNull, or } from "drizzle-orm";
+import { buildRRG, dpsType, groupAddonExport, IMPORT_PARTS, outingDays, specDef, type Game, type GroupExportBis, type GroupExportOuting, type GroupExportPattern } from "@forever/game-data";
+import { and, asc, eq, gt, gte, inArray, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, raids, raidSignups, softReserves } from "../db/schema";
+import { characterRecipes, characters, gameRecipes, groupCharacters, groupMembers, groups, outings, raids, raidSignups, softReserves } from "../db/schema";
+import { signupName, signupsOf } from "../lib/outings";
 import { groupLootSettings, srBonuses } from "../lib/loot";
 import { groupLootCounts } from "../lib/loot-count";
 import { groupNames } from "../lib/prep";
@@ -132,8 +133,31 @@ export async function groupExport(db: Db, groupId: string, userId: string, signe
     { short: counts.summary.short, label: counts.summary.label, entries },
     // Soft reserve cachée : chacun reçoit des réservations différentes (un membre, les siennes ; un officier, toutes),
     // qui ne doivent pas passer à d'autres joueurs. Bloc non signé : l'addon ne le partage pas (chacun colle le sien).
-    { members: played.map(c => c.name), sign: signer && !raidRows.some(r => r.lootMode === "softres" && r.srHidden) ? signer.sign : undefined });
+    { members: played.map(c => c.name), sign: signer && !raidRows.some(r => r.lootMode === "softres" && r.srHidden) ? signer.sign : undefined },
+    await outingsExport(db, groupId, new Date(now)));
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
+}
+
+/**
+ * Sorties donjon du jour et de demain (heure de Paris) encore en vie, pour la ligne X du FRG (addon 1.6.1) : la plus
+ * proche d'abord (« dès que complet » en tête de son jour, comme sur le site).
+ */
+async function outingsExport(db: Db, groupId: string, now: Date): Promise<GroupExportOuting[]> {
+  const { today, tomorrow } = outingDays(now);
+  const rows = await db.select().from(outings)
+    .where(and(eq(outings.groupId, groupId), gt(outings.expiresAt, now), inArray(outings.day, [today, tomorrow])))
+    .orderBy(asc(outings.day), sql`${outings.scheduledAt} asc nulls first`, asc(outings.createdAt));
+  const sign = await signupsOf(db, rows.map(o => o.id));
+  return rows.map(o => {
+    const { placed, waiting } = sign.get(o.id)!;
+    const one = (s: (typeof placed)[number]) => ({ name: signupName(s), guest: !s.userId });
+    return {
+      id: o.id, at: o.scheduledAt ? Math.floor(o.scheduledAt.getTime() / 1000) : 0, dungeon: o.dungeon, title: o.title, min: o.minLevel, max: o.maxLevel,
+      creator: o.creatorName, places: { tank: o.tanks, heal: o.heals, dps: o.dps },
+      tanks: placed.filter(s => s.role === "Tank").map(one), heals: placed.filter(s => s.role === "Heal").map(one), dps: placed.filter(s => s.role === "DPS").map(one),
+      waiting: waiting.map(s => ({ ...one(s), role: s.role })), note: o.note,
+    };
+  });
 }
 
 /**

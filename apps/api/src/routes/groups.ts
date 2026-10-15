@@ -15,6 +15,7 @@ import { toApi } from "./characters";
 import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
+import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outings";
 import { bus } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
@@ -102,8 +103,26 @@ export async function groupRoutes(app: FastifyInstance) {
     const channels = {
       discordLinked: !!g!.discordChannelId, discordChannelName: g!.discordChannelId ? g!.discordChannelName : null,
       ordersLinked: !!g!.ordersChannelId, ordersChannelName: g!.ordersChannelId ? g!.ordersChannelName : null,
+      outingsLinked: !!g!.outingsChannelId, outingsChannelName: g!.outingsChannelId ? g!.outingsChannelName : null,
     };
-    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels }, role, members, feedback };
+    // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
+    const creators = { raids: g!.raidCreators, outings: g!.outingCreators, canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role) };
+    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, members, feedback };
+  });
+
+  /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
+  app.put("/:id/creators", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const who = z.enum(["officers", "members"]);
+    const body = parse(z.object({ raids: who.optional(), outings: who.optional() }), req.body);
+    const [g] = await db.update(groups).set({ ...(body.raids && { raidCreators: body.raids }), ...(body.outings && { outingCreators: body.outings }) })
+      .where(eq(groups.id, id)).returning({ raids: groups.raidCreators, outings: groups.outingCreators });
+    await audit(db, req, "group_creators", { userId: u.id, groupId: id, meta: { ...body } });
+    bus.group({ t: "group", g: id });
+    bus.group({ t: "outings", g: id });
+    return { creators: g };
   });
 
   app.patch("/:id", async (req) => {
@@ -126,6 +145,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await requireRole(db, id, u.id, "owner");
     await retireAnnouncements(db, id, { all: true });
     await retireOrderMessages(db, id);
+    await retireOutingMessages(db, id, { all: true });
     const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
     for (const m of members) await bus.membership(db, m.u);
@@ -258,6 +278,30 @@ export async function groupRoutes(app: FastifyInstance) {
     return { code, expiresAt };
   });
 
+  /** Salon des sorties donjon (Forever) : même principe ; sans lui, les sorties vont dans le salon du groupe. */
+  app.post("/:id/discord/outings-code", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, id));
+    if (g?.game !== "forever") throw badRequest("Les sorties donjon sont pour WoW Forever.");
+    const { code, hash, expiresAt } = linkCode();
+    await db.update(groups).set({ outingsLinkCodeHash: hash, outingsLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    return { code, expiresAt };
+  });
+
+  app.delete("/:id/discord/outings", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    await db.update(groups).set({ outingsGuildId: null, outingsChannelId: null, outingsChannelName: null, outingsLinkCodeHash: null, outingsLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    // Les annonces repartent dans le salon du groupe
+    await retireOutingMessages(db, id);
+    await audit(db, req, "group_outings_unlinked", { userId: u.id, groupId: id });
+    bus.group({ t: "group", g: id });
+    return { ok: true };
+  });
+
   app.delete("/:id/discord/orders", async (req) => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
@@ -275,6 +319,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await requireRole(db, id, u.id, "officer");
     await db.update(groups).set({ discordGuildId: null, discordChannelId: null, discordChannelName: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, id));
     await retireAnnouncements(db, id);
+    await retireOutingMessages(db, id);
     await audit(db, req, "group_discord_unlinked", { userId: u.id, groupId: id });
     bus.group({ t: "group", g: id });
     return { ok: true };
@@ -314,6 +359,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await db.delete(groupMembers).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
     await db.delete(groupCharacters).where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.userId, p.userId)));
     await dropSignupsInGroup(db, p.id, p.userId);
+    await dropOutingSignups(db, p.id, p.userId, siteOf(cfg, req).origin);
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
     bus.group({ t: "group", g: p.id });
     bus.group({ t: "chars", g: p.id });

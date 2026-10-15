@@ -1,4 +1,5 @@
 import type { Role, SignupStatus } from "./core";
+import { placesText, type OutingPlaces } from "./outings";
 import type { BossSheet, ConsumableLine } from "./prep";
 import { sealGroupBlock, type GroupBlockSigner } from "./share";
 
@@ -105,11 +106,43 @@ export interface GroupExportShare {
 }
 
 /**
+ * Sortie donjon du jour ou de demain (ligne X, addon 1.6.1) : rien de personnel, l'addon reconnaît ses persos dans les
+ * listes. Inscrit du site : son perso (prénom en jeu) ; inscrit Discord sans compte : `guest` (écrit « @pseudo »).
+ */
+export interface GroupExportOuting {
+  id: string;
+  /** Heure (secondes Unix) ; 0 : « dès que complet ». */
+  at: number;
+  /** Clé de FOREVER_DUNGEONS, ou « other ». */
+  dungeon: string; title: string;
+  min: number | null; max: number | null;
+  creator: string;
+  places: OutingPlaces;
+  /** Inscrits par rôle et liste d'attente, dans l'ordre d'arrivée. */
+  tanks: OutingExportMember[]; heals: OutingExportMember[]; dps: OutingExportMember[];
+  waiting: (OutingExportMember & { role: Role })[];
+  note: string;
+}
+export interface OutingExportMember { name: string; guest?: boolean }
+
+/** Nom d'un inscrit dans la ligne X : prénom en jeu, ou « @pseudo » Discord (sans « , » ni « : », séparateurs des listes). */
+const outingName = (m: OutingExportMember) => (m.guest ? `@${clean(m.name).replace(/[,:\s]+/g, "")}` : gameName(m.name).replace(/[,:]/g, ""));
+const outingNames = (list: OutingExportMember[]) => list.map(outingName).filter(n => n && n !== "@").join(",");
+
+/** Ligne X d'une sortie (docs/addon-format.md, section FRG). */
+export function outingLine(o: GroupExportOuting): string {
+  return ["X", o.id, o.at, clean(o.dungeon), clean(o.title), o.min ?? "", o.max ?? "", gameName(o.creator), placesText(o.places),
+    outingNames(o.tanks), outingNames(o.heals), outingNames(o.dps),
+    o.waiting.map(w => ({ role: w.role, n: outingName(w) })).filter(w => w.n && w.n !== "@").map(w => `${w.role}:${w.n}`).join(","),
+    clean(o.note).slice(0, 80)].join(";");
+}
+
+/**
  * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
  * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; partage entre joueurs : persos du groupe (M) et
  * signature du site (Z). Spécification : docs/addon-format.md.
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}): string {
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}, outings: GroupExportOuting[] = []): string {
   const lines = [
     ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : "", r.lootMode ?? ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
@@ -135,6 +168,8 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
     // Lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 » : les persos d'un même joueur partagent le compte)
     ...(counts?.entries.length ? [["N", clean(counts.short), clean(counts.label),
       counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
+    // Sorties donjon : X, une par sortie du jour ou de demain (addon 1.6.1), après les autres lignes non comptées
+    ...outings.map(outingLine),
     // Partage entre joueurs : M (persos du groupe, prénoms comme la ligne O) toujours, en dernier ; Z ajoutée par sealGroupBlock
     `M;${list(share.members ?? [])}`,
   ];

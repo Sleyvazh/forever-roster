@@ -5,7 +5,7 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   {
     type: ApplicationCommandType.ChatInput,
     name: "forever-lier",
-    description: "Lie ce salon à un groupe Forever Roster : raids ou commandes (code donné par le site).",
+    description: "Lie ce salon à un groupe Forever Roster : raids, sorties ou commandes (code donné par le site).",
     contexts: [InteractionContextType.Guild],
     options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
   },
@@ -26,6 +26,18 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
       { type: ApplicationCommandOptionType.String, name: "nom", description: "Ex. Molten Core", required: true, min_length: 2, max_length: 60 },
       { type: ApplicationCommandOptionType.String, name: "date", description: "JJ/MM/AAAA HH:MM, heure de Paris (ex. 12/11/2026 21:00)", required: true, max_length: 40 },
       { type: ApplicationCommandOptionType.String, name: "description", description: "Consignes, point de rendez-vous…", required: false, max_length: 1000 },
+    ],
+  },
+  {
+    // Sorties donjon (WoW Forever) : droits vérifiés par le site (réglage « Qui peut créer des sorties » du groupe)
+    type: ApplicationCommandType.ChatInput,
+    name: "sortie",
+    description: "Propose une sortie donjon (groupe de 5, aujourd'hui ou demain) au groupe lié à ce salon.",
+    contexts: [InteractionContextType.Guild],
+    options: [
+      { type: ApplicationCommandOptionType.String, name: "donjon", description: "Ex. Gnomeregan, ou un titre libre (quête de groupe, élite…)", required: true, autocomplete: true, max_length: 60 },
+      { type: ApplicationCommandOptionType.String, name: "heure", description: "Ex. 21:00, demain 20:30, dès que complet (heure de Paris)", required: true, autocomplete: true, max_length: 40 },
+      { type: ApplicationCommandOptionType.String, name: "note", description: "Facultatif : quêtes, point de rendez-vous… (80 caractères)", required: false, max_length: 80 },
     ],
   },
   // Signalements du site (bug, idée, question) : le salon privé des admins du site

@@ -168,6 +168,9 @@ export const characters = pgTable("characters", {
   check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
 
+/** Qui peut créer : les officiers (et le chef) seulement, ou tous les membres. */
+export type Creators = "officers" | "members";
+
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -193,13 +196,25 @@ export const groups = pgTable("groups", {
   ordersChannelName: text("orders_channel_name"),
   ordersLinkCodeHash: text("orders_link_code_hash"),
   ordersLinkCodeExpiresAt: ts("orders_link_code_expires_at"),
+  /** Salon Discord des sorties donjon (Forever), lié de la même façon ; sans lui, les sorties vont dans le salon du groupe. */
+  outingsGuildId: text("outings_guild_id"),
+  outingsChannelId: text("outings_channel_id"),
+  outingsChannelName: text("outings_channel_name"),
+  outingsLinkCodeHash: text("outings_link_code_hash"),
+  outingsLinkCodeExpiresAt: ts("outings_link_code_expires_at"),
+  /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
+  raidCreators: text("raid_creators").$type<Creators>().notNull().default("officers"),
+  outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
   check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
+  check("groups_raid_creators_chk", sql`${t.raidCreators} in ('officers', 'members')`),
+  check("groups_outing_creators_chk", sql`${t.outingCreators} in ('officers', 'members')`),
   // Groupes liés à un serveur Discord (avis : seuls ceux-là sont proposés), quel que soit le nombre de groupes
   index("groups_discord_guild_idx").on(t.discordGuildId),
   index("groups_orders_guild_idx").on(t.ordersGuildId),
+  index("groups_outings_guild_idx").on(t.outingsGuildId),
 ]);
 
 export const groupMembers = pgTable("group_members", {
@@ -576,6 +591,109 @@ export const raidLogs = pgTable("raid_logs", {
   difficulty: text("difficulty").$type<RetailDifficulty | null>(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+/* ---------- Sorties donjon (Forever) ---------- */
+
+/**
+ * Sortie donjon : un groupe de 5 pour aujourd'hui ou demain (heure de Paris), places par rôle. Ce n'est pas un raid :
+ * table à part (pas de compo, de présence ni de butin, hors de la limite des raids). Elle disparaît 2 h après son
+ * heure (« dès que complet » : à la fin de son jour), son message Discord avec elle. Annulée : supprimée.
+ */
+export const outings = pgTable("outings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  /** Clé de FOREVER_DUNGEONS (game-data), ou « other » (quête de groupe, élite…) avec un titre libre. */
+  dungeon: text("dungeon").notNull(),
+  title: text("title").notNull(),
+  /** Fourchette du donjon (recopiée) ; null pour « other ». */
+  minLevel: smallint("min_level"),
+  maxLevel: smallint("max_level"),
+  /** Jour de la sortie (Paris) et heure ; sans heure : « dès que complet ». */
+  day: date("day", { mode: "string" }).notNull(),
+  scheduledAt: ts("scheduled_at"),
+  /** Fin de vie : heure + 2 h, ou fin du jour. */
+  expiresAt: ts("expires_at").notNull(),
+  tanks: smallint("tanks").notNull().default(1),
+  heals: smallint("heals").notNull().default(1),
+  dps: smallint("dps").notNull().default(3),
+  note: text("note").notNull().default(""),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /** Prénom du perso du créateur (recopié : annonce, ligne X du FRG). */
+  creatorName: text("creator_name").notNull(),
+  /** MP déjà envoyés : sortie complète (au créateur, une fois), 15 min avant (remis à zéro si l'heure change). */
+  fullNotifiedAt: ts("full_notified_at"),
+  soonNotifiedAt: ts("soon_notified_at"),
+  /** Message du bot (republié quand discord_changed_at > discord_synced_at, ou le lendemain : « demain » devient « ce soir »). */
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
+  discordRenderedOn: date("discord_rendered_on", { mode: "string" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  index("outings_group_idx").on(t.groupId, t.expiresAt),
+  index("outings_expires_idx").on(t.expiresAt),
+  check("outings_places_chk", sql`${t.tanks} between 0 and 5 and ${t.heals} between 0 and 5 and ${t.dps} between 0 and 5 and ${t.tanks} + ${t.heals} + ${t.dps} = 5`),
+  check("outings_note_chk", sql`char_length(${t.note}) <= 80`),
+]);
+
+/**
+ * Inscrit à une sortie : un compte du site (user_id, avec son perso) ou, depuis Discord sans compte, un identifiant
+ * Discord seul (classe et spé choisies dans le bot). Une place par rôle ; complet : liste d'attente, dans l'ordre de
+ * `waiting_since` (null : a une place). La place libérée passe au premier en attente pour ce rôle.
+ */
+export const outingSignups = pgTable("outing_signups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  outingId: uuid("outing_id").notNull().references(() => outings.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  discordUserId: text("discord_user_id"),
+  /** Compte : son nom sur le site ; sans compte : son pseudo Discord. */
+  displayName: text("display_name").notNull(),
+  characterId: uuid("character_id").references(() => characters.id, { onDelete: "set null" }),
+  /** Nom du perso (recopié) ; vide pour un inscrit sans compte. */
+  characterName: text("character_name").notNull().default(""),
+  cls: text("cls").notNull().default(""),
+  spec: text("spec").notNull().default(""),
+  role: text("role").$type<"Tank" | "Heal" | "DPS">().notNull(),
+  waitingSince: ts("waiting_since"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  uniqueIndex("outing_signups_user_uq").on(t.outingId, t.userId),
+  uniqueIndex("outing_signups_discord_uq").on(t.outingId, t.discordUserId),
+  index("outing_signups_outing_idx").on(t.outingId),
+  check("outing_signups_who", sql`${t.userId} IS NOT NULL OR ${t.discordUserId} IS NOT NULL`),
+  check("outing_signups_role", sql`${t.role} IN ('Tank', 'Heal', 'DPS')`),
+]);
+
+/**
+ * MP du bot à propos des sorties, en file : sortie complète (au créateur), 15 min avant, heure changée, sortie annulée,
+ * place libérée (au premier en attente). Le texte est rendu par le bot au moment de l'envoi ; le bot réserve chaque MP
+ * une seule fois (`claimed_at`).
+ */
+export type OutingNoticeKind = "full" | "soon" | "moved" | "cancelled" | "promoted";
+export interface OutingNoticePayload {
+  outingId: string; groupName: string; title: string; levels: string; day: string; at: string | null; url: string; creator: string;
+  /** Heure changée : l'ancienne. */
+  oldDay?: string; oldAt?: string | null;
+  /** Le destinataire est le créateur (15 min avant : « Inviter les 4 » en jeu). */
+  isCreator?: boolean;
+  /** Promu ou rappelé : son rôle et son perso (ou sa classe sans compte). */
+  role?: string; character?: string;
+  /** Inscrits (sortie complète). */
+  count?: number; waiting?: number;
+}
+export const outingNotices = pgTable("outing_notices", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  discordUserId: text("discord_user_id").notNull(),
+  kind: text("kind").$type<OutingNoticeKind>().notNull(),
+  payload: jsonb("payload").$type<OutingNoticePayload>().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  claimedAt: ts("claimed_at"),
+}, t => [
+  index("outing_notices_pending_idx").on(t.createdAt).where(sql`${t.claimedAt} IS NULL`),
+  check("outing_notices_kind", sql`${t.kind} IN ('full', 'soon', 'moved', 'cancelled', 'promoted')`),
+]);
 
 /* ---------- Signalements (bug, idée, question) ---------- */
 

@@ -128,6 +128,7 @@ T;<raid>;<n° de fiche>;<intitulé>;<persos>;<consigne>
 L;<raid>;<persos du conseil>
 I;<raid>;<perso>;<Tank | Heal | DPS>;<melee | ranged | caster>
 N;<période courte>;<période>;<perso>+<perso>:<nombre>,…
+X;<sortie>;<heure>;<donjon>;<titre>;<niv min>;<niv max>;<créateur>;<places>;<tanks>;<heals>;<dps>;<attente>;<note>
 M;<persos du groupe>
 Z;<keyId>;<signature base64>
 END;<nombre de lignes R, P et B>
@@ -146,15 +147,24 @@ END;<nombre de lignes R, P et B>
 | `I` | Lot G : inscrits qui viennent (ou hésitent), avec le rôle et le type de DPS de leur spé, pour savoir quels consommables chacun doit avoir. Seulement pour les raids qui demandent des consommables. |
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
 | `N` | Lot I : objets reçus (spé principale, exclusions et corrections des officiers comprises) sur la période du groupe : libellé court (`saison`, `30 j`, `5 raids`), libellé complet (`depuis le 05/11/2026`…), puis une entrée par joueur (ses persos du groupe joints par `+`, main d'abord, qui partagent le compte) ou par perso, selon le réglage du groupe. Colonne « Reçus » du conseil du butin. |
+| `X` | Sortie donjon (addon 1.6.1) : une ligne par sortie **du jour ou de demain** (heure de Paris), non annulée, dont l'heure n'est pas passée depuis plus de 2 h ; une sortie « dès que complet » (heure `0`) reste jusqu'à la fin de son jour. Identifiant de la sortie (même forme que celui d'un raid), heure en secondes Unix (`0` : dès que complet), clé du donjon (`FOREVER_DUNGEONS` de game-data, ou `other` pour « Autre (quête de groupe, élite…) »), nom anglais du donjon ou titre libre, fourchette de niveaux (vide pour `other`), prénom du perso du créateur, places `T/H/D` (ex. `1/1/3`, 5 en tout), inscrits de chaque rôle (prénoms séparés par `,`, dans l'ordre d'arrivée ; un inscrit Discord sans compte s'écrit `@<pseudo>`, sans espace), liste d'attente dans l'ordre (`rôle:prénom`, ex. `Heal:Kaelys,DPS:@vex`), note (80 caractères au plus). Rien de personnel : l'addon reconnaît ses persos dans les listes. Ligne signée comme le reste. |
 
-Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I` et `N` viennent après les autres et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. `M` (persos du groupe) et `Z` (signature du site) ferment le bloc, juste avant `END`, hors du compte aussi : voir « Partage entre joueurs (signature du site) ». Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes) : ce bloc n'est pas signé, il ne se partage pas entre joueurs. L'addon garde le texte de chaque bloc signé (de l'en-tête à `END`) pour le partager ; `M` peut lister plus de 40 persos.
+Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I`, `N` et `X` viennent après les autres (dans cet ordre) et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. `M` (persos du groupe) et `Z` (signature du site) ferment le bloc, juste avant `END`, hors du compte aussi : voir « Partage entre joueurs (signature du site) ». Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes) : ce bloc n'est pas signé, il ne se partage pas entre joueurs. L'addon garde le texte de chaque bloc signé (de l'en-tête à `END`) pour le partager ; `M` peut lister plus de 40 persos.
 
 L'addon s'en sert pour :
 
 - **s'inscrire en jeu** : statut choisi par perso, envoyé au site par la ligne `S` du prochain `/fr export` ;
 - **les infobulles** : « Recherché par / Connu par » sur l'objet patron, partout (sacs, butin, hôtel des ventes, lien dans le chat) ;
 - **les sacs** : liste des patrons suivis présents, avec un bouton **Annoncer** ;
-- **le butin** : quand on ramasse un patron suivi ou un BiS recherché, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet).
+- **le butin** : quand on ramasse un patron suivi ou un BiS recherché, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet) ;
+- **les sorties donjon** (lignes `X`) : sorties du jour et de demain ; l'inscription se fait sur le site ou sur Discord (pas en jeu en v1).
+
+Exemple de lignes `X` (le même texte sert aux tests du site, `packages/game-data/src/outings.test.ts`, et de l'addon) :
+
+```
+X;0f6c1d2e-0000-4000-8000-000000000001;1792105200;gnomeregan;Gnomeregan;29;38;Pikou;1/1/3;Bramm;Kaelys;Pikou,Tiblou,@mirka;Heal:Brindille;Toutes les quêtes : prenez-les avant d'entrer.
+X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1/3;Torvin;;;;
+```
 
 
 

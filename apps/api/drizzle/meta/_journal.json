@@ -253,6 +253,13 @@
       "when": 1792089257779,
       "tag": "0035_channel_names",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792099530510,
+      "tag": "0036_sorties",
+      "breakpoints": true
     }
   ]
 }

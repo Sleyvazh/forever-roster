@@ -1,22 +1,26 @@
 import {
   Client, DiscordAPIError, Events, GatewayIntentBits, MessageFlags, Partials, PermissionFlagsBits,
-  type ButtonInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction,
+  type AutocompleteInteraction, type ButtonInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction,
 } from "discord.js";
-import { ApiError, InternalApi, type RaidView } from "./api";
+import { ApiError, InternalApi, type OutingRole, type OutingView, type RaidView } from "./api";
 import { createChannelNamer, templateLinkedReply } from "./channels";
 import { COMMANDS } from "./commands";
 import { loadConfig } from "./config";
-import { parseRaidDate } from "./dates";
+import { outingTimeChoices, parseOutingTime, parseRaidDate } from "./dates";
 import { makeLookup, noEmoji, syncEmojis, type EmojiLookup } from "./emojis";
 import { createFeedback, isFeedbackId } from "./feedback";
 import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
-import { decodeId, splitValue } from "./ids";
+import { decodeId, decodeOutingId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
+import { createOutingSync, onOutingClass, onOutingRole, outingConfirmation, renderNotice, renderOuting, ROLE_WORD, waitChooser, type OutingStep } from "./outings";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { CAPTURE_NAME, createReportSync, renderReport } from "./reports";
-import { resolveGameLang } from "@forever/game-data";
+import { outingWhenText, resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
+
+/** « ce soir 21:00 », « demain, dès que complet ». */
+const outingWhen = (v: { at: string | null; day: string }) => outingWhenText(v.at ? new Date(v.at) : null, v.day);
 
 /** Langue des noms du jeu dans les menus : celle du Discord du joueur (français ou anglais). */
 const langOf = (i: { locale: string }) => resolveGameLang(null, i.locale);
@@ -86,6 +90,21 @@ async function start() {
       return { channelId: ch.id, messageId: m.id };
     },
   }, log);
+  // Sorties donjon (Forever) : annonce compacte dans le salon des sorties (ou celui du groupe), mise à jour sur place
+  const outings = createOutingSync(api, {
+    async upsert(v, messageId) {
+      const ch = await client.channels.fetch(v.channelId);
+      if (!ch || !ch.isSendable()) throw new Error(`Salon ${v.channelId} inaccessible`);
+      const payload = renderOuting(v, emoji);
+      if (messageId) {
+        try { const m = await ch.messages.edit(messageId, payload); return { channelId: ch.id, messageId: m.id }; }
+        catch (e) { if (!(e instanceof DiscordAPIError && e.code === UNKNOWN_MESSAGE)) throw e; }
+      }
+      const m = await ch.send(payload);
+      return { channelId: ch.id, messageId: m.id };
+    },
+  }, log);
+  const publishOutingSoon = (v: OutingView) => { outings.publish(v).catch(e => log.warn("Mise à jour de la sortie impossible", e?.message)); };
   // Signalements du site : salon privé des admins (/signalements-lier). La capture est jointe au message
   // (renvoyée à chaque modification, rare : statut ou réponse) ; si elle n'est plus lisible, le message part sans.
   const reports = createReportSync(api, {
@@ -175,6 +194,12 @@ async function start() {
     }
   };
 
+  /** MP des sorties : complète (au créateur), 15 min avant, heure changée, annulée, place libérée. MP fermés : ignoré. */
+  const sendOutingNotices = async () => {
+    const { notices } = await api.claimOutingNotices();
+    for (const n of notices) await dm(n.discordUserId, renderNotice(n), "MP de sortie");
+  };
+
   client.once(Events.ClientReady, async c => {
     log.info(`Connecté en tant que ${c.user.tag}`);
     await c.application.commands.set(COMMANDS);
@@ -182,6 +207,8 @@ async function start() {
     setInterval(() => { refreshEmojis().catch(e => log.warn("Émojis non synchronisés", e?.message)); }, 6 * 3600e3);
     setInterval(() => { sync.tick().catch(e => log.warn("Relève impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { outings.tick().catch(e => log.warn("Relève des sorties impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { sendOutingNotices().catch(e => log.warn("MP des sorties impossibles", e?.message)); }, 30e3);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
     // Noms des salons (renommage des salons des raids récurrents, nom des salons liés) : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
@@ -213,7 +240,10 @@ async function start() {
   client.on(Events.MessageCreate, m => { feedback.dm(m).catch(e => log.warn("MP d'avis non traité", (e as Error).message)); });
 
   async function handle(i: Interaction) {
-    if (i.isAutocomplete()) return i.commandName === "feedback-config" ? feedback.autocomplete(i).catch(() => i.respond([]).catch(() => {})) : undefined;
+    if (i.isAutocomplete()) {
+      if (i.commandName === "sortie") return outingAutocomplete(i).catch(() => i.respond([]).catch(() => {}));
+      return i.commandName === "feedback-config" ? feedback.autocomplete(i).catch(() => i.respond([]).catch(() => {})) : undefined;
+    }
     if (i.isChatInputCommand()) return command(i);
     if (i.isButton()) return isFeedbackId(i.customId) ? feedback.button(i) : button(i);
     if (i.isModalSubmit()) return feedback.modal(i);
@@ -238,6 +268,11 @@ async function start() {
         await i.editReply(templateLinkedReply(bound.template, i.appPermissions.has(PermissionFlagsBits.ManageChannels)));
         void sync.tick().catch(() => {});
         void channels.tick().catch(() => {});
+        return;
+      }
+      if (kind === "outings") {
+        await i.editReply(`✅ Salon lié aux sorties donjon de **${group.name}**. Chaque sortie y sera annoncée avec des boutons pour s'inscrire ; son message est effacé 2 h après l'heure.`);
+        void outings.tick().catch(() => {});
         return;
       }
       if (kind === "orders") {
@@ -267,6 +302,19 @@ async function start() {
       return;
     }
 
+    if (i.commandName === "sortie") {
+      const when = parseOutingTime(i.options.getString("heure", true), new Date(), cfg.timeZone);
+      if (!when.ok) return i.editReply(`⚠️ ${when.error}`);
+      const r = await api.createOuting({
+        guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, dungeon: i.options.getString("donjon", true),
+        day: when.day, at: when.at?.toISOString() ?? null, note: i.options.getString("note") ?? undefined,
+      });
+      await outings.publish(r.view).catch(e => log.warn("Sortie non publiée", e?.message));
+      const whenText = outingWhen(r.view);
+      return i.editReply(`Sortie publiée : **${r.view.title}**, ${whenText}, avec **${r.character}** en ${ROLE_WORD[r.role]}. `
+        + `Tu as ${r.open.mine} sortie${r.open.mine > 1 ? "s" : ""} ouverte${r.open.mine > 1 ? "s" : ""} sur ${r.open.max}. [Voir sur le site](<${r.view.url}>)`);
+    }
+
     if (i.commandName === "raid") {
       const when = parseRaidDate(i.options.getString("date", true), new Date(), cfg.timeZone);
       if (!when.ok) return i.editReply(`⚠️ ${when.error}`);
@@ -287,7 +335,60 @@ async function start() {
     return i.editReply(confirmation(raidId, step.body.status, step.label, view.raid.url));
   }
 
+  /** Complétion de /sortie : le donjon (trié pour son perso, « N persos au niveau »), l'heure. */
+  async function outingAutocomplete(i: AutocompleteInteraction) {
+    const focused = i.options.getFocused(true);
+    if (focused.name === "heure") return i.respond(outingTimeChoices(String(focused.value), new Date(), cfg.timeZone).map(x => ({ name: x, value: x })));
+    if (!i.inGuild() || !i.channelId) return i.respond([]);
+    const { choices } = await api.dungeonChoices({ guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, q: String(focused.value) });
+    return i.respond(choices.map(c => ({ name: `${c.name} · ${c.levels} · ${c.count} perso${c.count > 1 ? "s" : ""} au niveau`.slice(0, 100), value: c.key })));
+  }
+
+  /** Étape du parcours d'une sortie : inscription (puis annonce mise à jour), ou menu à afficher. */
+  async function applyOuting(i: ButtonInteraction | StringSelectMenuInteraction, outingId: string, step: OutingStep, guest: boolean) {
+    if (step.kind === "reply") return i.editReply({ content: step.content, components: step.components });
+    const { result, view } = await api.outingSignup(outingId, { ...step.body, discordUserId: i.user.id, discordName: nameOf(i) });
+    publishOutingSoon(view);
+    return i.editReply({ content: outingConfirmation(result, { guest, leveled: !!view.levels }), components: [] });
+  }
+
+  async function outingButton(i: ButtonInteraction, id: NonNullable<ReturnType<typeof decodeOutingId>>) {
+    if (id.a === "leave") {
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      const { removed, view } = await api.outingUnsign(id.outingId, i.user.id);
+      if (removed) publishOutingSoon(view);
+      return i.editReply(removed ? "Tu n'es plus inscrit à cette sortie." : "Tu n'étais pas inscrit à cette sortie.");
+    }
+    if (id.a === "wait") {
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      return i.editReply(waitChooser(id.outingId));
+    }
+    if (id.a !== "join") return;
+    // Choix du rôle de la liste d'attente : on remplace le message de choix ; sinon, nouveau message visible par lui seul
+    if (id.wait) await i.deferUpdate(); else await i.deferReply({ flags: MessageFlags.Ephemeral });
+    const c = await api.outingChoices(id.outingId, i.user.id, id.role);
+    return applyOuting(i, id.outingId, onOutingRole(id.outingId, id.role, id.wait, c, langOf(i)), c.mode === "guest");
+  }
+
+  async function outingMenu(i: StringSelectMenuInteraction, id: NonNullable<ReturnType<typeof decodeOutingId>>, value: string) {
+    if (id.a !== "char" && id.a !== "cls" && id.a !== "spec") return;
+    await i.deferUpdate();
+    const role: OutingRole = id.role;
+    if (id.a === "char") {
+      const c = await api.outingChoices(id.outingId, i.user.id, role);
+      const ch = c.mode === "member" ? c.characters.find(x => x.id === value) : undefined;
+      if (!ch) return i.editReply({ content: "Ce perso n'est plus proposé. Reclique sur un rôle de l'annonce.", components: [] });
+      return applyOuting(i, id.outingId, { kind: "signup", body: { role, characterId: ch.id, spec: ch.spec, wait: id.wait } }, false);
+    }
+    if (id.a === "cls") return applyOuting(i, id.outingId, onOutingClass(id.outingId, role, id.wait, value, langOf(i)), true);
+    const pair = splitValue(value);
+    if (!pair) return;
+    return applyOuting(i, id.outingId, { kind: "signup", body: { role, cls: pair[0], spec: pair[1], wait: id.wait } }, true);
+  }
+
   async function button(i: ButtonInteraction) {
+    const oid = decodeOutingId(i.customId);
+    if (oid) return outingButton(i, oid);
     const id = decodeId(i.customId);
     if (!id) return;
     if (id.a === "otake") {
@@ -320,6 +421,8 @@ async function start() {
   }
 
   async function menu(i: StringSelectMenuInteraction) {
+    const oid = decodeOutingId(i.customId);
+    if (oid && i.values[0]) return outingMenu(i, oid, i.values[0]);
     const id = decodeId(i.customId);
     const value = i.values[0];
     if (!id || !value || !("status" in id)) return;

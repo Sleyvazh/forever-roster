@@ -11,7 +11,8 @@ import { discordDeletions } from "../db/schema";
 import { SIGNUP_STATUSES } from "@forever/game-data";
 import { audit } from "../lib/audit";
 import { membership, requireRole } from "../lib/groups";
-import { badRequest, notFound, parse } from "../lib/http";
+import { badRequest, forbidden, notFound, parse } from "../lib/http";
+import { mayCreate } from "../lib/outings";
 import { currentUser, requireAuth } from "../lib/session";
 import { ensureRecurringRaids, MAX_RAIDS_PER_GROUP, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
 import { inheritPrep } from "../lib/prep";
@@ -130,9 +131,13 @@ export async function raidRoutes(app: FastifyInstance) {
   app.post("/:id/raids", async (req, reply) => {
     const u = currentUser(req);
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
-    await requireRole(db, id, u.id, "officer");
+    // Qui crée les raids : réglage du groupe (officiers par défaut, ou tous les membres) ; « chaque semaine » reste aux officiers
+    const myRole = await membership(db, id, u.id);
+    const [grp] = await db.select({ raidCreators: groups.raidCreators }).from(groups).where(eq(groups.id, id));
+    if (!mayCreate(grp!.raidCreators, myRole)) throw forbidden("Réservé aux officiers du groupe.");
     // « Chaque semaine » (lot E) : le raid devient aussi un raid récurrent, créé `leadDays` jours à l'avance
     const body = parse(raidFields.extend({ weekly: z.object({ leadDays: z.int().min(1).max(28) }).optional() }), req.body);
+    if (body.weekly && myRole === "member") throw forbidden("Seuls les officiers créent un raid récurrent.");
     const existing = await db.select({ id: raids.id }).from(raids).where(eq(raids.groupId, id));
     if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     if (body.weekly) {

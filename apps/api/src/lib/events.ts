@@ -14,6 +14,7 @@ export type LiveEvent =
   | { t: "group"; g: string }   // nom, membres, invitations, salon Discord
   | { t: "chars"; g: string }   // persos, équipement, métiers ou patrons d'un membre
   | { t: "feedback"; g: string } // avis Discord suivis par le groupe (Administration → Avis)
+  | { t: "outings"; g: string }  // sorties donjon du groupe (liste, inscriptions, liste d'attente)
   | { t: "membership" };        // l'utilisateur a rejoint ou quitté un groupe
 
 interface Conn { userId: string; groups: Set<string>; send: (e: LiveEvent) => void }
