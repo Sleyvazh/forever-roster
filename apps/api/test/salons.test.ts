@@ -1,5 +1,5 @@
 import { channelNameFor } from "@forever/game-data";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { raids, raidTemplates, users } from "../src/db/schema";
@@ -22,7 +22,7 @@ const nextId = () => String(++snow);
 type View = { raid: { id: string; changedAt: string }; channelId: string; messageId: string | null };
 type Tpl = { id: string; name: string; discord: { linked: boolean; channelName: string | null; rename: boolean; renameError: string | null } };
 
-/** Groupe avec un officier et un membre (Discord liés), son salon des raids, et un raid récurrent (2 raids créés). */
+/** Groupe avec un officier et un membre (Discord liés), son salon des raids, et un raid récurrent (2 raids créés, ses 2 prochains). */
 async function scene(name: string, opts: { groupChannel?: boolean } = {}) {
   const slug = name.normalize("NFD").replace(/[^A-Za-z]/g, "");
   const gm = await signedIn(env, `${slug}Chef`), p1 = await signedIn(env, `${slug}Ana`);
@@ -36,9 +36,13 @@ async function scene(name: string, opts: { groupChannel?: boolean } = {}) {
     const { code } = (await gm.c.post(`/api/groups/${g.id}/discord/code`)).json();
     expect((await bot("POST", "/internal/discord/bind", { code, guildId: ids.guild, channelId: ids.group, discordUserId: ids.gm })).json().kind).toBe("raids");
   }
-  const t = (await gm.c.post(`/api/groups/${g.id}/raid-templates`, { name: "Molten Core", weekday: 4, time: "21:00", leadDays: 14 })).json().template as Tpl;
+  const t = (await gm.c.post(`/api/groups/${g.id}/raid-templates`, { name: "Molten Core", weekday: 4, time: "21:00", leadDays: 21 })).json().template as Tpl;
   const tplRaids = async () => env.app.ctx.db.select({ id: raids.id, scheduledAt: raids.scheduledAt, channelId: raids.discordChannelId, messageId: raids.discordMessageId })
     .from(raids).where(eq(raids.templateId, t.id)).orderBy(asc(raids.scheduledAt));
+  // Exactement 2 raids quelle que soit l'heure : 21 jours, puis seulement les 2 premiers
+  // (avec 14 jours, le jeudi peu après 21 h, un changement d'heure dans les 2 semaines n'en laissait qu'un)
+  const extra = (await tplRaids()).slice(2);
+  if (extra.length) await env.app.ctx.db.delete(raids).where(inArray(raids.id, extra.map(r => r.id)));
   const templates = async () => (await gm.c.get(`/api/groups/${g.id}/raid-templates`)).json().templates as Tpl[];
   /** Lie le salon `channelId` au raid récurrent (code généré par l'officier). */
   const bindTemplate = async (channelId: string, extra: object = {}, by = ids.gm) => {
@@ -285,5 +289,67 @@ describe("salon à part pour un raid récurrent", () => {
     await s.gm.c.del(`/api/groups/${s.g.id}/discord`);
     expect(await drain()).toEqual([]);
     expect(await inOutbox(a!.id)).toMatchObject({ channelId: tpl });
+  });
+});
+
+describe("nom des salons liés (Administration → Discord)", () => {
+  type Linked = { kind: "group" | "orders" | "template"; id: string; guildId: string | null; channelId: string; name: string | null };
+  const linkedOf = async (...ids: string[]) => ((await bot("GET", "/internal/discord/linked-channels")).json() as Linked[]).filter(c => ids.includes(c.id));
+  const report = async (b: { kind: string; id: string; channelId: string; name: string }) => bot("POST", "/internal/discord/channel-name", b);
+
+  it("la liaison garde le nom, le bot le met à jour, délier l'efface ; le site n'expose que le nom", async () => {
+    const s = await scene("Enseignes");
+    const group = async () => (await s.gm.c.get(`/api/groups/${s.g.id}`)).json().group as Record<string, unknown>;
+    // Salon du groupe lié sans nom (bot d'avant) : lié, nom inconnu
+    expect(await group()).toMatchObject({ discordLinked: true, discordChannelName: null, ordersLinked: false, ordersChannelName: null });
+
+    // Liaison avec le nom du salon : groupe, commandes, raid récurrent
+    const raidsCh = nextId(), ordersCh = nextId(), tplCh = nextId();
+    const { code } = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/code`)).json();
+    await bot("POST", "/internal/discord/bind", { code, guildId: s.ids.guild, channelId: raidsCh, discordUserId: s.ids.gm, channelName: "raids" });
+    const ocode = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/orders-code`)).json().code;
+    await bot("POST", "/internal/discord/bind", { code: ocode, guildId: s.ids.guild, channelId: ordersCh, discordUserId: s.ids.gm, channelName: "commandes" });
+    await s.bindTemplate(tplCh, { channelName: "molten-core" });
+    const res = await s.gm.c.get(`/api/groups/${s.g.id}`);
+    expect(res.json().group).toMatchObject({ discordLinked: true, discordChannelName: "raids", ordersLinked: true, ordersChannelName: "commandes" });
+    // Un membre voit aussi les noms, jamais les identifiants
+    expect((await s.p1.c.get(`/api/groups/${s.g.id}`)).json().group.discordChannelName).toBe("raids");
+    for (const id of [raidsCh, ordersCh, tplCh, s.ids.guild]) expect(res.body).not.toContain(id);
+
+    // Liste du bot : les trois sortes de salons, avec le nom connu
+    expect(await linkedOf(s.g.id, s.t.id)).toEqual(expect.arrayContaining([
+      { kind: "group", id: s.g.id, guildId: s.ids.guild, channelId: raidsCh, name: "raids" },
+      { kind: "orders", id: s.g.id, guildId: s.ids.guild, channelId: ordersCh, name: "commandes" },
+      { kind: "template", id: s.t.id, guildId: s.ids.guild, channelId: tplCh, name: "molten-core" },
+    ]));
+    expect(await linkedOf(s.g.id, s.t.id)).toHaveLength(3);
+
+    // Rapport du bot : écrit seulement si le nom diffère
+    expect((await report({ kind: "group", id: s.g.id, channelId: raidsCh, name: "raids-du-jeudi" })).json()).toEqual({ ok: true, changed: true });
+    expect((await report({ kind: "group", id: s.g.id, channelId: raidsCh, name: "raids-du-jeudi" })).json()).toEqual({ ok: true, changed: false });
+    expect((await report({ kind: "orders", id: s.g.id, channelId: ordersCh, name: "artisanat" })).json().changed).toBe(true);
+    expect((await report({ kind: "template", id: s.t.id, channelId: tplCh, name: "jeudi-15-10" })).json().changed).toBe(true);
+    expect(await group()).toMatchObject({ discordChannelName: "raids-du-jeudi", ordersChannelName: "artisanat" });
+    expect((await s.templates())[0]!.discord).toMatchObject({ linked: true, channelName: "jeudi-15-10" });
+    // … et seulement si le salon est toujours lié : rapport sur un autre salon, ou mauvaise sorte, ignoré
+    expect((await report({ kind: "group", id: s.g.id, channelId: nextId(), name: "ancien" })).json().changed).toBe(false);
+    expect((await report({ kind: "orders", id: s.g.id, channelId: raidsCh, name: "ancien" })).json().changed).toBe(false);
+    expect((await report({ kind: "template", id: s.t.id, channelId: raidsCh, name: "ancien" })).json().changed).toBe(false);
+    expect(await group()).toMatchObject({ discordChannelName: "raids-du-jeudi", ordersChannelName: "artisanat" });
+    expect((await report({ kind: "salon", id: s.g.id, channelId: raidsCh, name: "x" })).statusCode).toBe(400);
+    expect((await report({ kind: "group", id: s.g.id, channelId: raidsCh, name: " " })).statusCode).toBe(400);
+
+    // Délier : nom effacé, plus dans la liste du bot, rapport tardif ignoré
+    await s.gm.c.del(`/api/groups/${s.g.id}/discord`);
+    await s.gm.c.del(`/api/groups/${s.g.id}/discord/orders`);
+    expect(await group()).toMatchObject({ discordLinked: false, discordChannelName: null, ordersLinked: false, ordersChannelName: null });
+    expect((await report({ kind: "group", id: s.g.id, channelId: raidsCh, name: "raids" })).json().changed).toBe(false);
+    expect(await linkedOf(s.g.id, s.t.id)).toEqual([{ kind: "template", id: s.t.id, guildId: s.ids.guild, channelId: tplCh, name: "jeudi-15-10" }]);
+    // Relier sans nom (bot d'avant) : nom inconnu jusqu'au prochain rapport du bot
+    const again = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/code`)).json().code;
+    await bot("POST", "/internal/discord/bind", { code: again, guildId: s.ids.guild, channelId: raidsCh, discordUserId: s.ids.gm });
+    expect(await group()).toMatchObject({ discordLinked: true, discordChannelName: null });
+    expect((await report({ kind: "group", id: s.g.id, channelId: raidsCh, name: "raids" })).json().changed).toBe(true);
+    expect(await group()).toMatchObject({ discordChannelName: "raids" });
   });
 });

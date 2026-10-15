@@ -1,5 +1,5 @@
 import { RAID_GROUPS, roleOf, SIGNUP_STATUSES, specLabel, specsOf } from "@forever/game-data";
-import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
@@ -9,7 +9,7 @@ import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
-import { channelNames, EFFECTIVE_CHANNEL, KEEP_AFTER_MS, retirePastTemplateAnnouncements, TEMPLATE_OF_RAID } from "./lib/channels";
+import { channelNames, EFFECTIVE_CHANNEL, KEEP_AFTER_MS, LINKED_KINDS, retirePastTemplateAnnouncements, TEMPLATE_OF_RAID, type LinkedKind } from "./lib/channels";
 import { bus } from "./lib/events";
 import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { applyAbsencesToRaid } from "./lib/absences";
@@ -161,7 +161,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   app.post("/internal/discord/bind", async (req: FastifyRequest) => {
     const body = parse(z.object({
       code: z.string().trim().min(6).max(32), guildId: snowflake, channelId: snowflake, discordUserId: snowflake,
-      // Nom actuel du salon (affiché sur le site pour un salon de raid récurrent)
+      // Nom actuel du salon (affiché sur le site : salon du groupe, des commandes ou d'un raid récurrent)
       channelName: z.string().trim().min(1).max(100).optional(),
     }), req.body);
     const hash = sha256(body.code.toUpperCase());
@@ -170,7 +170,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     if (g) {
       const user = await officer(body.discordUserId, g.id);
       await refuseTemplateChannel(body.channelId, g.id, "le groupe");
-      await db.update(groups).set({ discordGuildId: body.guildId, discordChannelId: body.channelId, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, g.id));
+      await db.update(groups).set({
+        discordGuildId: body.guildId, discordChannelId: body.channelId, discordChannelName: body.channelName ?? null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null,
+      }).where(eq(groups.id, g.id));
       // Les annonces restées dans l'ancien salon sont effacées (celles des raids récurrents qui ont leur salon restent)
       await retireAnnouncements(db, g.id);
       // Les raids à venir seront (re)publiés dans ce salon
@@ -184,7 +186,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     if (o) {
       const user = await officer(body.discordUserId, o.id);
       await refuseTemplateChannel(body.channelId, o.id, "les commandes");
-      await db.update(groups).set({ ordersGuildId: body.guildId, ordersChannelId: body.channelId, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, o.id));
+      await db.update(groups).set({
+        ordersGuildId: body.guildId, ordersChannelId: body.channelId, ordersChannelName: body.channelName ?? null, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null,
+      }).where(eq(groups.id, o.id));
       await retireOrderMessages(db, o.id, body.channelId);
       // Les commandes en cours seront (re)publiées dans ce salon
       await db.update(craftOrders).set({ discordChangedAt: new Date() }).where(and(eq(craftOrders.groupId, o.id), ne(craftOrders.status, "done")));
@@ -257,6 +261,44 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       bus.group({ t: "raids", g: cur.groupId });
     }
     return { ok: true };
+  });
+
+  /**
+   * Tous les salons liés (salon du groupe, des commandes, de chaque raid récurrent) avec le nom connu : le bot compare
+   * au nom réel et rapporte ceux qui ont changé (renommés à la main sur Discord, ou liés avant que le site garde le nom).
+   */
+  app.get("/internal/discord/linked-channels", async () => {
+    const g = await db.select({ id: groups.id, guildId: groups.discordGuildId, channelId: groups.discordChannelId, name: groups.discordChannelName })
+      .from(groups).where(isNotNull(groups.discordChannelId));
+    const o = await db.select({ id: groups.id, guildId: groups.ordersGuildId, channelId: groups.ordersChannelId, name: groups.ordersChannelName })
+      .from(groups).where(isNotNull(groups.ordersChannelId));
+    const t = await db.select({ id: raidTemplates.id, guildId: raidTemplates.discordGuildId, channelId: raidTemplates.discordChannelId, name: raidTemplates.discordChannelName })
+      .from(raidTemplates).where(isNotNull(raidTemplates.discordChannelId));
+    const of = (kind: LinkedKind) => (r: { id: string; guildId: string | null; channelId: string | null; name: string | null }) =>
+      ({ kind, id: r.id, guildId: r.guildId, channelId: r.channelId!, name: r.name });
+    return [...g.map(of("group")), ...o.map(of("orders")), ...t.map(of("template"))];
+  });
+
+  /** Le bot rapporte le nom actuel d'un salon lié (seulement s'il est toujours lié : un rapport tardif est ignoré). */
+  app.post("/internal/discord/channel-name", async (req: FastifyRequest) => {
+    const body = parse(z.object({
+      kind: z.enum(LINKED_KINDS), id: z.uuid(), channelId: snowflake, name: z.string().trim().min(1).max(100),
+    }), req.body);
+    // Rien à écrire si le nom est déjà le bon (le bot rapporte à chaque passage un salon dont le nom diffère du sien)
+    const differs = (col: AnyColumn) => or(isNull(col), ne(col, body.name));
+    const [row] = await (body.kind === "group"
+      ? db.update(groups).set({ discordChannelName: body.name })
+        .where(and(eq(groups.id, body.id), eq(groups.discordChannelId, body.channelId), differs(groups.discordChannelName))).returning({ groupId: groups.id })
+      : body.kind === "orders"
+        ? db.update(groups).set({ ordersChannelName: body.name })
+          .where(and(eq(groups.id, body.id), eq(groups.ordersChannelId, body.channelId), differs(groups.ordersChannelName))).returning({ groupId: groups.id })
+        // Raid récurrent : seulement le nom (l'erreur de renommage reste celle rapportée par le renommage)
+        : db.update(raidTemplates).set({ discordChannelName: body.name })
+          .where(and(eq(raidTemplates.id, body.id), eq(raidTemplates.discordChannelId, body.channelId), differs(raidTemplates.discordChannelName)))
+          .returning({ groupId: raidTemplates.groupId }));
+    const groupId = row?.groupId;
+    if (groupId) bus.group({ t: body.kind === "template" ? "raids" : "group", g: groupId });
+    return { ok: true, changed: !!groupId };
   });
 
   /* ----- Création d'un raid depuis Discord (/raid) ----- */

@@ -176,6 +176,8 @@ export const groups = pgTable("groups", {
   /** Salon Discord où le bot publie les raids du groupe (lié par un officier avec un code à usage unique). */
   discordGuildId: text("discord_guild_id"),
   discordChannelId: text("discord_channel_id"),
+  /** Nom du salon (donné à la liaison, puis rapporté par le bot s'il change), affiché dans Administration → Discord. */
+  discordChannelName: text("discord_channel_name"),
   /** Code de liaison (haché) et son expiration. */
   discordLinkCodeHash: text("discord_link_code_hash"),
   discordLinkCodeExpiresAt: ts("discord_link_code_expires_at"),
@@ -188,6 +190,7 @@ export const groups = pgTable("groups", {
   /** Salon Discord des commandes d'artisanat (lot F), lié comme celui des raids : code à usage unique + /forever-lier. */
   ordersGuildId: text("orders_guild_id"),
   ordersChannelId: text("orders_channel_id"),
+  ordersChannelName: text("orders_channel_name"),
   ordersLinkCodeHash: text("orders_link_code_hash"),
   ordersLinkCodeExpiresAt: ts("orders_link_code_expires_at"),
   createdAt: ts("created_at").notNull().defaultNow(),

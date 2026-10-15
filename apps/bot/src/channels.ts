@@ -1,10 +1,12 @@
-import type { ChannelName, InternalApi } from "./api";
+import type { ChannelName, InternalApi, LinkedChannel } from "./api";
 import type { Logger } from "./sync";
 
 /**
  * Salons des raids récurrents (un salon à part par raid récurrent, lié par /forever-lier ou /roster-lier) :
  * le bot les renomme avec la date du raid courant (ex. jeudi-15-10) et rapporte au site le nom obtenu ou l'erreur.
  * Il ne renomme que les salons que l'API lui donne (raid récurrent lié, renommage activé sur le site).
+ * Ensuite, pour tous les salons liés (groupe, commandes, raids récurrents), il rapporte le nom réel quand il diffère
+ * de celui que connaît le site (salon renommé à la main) : le site affiche le nom de chaque salon.
  * Logique pure, testée avec de faux salons ; main.ts fournit l'accès à Discord.
  */
 
@@ -28,6 +30,9 @@ export interface NamedChannel { name: string; guildId: string | null; setName(na
 /** Accès aux salons : null si le salon n'existe plus (ou n'est pas un salon de serveur). */
 export type ChannelFetcher = (channelId: string) => Promise<NamedChannel | null>;
 
+/** Salon supprimé, ou que le bot ne voit pas : rien à rapporter ni à journaliser pour son nom. */
+const isGone = (e: unknown) => [UNKNOWN_CHANNEL, MISSING_ACCESS].includes(Number((e as { code?: unknown } | null)?.code));
+
 /** Message (en français, pour les officiers) d'une erreur de Discord. */
 export function renameError(e: unknown): string {
   const code = Number((e as { code?: unknown } | null)?.code);
@@ -49,7 +54,9 @@ export function templateLinkedReply(t: { name: string; rename?: boolean; next?: 
   return lines.join("\n");
 }
 
-export function createChannelNamer(api: Pick<InternalApi, "channelNames" | "channelReport">, fetchChannel: ChannelFetcher, log: Logger, now = () => Date.now()) {
+export function createChannelNamer(
+  api: Pick<InternalApi, "channelNames" | "channelReport" | "linkedChannels" | "channelName">, fetchChannel: ChannelFetcher, log: Logger, now = () => Date.now(),
+) {
   /** Dernier rapport envoyé au site, par raid récurrent : on ne renvoie que ce qui change. */
   const reported = new Map<string, string>();
   /** Salons en erreur (raid récurrent + salon) : pas de nouvel essai avant cette heure. */
@@ -83,6 +90,17 @@ export function createChannelNamer(api: Pick<InternalApi, "channelNames" | "chan
     reported.set(c.templateId, state);
   }
 
+  /** Nom réel d'un salon lié, rapporté au site seulement s'il diffère du sien (salon introuvable : rien). */
+  async function linkedName(c: LinkedChannel) {
+    let ch: NamedChannel | null;
+    try { ch = await fetchChannel(c.channelId); } catch (e) {
+      if (!isGone(e)) log.warn(`Salon ${c.channelId} non relevé`, e instanceof Error ? e.message : e);
+      return;
+    }
+    if (!ch || !ch.name || (c.guildId && ch.guildId !== c.guildId) || ch.name === c.name) return;
+    await api.channelName({ kind: c.kind, id: c.id, channelId: c.channelId, name: ch.name });
+  }
+
   async function tick() {
     if (running) return;
     running = true;
@@ -94,6 +112,10 @@ export function createChannelNamer(api: Pick<InternalApi, "channelNames" | "chan
       for (const id of reported.keys()) if (!list.some(c => c.templateId === id)) reported.delete(id);
       for (const c of list) {
         try { await one(c); } catch (e) { log.warn(`Salon du raid récurrent ${c.templateId} non traité`, e instanceof Error ? e.message : e); }
+      }
+      // Puis tous les salons liés (après les renommages : le site connaît déjà les nouveaux noms)
+      for (const c of await api.linkedChannels()) {
+        try { await linkedName(c); } catch (e) { log.warn(`Nom du salon ${c.channelId} non rapporté`, e instanceof Error ? e.message : e); }
       }
     } finally { running = false; }
   }

@@ -105,7 +105,8 @@ async function start() {
       return { channelId: ch.id, messageId: m.id };
     },
   }, log);
-  // Salons des raids récurrents : renommés avec la date du raid courant (seulement ceux que l'API désigne)
+  // Salons des raids récurrents : renommés avec la date du raid courant (seulement ceux que l'API désigne) ;
+  // puis nom réel de tous les salons liés, rapporté au site s'il a changé
   const channels = createChannelNamer(api, async id => {
     const ch = await client.channels.fetch(id);
     if (!ch || ch.isDMBased() || !("setName" in ch)) return null;
@@ -183,7 +184,7 @@ async function start() {
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
-    // Noms des salons des raids récurrents : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
+    // Noms des salons (renommage des salons des raids récurrents, nom des salons liés) : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
     void channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message));
     setInterval(() => { channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message)); }, 5 * 60e3);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
@@ -244,7 +245,7 @@ async function start() {
         void orders.tick().catch(() => {});
         return;
       }
-      await i.editReply(`✅ Salon lié au groupe **${group.name}**. Les raids à venir y seront publiés dans quelques secondes.`);
+      await i.editReply(`✅ Salon lié au groupe **${group.name}**. Les raids à venir y seront publiés dans quelques secondes, sauf ceux des raids récurrents qui ont leur propre salon.`);
       void sync.tick().catch(() => {});
       return;
     }

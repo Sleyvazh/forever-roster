@@ -98,7 +98,12 @@ export async function groupRoutes(app: FastifyInstance) {
     const site = siteForGame(cfg, g!.game);
     // Chef et officiers : avis Discord suivis par le groupe (pastille de l'onglet Administration)
     const feedback = role === "member" ? null : await feedbackSummary(db, u.id, id);
-    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, discordLinked: !!g!.discordChannelId, ordersLinked: !!g!.ordersChannelId }, role, members, feedback };
+    // Salons liés : leur nom seulement (Administration → Discord), jamais leurs identifiants
+    const channels = {
+      discordLinked: !!g!.discordChannelId, discordChannelName: g!.discordChannelId ? g!.discordChannelName : null,
+      ordersLinked: !!g!.ordersChannelId, ordersChannelName: g!.ordersChannelId ? g!.ordersChannelName : null,
+    };
+    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels }, role, members, feedback };
   });
 
   app.patch("/:id", async (req) => {
@@ -257,7 +262,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
-    await db.update(groups).set({ ordersGuildId: null, ordersChannelId: null, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    await db.update(groups).set({ ordersGuildId: null, ordersChannelId: null, ordersChannelName: null, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, id));
     await retireOrderMessages(db, id);
     await audit(db, req, "group_orders_unlinked", { userId: u.id, groupId: id });
     bus.group({ t: "group", g: id });
@@ -268,7 +273,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
-    await db.update(groups).set({ discordGuildId: null, discordChannelId: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    await db.update(groups).set({ discordGuildId: null, discordChannelId: null, discordChannelName: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, id));
     await retireAnnouncements(db, id);
     await audit(db, req, "group_discord_unlinked", { userId: u.id, groupId: id });
     bus.group({ t: "group", g: id });

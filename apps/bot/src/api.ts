@@ -56,6 +56,8 @@ export interface SignupBody { status: SignupStatus; characterId?: string | null;
 export interface Deletion { id: number; channelId: string; messageId: string }
 /** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
 export interface ChannelName { templateId: string; guildId: string; channelId: string; name: string }
+/** Salon lié (celui du groupe, des commandes ou d'un raid récurrent) et le nom que le site en connaît (null : inconnu). */
+export interface LinkedChannel { kind: "group" | "orders" | "template"; id: string; guildId: string | null; channelId: string; name: string | null }
 /** Liaison d'un salon : raids du groupe, commandes d'artisanat, ou salon à part d'un raid récurrent. */
 export type BindResult =
   | { group: { id: string; name: string }; kind: "raids" | "orders" }
@@ -107,6 +109,12 @@ export class InternalApi {
   /** Nom actuel du salon d'un raid récurrent et erreur du dernier renommage (affichés sur le site). */
   channelReport(templateId: string, b: { channelId: string; name: string | null; error: string | null }) {
     return this.req<{ ok: boolean }>("POST", `/internal/discord/templates/${templateId}/channel`, b);
+  }
+  /** Tous les salons liés, avec le nom que le site en connaît. */
+  linkedChannels() { return this.req<LinkedChannel[]>("GET", "/internal/discord/linked-channels"); }
+  /** Nom actuel d'un salon lié (affiché sur le site, Administration → Discord). */
+  channelName(b: { kind: LinkedChannel["kind"]; id: string; channelId: string; name: string }) {
+    return this.req<{ ok: boolean; changed: boolean }>("POST", "/internal/discord/channel-name", b);
   }
   createRaid(b: { guildId: string; channelId: string; discordUserId: string; name: string; scheduledAt: string; description?: string }) {
     return this.req<RaidView>("POST", "/internal/discord/raids", b);

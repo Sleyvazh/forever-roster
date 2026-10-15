@@ -8,6 +8,10 @@ import { discordDeletions, groups, raids, raidTemplates } from "../db/schema";
  * (renommé chaque semaine avec la date du raid courant, ex. jeudi-15-10).
  */
 
+/** Les salons qu'un officier peut lier : celui du groupe (raids), celui des commandes d'artisanat, celui d'un raid récurrent. */
+export const LINKED_KINDS = ["group", "orders", "template"] as const;
+export type LinkedKind = (typeof LINKED_KINDS)[number];
+
 /** Une annonce reste synchronisée (et un raid reste « courant » dans le salon de son raid récurrent) jusqu'à 12 h après l'heure du raid. */
 export const KEEP_AFTER_MS = 12 * 3600e3;
 
