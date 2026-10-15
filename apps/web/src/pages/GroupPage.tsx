@@ -20,6 +20,7 @@ import { ROLE_LABEL } from "./GroupsPage";
 import { useSite } from "../site";
 import type { Game } from "@forever/game-data";
 import { RowMenu } from "../components/RowMenu";
+import { LinkCodeBox } from "../components/DiscordLink";
 
 interface GroupDetail {
   group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean };
@@ -38,6 +39,7 @@ const EVENT_LABEL: Record<string, string> = {
   raid_template_created: "a créé un raid récurrent", raid_template_updated: "a modifié un raid récurrent", raid_template_deleted: "a supprimé un raid récurrent",
   raid_roster_published: "a publié une compo sur Discord", raid_roster_unpublished: "a retiré une compo de Discord",
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
+  template_discord_linked: "a lié un salon Discord à un raid récurrent", template_discord_unlinked: "a rendu un raid récurrent au salon du groupe",
   group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin", loot_history_imported: "a importé un historique de butin",
   group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
   group_feedback_linked: "a relié les avis d'un serveur Discord", group_feedback_unlinked: "a retiré les avis d'un serveur Discord",
@@ -110,7 +112,7 @@ export function GroupPage() {
           {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}{k === "admin" && !!unseen && <span className="av-badge" aria-label={`${unseen} avis avec du nouveau`}>{unseen}</span>}</button>)}
         </div>
         <div className="pane">
-          {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} />}
+          {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} guard={guard} discordLinked={group.discordLinked} />}
           {tab === "members" && <Members groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} groupName={group.name} members={members} myId={myId} myRole={role} />}
           {tab === "crafters" && <Crafters groupId={groupId} myId={myId} />}
@@ -357,17 +359,12 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
   );
 }
 
-/** Commande du bot pour lier un salon : la même, sous le nom du site (un seul bot pour les deux). */
-const linkCommand = (game: Game) => (game === "retail" ? "/roster-lier" : "/forever-lier");
-
 /** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier (ou /roster-lier) dans le salon voulu. */
 function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
   const game = useSite().game;
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
-  const [copied, setCopied] = useState(false);
   const [wantCode, setWantCode] = useState(false);
-  const cmd = code ? `${linkCommand(game)} code:${code.code}` : "";
   return (
     <section className="stack admin-sec" aria-labelledby="dc-title">
       <div className="row between">
@@ -378,24 +375,19 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
         Le bot publie chaque raid à venir dans ce salon, avec des boutons d'inscription. Les inscriptions faites sur Discord et sur le site sont les mêmes.
         Les joueurs sans compte peuvent aussi s'inscrire (classe et spé), marqués ✱.
       </p>
+      <p className="hint" style={{ margin: 0 }}>Un raid récurrent peut aussi avoir son propre salon, renommé chaque semaine avec la date du raid : onglet Raids, « ↻ Récurrents ».</p>
       {!hasDiscord && (!linked || wantCode) && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
         <button className="btn primary sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
-          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/code`)); setCopied(false);
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/code`));
         }); }}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
         {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
           await del(`/groups/${groupId}/discord`); setCode(null);
           await qc.invalidateQueries({ queryKey: ["group", groupId] });
         })}>Délier le salon</button>}
       </div>
-      {code && (
-        <div className="alert info stack" style={{ gap: 8 }}>
-          <span>Dans le salon Discord voulu, tape cette commande (valable jusqu'à {new Intl.DateTimeFormat("fr-FR", { timeStyle: "short" }).format(new Date(code.expiresAt))}, une seule fois) :</span>
-          <div className="row"><input type="text" readOnly value={cmd} onFocus={e => e.currentTarget.select()} aria-label="Commande de liaison" className="num" style={{ flex: 1 }} />
-            <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
-          <span className="small muted">Une fois le salon lié, recharge cette page.</span>
-        </div>
-      )}
+      {code && <LinkCodeBox key={code.code} game={game} code={code} intro="Dans le salon Discord voulu, tape cette commande" label="Commande de liaison"
+        footer={<span className="small muted">Une fois le salon lié, recharge cette page.</span>} />}
       <NudgeSettings groupId={groupId} linked={linked} guard={guard} />
     </section>
   );
@@ -407,8 +399,6 @@ function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [wantCode, setWantCode] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const cmd = code ? `${linkCommand(game)} code:${code.code}` : "";
   return (
     <section className="stack admin-sec" aria-labelledby="oc-title">
       <div className="row between">
@@ -419,20 +409,14 @@ function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string
       {!hasDiscord && wantCode && <div className="alert info">Lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
         <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
-          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/orders-code`)); setCopied(false);
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/orders-code`));
         }); }}>{linked ? "Changer de salon" : "Générer un code de liaison"}</button>
         {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
           await del(`/groups/${groupId}/discord/orders`); setCode(null);
           await qc.invalidateQueries({ queryKey: ["group", groupId] });
         })}>Délier le salon</button>}
       </div>
-      {code && (
-        <div className="alert info stack" style={{ gap: 8 }}>
-          <span>Dans le salon Discord des commandes, tape cette commande (valable jusqu'à {new Intl.DateTimeFormat("fr-FR", { timeStyle: "short" }).format(new Date(code.expiresAt))}, une seule fois) :</span>
-          <div className="row"><input type="text" readOnly value={cmd} onFocus={e => e.currentTarget.select()} aria-label="Commande de liaison du salon des commandes" className="num" style={{ flex: 1 }} />
-            <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
-        </div>
-      )}
+      {code && <LinkCodeBox key={code.code} game={game} code={code} intro="Dans le salon Discord des commandes, tape cette commande" label="Commande de liaison du salon des commandes" />}
     </section>
   );
 }
