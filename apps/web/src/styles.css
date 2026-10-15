@@ -98,6 +98,8 @@ textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
 .tag.warn { color: var(--warn); border-color: var(--warn); }
 .tag.ok { color: var(--ok); border-color: var(--ok); }
 .tag.bad { color: var(--bad); border-color: var(--bad); }
+/* Nom d'un salon Discord lié (#raids) : tel quel, coupé s'il est trop long */
+.tag.chan { text-transform: none; letter-spacing: .02em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fac { font: 600 10px/1 var(--f-mono); letter-spacing: .1em; padding: 4px 6px; border-radius: 3px; border: 1px solid currentColor; }
 .fac.Alliance { color: var(--alli); } .fac.Horde { color: var(--horde); }
 .fac-img { display: inline-block; vertical-align: middle; border-radius: 4px; box-shadow: 0 0 0 1px var(--line-2); }
@@ -1054,6 +1056,7 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .adm-nav button.on { border-left-color: var(--gold); color: var(--ink); background: color-mix(in srgb, var(--gold) 10%, transparent); }
 .adm-nav button.bad { color: var(--bad); }
 .adm-body .admin-sec { padding-top: 0; }
+.adm-body .admin-sec + .admin-sec { padding-top: 18px; }
 @media (max-width: 760px) { .adm { grid-template-columns: 1fr; } .adm-nav { position: static; display: flex; overflow-x: auto; gap: 4px; } .adm-nav button { white-space: nowrap; border-left: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; } .adm-nav button.on { border-bottom-color: var(--gold); } }
 
 /* Membres : rôle en texte, actions dans un menu (lot E, mb-) */

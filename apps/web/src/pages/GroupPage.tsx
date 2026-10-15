@@ -1,5 +1,5 @@
 import { AttendanceTab } from "../components/RaidLog";
-import { classColor, ATTENDED, CLASSES, SKILL_LINE_NAMES, type AttendanceStatus, type ClassName } from "@forever/game-data";
+import { classColor, ATTENDED, CLASSES, SKILL_LINE_NAMES, WEEKDAYS, type AttendanceStatus, type ClassName } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -21,9 +21,14 @@ import { useSite } from "../site";
 import type { Game } from "@forever/game-data";
 import { RowMenu } from "../components/RowMenu";
 import { LinkCodeBox } from "../components/DiscordLink";
+import { TemplateChannel, useRaidTemplates } from "../components/TemplateChannel";
 
 interface GroupDetail {
-  group: { id: string; name: string; game: Game; site: { name: string; origin: string }; discordLinked: boolean; ordersLinked: boolean };
+  group: {
+    id: string; name: string; game: Game; site: { name: string; origin: string };
+    /** Salons liés et leur nom (null : inconnu, rapporté par le bot sous peu). */
+    discordLinked: boolean; discordChannelName: string | null; ordersLinked: boolean; ordersChannelName: string | null;
+  };
   role: GroupRole; members: Member[];
   /** Chef et officiers : avis Discord suivis par le groupe (null pour un membre). */
   feedback: { linked: boolean; unseen: number } | null;
@@ -121,8 +126,8 @@ export function GroupPage() {
             <Admin isOwner={isOwner} unseen={unseen} initial={avis !== undefined ? "feedback" : undefined} sections={{
               invites: <Invites groupId={groupId} guard={guard} />,
               loot: <LootSettingsPanel groupId={groupId} />,
-              discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
-                <OrdersChannel groupId={groupId} linked={group.ordersLinked} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} /></>,
+              discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} name={group.discordChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
+                <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} /></>,
               feedback: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,
               addon: <GroupAddonExport groupId={groupId} />,
               journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
@@ -359,8 +364,14 @@ function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
   );
 }
 
+/** État d'un salon lié : son nom (#raids) quand le site le connaît, sinon « Lié ». */
+function ChannelTag({ linked, name }: { linked: boolean; name: string | null }) {
+  if (!linked) return <span className="tag">Non lié</span>;
+  return name ? <span className="tag ok chan" title={`#${name}`}>#{name}</span> : <span className="tag ok">Lié</span>;
+}
+
 /** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier (ou /roster-lier) dans le salon voulu. */
-function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+function DiscordChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: string; linked: boolean; name: string | null; hasDiscord: boolean; guard: Guard }) {
   const game = useSite().game;
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
@@ -369,13 +380,13 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
     <section className="stack admin-sec" aria-labelledby="dc-title">
       <div className="row between">
         <h3 id="dc-title" style={{ margin: 0 }}>Salon Discord</h3>
-        <span className={`tag ${linked ? "ok" : ""}`}>{linked ? "Lié" : "Non lié"}</span>
+        <ChannelTag linked={linked} name={name} />
       </div>
       <p className="hint" style={{ margin: 0 }}>
         Le bot publie chaque raid à venir dans ce salon, avec des boutons d'inscription. Les inscriptions faites sur Discord et sur le site sont les mêmes.
         Les joueurs sans compte peuvent aussi s'inscrire (classe et spé), marqués ✱.
       </p>
-      <p className="hint" style={{ margin: 0 }}>Un raid récurrent peut aussi avoir son propre salon, renommé chaque semaine avec la date du raid : onglet Raids, « ↻ Récurrents ».</p>
+      <p className="hint" style={{ margin: 0 }}>Un raid récurrent peut aussi avoir son propre salon, renommé chaque semaine avec la date du raid : voir ci-dessous.</p>
       {!hasDiscord && (!linked || wantCode) && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
         <button className="btn primary sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
@@ -388,13 +399,39 @@ function DiscordChannel({ groupId, linked, hasDiscord, guard }: { groupId: strin
       </div>
       {code && <LinkCodeBox key={code.code} game={game} code={code} intro="Dans le salon Discord voulu, tape cette commande" label="Commande de liaison"
         footer={<span className="small muted">Une fois le salon lié, recharge cette page.</span>} />}
+      <TemplateChannels groupId={groupId} groupLinked={linked} guard={guard} />
       <NudgeSettings groupId={groupId} linked={linked} guard={guard} />
     </section>
   );
 }
 
+/**
+ * Salon de chaque raid récurrent (le même réglage que dans l'onglet Raids, « ↻ Récurrents ») : tous les salons Discord
+ * du groupe au même endroit.
+ */
+function TemplateChannels({ groupId, groupLinked, guard }: { groupId: string; groupLinked: boolean; guard: Guard }) {
+  const qc = useQueryClient();
+  const { data } = useRaidTemplates(groupId);
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raid-templates", groupId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
+  if (!data) return null;
+  return (
+    <section className="stack" aria-labelledby="rc-title" style={{ gap: 8, borderTop: "1px dashed var(--line-2)", paddingTop: 12 }}>
+      <h4 id="rc-title" style={{ margin: 0 }}>Salons des raids récurrents</h4>
+      {data.templates.length === 0
+        ? <p className="hint" style={{ margin: 0 }}>Aucun raid récurrent. Pour en créer un, coche «&nbsp;Chaque semaine&nbsp;» en créant un raid (<Link to={`/groups/${groupId}`}>onglet Raids</Link>).</p>
+        : data.templates.map(t => (
+          <div key={t.id} className={`gr-recrow${t.active ? "" : " off"}`}>
+            <span><b>{t.name}</b> <span className="muted">chaque {WEEKDAYS[t.weekday - 1]?.toLowerCase()} {t.time}</span>
+              {!t.active && <span className="tag" style={{ marginLeft: 6 }}>En pause</span>}</span>
+            <TemplateChannel groupId={groupId} t={t} canEdit guard={guard} refresh={refresh} groupLinked={groupLinked} />
+          </div>
+        ))}
+    </section>
+  );
+}
+
 /** Salon Discord des commandes d'artisanat (lot F) : même liaison par code que le salon des raids. */
-function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string; linked: boolean; hasDiscord: boolean; guard: Guard }) {
+function OrdersChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: string; linked: boolean; name: string | null; hasDiscord: boolean; guard: Guard }) {
   const game = useSite().game;
   const qc = useQueryClient();
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
@@ -403,7 +440,7 @@ function OrdersChannel({ groupId, linked, hasDiscord, guard }: { groupId: string
     <section className="stack admin-sec" aria-labelledby="oc-title">
       <div className="row between">
         <h3 id="oc-title" style={{ margin: 0 }}>Salon des commandes d'artisanat</h3>
-        <span className={`tag ${linked ? "ok" : ""}`}>{linked ? "Lié" : "Non lié"}</span>
+        <ChannelTag linked={linked} name={name} />
       </div>
       <p className="hint" style={{ margin: 0 }}>Facultatif. Le bot y poste chaque commande de l'onglet Artisans avec un bouton « Je m'en charge », et met le message à jour quand elle est prise ou faite.</p>
       {!hasDiscord && wantCode && <div className="alert info">Lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}

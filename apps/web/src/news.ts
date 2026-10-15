@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 48, date: "2026-10-15", kind: "site", title: "Tous les salons Discord au même endroit",
+    text: "Administration → « Discord et relances » réunit maintenant tous les salons Discord du groupe : celui des raids, celui de chaque raid récurrent (le même réglage que dans l'onglet Raids) et celui des commandes d'artisanat. Chacun affiche son nom, comme #raids, pour voir d'un coup d'œil quel salon sert à quoi ; s'il est renommé sur Discord, le site suit en quelques minutes." },
   { n: 47, date: "2026-10-15", kind: "bot", title: "Un salon Discord par raid récurrent",
     text: "Chaque raid récurrent peut avoir son propre salon Discord, par exemple un pour le jeudi et un pour le dimanche. Onglet Raids, « ↻ Récurrents », puis « Salon à part… » : tape la commande donnée dans le salon voulu, il reçoit alors les annonces de ce raid récurrent (les raids ponctuels restent dans le salon du groupe). Le bot renomme le salon chaque semaine avec la date du prochain raid, comme jeudi-15-10, et y efface l'annonce du raid passé le lendemain matin. Pour le renommage, donne au bot la permission « Gérer les salons » sur ce salon ; tu peux aussi le couper d'une case." },
   { n: 46, date: "2026-10-15", kind: "bot", title: "Annonces de raid plus lisibles sur Discord",
