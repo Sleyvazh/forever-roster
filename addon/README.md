@@ -32,6 +32,7 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a six
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
 | `/fr habillage` | Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options) |
 | `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer ; pastille : persos à envoyer ; aussi dans Options) |
+| `/fr guilde` | Relève de la guilde, en essai : ce que l'addon a relevé (liste, journal, banque, XP) et « Copier le relevé » (texte FRL, pas encore lu par le site) |
 
 Relevé du raid : pendant un raid prévu sur le site (données du site chargées en jeu), l'addon note chaque minute qui est dans le groupe de raid, et le butin de qualité épique ou plus (réglable dans Options). « REC » s'affiche sur le bouton de la minicarte. Le bilan (bloc FRB) part avec la synchro rapide ; le site ne retient que celui d'un officier du groupe.
 
@@ -98,3 +99,5 @@ Infobulles (1.5.2) : tout lien d'objet affiché par l'addon (fenêtre du butin, 
 Correctif 1.5.3 : la 1.5.1 réassignait `StaticPopupDialogs` (variable de l'interface de Blizzard) ; le jeu, dont l'interface était alors « contaminée » (taint), pouvait bloquer une de ses actions au nom de l'addon (« ForeverRoster has been blocked from an action only available to the Blizzard UI »). La proposition de recharger passe maintenant par une fenêtre de l'addon, et la simulation (`wow_sim.lua`) échoue si l'addon réassigne une variable de Blizzard.
 
 Inscriptions faites en jeu (1.5.4) : l'heure du clic compte dans l'empreinte du perso (un clic qui remet un statut déjà envoyé repart bien au site), et l'inscription est oubliée dès que les données du site l'ont enregistrée, ou qu'elles sont plus récentes que l'accusé de réception (le site a alors le dernier mot), sans faire repartir le perso. La ligne du raid dit où elle en est : pas encore envoyée (avec Roster Companion, bouton **Envoyer maintenant** : rechargement de l'interface), envoi en cours, reçue par le site. Le statut déjà enregistré sur le site n'est pas renvoyé.
+
+Relève de la guilde (1.6.0, en essai) : l'addon relève sa guilde en silence (`Guild.lua`) : liste à la connexion puis au plus toutes les 10 min, journal de guilde, banque pendant qu'elle est ouverte (onglets visibles, or, journaux), niveau et XP de chaque perso du compte avec l'heure de chaque montée de niveau ; jamais en combat ni pendant une rencontre. Le relevé reste dans la sauvegarde : rien ne part aux autres joueurs ni à Roster Companion. `/fr guilde` montre ce qui a été lu et donne le texte FRL v1 (`docs/addon-format.md`), que le site lira dans un lot suivant.

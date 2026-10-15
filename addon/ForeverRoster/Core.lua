@@ -121,7 +121,7 @@ ns.on("ADDON_LOADED", function(name)
   ForeverRosterDB.debug = nil
   -- Contrôle de chargement : chaque module doit avoir défini ses fonctions
   local missing = {}
-  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", Companion = "Apply", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Minimap = "Create" }) do
+  for mod, fn in pairs({ Format = "ParseFRR", Compo = "Load", Talents = "Capture", Export = "Build", Group = "Load", Recorder = "Sample", Companion = "Apply", UI = "Show", Raid = "FillTab", Test = "OpenCorpse", Guild = "ReadRoster", Minimap = "Create" }) do
     if not (ns[mod] and ns[mod][fn]) then missing[#missing + 1] = mod end
   end
   if #missing > 0 then ns.print("|cffff6060" .. L("modules non chargés : %s|r (fais /console scriptErrors 1 puis /reload pour voir l'erreur)", table.concat(missing, ", "))) end
@@ -144,6 +144,7 @@ local HELP = {
   N("/fr rappels : couper ou remettre le rappel de raid à la connexion"),
   N("/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)"),
   N("/fr langue fr | en | jeu : langue de l'addon (Français, English ou celle du jeu ; recharge l'interface)"),
+  N("/fr guilde : ce que l'addon a relevé de ta guilde (liste, journal, banque, XP ; en essai) et le relevé à copier"),
 }
 
 SLASH_FOREVERROSTER1 = "/fr"
@@ -234,6 +235,8 @@ local function run(msg)
     ns.UI.Refresh()
   elseif cmd == "minicarte" or cmd == "minimap" then
     ns.Minimap.Toggle()
+  elseif cmd == "guilde" or cmd == "guild" then
+    ns.Guild.Show()
   else
     ns.print("version " .. ns.version)
     for _, line in ipairs(HELP) do print("  " .. L[line]) end

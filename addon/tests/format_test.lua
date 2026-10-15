@@ -117,6 +117,62 @@ if siteFRG then
   end
 end
 
+-- FRL v1 (relève de la guilde, 1.6.0, en essai) : chaque partie, échappement, notes d'officier, forme stable, parties absentes
+local function frlData()
+  return {
+    name = "Les;Veilleurs|", faction = "Horde", realm = "Forever EU", addon = "1.6.0",
+    roster = { at = 1790000000, by = "Tournicoti", officer = true, rank = "Officier", rankIndex = 1, total = 3, members = {
+      { name = "Greta Coulé", key = "greta", class = "DRUID", level = 60, rank = "Officier", rankIndex = 1, online = true, hours = 0,
+        note = "Main;|cffff0000rouge\nligne", onote = "fiable", guid = "Player-1-0A" },
+      { name = "Bob", key = "bob", class = "MAGE", level = 12, rank = "Recrue", rankIndex = 4, hours = 50, note = "", onote = "", guid = "Player-1-0B" },
+      { name = "Zed", key = "zed", class = "ROGUE", level = 30, rank = "Membre", rankIndex = 3, note = "", onote = "" }, -- dernière connexion et guid inconnus
+    } },
+    events = { at = 1790000000, by = "Tournicoti", total = 2, list = { { type = "promote", p1 = "Tournicoti", p2 = "Greta Coulé", rank = 1, hours = 3 },
+      { type = "join", p1 = "Bob", p2 = "", hours = 30 } } },
+    bank = { at = 1790000100, by = "Tournicoti", money = 1234567, ntabs = 3,
+      tabs = { { name = "Conso", visible = true, read = true }, { name = "Compos;", visible = true, read = true }, { name = "Officiers" } },
+      items = { { tab = 1, slot = 1, id = 13457, n = 5 }, { tab = 2, slot = 5, id = 7078, n = 20 } },
+      log = { { tab = 1, type = "deposit", who = "Bob", id = 13457, n = 5, hours = 2 }, { tab = 2, type = "move", who = "Greta Coulé", id = 7078, n = 20, tab1 = 1, tab2 = 2, hours = 4 } },
+      moneyLog = { { type = "deposit", who = "Tournicoti", amount = 500000, hours = 1 } } },
+    chars = { { name = "Tournicoti", xp = { level = 41, xp = 1234, max = 8000, at = 1790000050 }, levels = { [41] = 1789990000, [40] = 1789900000 } } },
+  }
+end
+local frl = F.BuildFRL(frlData())
+check(frl:match("^FRL;1;Les Veilleurs ;Horde;1790000000;Tournicoti;1;Officier;3;Forever EU;1%.6%.0\n"), "en-tête FRL : « ; » et « | » retirés")
+check(frl:find("\nM;Greta Coulé;DRUID;60;Officier;1;1;0;Main  cffff0000rouge ligne;fiable;Player-1-0A\n", 1, true), "membre : note échappée, note d'officier")
+check(frl:find("\nM;Bob;MAGE;12;Recrue;4;0;50;;;Player-1-0B\n", 1, true) and frl:find("\nM;Zed;ROGUE;30;Membre;3;0;;;;\n", 1, true), "membres : hors ligne, champs inconnus vides")
+check(frl:find("\nJ;1790000000;Tournicoti\nE;promote;Tournicoti;Greta Coulé;1;3\nE;join;Bob;;;30\n", 1, true), "journal de guilde")
+check(frl:find("\nB;1790000100;Tournicoti;1234567;3\nT;1;Conso;1;1\nT;2;Compos ;1;1\nT;3;Officiers;0;0\nI;1;1;13457;5\nI;2;5;7078;20\n", 1, true), "banque : onglets lus et non visible, objets")
+check(frl:find("\nX;1;deposit;Bob;13457;5;;;2\nX;2;move;Greta Coulé;7078;20;1;2;4\nO;deposit;Tournicoti;500000;1\n", 1, true), "journaux de la banque")
+check(frl:find("\nP;Tournicoti;41;1234;8000;1790000050\nU;Tournicoti;40;1789900000\nU;Tournicoti;41;1789990000\nEND;18$"), "XP, niveaux (dans l'ordre) et END qui compte les lignes")
+check(not frl:find("|", 1, true) and select(2, frl:gsub("\n", "")) == 19, "aucun « | », une ligne par information")
+-- Notes d'officier : jamais sans le droit de les voir, même présentes dans les données
+local hidden = frlData()
+hidden.roster.officer = false
+check(F.BuildFRL(hidden):find("\nM;Greta Coulé;DRUID;60;Officier;1;1;0;Main  cffff0000rouge ligne;;Player-1-0A\n", 1, true)
+  and F.BuildFRL(hidden):match("^FRL;1;[^\n]*;Tournicoti;0;"), "notes d'officier non visibles : vides")
+-- Forme stable : relue 30 min plus tard par un autre, Greta déconnectée depuis, XP dans le même dixième, addon mis à jour :
+-- même empreinte ; un vrai changement (niveau, objet de la banque) en donne une autre
+local later = frlData()
+later.addon, later.roster.at, later.roster.by, later.roster.rank = "1.6.1", 1790001800, "Greta", "Maître"
+later.roster.members[1].online, later.roster.members[2].hours = nil, 50
+later.events.at, later.events.list[1].hours, later.bank.at, later.bank.by = 1790001800, 4, 1790001900, "Greta"
+later.bank.log[1].hours, later.chars[1].xp = 3, { level = 41, xp = 1500, max = 8000, at = 1790001850 }
+local s1, s2 = F.BuildFRL(frlData(), true), F.BuildFRL(later, true)
+check(s1 == s2 and F.BuildFRL(later) ~= frl, "forme stable : même empreinte quand seul le temps a passé")
+check(s1:match("^FRL;1;Les Veilleurs ;Horde;;;1;;3;Forever EU;\n") and s1:find("\nP;Tournicoti;41;1;;\n", 1, true) and s1:find("\nE;promote;Tournicoti;Greta Coulé;1;\n", 1, true), "forme stable : valeurs mouvantes vides")
+later.roster.members[2].level = 13
+check(F.BuildFRL(later, true) ~= s1, "forme stable : un niveau change l'empreinte")
+later.roster.members[2].level = 12
+later.bank.items[1].n = 4
+check(F.BuildFRL(later, true) ~= s1, "forme stable : la banque change l'empreinte")
+-- Parties absentes : pas de lignes, END;0 ; liste seule : ni journal, ni banque, ni XP
+check(F.BuildFRL({ name = "Solo" }) == "FRL;1;Solo;;0;;0;;0;;\nEND;0", "relevé vide")
+local only = frlData()
+only.events, only.bank, only.chars = nil, nil, nil
+local onlyText = F.BuildFRL(only)
+check(not onlyText:find("\n[JEBTIXOPU];") and onlyText:match("\nEND;3$"), "liste seule")
+
 -- Jets de dés lus d'après le texte du jeu, en français, en anglais ou positionnel
 local fr = F.RollParser("%s obtient un %d (%d-%d).")
 local n1, r1, lo1, hi1 = fr("Gorrak obtient un 61 (1-100).")

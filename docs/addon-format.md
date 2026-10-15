@@ -190,6 +190,51 @@ Méthode : `council`, `sr`, `roll`, `ml` (maître du butin) ou vide ; réponse a
 Sur le site (Ctrl+V n'importe où), le bilan est enregistré sur le raid (un nouveau collage le remplace), seulement par un officier du groupe ou le créateur du raid. Les prénoms sont rapprochés des fiches des membres. Statuts : présent ; en retard (arrivé plus de 10 min après l'heure prévue) ; parti tôt (absent du dernier quart de la soirée, au moins 15 min) ; banc (inscription « banc ») ; inscrit, absent (inscrit présent ou en retard, jamais vu). Un objet reçu qui est l'objectif BiS d'une fiche y est coché « obtenu ».
 
 
+# FRL, version 1 : relève de la guilde (jeu → site), en essai
+
+**En essai (addon 1.6.0) : pas encore lu par le site.** L'addon relève sa guilde en silence et garde le relevé dans sa sauvegarde. Il ne l'envoie à personne : ni aux autres joueurs, ni dans la boîte d'envoi de Roster Companion (`outbox`, inchangée : l'appli ne voit que les blocs `frc` et `frb`). `/fr guilde` montre ce qui a été relevé et donne ce texte (« Copier le relevé »), pour l'essayer sur la bêta. Le site le lira dans un lot suivant (cahier des charges « Forever pour toute la guilde », §5 et §6).
+
+Ce que l'addon relève (`addon/ForeverRoster/Guild.lua`, API de Retail 12.1.5 : chaque fonction peut manquer sur le client de Forever, chaque valeur secrète est laissée vide) :
+
+- **Liste de guilde** : `C_GuildInfo.GuildRoster()` 15 s après la connexion, puis au plus toutes les 10 min (et à l'ouverture de `/fr guilde` s'il est temps), lue à `GUILD_ROSTER_UPDATE` (`GetGuildRosterInfo`, `GetGuildRosterLastOnline`, `GetGuildInfo("player")`). Notes d'officier seulement si `C_GuildInfo.CanViewOfficerNote()`.
+- **Journal de guilde** : `QueryGuildEventLog()` au même rythme, lu à `GUILD_EVENT_LOG_UPDATE` (`GetGuildEventInfo`).
+- **Banque de guilde** : seulement pendant qu'elle est ouverte (`PLAYER_INTERACTION_MANAGER_FRAME_SHOW` avec `Enum.PlayerInteractionType.GuildBanker`, ou `GUILDBANKFRAME_OPENED` sur un client qui le connaît). Chaque onglet visible est demandé à son tour (`QueryGuildBankTab`, lu à `GUILDBANKBAGSLOTS_CHANGED`, sinon tel quel au bout de 3 s), puis son journal et celui de l'or (`QueryGuildBankLog`, lu à `GUILDBANKLOG_UPDATE`). Un dépôt ou un retrait fait banque ouverte est relu ; rien n'est relu une fois la banque fermée. Seul le dernier relevé est gardé.
+- **Niveau et XP** du perso connecté (`UnitLevel`, `UnitXP`, `UnitXPMax` à `PLAYER_XP_UPDATE`, au plus une fois par minute) et heure exacte de chaque montée de niveau (`time()` à `PLAYER_LEVEL_UP`), pour chaque perso du compte.
+- Jamais en combat ni pendant une rencontre (`ENCOUNTER_START` à `ENCOUNTER_END`) : remis à la fin.
+
+```
+FRL;1;<guilde>;<faction>;<liste relevée le unix>;<relevée par>;<notes d'officier 1|0>;<mon rang>;<membres>;<royaume>;<version de l'addon>
+M;<nom>;<CLASSE>;<niveau>;<rang>;<n° du rang>;<en ligne 1|0>;<hors ligne depuis (heures)>;<note publique>;<note d'officier>;<guid>
+J;<journal relevé le unix>;<relevé par>
+E;<type>;<joueur 1>;<joueur 2>;<n° du rang>;<il y a (heures)>
+B;<banque relevée le unix>;<relevée par>;<or (cuivre)>;<nombre d'onglets>
+T;<onglet>;<nom>;<visible 1|0>;<lu 1|0>
+I;<onglet>;<case>;<objet>;<quantité>
+X;<onglet>;<type>;<qui>;<objet>;<quantité>;<onglet de départ>;<onglet d'arrivée>;<il y a (heures)>
+O;<type>;<qui>;<montant (cuivre)>;<il y a (heures)>
+P;<perso>;<niveau>;<XP>;<XP du niveau>;<relevée le unix>
+U;<perso>;<niveau>;<atteint le unix>
+END;<nombre de lignes entre l'en-tête et END>
+```
+
+| Ligne | Contenu |
+|---|---|
+| en-tête | Guilde : nom (`GetGuildInfo`), faction (`Horde`, `Alliance`) et royaume (`GetRealmName`) ; sur Forever, une guilde correspond à un couple règles + faction. `membres` : nombre donné par le jeu (`GetNumGuildMembers`), à comparer au nombre de lignes `M`. Sans liste relevée : `0` et champs vides. |
+| `M` | Un membre, triés par nom. **Nom tel que le jeu le renvoie** : « Prénom », « Prénom Nom » (nom de famille de Forever) ou « Prénom-Royaume », à vérifier sur la bêta. La clé d'un membre est son prénom (avant le premier espace ou tiret), en minuscules. Rang : nom et numéro (0 : maître de guilde). Hors ligne depuis : en heures (années, mois de 30 jours, jours et heures donnés par le jeu), `0` en ligne, vide si inconnu. Note d'officier vide si l'en-tête dit `0`. |
+| `J`, `E` | Journal de guilde, les plus récents d'abord (100 au plus). `type` du jeu : `invite`, `join`, `promote`, `demote`, `remove`, `quit` ; `n° du rang` : le nouveau rang (promotion, rétrogradation). Date approximative : relevé moins « il y a ». |
+| `B`, `T` | Dernier relevé de la banque. Onglet que le rang du joueur ne voit pas : `0;0`, jamais demandé ; onglet visible pas encore lu (banque fermée trop tôt) : `1;0`. |
+| `I` | Objets des onglets lus, une ligne par case occupée (1 à 98). Les mascottes de combat (lien sans `item:`) ne sont pas relevées. |
+| `X`, `O` | Journaux des onglets visibles et de l'or, 50 lignes chacun au plus, les plus récents d'abord. `type` du jeu : `deposit`, `withdraw`, `move`, `repair`… ; onglets de départ et d'arrivée pour `move`. |
+| `P`, `U` | Persos du compte relevés dans cette guilde (prénom) : dernière XP lue ; heure exacte de chaque niveau atteint depuis l'addon 1.6.0. |
+
+- Toutes les lignes comptent dans `END`. Chaque partie est facultative : sans journal, sans banque ou sans XP, leurs lignes manquent.
+- Échappement comme les autres formats : `;`, `|` et retours à la ligne remplacés par une espace (`F.clean`). Valeur secrète ou illisible : champ vide.
+- Forme stable (empreinte, pour décider plus tard d'un nouvel envoi ; pas encore utilisée) : mêmes lignes, avec les champs qui bougent tout seuls vidés (heures de relève, qui a relevé, mon rang, version de l'addon, en ligne, « il y a » des journaux), la dernière connexion en jours (`(relevé − heures × 3600) / 86400`, arrondi en dessous) et l'XP en dixièmes de niveau.
+- Sauvegarde : `ForeverRosterDB.guilds["<guilde>-<royaume>-<faction>"]` (`roster`, `events`, `bank`) et, pour chaque perso, `ForeverRosterDB.chars[…].guild`, `.xp`, `.levels`. Une fiche de guilde qu'aucun perso du compte n'a plus est retirée à la connexion.
+- Générateur : `F.BuildFRL` (`addon/ForeverRoster/Format.lua`), testé dans `addon/tests/format_test.lua` ; relève simulée dans `addon/tests/wow_sim.lua` (section 8 quinquies), dont la sauvegarde est relue par Roster Companion (test `roundtrip.rs`).
+- À régler avant un envoi par Roster Companion : un bloc y est limité à 64 Kio (`MAX_TEXT` dans `outbox.rs`), une guilde de plus de 500 membres environ le dépasserait.
+
+
 # Messages entre addons (lot G, addon 1.0)
 
 Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) sauf mention. Rien ne passe par le site.

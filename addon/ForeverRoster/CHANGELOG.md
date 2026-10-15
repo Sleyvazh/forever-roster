@@ -2,6 +2,14 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.0
+
+- **Guild scan (trial)**: the addon now quietly reads your guild: roster (rank, level, class, notes, last online; officer notes only if your rank can see them), guild log, guild bank (only while you have it open: visible tabs, gold and logs) and your characters' level and XP, with the exact time of each level-up. Never in combat or during a boss encounter. Nothing is sent yet, neither to the website nor to other players: `/fr guild` shows what was read and gives the text to copy ("Copy the scan").
+
+Français :
+
+- **Relève de la guilde (en essai)** : l'addon relève maintenant ta guilde en silence : liste (rang, niveau, classe, notes, dernière connexion ; notes d'officier seulement si ton rang les voit), journal de guilde, banque de guilde (seulement pendant que tu l'as ouverte : onglets visibles, or et journaux), niveau et XP de tes persos, avec l'heure exacte de chaque montée de niveau. Jamais en combat ni pendant une rencontre de boss. Rien n'est encore envoyé, ni au site ni aux autres joueurs : `/fr guilde` montre ce qui a été relevé et donne le texte à copier (« Copier le relevé »).
+
 ## 1.5.9
 
 - Data from Roster Companion no longer overwrites a newer version received from a guildmate: each group keeps its newest version (your own sign-up and character still come from your latest data). After a refresh, the addon only announces its data to the guild and raid when a group actually came from the app.

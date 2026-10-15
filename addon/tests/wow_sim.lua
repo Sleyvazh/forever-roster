@@ -1397,6 +1397,245 @@ do
   ROSTER, R.boss, ForeverRosterDB.bossNames, ForeverRosterDB.bossNpcs = keep.roster, keep.boss, keep.bossNames, keep.bossNpcs
 end
 
+-- 8 quinquies. Relève de la guilde (1.6.0, en essai) : liste (20 membres, noms avec nom de famille ou royaume, notes
+-- d'officier invisibles puis visibles, un champ secret), journal, banque (deux onglets lus, un non visible, un lien
+-- secret), XP et montées de niveau ; rien demandé ni relu en combat ou pendant une rencontre ; rien envoyé aux autres
+-- joueurs ni rangé dans la boîte d'envoi de Roster Companion ; /fr guilde dans les deux habillages, « Copier le relevé ».
+-- L'horloge est placée après celle du partage (section 8 ter) ; bilans de raid et inscriptions mis de côté (la connexion
+-- à cette date les effacerait), tout est remis en place à la fin. La fiche de guilde reste dans la sauvegarde : la
+-- section 9 la fait lire par Roster Companion.
+do
+  local Gd = ns.Guild
+  local c = ns.charDB()
+  local secrets = setmetatable({}, { __mode = "k" })
+  local function secretValue(label)
+    local u = newproxy(true)
+    local mt = getmetatable(u)
+    local function boom() error("attempt to index a secret string value (" .. label .. ")", 2) end
+    mt.__index, mt.__newindex, mt.__concat, mt.__lt, mt.__le, mt.__len, mt.__call = boom, boom, boom, boom, boom, boom, boom
+    secrets[u] = true
+    return u
+  end
+  local keep = { time = time, type = type, tostring = tostring, UnitLevel = UnitLevel, InCombatLockdown = InCombatLockdown, skin = ForeverRosterDB.skin,
+    raidLogs = ForeverRosterDB.raidLogs, signups = c.signups }
+  ForeverRosterDB.raidLogs, c.signups = {}, {}
+  local before, sentBefore, saidBefore = errors(), #sent, #said
+  local function quiet(what) assert(errors() == before and failures == 0, what .. " : " .. tostring(printed[#printed])) end
+  -- Comme le jeu : issecretvalue, type() d'une chaîne secrète = "string", tostring() la laisse secrète
+  issecretvalue = function(v) return secrets[v] == true end
+  type = function(v) if secrets[v] then return "string" end return keep.type(v) end
+  tostring = function(v) if secrets[v] then return v end return keep.tostring(v) end
+  local clock = 1795000000
+  time = function() return clock end
+
+  -- Guilde simulée : « Les Veilleurs », Horde ; le joueur y est « Tournicoti Tournicoton » (nom de famille de Forever)
+  local S = { combat = false, officer = false, rosterAsks = 0, eventAsks = 0, tabAsks = {}, logAsks = {}, level = 41, xp = 1234, money = 1234567 }
+  InCombatLockdown = function() return S.combat end
+  IsInGuild = function() return true end
+  GetGuildInfo = function(unit) if unit == "player" then return "Les Veilleurs", "Officier", 1 end end
+  local RANKS = { [0] = "Guild Master", "Officier", "Veteran", "Member", "Initiate" }
+  local NAMES = { "Tournicoti Tournicoton", "Greta Coulé", "Alaric", "Brunehilde", "Cassian", "Dorn", "Elowen", "Fenric", "Gorrak", "Hestia-ForeverEU",
+    "Ilyra", "Jorund", "Kaeldra", "Lysandre", "Mirwen", "Nyx", "Orvane", "Perrin", "Quill", "Rhea" }
+  local CLASSES = { "DRUID", "DRUID", "WARRIOR", "PALADIN", "MAGE", "PRIEST", "HUNTER", "ROGUE", "WARLOCK", "SHAMAN" }
+  local MEMBERS = {}
+  for i, name in ipairs(NAMES) do
+    local r = math.min(i - 1, 4)
+    -- name, rankName, rankIndex, level, classDisplayName, zone, publicNote, officerNote, isOnline, status, class, …, guid
+    MEMBERS[i] = { name, RANKS[r], r, 10 + i * 2, "Classe", "Zone", "note " .. i, "officer " .. i, i <= 5, 0, CLASSES[(i - 1) % #CLASSES + 1],
+      0, 0, false, false, 0, string.format("Player-4321-%08X", i) }
+  end
+  MEMBERS[7][7] = secretValue("note publique") -- Elowen : note publique secrète
+  GetNumGuildMembers = function() return #MEMBERS, 0, 5 end
+  GetGuildRosterInfo = function(i) local m = MEMBERS[i] if m then return unpack(m, 1, 17) end end
+  GetGuildRosterLastOnline = function(i) if i > 5 then return 0, 0, i, 3 end end
+  C_GuildInfo = { GuildRoster = function() S.rosterAsks = S.rosterAsks + 1 fire("GUILD_ROSTER_UPDATE", true) end, CanViewOfficerNote = function() return S.officer end }
+  local EVENTS = { { "join", "Rhea", nil, nil, 0, 0, 2, 5 }, { "promote", "Tournicoti Tournicoton", "Greta Coulé", 1, 0, 0, 0, 3 },
+    { "invite", "Greta Coulé", "Rhea", nil, 0, 0, 2, 6 }, { "quit", "Zed", nil, nil, 0, 1, 0, 0 } }
+  QueryGuildEventLog = function() S.eventAsks = S.eventAsks + 1 fire("GUILD_EVENT_LOG_UPDATE") end
+  GetNumGuildEvents = function() return #EVENTS end
+  GetGuildEventInfo = function(i) local e = EVENTS[i] if e then return unpack(e, 1, 8) end end
+  -- Banque : « Consumables » et « Mats » visibles, « Officers » non (rang) ; un lien secret dans « Mats »
+  local function link(id) return "|cffffffff|Hitem:" .. id .. "::::::::60:::::|h[Objet " .. id .. "]|h|r" end
+  local TABS = { { "Consumables", true }, { "Mats", true }, { "Officers", false } }
+  local BANK = { { [1] = { 13457, 5 }, [2] = { 13510, 1 }, [98] = { 19019, 1 } }, { [1] = "secret", [5] = { 7078, 20 } }, { [1] = { 18814, 1 } } }
+  local TLOG = { { { "deposit", "Rhea", link(13457), 5, nil, nil, 0, 0, 0, 2 }, { "withdraw", "Greta Coulé", link(13510), 1, nil, nil, 0, 0, 1, 0 } },
+    { { "move", "Greta Coulé", link(7078), 20, 1, 2, 0, 0, 0, 4 } } }
+  GetNumGuildBankTabs = function() return #TABS end
+  GetGuildBankTabInfo = function(tab) local t = TABS[tab] if t then return t[1], 134400, t[2], t[2], 0, 0, false end end
+  QueryGuildBankTab = function(tab) S.tabAsks[#S.tabAsks + 1] = tab fire("GUILDBANKBAGSLOTS_CHANGED") end
+  GetGuildBankItemLink = function(tab, slot)
+    local x = BANK[tab] and BANK[tab][slot]
+    if x == "secret" then return secretValue("GetGuildBankItemLink") end
+    return x and link(x[1])
+  end
+  GetGuildBankItemInfo = function(tab, slot) local x = BANK[tab] and BANK[tab][slot] if type(x) == "table" then return 133000, x[2], false, false, 1 end end
+  GetGuildBankMoney = function() return S.money end
+  QueryGuildBankLog = function(tab) S.logAsks[#S.logAsks + 1] = tab fire("GUILDBANKLOG_UPDATE") end
+  GetNumGuildBankTransactions = function(tab) return TLOG[tab] and #TLOG[tab] or 0 end
+  GetGuildBankTransaction = function(tab, i) local x = TLOG[tab] and TLOG[tab][i] if x then return unpack(x, 1, 10) end end
+  GetNumGuildBankMoneyTransactions = function() return 1 end
+  GetGuildBankMoneyTransaction = function(i) if i == 1 then return "deposit", "Tournicoti Tournicoton", 500000, 0, 0, 0, 1 end end
+  Enum.PlayerInteractionType = { GuildBanker = 10 }
+  UnitLevel = function() return S.level end
+  UnitXP = function() return S.xp end
+  UnitXPMax = function() return 8000 end
+  local KEY = "Les Veilleurs-Forever EU-Horde"
+  local function guild() return ForeverRosterDB.guilds and ForeverRosterDB.guilds[KEY] end
+  local function member(name) for _, m in ipairs(guild().roster.members) do if m.name == name then return m end end end
+
+  -- Connexion en combat, puis pendant une rencontre : rien n'est demandé ni relu ; à la fin de la rencontre, tout part
+  S.combat = true
+  fire("PLAYER_LOGIN")
+  fire("GUILD_ROSTER_UPDATE", true)
+  fire("GUILD_EVENT_LOG_UPDATE")
+  fire("PLAYER_XP_UPDATE", "player")
+  assert(S.rosterAsks == 0 and S.eventAsks == 0 and not guild() and (c.xp == nil or c.xp.level ~= 41), "en combat : rien demandé ni relu")
+  fire("ENCOUNTER_START", 672, "Ragnaros", 9, 40)
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  assert(S.rosterAsks == 0 and S.eventAsks == 0 and not guild(), "pendant une rencontre (hors combat) : rien non plus")
+  fire("ENCOUNTER_END", 672, "Ragnaros", 9, 40, 1)
+  quiet("relève remise à la fin de la rencontre")
+  local g = guild()
+  assert(S.rosterAsks == 1 and S.eventAsks == 1 and g and c.guild == KEY, "fin de la rencontre : liste et journal demandés une fois")
+  local r = g.roster
+  assert(g.name == "Les Veilleurs" and g.faction == "Horde" and g.realm == "Forever EU" and r.total == 20 and #r.members == 20 and r.by == "Tournicoti"
+    and r.rank == "Officier" and r.rankIndex == 1, "liste de guilde relevée")
+  assert(member("Tournicoti Tournicoton").key == "tournicoti" and member("Greta Coulé").key == "greta" and member("Hestia-ForeverEU").key == "hestia",
+    "nom brut gardé, clé prénom en minuscules")
+  assert(not r.officer and member("Greta Coulé").onote == nil and member("Alaric").onote == nil, "notes d'officier non visibles : pas gardées")
+  local elowen = member("Elowen")
+  assert(elowen.note == "" and elowen.class == "HUNTER" and elowen.level == 24 and elowen.rank == "Initiate" and elowen.rankIndex == 4
+    and elowen.hours == 7 * 24 + 3 and not elowen.online, "champ secret laissé vide, le reste lu")
+  assert(member("Greta Coulé").online and member("Greta Coulé").hours == 0 and member("Alaric").guid == "Player-4321-00000003", "en ligne, guid")
+  assert(#g.events.list == 4 and g.events.list[1].type == "promote" and g.events.list[1].p2 == "Greta Coulé" and g.events.list[1].hours == 3
+    and g.events.list[4].type == "quit", "journal : les plus récents d'abord")
+  assert(c.xp and c.xp.level == 41 and c.xp.xp == 1234 and c.xp.max == 8000 and c.xp.at == clock, "XP relue à la fin du combat")
+
+  -- Pas plus d'une demande toutes les 10 min ; ensuite les notes d'officier deviennent visibles (promotion)
+  clock = clock + 300
+  Gd.Tick()
+  fire("GUILD_ROSTER_UPDATE", true)
+  assert(S.rosterAsks == 1 and S.eventAsks == 1 and g.roster.at == clock - 300, "moins de 10 min : ni demande ni relecture")
+  clock = clock + 301
+  S.officer = true
+  Gd.Tick()
+  r = g.roster
+  assert(S.rosterAsks == 2 and S.eventAsks == 2 and r.at == clock and r.officer and member("Greta Coulé").onote == "officer 2", "10 min plus tard : relue, notes d'officier visibles")
+
+  -- Banque : en combat, rien ; ouverte : onglets visibles demandés un par un, puis leurs journaux et celui de l'or
+  S.combat = true
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 10)
+  assert(#S.tabAsks == 0 and not g.bank, "banque ouverte en combat : rien relu")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  fire("GUILDBANKFRAME_OPENED") -- même ouverture annoncée deux fois : une seule relève
+  local b = g.bank
+  assert(table.concat(S.tabAsks, ",") == "1,2" and table.concat(S.logAsks, ",") == "1,2,9", "onglets visibles et journaux demandés une fois, pas l'onglet caché")
+  assert(b and b.ntabs == 3 and b.tabs[1].read and b.tabs[2].read and not b.tabs[3].visible and not b.tabs[3].read and b.tabs[3].name == "Officers", "onglets lus, onglet non visible noté")
+  assert(#b.items == 4 and b.money == 1234567 and b.by == "Tournicoti", "objets (lien secret ignoré) et or")
+  for _, it in ipairs(b.items) do assert(it.tab ~= 3, "rien de l'onglet non visible") end
+  assert(#b.log == 3 and #b.moneyLog == 1 and b.moneyLog[1].amount == 500000, "journaux de la banque")
+  -- Dépôt, banque toujours ouverte : relu ; fermée : plus rien n'est relu
+  BANK[1][3], S.money = { 13458, 2 }, 1300000
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  assert(#g.bank.items == 5 and g.bank.money == 1300000 and #S.tabAsks == 2, "dépôt relu sans nouvelle demande")
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", 10)
+  BANK[1][4], S.money = { 13459, 1 }, 1
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  fire("GUILDBANK_UPDATE_MONEY")
+  assert(#g.bank.items == 5 and g.bank.money == 1300000, "banque fermée : rien relu")
+  quiet("banque")
+
+  -- XP : au plus une fois par minute, pas en combat ; montée de niveau : heure exacte, même en combat
+  clock, S.xp = clock + 100, 1500
+  fire("PLAYER_XP_UPDATE", "player")
+  assert(c.xp.xp == 1500 and c.xp.at == clock, "XP relue (plus d'une minute depuis la dernière fois)")
+  local t0 = clock
+  clock, S.xp = t0 + 10, 2000
+  fire("PLAYER_XP_UPDATE", "player")
+  assert(c.xp.xp == 1500, "XP : pas deux fois dans la minute")
+  clock = t0 + 61
+  fire("PLAYER_XP_UPDATE", "player")
+  assert(c.xp.xp == 2000, "XP relue après une minute")
+  clock, S.combat, S.xp = clock + 61, true, 2500
+  fire("PLAYER_XP_UPDATE", "player")
+  assert(c.xp.xp == 2000, "XP : pas en combat")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  assert(c.xp.xp == 2500, "XP relue à la fin du combat")
+  clock, S.level, S.xp = clock + 100, 42, 100
+  fire("PLAYER_LEVEL_UP", 42, 10, 10, 0)
+  assert(c.levels[42] == clock and c.xp.level == 42 and c.xp.xp == 100, "niveau 42 : heure exacte, XP relue")
+  local up43 = clock + 3600
+  clock, S.combat, S.level, S.xp = up43, true, 43, 50
+  fire("PLAYER_LEVEL_UP", 43, 10, 10, 0)
+  assert(c.levels[43] == up43 and c.xp.level == 42, "niveau 43 en combat : heure notée, XP remise")
+  clock, S.combat = clock + 20, false
+  fire("PLAYER_REGEN_ENABLED")
+  assert(c.xp.level == 43 and c.xp.xp == 50 and c.levels[42] and c.levels[43] == up43, "XP du niveau 43 après le combat")
+  quiet("XP et niveaux")
+
+  -- Relevé FRL v1 : en-tête, membres, journal, banque, XP ; forme stable insensible au temps qui passe
+  local text = Gd.Text(KEY)
+  assert(text:match("^FRL;1;Les Veilleurs;Horde;%d+;Tournicoti;1;Officier;20;Forever EU;" .. ns.version:gsub("%.", "%%.") .. "\n"), "en-tête FRL")
+  assert(text:find("\nM;Elowen;HUNTER;24;Initiate;4;0;171;;officer 7;Player%-4321%-00000007\n") and text:find("\nM;Tournicoti Tournicoton;DRUID;12;Guild Master;0;1;0;note 1;officer 1;", 1, true),
+    "membres dans le relevé")
+  assert(text:find("\nJ;%d+;Tournicoti\nE;promote;Tournicoti Tournicoton;Greta Coulé;1;3\n") and text:find("\nT;3;Officers;0;0\n", 1, true) and not text:find("\nI;3;", 1, true)
+    and text:find("\nI;1;98;19019;1\n", 1, true) and text:find("\nO;deposit;Tournicoti Tournicoton;500000;1\n", 1, true), "journal et banque dans le relevé")
+  assert(text:find("\nP;Tournicoti;43;50;8000;%d+\nU;Tournicoti;42;%d+\nU;Tournicoti;43;" .. up43 .. "\nEND;"), "XP et niveaux dans le relevé")
+  local count = 0
+  for _ in text:gmatch("\n") do count = count + 1 end
+  assert(text:match("\nEND;(%d+)$") == tostring(count - 1) and not text:find("|", 1, true), "END compte les lignes, aucun « | »")
+  local stable = Gd.Text(KEY, true)
+  clock = clock + 120
+  assert(Gd.ReadRoster() and Gd.Text(KEY) ~= text and Gd.Text(KEY, true) == stable, "relue sans changement : même forme stable")
+
+  -- /fr guilde (habillage Forever puis celui du site) et « Copier le relevé »
+  run("guilde")
+  local w = Gd.Windows()
+  assert(w and w:IsShown() and not w.skin, "/fr guilde : fenêtre ouverte (habillage Forever)")
+  local function shownText(pattern) for t in pairs(TEXTS) do if keep.type(t) == "string" and t:find(pattern, 1, true) then return t end end end
+  assert(shownText("Membres : 20 lus sur 20") and shownText("Notes d'officier : visibles") and shownText("(clé : tournicoti)")
+    and shownText("Onglets : 2 lus, 1 non visibles (rang), 0 pas encore lus") and shownText("Niveaux notés : 2 (dernier : 43"), "diagnostic affiché")
+  local copyButton = TEXTS["Copier le relevé"]
+  assert(copyButton and copyButton:IsShown(), "bouton « Copier le relevé »")
+  rawget(copyButton, "scripts").OnClick(copyButton)
+  local _, cw = Gd.Windows()
+  assert(cw and cw:IsShown() and cw.box:GetText() == Gd.Text(KEY), "relevé dans une boîte à copier")
+  cw.box:SetText("frappe")
+  rawget(cw.box, "scripts").OnTextChanged(cw.box, true)
+  assert(cw.box:GetText() == Gd.Text(KEY), "la frappe ne casse pas le relevé")
+  ForeverRosterDB.skin = "site"
+  run("guild")
+  local w2 = Gd.Windows()
+  assert(w2 ~= w and w2.skin and w2:IsShown() and not w:IsShown(), "/fr guild : habillage du site")
+  copyButton = TEXTS["Copier le relevé"]
+  rawget(copyButton, "scripts").OnClick(copyButton)
+  local _, cw2 = Gd.Windows()
+  assert(cw2 ~= cw and cw2.skin and cw2:IsShown() and cw2.box:GetText() == Gd.Text(KEY), "boîte à copier, habillage du site")
+  ForeverRosterDB.skin = keep.skin
+  run("aide")
+  assert(printed[#printed]:find("/fr guilde", 1, true), "ligne dans l'aide de /fr")
+  quiet("/fr guilde")
+
+  -- Rien envoyé aux autres joueurs ni au chat, rien dans la boîte d'envoi de Roster Companion
+  fire("PLAYER_LOGOUT")
+  assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat")
+  for _, blk in ipairs(ForeverRosterDB.outbox.blocks) do
+    assert((blk.kind == "frc" or blk.kind == "frb") and not blk.text:find("FRL;", 1, true), "boîte d'envoi : seulement les persos et les bilans")
+  end
+
+  -- Remise en place (la fiche de guilde et l'XP restent dans la sauvegarde)
+  issecretvalue, type, tostring, time = nil, keep.type, keep.tostring, keep.time
+  UnitLevel, InCombatLockdown, IsInGuild, GetGuildInfo, C_GuildInfo = keep.UnitLevel, keep.InCombatLockdown, nil, nil, nil
+  GetNumGuildMembers, GetGuildRosterInfo, GetGuildRosterLastOnline, QueryGuildEventLog, GetNumGuildEvents, GetGuildEventInfo = nil, nil, nil, nil, nil, nil
+  GetNumGuildBankTabs, GetGuildBankTabInfo, QueryGuildBankTab, GetGuildBankItemLink, GetGuildBankItemInfo, GetGuildBankMoney = nil, nil, nil, nil, nil, nil
+  QueryGuildBankLog, GetNumGuildBankTransactions, GetGuildBankTransaction, GetNumGuildBankMoneyTransactions, GetGuildBankMoneyTransaction = nil, nil, nil, nil, nil
+  UnitXP, UnitXPMax, Enum.PlayerInteractionType = nil, nil, nil
+  ForeverRosterDB.raidLogs, c.signups = keep.raidLogs, keep.signups
+end
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
@@ -1427,6 +1666,8 @@ if helper and helper ~= "" then
   local logId
   for id, log in pairs(ForeverRosterDB.raidLogs) do if next(log.people) then log.sentAt = nil log.given = 1 logId = id end end
   assert(logId, "un bilan à envoyer")
+  -- Relève de la guilde (section 8 quinquies) dans la sauvegarde : l'appli la lit sans s'arrêter, hors de la boîte d'envoi
+  assert(ForeverRosterDB.guilds and next(ForeverRosterDB.guilds) and ForeverRosterDB.chars["Tournicoti-Forever EU"].levels, "relève de la guilde dans la sauvegarde")
   fire("PLAYER_LOGOUT")
   local out = { "\nForeverRosterDB = " }
   ser(ForeverRosterDB, out, 0)
@@ -1577,7 +1818,7 @@ assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 -- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai,
 -- groupes écrits par Roster Companion dans l'aller-retour de la section 9 (test Rust de l'appli : RC_HELPER)
 local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4",
-  "Les Retardataires", "Soirée", "Soft reserve cachée" }
+  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé" }
 LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon ; partage : vraie signature du site vérifiée (" .. shareChecks .. " fois)")

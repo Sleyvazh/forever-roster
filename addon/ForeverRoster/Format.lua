@@ -2,6 +2,7 @@
 --   FRR v1 : compo d'un raid, du site vers le jeu (docs/addon-format.md)
 --   FRC v1 : un perso, du jeu vers le site
 --   FRG v1 : données d'un groupe (raids à venir, patrons recherchés), du site vers le jeu ; signé par le site (M, Z)
+--   FRL v1 : relève de la guilde (liste, journal, banque, niveaux et XP), du jeu vers le site ; en essai, pas encore lu par le site
 -- Ce fichier n'utilise aucune fonction du jeu : il est testé hors jeu (addon/tests).
 local _, ns = ...
 ns = ns or {}
@@ -228,6 +229,66 @@ function F.Compact(lines)
   for _, p in ipairs(profs) do table.sort(recipes[p]) compact[#compact + 1] = { "R", p, table.concat(recipes[p], ",") } end
   for _, t in ipairs(treeOrder) do compact[#compact + 1] = { "T", t, table.concat(trees[t], ",") } end
   return compact
+end
+
+-- Relève de la guilde (FRL v1, 1.6.0, en essai : pas encore lue par le site) : liste de guilde, journal, banque, niveau
+-- et XP des persos du compte, du jeu vers le site (docs/addon-format.md). d = { name, faction, realm, addon, roster,
+-- events, bank, chars } (Guild.lua, G.Data) ; chaque partie est facultative (absente : pas de lignes). Chaque champ passe
+-- par F.clean (sans « ; », « | » ni retour à la ligne) ; END compte toutes les lignes entre l'en-tête et END.
+-- stable : forme sans ce qui bouge tout seul (heures de relève, qui a relevé, version de l'addon, en ligne, « il y a »
+-- des journaux ; dernière connexion au jour près, XP au dixième de niveau près), pour l'empreinte qui décidera d'un
+-- nouvel envoi (lot suivant).
+local function dayOf(at, hours) return math.floor(((at or 0) - hours * 3600) / 86400) end
+function F.BuildFRL(d, stable)
+  local c = F.clean
+  local function moving(v) if stable then return "" end return v end
+  local function join(f)
+    local parts = {}
+    for i = 1, f.n do parts[i] = c(f[i]) end
+    return table.concat(parts, ";")
+  end
+  local lines = {}
+  local function add(...) lines[#lines + 1] = { n = select("#", ...), ... } end
+  local r = d.roster
+  local head = { n = 11, "FRL", 1, d.name, d.faction, moving(r and r.at or 0), moving(r and r.by), r and r.officer and 1 or 0, moving(r and r.rank),
+    r and r.total or 0, d.realm, moving(d.addon) }
+  for _, m in ipairs(r and r.members or {}) do
+    -- Dernière connexion : heures écoulées au moment de la relève (vide si le jeu ne l'a pas dite)
+    local last = m.hours and (stable and dayOf(r.at, m.hours) or m.hours) or ""
+    add("M", m.name, m.class, m.level, m.rank, m.rankIndex, moving(m.online and 1 or 0), last, m.note, r.officer and m.onote or "", m.guid)
+  end
+  local ev = d.events
+  if ev then
+    add("J", moving(ev.at or 0), moving(ev.by))
+    for _, e in ipairs(ev.list or {}) do add("E", e.type, e.p1, e.p2, e.rank, moving(e.hours)) end
+  end
+  local b = d.bank
+  if b then
+    add("B", moving(b.at or 0), moving(b.by), b.money, b.ntabs or 0)
+    for tab = 1, b.ntabs or 0 do
+      local t = b.tabs and b.tabs[tab]
+      if t then add("T", tab, t.name, t.visible and 1 or 0, t.read and 1 or 0) end
+    end
+    for _, it in ipairs(b.items or {}) do add("I", it.tab, it.slot, it.id, it.n) end
+    for _, x in ipairs(b.log or {}) do add("X", x.tab, x.type, x.who, x.id, x.n, x.tab1, x.tab2, moving(x.hours)) end
+    for _, x in ipairs(b.moneyLog or {}) do add("O", x.type, x.who, x.amount, moving(x.hours)) end
+  end
+  for _, ch in ipairs(d.chars or {}) do
+    local x = ch.xp
+    if x and stable then
+      add("P", ch.name, x.level, (x.max or 0) > 0 and math.floor((x.xp or 0) * 10 / x.max) or "", "", "")
+    elseif x then
+      add("P", ch.name, x.level, x.xp, x.max, x.at or 0)
+    end
+    local levels = {}
+    for lvl in pairs(ch.levels or {}) do levels[#levels + 1] = lvl end
+    table.sort(levels)
+    for _, lvl in ipairs(levels) do add("U", ch.name, lvl, ch.levels[lvl]) end
+  end
+  local out = { join(head) }
+  for _, f in ipairs(lines) do out[#out + 1] = join(f) end
+  out[#out + 1] = "END;" .. #lines
+  return table.concat(out, "\n")
 end
 
 -- lines : liste de tables de champs ; la ligne END donne le nombre de lignes utiles (détecte un copier-coller tronqué).
