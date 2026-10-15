@@ -3,6 +3,7 @@ import {
   type ButtonInteraction, type ChatInputCommandInteraction, type Interaction, type StringSelectMenuInteraction,
 } from "discord.js";
 import { ApiError, InternalApi, type RaidView } from "./api";
+import { createChannelNamer, templateLinkedReply } from "./channels";
 import { COMMANDS } from "./commands";
 import { loadConfig } from "./config";
 import { parseRaidDate } from "./dates";
@@ -104,6 +105,12 @@ async function start() {
       return { channelId: ch.id, messageId: m.id };
     },
   }, log);
+  // Salons des raids récurrents : renommés avec la date du raid courant (seulement ceux que l'API désigne)
+  const channels = createChannelNamer(api, async id => {
+    const ch = await client.channels.fetch(id);
+    if (!ch || ch.isDMBased() || !("setName" in ch)) return null;
+    return { name: ch.name, guildId: ch.guildId, setName: (name: string, reason: string) => ch.setName(name, reason) };
+  }, log);
   const publishSoon = (view: RaidView) => { sync.publish(view).catch(e => log.warn("Mise à jour de l'annonce impossible", e?.message)); };
 
   /** Envoie les icônes du serveur comme émojis d'application, remplace celles qui ont changé (au démarrage, puis toutes les 6 h). */
@@ -176,6 +183,9 @@ async function start() {
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
+    // Noms des salons des raids récurrents : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
+    void channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message));
+    setInterval(() => { channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message)); }, 5 * 60e3);
     setInterval(() => { sendReminders().catch(e => log.warn("Rappels impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendNudges().catch(e => log.warn("Relances impossibles", e?.message)); }, 60e3);
     setInterval(() => { sendAsks().catch(e => log.warn("Demandes impossibles", e?.message)); }, 15e3);
@@ -220,7 +230,15 @@ async function start() {
       if (!i.appPermissions.has(need)) {
         return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");
       }
-      const { group, kind } = await api.bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
+      const channelName = i.channel && "name" in i.channel && i.channel.name ? i.channel.name : undefined;
+      const bound = await api.bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, channelName });
+      const { group, kind } = bound;
+      if (bound.kind === "template") {
+        await i.editReply(templateLinkedReply(bound.template, i.appPermissions.has(PermissionFlagsBits.ManageChannels)));
+        void sync.tick().catch(() => {});
+        void channels.tick().catch(() => {});
+        return;
+      }
       if (kind === "orders") {
         await i.editReply(`✅ Salon lié aux commandes d'artisanat de **${group.name}**. Chaque commande y sera postée avec un bouton « Je m'en charge ».`);
         void orders.tick().catch(() => {});

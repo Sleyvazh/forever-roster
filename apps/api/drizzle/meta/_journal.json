@@ -239,6 +239,13 @@
       "when": 1791531206722,
       "tag": "0033_loot_correction_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792058181438,
+      "tag": "0034_template_channels",
+      "breakpoints": true
     }
   ]
 }

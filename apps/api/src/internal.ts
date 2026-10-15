@@ -3,12 +3,13 @@ import { and, asc, count, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, s
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppContext } from "./app";
-import { characters, craftOrders, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, reports, users } from "./db/schema";
+import { characters, craftOrders, discordDeletions, groupCharacters, groupMembers, groups, raidAsks, raidSignups, raids, raidTemplates, reports, users } from "./db/schema";
 import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
+import { channelNames, EFFECTIVE_CHANNEL, KEEP_AFTER_MS, retirePastTemplateAnnouncements, TEMPLATE_OF_RAID } from "./lib/channels";
 import { bus } from "./lib/events";
 import { canDm, NUDGE_GRACE_MS, pendingMembers } from "./lib/reach";
 import { applyAbsencesToRaid } from "./lib/absences";
@@ -29,8 +30,6 @@ import { formatFor } from "./routes/raids";
 const snowflake = z.string().regex(/^\d{5,25}$/);
 const raidParam = z.object({ raidId: z.uuid() });
 const RANK = { member: 0, officer: 1, owner: 2 } as const;
-/** Une annonce reste synchronisée jusqu'à 12 h après l'heure du raid. */
-const KEEP_AFTER_MS = 12 * 3600e3;
 
 export async function buildInternalApp(ctx: AppContext, logger: boolean | object = false) {
   const app = Fastify({ logger, bodyLimit: 64 * 1024 });
@@ -57,16 +56,36 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return { user: u, role: m?.role ?? null };
   }
 
+  /** Groupe lié à ce salon : son salon des raids, ou le salon à part de l'un de ses raids récurrents. */
   async function groupForChannel(guildId: string, channelId: string) {
     const [g] = await db.select().from(groups).where(and(eq(groups.discordGuildId, guildId), eq(groups.discordChannelId, channelId)));
-    if (!g) throw notFound("Ce salon n'est lié à aucun groupe (Forever Roster ou Roster). Un officier peut le lier avec /forever-lier ou /roster-lier.");
-    return g;
+    if (g) return g;
+    const [t] = await db.select({ group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
+      .where(and(eq(raidTemplates.discordGuildId, guildId), eq(raidTemplates.discordChannelId, channelId)));
+    if (!t) throw notFound("Ce salon n'est lié à aucun groupe (Forever Roster ou Roster). Un officier peut le lier avec /forever-lier ou /roster-lier.");
+    return t.group;
   }
 
+  /** Raid, son groupe et son salon effectif (celui de son raid récurrent, sinon celui du groupe). */
   async function loadRaid(raidId: string) {
-    const [r] = await db.select({ raid: raids, group: groups }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).where(eq(raids.id, raidId));
-    if (!r || !r.group.discordChannelId) throw notFound("Raid introuvable.");
-    return r;
+    const [r] = await db.select({ raid: raids, group: groups, channelId: EFFECTIVE_CHANNEL }).from(raids)
+      .innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID).where(eq(raids.id, raidId));
+    if (!r || !r.channelId) throw notFound("Raid introuvable.");
+    return { raid: r.raid, group: r.group, channelId: r.channelId };
+  }
+
+  /** Raid récurrent (de n'importe quel groupe) qui a déjà ce salon. */
+  async function templateOnChannel(channelId: string) {
+    const [t] = await db.select({ id: raidTemplates.id, name: raidTemplates.name, groupId: raidTemplates.groupId }).from(raidTemplates)
+      .where(eq(raidTemplates.discordChannelId, channelId));
+    return t ?? null;
+  }
+  /** Refus de lier au groupe (raids ou commandes) un salon déjà pris par un raid récurrent. */
+  async function refuseTemplateChannel(channelId: string, groupId: string, what: string) {
+    const t = await templateOnChannel(channelId);
+    if (t) throw badRequest(t.groupId === groupId
+      ? `Ce salon est déjà celui du raid récurrent « ${t.name} » : choisis un autre salon pour ${what}.`
+      : `Ce salon est déjà celui d'un raid récurrent d'un autre groupe : choisis un autre salon pour ${what}.`);
   }
 
   /** Persos placés dans la compo (dont le joueur est toujours membre du groupe). */
@@ -81,7 +100,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
 
   /** Tout ce qu'il faut au bot pour dessiner l'annonce, et le groupe de chaque inscrit placé. */
   async function layout(raidId: string) {
-    const { raid, group } = await loadRaid(raidId);
+    const { raid, group, channelId } = await loadRaid(raidId);
     const signups = await listSignups(db, raid.id);
     const chars = await placed(raid);
     const bySignup = new Map(signups.map(s => [s.id, s]));
@@ -114,9 +133,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         difficulty: raid.difficulty,
       },
       group: { id: group.id, name: group.name, game: group.game },
-      channelId: group.discordChannelId!,
-      // Message déjà publié dans le salon actuel du groupe (sinon : à publier)
-      messageId: raid.discordChannelId === group.discordChannelId ? raid.discordMessageId : null,
+      channelId,
+      // Message déjà publié dans le salon effectif du raid (sinon : à publier)
+      messageId: raid.discordChannelId === channelId ? raid.discordMessageId : null,
       signups: signups.map(s => ({
         displayName: s.displayName, characterName: s.characterName, cls: s.cls, spec: s.spec, role: s.role,
         status: s.status, note: s.note, guest: !s.userId, group: groupOfSignup.get(s.id) ?? null,
@@ -129,19 +148,42 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   const view = async (raidId: string) => (await layout(raidId)).view;
 
 
-  /* ----- Liaison d'un salon à un groupe ----- */
+  /* ----- Liaison d'un salon à un groupe (raids, commandes) ou à un raid récurrent ----- */
+
+  /** Le code ne suffit pas : il faut aussi être officier du groupe, avec son Discord lié au site. */
+  async function officer(discordUserId: string, groupId: string) {
+    const { user, role } = await linkedMember(discordUserId, groupId);
+    if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
+    if (!role || RANK[role] < RANK.officer) throw forbidden("Réservé aux officiers du groupe.");
+    return user;
+  }
 
   app.post("/internal/discord/bind", async (req: FastifyRequest) => {
-    const body = parse(z.object({ code: z.string().trim().min(6).max(32), guildId: snowflake, channelId: snowflake, discordUserId: snowflake }), req.body);
+    const body = parse(z.object({
+      code: z.string().trim().min(6).max(32), guildId: snowflake, channelId: snowflake, discordUserId: snowflake,
+      // Nom actuel du salon (affiché sur le site pour un salon de raid récurrent)
+      channelName: z.string().trim().min(1).max(100).optional(),
+    }), req.body);
     const hash = sha256(body.code.toUpperCase());
-    const [g] = await db.select().from(groups).where(and(eq(groups.discordLinkCodeHash, hash), gt(groups.discordLinkCodeExpiresAt, new Date())));
-    if (!g) {
-      // Code du salon des commandes d'artisanat (lot F)
-      const [o] = await db.select().from(groups).where(and(eq(groups.ordersLinkCodeHash, hash), gt(groups.ordersLinkCodeExpiresAt, new Date())));
-      if (!o) throw badRequest("Code invalide ou expiré. Génère un nouveau code sur la page du groupe.");
-      const { user, role } = await linkedMember(body.discordUserId, o.id);
-      if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
-      if (!role || RANK[role] < RANK.officer) throw forbidden("Réservé aux officiers du groupe.");
+    const now = new Date();
+    const [g] = await db.select().from(groups).where(and(eq(groups.discordLinkCodeHash, hash), gt(groups.discordLinkCodeExpiresAt, now)));
+    if (g) {
+      const user = await officer(body.discordUserId, g.id);
+      await refuseTemplateChannel(body.channelId, g.id, "le groupe");
+      await db.update(groups).set({ discordGuildId: body.guildId, discordChannelId: body.channelId, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, g.id));
+      // Les annonces restées dans l'ancien salon sont effacées (celles des raids récurrents qui ont leur salon restent)
+      await retireAnnouncements(db, g.id);
+      // Les raids à venir seront (re)publiés dans ce salon
+      await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
+      await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+      bus.group({ t: "group", g: g.id });
+      return { group: { id: g.id, name: g.name }, kind: "raids" as const };
+    }
+    // Code du salon des commandes d'artisanat (lot F)
+    const [o] = await db.select().from(groups).where(and(eq(groups.ordersLinkCodeHash, hash), gt(groups.ordersLinkCodeExpiresAt, now)));
+    if (o) {
+      const user = await officer(body.discordUserId, o.id);
+      await refuseTemplateChannel(body.channelId, o.id, "les commandes");
       await db.update(groups).set({ ordersGuildId: body.guildId, ordersChannelId: body.channelId, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null }).where(eq(groups.id, o.id));
       await retireOrderMessages(db, o.id, body.channelId);
       // Les commandes en cours seront (re)publiées dans ce salon
@@ -150,18 +192,71 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       bus.group({ t: "group", g: o.id });
       return { group: { id: o.id, name: o.name }, kind: "orders" as const };
     }
-    // Le code ne suffit pas : il faut aussi être officier du groupe, avec son Discord lié au site.
-    const { user, role } = await linkedMember(body.discordUserId, g.id);
-    if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
-    if (!role || RANK[role] < RANK.officer) throw forbidden("Réservé aux officiers du groupe.");
-    await db.update(groups).set({ discordGuildId: body.guildId, discordChannelId: body.channelId, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null }).where(eq(groups.id, g.id));
-    // Les annonces restées dans l'ancien salon sont effacées
-    await retireAnnouncements(db, g.id, body.channelId);
-    // Les raids à venir seront (re)publiés dans ce salon
-    await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
-    await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
-    bus.group({ t: "group", g: g.id });
-    return { group: { id: g.id, name: g.name }, kind: "raids" as const };
+    // Code du salon à part d'un raid récurrent
+    const [t] = await db.select({ template: raidTemplates, group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
+      .where(and(eq(raidTemplates.discordLinkCodeHash, hash), gt(raidTemplates.discordLinkCodeExpiresAt, now)));
+    if (!t) throw badRequest("Code invalide ou expiré. Génère un nouveau code sur la page du groupe.");
+    const { template, group } = t;
+    const user = await officer(body.discordUserId, group.id);
+    const what = "pour ce raid récurrent";
+    if (group.discordChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui du groupe : choisis un autre salon ${what}.`);
+    if (group.ordersChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon ${what}.`);
+    const other = await templateOnChannel(body.channelId);
+    if (other && other.id !== template.id) {
+      throw badRequest(other.groupId === group.id
+        ? `Ce salon est déjà celui du raid récurrent « ${other.name} » : choisis un autre salon ${what}.`
+        : `Ce salon est déjà celui d'un raid récurrent d'un autre groupe : choisis un autre salon ${what}.`);
+    }
+    const [taken] = await db.select({ id: groups.id }).from(groups)
+      .where(and(ne(groups.id, group.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId)))).limit(1);
+    if (taken) throw badRequest(`Ce salon sert déjà à un autre groupe : choisis un autre salon ${what}.`);
+    try {
+      await db.update(raidTemplates).set({
+        discordGuildId: body.guildId, discordChannelId: body.channelId, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null,
+        discordChannelName: body.channelName ?? null, discordRenameError: null,
+      }).where(eq(raidTemplates.id, template.id));
+    } catch (e) {
+      // Deux liaisons simultanées du même salon : l'index unique tranche
+      if ((e as { cause?: { code?: string }; code?: string }).cause?.code === "23505" || (e as { code?: string }).code === "23505") {
+        throw badRequest(`Ce salon est déjà celui d'un autre raid récurrent : choisis un autre salon ${what}.`);
+      }
+      throw e;
+    }
+    // Les annonces de ce raid récurrent restées dans un autre salon sont effacées, ses raids à venir (re)publiés ici
+    await retireAnnouncements(db, group.id);
+    await db.update(raids).set({ discordChangedAt: new Date() }).where(and(eq(raids.templateId, template.id),
+      or(isNull(raids.scheduledAt), gt(raids.scheduledAt, new Date(Date.now() - KEEP_AFTER_MS)))));
+    await audit(db, req, "template_discord_linked", { userId: user.id, groupId: group.id, meta: { templateId: template.id, name: template.name } });
+    bus.group({ t: "raids", g: group.id });
+    const [next] = template.discordRename ? await channelNames(db, { templateId: template.id }) : [];
+    return {
+      group: { id: group.id, name: group.name }, kind: "template" as const,
+      template: { id: template.id, name: template.name, rename: template.discordRename, next: next?.name ?? null },
+    };
+  });
+
+  /* ----- Nom des salons des raids récurrents ----- */
+
+  /** Salons à renommer avec la date du raid courant (raid récurrent actif, renommage activé). */
+  app.get("/internal/discord/channel-names", async () => channelNames(db));
+
+  /** Le bot rapporte le nom actuel du salon et l'éventuelle erreur de renommage (affichés sur le site). */
+  app.post("/internal/discord/templates/:id/channel", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.uuid() }), req.params);
+    const body = parse(z.object({
+      channelId: snowflake.optional(), name: z.string().trim().min(1).max(100).nullable(), error: z.string().trim().min(1).max(300).nullable(),
+    }), req.body);
+    // Seulement pour le salon encore lié (un rapport tardif sur l'ancien salon est ignoré)
+    const [cur] = await db.select({ groupId: raidTemplates.groupId, name: raidTemplates.discordChannelName, error: raidTemplates.discordRenameError }).from(raidTemplates)
+      .where(and(eq(raidTemplates.id, id), isNotNull(raidTemplates.discordChannelId), body.channelId ? eq(raidTemplates.discordChannelId, body.channelId) : undefined));
+    if (!cur) return { ok: false };
+    // Nom inconnu (salon introuvable) : on garde le dernier nom connu
+    const name = body.name ?? cur.name;
+    if (name !== cur.name || body.error !== cur.error) {
+      await db.update(raidTemplates).set({ discordChannelName: name, discordRenameError: body.error }).where(eq(raidTemplates.id, id));
+      bus.group({ t: "raids", g: cur.groupId });
+    }
+    return { ok: true };
   });
 
   /* ----- Création d'un raid depuis Discord (/raid) ----- */
@@ -175,6 +270,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { user, role } = await linkedMember(body.discordUserId, g.id);
     if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
     if (!role || RANK[role] < RANK.officer) throw forbidden("Seuls les officiers du groupe peuvent créer un raid.");
+    // Un raid créé ici est ponctuel : il est annoncé dans le salon du groupe, même tapé dans celui d'un raid récurrent
+    if (!g.discordChannelId) throw badRequest("Le groupe n'a pas de salon Discord pour ses raids ponctuels : lie-en un sur le site (Administration → Discord et relances).");
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raids).where(eq(raids.groupId, g.id));
     if (n >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
     const [r] = await db.insert(raids).values({
@@ -192,12 +289,15 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   /* ----- Annonces à publier / supprimer ----- */
 
   app.get("/internal/discord/outbox", async () => {
-    const rows = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+    // Même seuil pour les deux : une annonce effacée de son salon de raid récurrent n'est jamais republiée
+    const cutoff = new Date(Date.now() - KEEP_AFTER_MS);
+    await retirePastTemplateAnnouncements(db, cutoff);
+    const rows = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
       .where(and(
-        isNotNull(groups.discordChannelId),
+        isNotNull(EFFECTIVE_CHANNEL),
         // Comparaison à la milliseconde : la date confirmée par le bot passe par JavaScript (ms), la base garde les µs
-        or(isNull(raids.discordSyncedAt), sql`${raids.discordSyncedAt} < date_trunc('milliseconds', ${raids.discordChangedAt})`, sql`${raids.discordChannelId} IS DISTINCT FROM ${groups.discordChannelId}`),
-        or(isNull(raids.scheduledAt), gt(raids.scheduledAt, new Date(Date.now() - KEEP_AFTER_MS))),
+        or(isNull(raids.discordSyncedAt), sql`${raids.discordSyncedAt} < date_trunc('milliseconds', ${raids.discordChangedAt})`, sql`${raids.discordChannelId} IS DISTINCT FROM ${EFFECTIVE_CHANNEL}`),
+        or(isNull(raids.scheduledAt), gt(raids.scheduledAt, cutoff)),
       ))
       .orderBy(asc(raids.discordChangedAt)).limit(20);
     const deletions = await db.select().from(discordDeletions).orderBy(asc(discordDeletions.id)).limit(20);
@@ -227,9 +327,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
    */
   app.post("/internal/discord/reminders/claim", async () => {
     const now = Date.now();
-    const due = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+    const due = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
       .where(and(
-        isNotNull(groups.discordChannelId), isNull(raids.reminderSentAt),
+        isNotNull(EFFECTIVE_CHANNEL), isNull(raids.reminderSentAt),
         gt(raids.scheduledAt, new Date(now + 3600e3)), lte(raids.scheduledAt, new Date(now + 24 * 3600e3)),
       )).limit(10);
     if (!due.length) return { reminders: [] };
@@ -268,11 +368,11 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
    */
   app.post("/internal/discord/nudges/claim", async () => {
     const now = Date.now();
-    const linked = and(isNotNull(groups.discordChannelId), gt(raids.scheduledAt, new Date(now + 3600e3)));
-    const autoDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+    const linked = and(isNotNull(EFFECTIVE_CHANNEL), gt(raids.scheduledAt, new Date(now + 3600e3)));
+    const autoDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
       .where(and(linked, isNotNull(groups.nudgeHours), isNull(raids.nudgeAutoAt), lt(raids.createdAt, new Date(now - NUDGE_GRACE_MS)),
         sql`${raids.scheduledAt} <= now() + make_interval(hours => ${groups.nudgeHours}::int)`)).limit(10);
-    const manualDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId))
+    const manualDue = await db.select({ id: raids.id }).from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
       .where(and(linked, isNotNull(raids.nudgeRequestedAt))).limit(10);
     const auto = autoDue.length ? await db.update(raids).set({ nudgeAutoAt: new Date() })
       .where(and(inArray(raids.id, autoDue.map(d => d.id)), isNull(raids.nudgeAutoAt))).returning({ id: raids.id }) : [];
@@ -305,8 +405,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   /** Réserve les demandes à envoyer (raid à venir, salon lié) : chacune n'est envoyée qu'une fois. */
   app.post("/internal/discord/asks/claim", async () => {
     const due = await db.select({ id: raidAsks.id }).from(raidAsks)
-      .innerJoin(raids, eq(raids.id, raidAsks.raidId)).innerJoin(groups, eq(groups.id, raids.groupId))
-      .where(and(isNull(raidAsks.sentAt), isNotNull(groups.discordChannelId), gt(raids.scheduledAt, new Date()))).limit(20);
+      .innerJoin(raids, eq(raids.id, raidAsks.raidId)).innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
+      .where(and(isNull(raidAsks.sentAt), isNotNull(EFFECTIVE_CHANNEL), gt(raids.scheduledAt, new Date()))).limit(20);
     if (!due.length) return { asks: [] };
     const claimed = await db.update(raidAsks).set({ sentAt: new Date() })
       .where(and(inArray(raidAsks.id, due.map(d => d.id)), isNull(raidAsks.sentAt))).returning({ id: raidAsks.id });

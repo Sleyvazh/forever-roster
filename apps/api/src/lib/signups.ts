@@ -1,8 +1,9 @@
 import { classesOf, isValidSpecFor, roleOf, SIGNUP_STATUSES, type SignupStatus } from "@forever/game-data";
-import { and, asc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/client";
-import { characters, discordDeletions, groupCharacters, groups, raids, raidSignups } from "../db/schema";
+import { characters, groupCharacters, groups, raids, raidSignups, raidTemplates } from "../db/schema";
+import { EFFECTIVE_CHANNEL, queueDeletions, TEMPLATE_OF_RAID } from "./channels";
 import { ensureInGroup } from "./group-characters";
 import { badRequest } from "./http";
 import { bus } from "./events";
@@ -123,15 +124,15 @@ export async function dropSignupsInGroup(db: Db, groupId: string, userId: string
 }
 
 /**
- * Met en file de suppression les annonces Discord déjà publiées pour les raids d'un groupe
- * (salon délié, changé ou groupe supprimé) : le bot les efface, pour ne pas laisser de boutons morts.
- * Avec `keepChannelId`, les annonces déjà dans ce salon sont conservées.
+ * Met en file de suppression les annonces Discord déjà publiées pour les raids d'un groupe qui ne sont plus dans
+ * leur salon effectif (salon du groupe délié ou changé, raid récurrent lié à son propre salon ou rendu au salon du
+ * groupe), ou toutes avec `all` (groupe supprimé) : le bot les efface, pour ne pas laisser de boutons morts.
+ * À appeler après avoir changé le salon.
  */
-export async function retireAnnouncements(db: Db, groupId: string, keepChannelId?: string) {
-  const where = and(eq(raids.groupId, groupId), isNotNull(raids.discordMessageId), isNotNull(raids.discordChannelId),
-    keepChannelId ? ne(raids.discordChannelId, keepChannelId) : undefined);
-  const rows = await db.select({ id: raids.id, channelId: raids.discordChannelId, messageId: raids.discordMessageId }).from(raids).where(where);
-  if (!rows.length) return;
-  await db.insert(discordDeletions).values(rows.map(r => ({ channelId: r.channelId!, messageId: r.messageId! })));
-  await db.update(raids).set({ discordChannelId: null, discordMessageId: null, discordSyncedAt: null }).where(inArray(raids.id, rows.map(r => r.id)));
+export async function retireAnnouncements(db: Db, groupId: string, opts: { all?: boolean } = {}) {
+  const rows = await db.select({ id: raids.id, channelId: raids.discordChannelId, messageId: raids.discordMessageId }).from(raids)
+    .innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID)
+    .where(and(eq(raids.groupId, groupId), isNotNull(raids.discordMessageId), isNotNull(raids.discordChannelId),
+      opts.all ? undefined : sql`${raids.discordChannelId} IS DISTINCT FROM ${EFFECTIVE_CHANNEL}`));
+  await queueDeletions(db, rows);
 }

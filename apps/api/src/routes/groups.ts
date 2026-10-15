@@ -7,8 +7,7 @@ import { currentLines } from "../lib/professions";
 import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
-import { randomToken, sha256 } from "../lib/crypto";
-import { randomBytes } from "node:crypto";
+import { linkCode, randomToken, sha256 } from "../lib/crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -120,7 +119,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "owner");
-    await retireAnnouncements(db, id);
+    await retireAnnouncements(db, id, { all: true });
     await retireOrderMessages(db, id);
     const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
@@ -239,11 +238,8 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans 0/O ni 1/I
-    const bytes = randomBytes(8);
-    const code = Array.from(bytes, b => alphabet[b % alphabet.length]).join("");
-    const expiresAt = new Date(Date.now() + 30 * 60e3);
-    await db.update(groups).set({ discordLinkCodeHash: sha256(code), discordLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    const { code, hash, expiresAt } = linkCode();
+    await db.update(groups).set({ discordLinkCodeHash: hash, discordLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
     return { code, expiresAt };
   });
 
@@ -252,10 +248,8 @@ export async function groupRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
-    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const code = Array.from(randomBytes(8), b => alphabet[b % alphabet.length]).join("");
-    const expiresAt = new Date(Date.now() + 30 * 60e3);
-    await db.update(groups).set({ ordersLinkCodeHash: sha256(code), ordersLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    const { code, hash, expiresAt } = linkCode();
+    await db.update(groups).set({ ordersLinkCodeHash: hash, ordersLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
     return { code, expiresAt };
   });
 

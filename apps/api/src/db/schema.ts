@@ -318,11 +318,25 @@ export const raidTemplates = pgTable("raid_templates", {
   srHidden: boolean("sr_hidden").notNull().default(false),
   active: boolean("active").notNull().default(true),
   generatedUntil: ts("generated_until"),
+  /**
+   * Salon Discord à part pour ce raid récurrent (sinon : celui du groupe), lié comme celui du groupe
+   * (code à usage unique + /forever-lier). Le bot le renomme avec la date du raid courant (ex. jeudi-15-10).
+   */
+  discordGuildId: text("discord_guild_id"),
+  discordChannelId: text("discord_channel_id"),
+  discordLinkCodeHash: text("discord_link_code_hash"),
+  discordLinkCodeExpiresAt: ts("discord_link_code_expires_at"),
+  discordRename: boolean("discord_rename").notNull().default(true),
+  /** Dernier nom connu du salon et erreur du dernier renommage, rapportés par le bot. */
+  discordChannelName: text("discord_channel_name"),
+  discordRenameError: text("discord_rename_error"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [
   index("raid_templates_group_idx").on(t.groupId),
+  /** Un salon ne sert qu'à un raid récurrent. */
+  uniqueIndex("raid_templates_discord_channel_uq").on(t.discordChannelId).where(sql`${t.discordChannelId} is not null`),
   check("raid_templates_weekday_chk", sql`${t.weekday} between 1 and 7`),
   check("raid_templates_lead_chk", sql`${t.leadDays} between 1 and 28`),
   check("raid_templates_time_chk", sql`${t.time} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'`),

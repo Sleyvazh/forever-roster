@@ -2,7 +2,8 @@ import { isValidSpecFor } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { characters, groupCharacters, groupMembers, groups, raidAsks, raids, raidSignups, users } from "../db/schema";
+import { characters, groupCharacters, groupMembers, groups, raidAsks, raids, raidSignups, raidTemplates, users } from "../db/schema";
+import { EFFECTIVE_CHANNEL, TEMPLATE_OF_RAID } from "../lib/channels";
 import { audit } from "../lib/audit";
 import { bus } from "../lib/events";
 import { membership, requireRole } from "../lib/groups";
@@ -47,8 +48,9 @@ export async function reachRoutes(app: FastifyInstance) {
   });
 
   async function loadRaid(groupId: string, raidId: string) {
-    const [r] = await db.select({ raid: raids, discordLinked: groups.discordChannelId }).from(raids)
-      .innerJoin(groups, eq(groups.id, raids.groupId)).where(and(eq(raids.id, raidId), eq(raids.groupId, groupId)));
+    // Salon effectif : celui du raid récurrent s'il en a un, sinon celui du groupe
+    const [r] = await db.select({ raid: raids, discordLinked: EFFECTIVE_CHANNEL }).from(raids)
+      .innerJoin(groups, eq(groups.id, raids.groupId)).leftJoin(raidTemplates, TEMPLATE_OF_RAID).where(and(eq(raids.id, raidId), eq(raids.groupId, groupId)));
     if (!r) throw notFound("Raid introuvable.");
     return { ...r.raid, discordLinked: !!r.discordLinked };
   }

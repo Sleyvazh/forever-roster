@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addonExport, groupAddonExport, inviteMacros, sameCharacter } from "./addon";
-import { weeklyOccurrences, zonedParts, zonedTime } from "./time";
+import { channelNameFor, weeklyOccurrences, zonedParts, zonedTime } from "./time";
 
 describe("fuseau du serveur de jeu", () => {
   it("heure d'été, heure d'hiver et jour de la semaine", () => {
@@ -15,6 +15,21 @@ describe("fuseau du serveur de jeu", () => {
     // Occurrence du jour même déjà passée : ignorée
     expect(weeklyOccurrences(3, "21:00", new Date("2026-10-21T19:30:00Z"), new Date("2026-10-27T00:00:00Z"))).toEqual([]);
     expect(weeklyOccurrences(3, "25:00", new Date(), new Date(Date.now() + 8 * 86400e3))).toEqual([]);
+  });
+  it("nom du salon d'un raid récurrent : jour et date dans le fuseau du jeu", () => {
+    expect(channelNameFor(new Date("2026-10-15T19:00:00Z"))).toBe("jeudi-15-10");
+    expect(channelNameFor(new Date("2026-03-02T20:00:00Z"))).toBe("lundi-02-03");
+    // Passage à l'heure d'hiver (25/10/2026) : 22 h 30 UTC, c'est 0 h 30 dimanche à Paris en été, 23 h 30 dimanche en hiver
+    expect(channelNameFor(new Date("2026-10-24T22:30:00Z"))).toBe("dimanche-25-10");
+    expect(channelNameFor(new Date("2026-10-25T22:30:00Z"))).toBe("dimanche-25-10");
+    expect(channelNameFor(new Date("2026-10-25T23:30:00Z"))).toBe("lundi-26-10");
+    // Passage à l'heure d'été (29/03/2026) : 23 h 30 UTC samedi, c'est déjà dimanche à Paris
+    expect(channelNameFor(new Date("2026-03-28T23:30:00Z"))).toBe("dimanche-29-03");
+    expect(channelNameFor(new Date("2026-03-29T21:59:00Z"))).toBe("dimanche-29-03");
+    expect(channelNameFor(new Date("2026-03-29T22:00:00Z"))).toBe("lundi-30-03");
+    // Autre fuseau
+    expect(channelNameFor(new Date("2026-10-15T19:00:00Z"), "America/New_York")).toBe("jeudi-15-10");
+    expect(channelNameFor(new Date("2026-10-16T03:00:00Z"), "America/New_York")).toBe("jeudi-15-10");
   });
 });
 

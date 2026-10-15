@@ -69,3 +69,14 @@ export function weeklyOccurrences(weekday: number, time: string, after: Date, un
 }
 
 export const WEEKDAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] as const;
+
+/**
+ * Nom du salon Discord d'un raid récurrent, d'après la date du raid courant : jour de la semaine en minuscules,
+ * jour et mois sur deux chiffres (« jeudi-15-10 »), dans le fuseau du serveur de jeu. Discord met de toute façon
+ * les noms des salons textuels en minuscules.
+ */
+export function channelNameFor(date: Date, timeZone = GAME_TIMEZONE): string {
+  const p = zonedParts(date, timeZone);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${WEEKDAYS[p.weekday - 1]!.toLowerCase()}-${two(p.day)}-${two(p.month)}`;
+}

@@ -2,9 +2,11 @@ import { and, asc, count, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { LOOT_MODES, RETAIL_DIFFICULTIES, type Game } from "@forever/game-data";
-import { groups, raidTemplates } from "../db/schema";
+import { groups, raids, raidTemplates } from "../db/schema";
 import { formatFor } from "./raids";
 import { audit } from "../lib/audit";
+import { linkCode } from "../lib/crypto";
+import { retireAnnouncements } from "../lib/signups";
 import { membership, requireRole } from "../lib/groups";
 import { badRequest, notFound, parse } from "../lib/http";
 import { ensureRecurringRaids, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring";
@@ -24,6 +26,8 @@ const editable = z.object({
   lootMode: z.enum(LOOT_MODES),
   srHidden: z.boolean(),
   active: z.boolean(),
+  /** Le bot renomme le salon à part de ce raid récurrent avec la date du raid courant (ex. jeudi-15-10). */
+  discordRename: z.boolean().optional(),
 });
 /** Création : valeurs par défaut. Modification (PATCH) : seulement les champs envoyés (zod 4 applique les défauts même en `partial`). */
 const fields = editable.extend({
@@ -35,6 +39,8 @@ const tid = gid.extend({ templateId: z.uuid() });
 const view = (t: typeof raidTemplates.$inferSelect) => ({
   id: t.id, name: t.name, description: t.description, weekday: t.weekday, time: t.time, leadDays: t.leadDays, active: t.active, generatedUntil: t.generatedUntil,
   lootMode: t.lootMode, srHidden: t.srHidden, size: t.size, difficulty: t.difficulty,
+  // Salon Discord à part (sinon celui du groupe) : son nom seulement, jamais ses identifiants
+  discord: { linked: !!t.discordChannelId, channelName: t.discordChannelId ? t.discordChannelName : null, rename: t.discordRename, renameError: t.discordChannelId ? t.discordRenameError : null },
 });
 
 export async function templateRoutes(app: FastifyInstance) {
@@ -77,7 +83,9 @@ export async function templateRoutes(app: FastifyInstance) {
     const game = await groupGame(p.id);
     checkLootMode(game, raw.lootMode, cur.lootMode);
     const changedDifficulty = raw.difficulty !== undefined && raw.difficulty !== cur.difficulty;
-    const body = { ...raw, ...formatFor(game, raw.name ?? cur.name, raw.size ?? (changedDifficulty ? undefined : cur.size), raw.difficulty === undefined ? cur.difficulty : raw.difficulty) };
+    const body = { ...raw, ...formatFor(game, raw.name ?? cur.name, raw.size ?? (changedDifficulty ? undefined : cur.size), raw.difficulty === undefined ? cur.difficulty : raw.difficulty),
+      // Renommage activé ou coupé : l'ancienne erreur ne vaut plus
+      ...(raw.discordRename !== undefined && raw.discordRename !== cur.discordRename && { discordRenameError: null }) };
     const [t] = await db.update(raidTemplates).set({ ...body, updatedAt: new Date() })
       .where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
     if (!t) throw notFound("Raid récurrent introuvable.");
@@ -87,14 +95,48 @@ export async function templateRoutes(app: FastifyInstance) {
     return { template: view(t), created };
   });
 
-  /** Supprime le modèle ; les raids déjà créés restent (ils ont peut-être des inscrits). */
+  /**
+   * Supprime le modèle ; les raids déjà créés restent (ils ont peut-être des inscrits). S'il avait son propre salon,
+   * ses annonces y sont effacées et ses raids à venir repartent dans le salon du groupe.
+   */
   app.delete("/:id/raid-templates/:templateId", async (req) => {
     const u = currentUser(req);
     const p = parse(tid, req.params);
     await requireRole(db, p.id, u.id, "officer");
     const [t] = await db.delete(raidTemplates).where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
     if (!t) throw notFound("Raid récurrent introuvable.");
+    if (t.discordChannelId) await retireAnnouncements(db, p.id);
     await audit(db, req, "raid_template_deleted", { userId: u.id, groupId: p.id, meta: { templateId: t.id, name: t.name } });
+    bus.group({ t: "raids", g: p.id });
+    return { ok: true };
+  });
+
+  /* ----- Salon Discord à part pour un raid récurrent ----- */
+
+  /** Code à usage unique (30 min) à taper avec /forever-lier (ou /roster-lier) dans le salon voulu pour ce raid récurrent. */
+  app.post("/:id/raid-templates/:templateId/discord/code", async (req) => {
+    const u = currentUser(req);
+    const p = parse(tid, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const { code, hash, expiresAt } = linkCode();
+    const [t] = await db.update(raidTemplates).set({ discordLinkCodeHash: hash, discordLinkCodeExpiresAt: expiresAt })
+      .where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning({ id: raidTemplates.id });
+    if (!t) throw notFound("Raid récurrent introuvable.");
+    return { code, expiresAt };
+  });
+
+  /** Retour au salon du groupe : les annonces de ce raid récurrent sont effacées de son salon et republiées dans celui du groupe. */
+  app.delete("/:id/raid-templates/:templateId/discord", async (req) => {
+    const u = currentUser(req);
+    const p = parse(tid, req.params);
+    await requireRole(db, p.id, u.id, "officer");
+    const [t] = await db.update(raidTemplates).set({
+      discordGuildId: null, discordChannelId: null, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null, discordChannelName: null, discordRenameError: null,
+    }).where(and(eq(raidTemplates.id, p.templateId), eq(raidTemplates.groupId, p.id))).returning();
+    if (!t) throw notFound("Raid récurrent introuvable.");
+    await retireAnnouncements(db, p.id);
+    await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.templateId, t.id));
+    await audit(db, req, "template_discord_unlinked", { userId: u.id, groupId: p.id, meta: { templateId: t.id, name: t.name } });
     bus.group({ t: "raids", g: p.id });
     return { ok: true };
   });

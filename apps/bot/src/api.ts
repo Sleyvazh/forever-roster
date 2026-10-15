@@ -54,6 +54,12 @@ export type Choices =
   | { mode: "guest"; linked: boolean; current: Current | null; game?: Game };
 export interface SignupBody { status: SignupStatus; characterId?: string | null; cls?: string; spec?: string }
 export interface Deletion { id: number; channelId: string; messageId: string }
+/** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
+export interface ChannelName { templateId: string; guildId: string; channelId: string; name: string }
+/** Liaison d'un salon : raids du groupe, commandes d'artisanat, ou salon à part d'un raid récurrent. */
+export type BindResult =
+  | { group: { id: string; name: string }; kind: "raids" | "orders" }
+  | { group: { id: string; name: string }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
 /** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
 export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string }
 export interface FeedbackConfig {
@@ -93,8 +99,14 @@ export class InternalApi {
     return data as T;
   }
 
-  bind(b: { code: string; guildId: string; channelId: string; discordUserId: string }) {
-    return this.req<{ group: { id: string; name: string }; kind: "raids" | "orders" }>("POST", "/internal/discord/bind", b);
+  bind(b: { code: string; guildId: string; channelId: string; discordUserId: string; channelName?: string }) {
+    return this.req<BindResult>("POST", "/internal/discord/bind", b);
+  }
+  /** Salons des raids récurrents à renommer, avec le nom attendu. */
+  channelNames() { return this.req<ChannelName[]>("GET", "/internal/discord/channel-names"); }
+  /** Nom actuel du salon d'un raid récurrent et erreur du dernier renommage (affichés sur le site). */
+  channelReport(templateId: string, b: { channelId: string; name: string | null; error: string | null }) {
+    return this.req<{ ok: boolean }>("POST", `/internal/discord/templates/${templateId}/channel`, b);
   }
   createRaid(b: { guildId: string; channelId: string; discordUserId: string; name: string; scheduledAt: string; description?: string }) {
     return this.req<RaidView>("POST", "/internal/discord/raids", b);
