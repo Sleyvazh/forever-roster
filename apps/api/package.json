@@ -14,25 +14,25 @@
     "gamedata:import": "tsx --env-file-if-exists=../../.env src/gamedata/import-cli.ts"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/helmet": "^13.1.1",
-    "@fastify/rate-limit": "^11.2.0",
-    "@node-rs/argon2": "^2.2.1",
-    "drizzle-orm": "^0.45.3",
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/helmet": "^13.1.2",
+    "@fastify/rate-limit": "^11.2.1",
+    "@node-rs/argon2": "^2.2.2",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
-    "nodemailer": "^10.0.10",
-    "pg": "^8.23.0",
+    "nodemailer": "^10.1.0",
+    "pg": "^8.23.1",
     "sharp": "^0.35.5",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@forever/game-data": "*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.19.2",
     "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.11",
     "tsup": "^8.5.1",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }
