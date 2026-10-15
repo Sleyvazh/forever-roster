@@ -78,8 +78,10 @@ describe("annonce", () => {
     const e = p.embeds[0]!;
     expect(e.title).toBe("Molten Core");
     expect(e.description).toContain("<t:1794513600:F>");
-    expect(e.fields?.[0]).toMatchObject({ name: "🛡️ Tank — 1", value: "**Tournicoti** · Feral Bear" });
-    expect(e.fields?.[1]?.value).toBe("**Bob** · Holy Heal ⏰");
+    expect(e.fields?.[0]).toMatchObject({ name: "🛡️ Tanks · 1", value: "**Tournicoti** · Feral Bear", inline: true });
+    expect(e.fields?.[1]).toMatchObject({ name: "✚ Heals · 1", value: "**Bob** · Holy Heal ⏰", inline: true });
+    expect(e.fields?.[2]).toEqual({ name: "\u200b", value: "\u200b", inline: false });
+    expect(e.fields?.[3]).toMatchObject({ name: "⚔️ DPS · 0", value: "—", inline: true });
     expect(e.fields?.find(f => f.name.startsWith("Absent"))?.value).toBe("Zed\\_\\*");
     expect(e.fields?.find(f => f.name.startsWith("Peut-être"))?.value).toContain("Annie");
     expect(e.footer?.text).toBe("Les Testeurs · 2 inscrits · 2/9 classes · 1 sans compte");
@@ -100,22 +102,25 @@ describe("annonce", () => {
       ],
     }), emoji).embeds[0]!;
     // Druide (icône de spé) < Mage (pas d'icône : spé écrite) < Prêtre (icône de classe)
-    expect(e.fields?.[2]?.value).toBe("<:fr_druid_feral_bear:1> **Tournicoti**\n**Annie** · Frost\n<:fr_priest:2> **Bob**");
+    expect(e.fields?.[3]?.value).toBe("<:fr_druid_feral_bear:1> **Tournicoti**\n**Annie** · Frost\n<:fr_priest:2> **Bob**");
     expect(e.footer?.text).toContain("1 sans compte");
   });
-  it("beaucoup de DPS : tanks et heals dans la première colonne, DPS sur deux colonnes", () => {
-    const dps = Array.from({ length: 8 }, (_, i) => ({ displayName: `D${i}`, characterName: `Dps${i}`, cls: "Mage", spec: "Frost", role: "DPS" as const, status: "present" as const, note: "", guest: false, group: null }));
-    const e = renderAnnouncement(view({ signups: [...view().signups.filter(s => s.status === "present" || s.status === "late"), ...dps] })).embeds[0]!;
-    const f = e.fields!;
-    expect(f[0]).toMatchObject({ name: "🛡️ Tank — 1", inline: true });
-    expect(f[0]!.value).toBe("**Tournicoti** · Feral Bear\n**✚ Heal — 1**\n**Bob** · Holy Heal ⏰");
-    expect(f[1]!.name).toBe("⚔️ DPS — 8");
-    expect(f[1]!.value.split("\n")).toHaveLength(4);
-    expect(f[2]!.name).toBe("\u200b");
-    expect(f[2]!.value.split("\n")).toHaveLength(4);
-    // Six DPS : trois colonnes classiques
-    const e6 = renderAnnouncement(view({ signups: [...view().signups, ...dps.slice(0, 6)] })).embeds[0]!;
-    expect(e6.fields!.slice(0, 3).map(x => x.name)).toEqual(["🛡️ Tank — 1", "✚ Heal — 1", "⚔️ DPS — 6"]);
+  it("un rôle par bloc : Tanks et Heals côte à côte, DPS sur une à trois colonnes, puis Banc et Absent côte à côte", () => {
+    const dps = (n: number) => Array.from({ length: n }, (_, i) => ({ displayName: `D${i}`, characterName: `Dps${i}`, cls: "Mage", spec: "Frost", role: "DPS" as const, status: "present" as const, note: "", guest: false, group: null }));
+    const bench = { displayName: "Y", characterName: "Yazoo", cls: "Hunter", spec: "Beast Mastery", role: "DPS" as const, status: "bench" as const, note: "", guest: false, group: null };
+    const f = renderAnnouncement(view({ signups: [...view().signups, ...dps(8), bench] })).embeds[0]!.fields!;
+    expect(f.map(x => [x.name, x.inline])).toEqual([
+      ["🛡️ Tanks · 1", true], ["✚ Heals · 1", true], ["\u200b", false],
+      ["⚔️ DPS · 8", true], ["\u200b", true], ["\u200b", true], ["\u200b", false],
+      ["Peut-être — 1", true], ["Banc — 1", true], ["Absent — 1", true],
+    ]);
+    expect(f.slice(3, 6).map(x => x.value.split("\n").length)).toEqual([3, 3, 2]);
+    // Moins de DPS : moins de colonnes
+    const cols = (n: number) => renderAnnouncement(view({ signups: dps(n) })).embeds[0]!.fields!.filter(x => x.inline && (x.name.startsWith("⚔️") || x.name === "\u200b")).length;
+    expect([cols(2), cols(5), cols(7), cols(26)]).toEqual([1, 2, 3, 3]);
+    // Raid de 40 : 26 DPS sur trois colonnes de 9, 9 et 8
+    const big = renderAnnouncement(view({ signups: dps(26) })).embeds[0]!.fields!.slice(3, 6);
+    expect(big.map(x => x.value.split("\n").length)).toEqual([9, 9, 8]);
   });
   it("neutralise mentions et mise en forme, et tronque les longues listes", () => {
     expect(escapeMd("@everyone")).toBe("@​everyone");
@@ -317,7 +322,7 @@ describe("compo publiée, rappels et émojis", () => {
     expect(withRoles.role?.("Tank")).toBe("<:fr_role_tank:61>");
     expect(emoji.role?.("Tank")).toBe("");
     const f = renderAnnouncement(view(), withRoles).embeds[0]!.fields!;
-    expect(f.slice(0, 3).map(x => x.name)).toEqual(["<:fr_role_tank:61> 1", "<:fr_role_heal:62> 1", "<:fr_role_dps:63> 0"]);
+    expect([f[0], f[1], f[3]].map(x => x!.name)).toEqual(["<:fr_role_tank:61> Tanks · 1", "<:fr_role_heal:62> Heals · 1", "<:fr_role_dps:63> DPS · 0"]);
     const v = view({ roster: { groups: [{ group: 1, members: [{ name: "Tournicoti", cls: "Druid", spec: "Feral Bear", role: "Tank" }] }] } });
     expect(renderAnnouncement(v, withRoles).embeds[0]!.fields![0]!.value).toBe("<:fr_role_tank:61> 1 · <:fr_role_heal:62> 0 · <:fr_role_dps:63> 0");
     const dir = await mkdtemp(path.join(tmpdir(), "roles-"));

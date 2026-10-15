@@ -75,29 +75,41 @@ function byClass(g: Game) {
   };
 }
 
-/** À partir de combien de DPS les tanks et les heals partagent une colonne et les DPS en prennent deux. */
-const SPLIT_DPS_FROM = 7;
+/** Nom des rôles dans les en-têtes de l'annonce. */
+const ROLE_TITLE: Record<string, string> = { Tank: "Tanks", Heal: "Heals", DPS: "DPS" };
+
+/** Ligne vide sur toute la largeur : coupe la rangée de colonnes et donne de l'air entre deux blocs. */
+const SPACER: APIEmbedField = { name: "\u200b", value: "\u200b", inline: false };
+
+/** Nombre de colonnes pour une liste : une jusqu'à 3 noms, deux jusqu'à 6, trois au-delà (Discord en met 3 par rangée). */
+const columnsFor = (n: number) => (n <= 3 ? 1 : n <= 6 ? 2 : 3);
+
+/** Découpe une liste en `n` colonnes de hauteurs proches (les premières prennent le surplus). */
+function split<T>(list: T[], n: number): T[][] {
+  const per = Math.ceil(list.length / n);
+  return Array.from({ length: n }, (_, i) => list.slice(i * per, (i + 1) * per)).filter(c => c.length);
+}
 
 /**
- * Colonnes des inscrits qui viennent : une par rôle (Tank, Heal, DPS). Quand les DPS sont nombreux, les colonnes
- * seraient déséquilibrées (deux tanks, deux heals, douze DPS) : tanks et heals partagent alors la première, les DPS
- * sont répartis sur les deux autres.
+ * Inscrits qui viennent, un rôle par bloc : Tanks et Heals côte à côte, puis les DPS sur une à trois colonnes en
+ * dessous ; une ligne vide entre les blocs. Chaque en-tête dit le rôle en toutes lettres (« Tanks · 2 »).
  */
 function roleFields(coming: ViewSignup[], emoji: EmojiLookup, g: Game): APIEmbedField[] {
   const sort = byClass(g);
-  const lists = ROLES.map(({ role, icon }) => {
+  const block = (role: string, icon: string) => {
     const list = coming.filter(s => s.role === role).sort(sort);
     const e = emoji.role?.(role);
-    return { role, icon, list, head: e ? `${e} ${list.length}` : `${icon} ${role} — ${list.length}`, lines: list.map(s => line(s, emoji, g)) };
-  });
-  const [tank, heal, dps] = lists as [typeof lists[number], typeof lists[number], typeof lists[number]];
-  if (dps.list.length < SPLIT_DPS_FROM) return lists.map(c => ({ name: c.head, value: fitLines(c.lines), inline: true }));
-  const half = Math.ceil(dps.lines.length / 2);
-  return [
-    { name: tank.head, value: fitLines([...tank.lines, `**${heal.head}**`, ...heal.lines], 1024), inline: true },
-    { name: dps.head, value: fitLines(dps.lines.slice(0, half)), inline: true },
-    { name: "\u200b", value: fitLines(dps.lines.slice(half)), inline: true },
+    return { head: `${e || icon} ${ROLE_TITLE[role] ?? role} · ${list.length}`, lines: list.map(s => line(s, emoji, g)) };
+  };
+  const [tank, heal, dps] = ROLES.map(r => block(r.role, r.icon)) as [ReturnType<typeof block>, ReturnType<typeof block>, ReturnType<typeof block>];
+  const fields: APIEmbedField[] = [
+    { name: tank.head, value: fitLines(tank.lines), inline: true },
+    { name: heal.head, value: fitLines(heal.lines), inline: true },
+    SPACER,
   ];
+  const cols = dps.lines.length ? split(dps.lines, columnsFor(dps.lines.length)) : [[]];
+  cols.forEach((c, i) => fields.push({ name: i === 0 ? dps.head : "\u200b", value: fitLines(c), inline: true }));
+  return fields;
 }
 
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
@@ -132,13 +144,16 @@ export function renderEmbed(v: RaidView, emoji: EmojiLookup = noEmoji): APIEmbed
   const coming = v.signups.filter(s => COMING.includes(s.status));
   const fields: APIEmbedField[] = v.roster ? rosterFields(v, coming, emoji) : roleFields(coming, emoji, g);
   const noRole = coming.filter(s => !s.role);
-  if (!v.roster && noRole.length) fields.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji, g))), inline: false });
+  const rest: APIEmbedField[] = [];
+  if (!v.roster && noRole.length) rest.push({ name: `Sans spé — ${noRole.length}`, value: fitLines(noRole.map(s => line(s, emoji, g))), inline: true });
   for (const st of OTHERS) {
     const list = v.signups.filter(s => s.status === st);
     if (!list.length) continue;
-    const text = st === "absent" ? list.map(who) : list.map(s => line(s, emoji, g));
-    fields.push({ name: `${SIGNUP_LABEL[st]} — ${list.length}`, value: fitLines(text, 1024, st === "absent" ? ", " : "\n"), inline: false });
+    const text = st === "absent" ? list.map(who) : list.sort(byClass(g)).map(s => line(s, emoji, g));
+    rest.push({ name: `${SIGNUP_LABEL[st]} — ${list.length}`, value: fitLines(text, 1024, st === "absent" ? ", " : "\n"), inline: true });
   }
+  // Peut-être, Reroll, Banc, Absent : côte à côte (3 par rangée), séparés des inscrits par une ligne vide
+  if (rest.length) fields.push(SPACER, ...rest);
 
   const desc: string[] = [];
   if (v.raid.scheduledAt) { const t = unix(v.raid.scheduledAt); desc.push(`📅 <t:${t}:F> · <t:${t}:R>`); }
