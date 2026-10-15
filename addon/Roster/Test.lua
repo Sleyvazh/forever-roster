@@ -1,7 +1,8 @@
 -- Raid d'essai (/roster test) : seul et hors groupe, tu es chef de butin d'un raid fictif (toi et 9 joueurs) pour essayer
 -- la distribution par Roster : objets reçus, tout au conseil (réponses à chaque objet selon l'armure de chaque classe,
 -- objets portés, votes), jets MS / OS avec égalité, jet libre, garder, échange, joueur sans l'addon qui n'a pas passé, et
--- la fenêtre de réponse d'un joueur (deux objets proposés, dont un qu'il ne peut pas porter). Le moteur du butin
+-- la fenêtre de réponse d'un joueur (deux objets proposés, dont un qu'il ne peut pas porter), et l'historique du butin
+-- (lot R4a : onglet Butin, ici en mémoire, ns.Hist.test, effacé à la fin de l'essai). Le moteur du butin
 -- (Loot.lua) lit ns.Loot.test : membres fictifs, messages d'addon (T.send), chat (T.say) et échange (T.trade). Rien ne
 -- part au chat du raid, aux autres joueurs ni au site : les annonces s'affichent dans ta fenêtre de chat, après « [essai] ».
 -- Langue (addon/shared/Locale.lua) : textes traduits à l'affichage ; « [essai] » devient « [test] » en anglais.
@@ -670,6 +671,11 @@ function T.Refresh()
   li.Header(L["8. Côté joueur"])
   li.Add(L["Tharok, chef de butin fictif, te propose deux objets d'un coup : la fenêtre de réponse des joueurs, avec la bande d'objets. Le second n'est pas de ton armure : seulement Transmo ou Passer. Après chaque réponse, la fenêtre passe à l'objet suivant ; tu peux changer une réponse tant que Tharok n'a pas terminé (quelques secondes après ta dernière réponse)."],
     { { L["Recevoir 2 propositions"], 200, function() T.Offer() end } })
+  li.Header(L["9. Historique"])
+  local hist = (ns.Hist and ns.Hist.Entries) and ns.Hist.Entries() or {}
+  li.Add(L["Chaque objet attribué ou gardé entre dans l'historique du butin (onglet Butin de la fenêtre Roster), avec sa catégorie (BiS, Upgrade, jet MS) et sa soirée. Pendant l'essai, en mémoire seulement : rien n'est gardé après."]
+    .. GREY .. "\n" .. L("Dans l'historique : %d", #hist) .. "|r",
+    { { L["Ouvrir l'historique"], 170, function() if ns.UI and ns.UI.Show then ns.UI.Show("loot") end end } })
   li.Header(L["Fin"])
   local done = (count.awarded or 0) + (count.traded or 0) + (count.kept or 0)
   -- Pluriel : en français 0 et 1 au singulier, en anglais 1 seulement

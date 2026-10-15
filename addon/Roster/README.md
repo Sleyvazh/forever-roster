@@ -4,7 +4,7 @@ Addon pour WoW Retail (Midnight, interfaces 120100 et 120105), lié au site Rost
 
 **Synchro rapide** : ta touche (onglet **Options**, ou Échap > Options > Raccourcis > AddOns > Roster), le clic droit sur le bouton de la minicarte ou sur Roster dans la liste des addons de la minicarte ouvrent une petite fenêtre avec une seule case. Ce qui part au site (bilans de raid) y est déjà sélectionné : Ctrl+C, la fenêtre se ferme, puis Ctrl+V sur n'importe quelle page du site. Ou Ctrl+V dans la case pour coller ce que tu as copié sur le site : chargé, puis fermeture.
 
-La fenêtre complète, ouverte par le bouton de la minicarte ou `/roster`, a cinq onglets :
+La fenêtre complète, ouverte par le bouton de la minicarte ou `/roster`, a six onglets :
 
 | Onglet | Rôle |
 |---|---|
@@ -12,13 +12,14 @@ La fenêtre complète, ouverte par le bouton de la minicarte ou `/roster`, a cin
 | **Raids** | Raids à venir de tes groupes |
 | **En raid** | Pendant le raid : qui a l'addon (et sa version), relevé de la présence et du butin, chef de butin et distribution par Roster (0.2.0) |
 | **Compo** | La compo collée : **Inviter**, **Placer les groupes** |
+| **Butin** | Historique du butin distribué par Roster (0.4.0), gardé dans l'addon, même sans le site : par soirée ou par joueur, recherche, ce qui compte ou non (lecture seule) |
 | **Options** | Touches (choisir, retirer), habillage (jeu ou site), bouton de la minicarte, relevé de la présence et du butin, seuil de qualité du butin, passer automatiquement quand le chef de butin distribue, partage des données du site avec la guilde et le raid |
 
 | Commande | Rôle |
 |---|---|
 | Raccourcis (AddOns > Roster) | « Synchro rapide avec le site (copier / coller) » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/roster` | Ouvrir ou fermer la fenêtre |
-| `/roster synchro`, `raids`, `enraid`, `compo`, `options` | Ouvrir un onglet |
+| `/roster synchro`, `raids`, `enraid`, `compo`, `historique`, `options` | Ouvrir un onglet (`historique` : onglet Butin) |
 | `/roster inviter` | Inviter les persos de la compo chargée |
 | `/roster placer` | Placer les persos dans leurs groupes (chef du raid ou assistant, hors combat) |
 | `/roster versions` | Qui a l'addon dans le raid, et sa version |
@@ -39,7 +40,7 @@ Comme RCLootCouncil : le butin de groupe du jeu va au chef de butin, qui le dist
 - **Chef de butin** : le chef de raid, sauf s'il en désigne un autre (onglet **En raid**). Il active **Distribution par Roster** pour le raid ; elle l'est d'office quand le raid chargé est en mode « conseil » sur le site.
 - **Passer automatiquement** : à chaque jet du butin de groupe, ton addon attend que le chef de butin ait pris l'objet (20 s au plus), puis passe pour toi. Si le chef de butin ne l'a pas pris (pas éligible à cet objet…), il ne passe pas et te le dit. Tu peux couper ce passer automatique pour toi dans **Options** (`RosterDB.autoPass = false`) : passe alors toi-même, sinon l'objet peut te revenir au lieu d'aller au chef de butin.
 - **Fenêtre du butin** (`/roster butin`, chef de butin) : les objets reçus et le temps qui reste pour les échanger (2 h après le butin, lu dans l'infobulle de l'objet ; en orange quand il presse). Pour chaque objet :
-  - **Conseil** (ou **Tout au conseil**, 0.3.0) : chacun reçoit une fenêtre de réponse (BiS, Upgrade, Off-spec, Transmo, Passer, et une note) ; la réponse part avec les objets qu'il porte sur cet emplacement. Sans l'addon, on chuchote « bis », « up », « os » ou « transmo » au chef de butin, suivi du numéro de l'objet s'il y en a plusieurs (« bis 2 »). Le chef de butin relaie chaque réponse au conseil (0.2.1) : seuls lui et les membres du conseil ont besoin des données du site. Le conseil (officiers et propriétaire du groupe, ou celui choisi pour ce raid sur le site) voit les réponses et les objets reçus sur la période (colonne « Reçus »), vote, et le chef de butin donne l'objet.
+  - **Conseil** (ou **Tout au conseil**, 0.3.0) : chacun reçoit une fenêtre de réponse (BiS, Upgrade, Off-spec, Transmo, Passer, et une note) ; la réponse part avec les objets qu'il porte sur cet emplacement. Sans l'addon, on chuchote « bis », « up », « os » ou « transmo » au chef de butin, suivi du numéro de l'objet s'il y en a plusieurs (« bis 2 »). Le chef de butin relaie chaque réponse au conseil (0.2.1) : seuls lui et les membres du conseil ont besoin des données du site. Le conseil (officiers et propriétaire du groupe, ou celui choisi pour ce raid sur le site) voit les réponses et les objets reçus (colonne « Reçus » : site et historique de l'addon, nombres du chef de butin depuis 0.4.0), vote, et le chef de butin donne l'objet.
   - **Jets MS / OS** : MS `/roll 100`, OS `/roll 99` ; le premier jet de chacun compte, la MS passe avant l'OS ; en cas d'égalité, « Relancer » : seuls les ex æquo relancent.
   - **Jet libre** : `/roll 100` pour tous, le plus haut l'emporte.
   - **Garder** : le chef de butin garde l'objet (désenchantement, banque de guilde) ; il ne compte pas dans ses objets reçus.
@@ -56,6 +57,16 @@ Comme RCLootCouncil : le butin de groupe du jeu va au chef de butin, qui le dist
 - **Détail des reçus** : la colonne « Reçus » du conseil montre le total et le détail (« 2 BiS · 3 Up · 1 MS ») ; infobulle : site, ce soir, ce qui ne compte pas. Clic sur l'en-tête : tri par objets reçus (le moins servi d'abord).
 - **Échange** : les objets du gagnant sont posés tout seuls dès que la fenêtre d'échange s'ouvre avec lui, même s'il l'ouvre lui-même.
 
+### Historique du butin (0.4.0)
+
+Premier lot de « Roster autonome » (étude du 15/10/2026) : l'addon garde lui-même ce que Roster distribue, sans raid du site et sans limite de durée (il survit au `/reload` et aux 12 h des objets du chef de butin). Sauvegarde `RosterDB.hist`, code `History.lua`, messages : `docs/addon-format.md`, « Historique durable ».
+
+- **Ce qui est gardé** : chaque objet attribué (conseil, jets, choix du chef de butin) ou gardé, chez le chef de butin et chez chaque joueur qui reçoit l'attribution (`LW`, avec l'identifiant et la version de l'entrée : tout le monde a la même) ; chaque objet gagné au butin de groupe par un joueur qui n'a pas passé (chez le chef de butin). Les attributions d'avant la 0.4 encore dans les objets du chef de butin sont reprises au premier lancement.
+- **Soirées** : dans une instance de raid, en groupe de raid, distribution par Roster activée, l'addon relève la soirée (« soirée relevée » dans le chat ; onglet **En raid**) : qui est là chaque minute, les boss, le chef de butin. Après un `/reload`, la même soirée reprend.
+- **Colonne « Reçus » du conseil** : avec les données du site, le compte du site plus ce que l'historique a noté depuis la date de ces données (pas de double compte) ; sans le site, l'historique seul. Le chef de butin joint ses nombres à chaque réponse qu'il relaie : tout le conseil voit les mêmes, sans le site (s'il n'a aucun historique, la fenêtre le dit et chacun voit les siens).
+- **Onglet Butin › Historique** (`/roster historique`) : liste datée, par soirée ou par joueur, recherche (joueur, objet, boss), filtre « tous / ceux qui comptent / ceux qui ne comptent pas », catégorie en pastille (BiS, Upgrade, jet MS, autre, ne compte pas). Lecture seule : corrections, saisons, classement et mains & alts viennent avec les lots suivants.
+- **Saison suivante** (choix de Flo : on efface) : l'historique tient dans `RosterDB.hist`, une copie complète est gardée juste avant (`RosterDB.histBackups`), restaurable.
+
 ### Raid d'essai (`/roster test`)
 
 Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) : tu es chef de butin d'un raid fictif, toi et 9 joueurs (Kaeldra-Hyjal et Tharok-Hyjal en tanks ; Brumelune-Ysondre, Thessaly-Ysondre et Orvane-Hyjal, sans l'addon, en soins ; Vex-Kael'Thas, Lysenn-Dalaran, Mirwen-Hyjal et Ashlen-Hyjal en dégâts). Tharok et Brumelune sont au conseil avec toi. Un panneau propose les étapes :
@@ -66,6 +77,7 @@ Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) 
 4. **Jet libre**, 5. **Garder**, 6. **Objets à remettre** : l'échange est simulé (il réussit).
 7. **Joueur sans l'addon** : Orvane gagne un objet au butin de groupe sans avoir passé ; chuchote-lui de le garder.
 8. **Côté joueur** : Tharok, chef de butin fictif, te propose deux objets d'un coup, le second d'une autre armure (seulement Transmo ou Passer) : la fenêtre de réponse des joueurs et sa bande ; tu peux changer une réponse tant qu'il n'a pas terminé.
+9. **Historique** (0.4.0) : chaque objet attribué ou gardé pendant l'essai est dans l'onglet Butin › Historique, en mémoire seulement (rien n'est gardé après l'essai).
 
 Rien ne part au chat du raid, aux autres joueurs ni au site : annonces, chuchotements et jets s'affichent dans ta fenêtre de chat, précédés de « [essai] ». `/roster test` affiche ou masque le panneau ; « Quitter l'essai » ou `/roster test fin` l'arrête. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.
 
@@ -92,7 +104,7 @@ Télécharger le zip sur la page **Addon** de Roster, puis copier le dossier `Ro
 ```bash
 for f in addon/Roster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
 lua5.1 addon/tests/roster_format_test.lua   # formats RRG (lignes M et Z, signature de sample.rrg), RRR, RRB et noms « Prénom-Royaume » (écrit sample.rrb, relit sample.rrg et sample.rrr du site)
-lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan, partage entre joueurs (plusieurs joueurs simulés)
+lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan, partage entre joueurs (plusieurs joueurs simulés), historique du butin sans le site (/reload simulé, 13 h plus tard)
 lua5.1 addon/tests/roster_ui_test.lua       # fenêtre, commandes, synchro rapide, options, minicarte, fenêtres du butin (bandes d'objets), raid d'essai de bout en bout
 ```
 

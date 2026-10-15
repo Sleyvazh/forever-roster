@@ -1,5 +1,6 @@
--- Fenêtre à onglets (Synchro, Raids, En raid, Compo, Options) et synchro rapide.
--- Synchro et Options sont construits ici ; Raids, En raid et Compo par Pages.lua (ns.Pages.Build / Refresh).
+-- Fenêtre à onglets (Synchro, Raids, En raid, Compo, Butin, Options) et synchro rapide.
+-- Synchro et Options sont construits ici ; Raids, En raid, Compo et Butin (historique, lot R4a) par Pages.lua
+-- (ns.Pages.Build / Refresh).
 -- Deux habillages (Options) : celui du jeu, ou celui du site (sombre, liserés argent-azur). Boîte à outils : addon/shared/Kit.lua.
 local ADDON, ns = ...
 local L, N = ns.L, ns.N
@@ -20,12 +21,13 @@ local TABS = {
   { key = "raids", label = N("Raids"), icon = "Interface\\Icons\\INV_Misc_Head_Dragon_01" },
   { key = "enraid", label = N("En raid"), icon = "Interface\\Icons\\Ability_Warrior_BattleShout" },
   { key = "compo", label = N("Compo"), icon = "Interface\\Icons\\Ability_Warrior_RallyingCry" },
+  { key = "loot", label = N("Butin"), icon = "Interface\\Icons\\INV_Misc_Bag_08" },
   { key = "options", label = N("Options"), icon = "Interface\\Icons\\INV_Misc_Gear_01" },
 }
 local pages, refreshers = {}, {}
 U.pages = pages
 -- Onglets remplis par Pages.lua
-local EXTERNAL = { raids = true, enraid = true, compo = true }
+local EXTERNAL = { raids = true, enraid = true, compo = true, loot = true }
 
 local function db() return ns.db() or {} end
 local function data() return ns.Data end
@@ -330,7 +332,7 @@ local function buildMain()
   end
   for k, t in ipairs(TABS) do
     local tab = { key = t.key, label = L[t.label], icon = t.icon } -- nom de l'onglet dans la langue de l'interface
-    main.tabs[t.key] = sited and K.topTab(main, k, tab, U.Show, 110) or K.sideTab(main, k, tab, U.Show)
+    main.tabs[t.key] = sited and K.topTab(main, k, tab, U.Show, 98) or K.sideTab(main, k, tab, U.Show) -- 6 onglets de 98 px
     local p = CreateFrame("Frame", nil, main)
     p:SetPoint("TOPLEFT", 14, sited and -64 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
     p:Hide()

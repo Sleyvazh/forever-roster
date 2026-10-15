@@ -5,7 +5,8 @@
 -- Scénario : données du site, invitations, placement, versions, file des messages pendant un boss, relevé du raid, bilan,
 -- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), retours
 -- du raid de test (section 10 : échange ouvert par le gagnant, objets portables, tout au conseil, détail des reçus), pages
--- et fenêtres dans les deux habillages, valeurs secrètes. Échoue au premier problème.
+-- et fenêtres dans les deux habillages, valeurs secrètes, historique durable du butin (section 12, lot R4a : sans le
+-- site, nombres du chef de butin relayés au conseil, /reload simulé puis 13 h plus tard). Échoue au premier problème.
 -- Textes de l'interface (addon/tests/locale_audit.lua) ; langue du client : WOW_LOCALE (frFR par défaut)
 LOCALE_AUDIT = dofile("addon/tests/locale_audit.lua")
 function GetLocale() return os.getenv("WOW_LOCALE") or "frFR" end
@@ -150,6 +151,7 @@ local BLIZZARD = {
     return f
   end,
   time = function() return math.floor(clock) end,
+  GetServerTime = function() return math.floor(clock) end,
   date = function(f, t) return os.date(f, t) end,
   GetTime = function() return clock - BASE + 1000 end,
   strtrim = function(s) return (tostring(s):gsub("^%s+", ""):gsub("%s+$", "")) end,
@@ -416,7 +418,7 @@ local F, D, G, Cm, Co, R, P = ns.Format, ns.Data, ns.Groups, ns.Comm, ns.Compo, 
 -- Pages construites dans les deux habillages (« jeu » puis « site »), avant toute donnée
 local function buildPages(skin)
   RosterDB.skin = skin
-  for _, key in ipairs({ "raids", "enraid", "compo" }) do
+  for _, key in ipairs({ "raids", "enraid", "compo", "loot" }) do
     local page = CreateFrame("Frame")
     assert(P.Build(key, page), "page " .. key)
     P.Refresh(key)
@@ -943,7 +945,8 @@ mark = #S.sent
 assert(Lo.Answer(sid, "upgrade", "petit gain ; deux pièces"), "réponse envoyée")
 advance(2)
 local la = sentMsg("^LA;" .. sid, mark + 1)
-assert(la and la.dist == "WHISPER" and la.msg == "LA;" .. sid .. ";upgrade;230001:626;petit gain   deux pièces", "LA chuchoté : " .. tostring(la and la.msg))
+-- Chef de butin qui répond à son propre objet (0.4) : ses nombres en fin de ligne (champs 6 et 7 vides : pas un relais)
+assert(la and la.dist == "WHISPER" and la.msg == "LA;" .. sid .. ";upgrade;230001:626;petit gain   deux pièces;;;0;0;0;0;", "LA chuchoté : " .. tostring(la and la.msg))
 local targets = {}
 for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;") then targets[S.sent[i].target] = true end end
 assert(targets["Tharok-Hyjal"] and targets["Brumelune-Ysondre"] and not targets["Kaeldra-Hyjal"] and not targets["Vex-Kael'Thas"], "LA au conseil seulement")
@@ -955,7 +958,8 @@ addon("Vex-Kael'Thas", "LA;" .. sid .. ";off;;", "WHISPER")
 addon("Orvane-Hyjal", "LA;" .. sid .. ";super;;", "WHISPER")
 advance(1)
 -- Chef de butin : chaque réponse relayée au raid (le joueur sans les données du site ne connaît pas le conseil)
-local rt, rv = sentMsg("^LA;" .. sid .. ";bis;242111:636;BiS pour moi;Tharok%-Hyjal;r$", mark + 1), sentMsg("^LA;" .. sid .. ";off;;;Vex%-Kael'Thas;r$", mark + 1)
+-- 0.4 : avec les nombres du chef de butin (total, BiS, Upgrade, jets MS, main si alt) : Tharok 2 et Vex 1 sur le site
+local rt, rv = sentMsg("^LA;" .. sid .. ";bis;242111:636;BiS pour moi;Tharok%-Hyjal;r;2;0;0;0;$", mark + 1), sentMsg("^LA;" .. sid .. ";off;;;Vex%-Kael'Thas;r;1;0;0;0;$", mark + 1)
 assert(rt and rt.dist == "RAID" and rv and rv.dist == "RAID" and not sentMsg("^LA;" .. sid .. ";super", mark + 1), "réponses relayées au raid par le chef de butin")
 addon("Kaeldra-Hyjal", rt.msg, "RAID") -- mon relais revenu par le canal du raid : ignoré
 mark = #S.sent
@@ -963,7 +967,9 @@ fire("CHAT_MSG_WHISPER", " BIS ", "Mordak-Ysondre", "", "", "Mordak-Ysondre")
 fire("CHAT_MSG_WHISPER", "salut", "Sylvane-Hyjal", "", "", "Sylvane-Hyjal")
 fire("CHAT_MSG_WHISPER", secretValue("whisper"), "Sylvane-Hyjal")
 advance(2)
-local relay = sentMsg("^LA;" .. sid .. ";bis;;chuchoté;Mordak%-Ysondre$", mark + 1)
+-- 7e champ vide (réponse chuchotée), puis les nombres : Mordak a 2 objets dans l'historique (jet MS du LW de Tharok
+-- plus haut, et l'anneau gagné au butin de groupe sans passer : compte sans catégorie)
+local relay = sentMsg("^LA;" .. sid .. ";bis;;chuchoté;Mordak%-Ysondre;;2;0;0;1;$", mark + 1)
 assert(relay and relay.dist == "WHISPER", "réponse chuchotée relayée au conseil")
 -- Votes : Tharok et Brumelune (conseil), Vex (pas du conseil : ignoré), moi
 addon("Tharok-Hyjal", "LV;" .. sid .. ";Tharok-Hyjal", "WHISPER")
@@ -978,7 +984,9 @@ assert(c.cands[2].name == "Mordak-Ysondre" and c.cands[2].whispered and c.cands[
 assert(c.cands[3].name == "Kaeldra-Hyjal" and c.cands[3].note == "petit gain   deux pièces" and c.cands[3].gear[1].id == 230001 and c.cands[3].gear[1].ilvl == 626, "ma réponse : note, objet porté")
 assert(c.cands[4].name == "Vex-Kael'Thas" and c.cands[4].response == "off", "réponse Off-spec")
 assert(c.cands[1].gear[1].id == 242111 and c.cands[1].gear[1].ilvl == 636 and c.cands[1].note == "BiS pour moi", "objets portés et note de Tharok")
-assert(c.cands[1].receivedSite == 2 and c.cands[1].receivedTonight == 1 and c.cands[1].received == 3, "Reçus : site (N) et ce soir")
+-- 0.4 : site + historique de l'addon ; le butin de Tharok ramassé au butin de groupe (relevé du site, section 6) n'est
+-- pas dans l'historique (rien de distribué par Roster)
+assert(c.cands[1].receivedSite == 2 and c.cands[1].receivedTonight == 0 and c.cands[1].received == 2, "Reçus : site (N) et historique")
 assert(c.cands[4].receivedSite == 1 and c.counts.short == "saison", "Reçus : persos d'un même joueur ensemble")
 assert(Lo.Counts({ method = "council", response = "bis" }) and Lo.Counts({ method = "roll", detail = "MS 87" }) and Lo.Counts({ method = "ml" }) and Lo.Counts({})
   and not Lo.Counts({ method = "council", response = "transmo" }) and not Lo.Counts({ method = "roll", detail = "OS 54" })
@@ -996,7 +1004,12 @@ assert(ann and ann.chatType == "RAID" and ann.msg == "Roster : Tharok reçoit " 
 local tell = S.whispers[wmark + 2]
 assert(tell and tell.chatType == "WHISPER" and tell.target == "Tharok-Hyjal" and tell.msg:find("^Tu reçois " .. LEGS:gsub("%p", "%%%0") .. " : passe me voir pour l'échange %(encore 1 h 5%d min%)%.$"), "chuchoté au gagnant : " .. tostring(tell and tell.msg))
 assert(sentMsg("^LC;" .. sid .. ";Tharok%-Hyjal$", mark + 1, "RAID"), "LC au raid")
-assert(sentMsg("^LW;" .. legs.key:gsub("%-", "%%-") .. ";242394;Tharok%-Hyjal;council;bis;3 votes$", mark + 1, "RAID"), "LW au raid : les autres relevés notent le gagnant")
+-- Historique (0.4) : l'entrée du chef de butin ; LW porte son identifiant, sa version et le niveau de l'objet
+local lwe = ns.Hist.Get(legs.histId)
+assert(lwe and lwe.winner == "Tharok-Hyjal" and lwe.cat == "bis" and lwe.votes == 3 and lwe.note == "BiS pour moi" and lwe.by == "Kaeldra-Hyjal" and lwe.ml == "Kaeldra-Hyjal"
+  and lwe.ilvl == 639 and lwe.item == "item:242394::::::::90:::::1:6652" and lwe.class == "WARRIOR" and lwe.id:find("^" .. ns.Hist.Node() .. "%-"), "historique : entrée du chef de butin")
+assert(sentMsg("^LW;" .. legs.key:gsub("%-", "%%-") .. ";242394;Tharok%-Hyjal;council;bis;3 votes;" .. lwe.id:gsub("%-", "%%-") .. ";" .. lwe.v .. ";639$", mark + 1, "RAID"),
+  "LW au raid : les autres relevés notent le gagnant ; identifiant, version et niveau de l'entrée")
 assert(legs.status == "awarded" and legs.winner == "Tharok-Hyjal" and legs.method == "council" and legs.detail == "3 votes", "objet attribué")
 local line
 for _, l in ipairs(log.loot) do if l.id == 242394 and l.awarded then line = l end end
@@ -1152,7 +1165,7 @@ local tc = Lo.Council(tsid)
 assert(#tc.cands == 1 and tc.cands[1].votes == 1 and #tc.waiting == 2, "essai : réponse et vote simulés")
 assert(Lo.AwardCouncil(tsid, "Gorrak-Hyjal") and te.status == "awarded", "essai : objet donné")
 assert(tsaid[#tsaid - 1].msg == "Roster : Gorrak reçoit " .. LEGS .. " (conseil : BiS)" and tsaid[#tsaid].chatType == "WHISPER" and tsaid[#tsaid].target == "Gorrak-Hyjal", "essai : annonce et chuchotement simulés")
-assert(#log.loot == realLog and #Lo.testLog.loot == 1 and #S.whispers == realSaid, "essai : rien dans le bilan ni dans le chat")
+assert(#log.loot == realLog and #ns.Hist.Entries() == 1 and ns.Hist.Store() == ns.Hist.test and #S.whispers == realSaid, "essai : rien dans le bilan ni dans le chat ; historique en mémoire")
 assert(Lo.Trade(te.key) and ttrade[1] == te, "essai : échange simulé")
 local te2 = Lo.AddTestItem(CLOAK)
 assert(Lo.StartRoll(te2.key, "free") and Lo.OnRoll("Gorrak-Hyjal", 88, 1, 100) and Lo.Rolls(te2.key).winners[1] == "Gorrak-Hyjal", "essai : jet injecté")
@@ -1426,7 +1439,7 @@ whisper("bis", "Sylvane-Hyjal")
 advance(1)
 local xs = cand(Lo.Council(psid), "Sylvane-Hyjal")
 assert(xs and xs.response == "transmo" and xs.asked == "bis" and xs.canUse == false and xs.whispered, "chuchoté « bis » d'un chasseur sur des plaques : Transmo")
-assert(sentMsg("^LA;" .. psid .. ";transmo;;chuchoté;Sylvane%-Hyjal$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
+assert(sentMsg("^LA;" .. psid .. ";transmo;;chuchoté;Sylvane%-Hyjal;;%d+;%d+;%d+;%d+;$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
 whisper("os", "Tharok-Hyjal")
 local xt = cand(Lo.Council(psid), "Tharok-Hyjal")
 assert(xt.response == "off" and xt.canUse == true and not xt.asked, "guerrier : plaques, Off-spec gardé")
@@ -1435,7 +1448,7 @@ addon("Orvane-Hyjal", "LA;" .. psid .. ";upgrade;;vieil addon", "WHISPER") -- ad
 advance(1)
 local xo = cand(Lo.Council(psid), "Orvane-Hyjal")
 assert(xo.response == "transmo" and xo.asked == "upgrade" and xo.canUse == false and xo.note == "vieil addon", "addon 0.2 : Upgrade d'un évocateur sur des plaques → Transmo, note gardée")
-assert(sentMsg("^LA;" .. psid .. ";transmo;;vieil addon;Orvane%-Hyjal;r$", mark + 1, "RAID"), "relayé au raid en Transmo")
+assert(sentMsg("^LA;" .. psid .. ";transmo;;vieil addon;Orvane%-Hyjal;r;%d+;%d+;%d+;%d+;$", mark + 1, "RAID"), "relayé au raid en Transmo")
 addon("Zephyra-Hyjal", "LA;" .. psid .. ";transmo;;", "WHISPER")
 assert(cand(Lo.Council(psid), "Zephyra-Hyjal").response == "transmo" and cand(Lo.Council(psid), "Zephyra-Hyjal").canUse == false, "Transmo d'un druide : inchangé, signalé")
 -- Membre du conseil (Tharok chef de butin) : la réponse relayée est jugée chez moi aussi
@@ -1467,7 +1480,7 @@ do
   advance(10) -- file des messages : la proposition et ma réponse partent avant
   local xw = cand(Lo.Council(hsid), "Orvane-Hyjal")
   assert(xw and xw.response == "transmo" and xw.asked == "bis" and xw.canUse == false and xw.whispered, "« bis » chuchoté d'un évocateur sur une arme d'hast : Transmo")
-  assert(sentMsg("^LA;" .. hsid .. ";transmo;;chuchoté;Orvane%-Hyjal$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
+  assert(sentMsg("^LA;" .. hsid .. ";transmo;;chuchoté;Orvane%-Hyjal;;%d+;%d+;%d+;%d+;$", mark + 1, "WHISPER"), "relais au conseil : déjà Transmo")
   -- Réponses d'addons : chasseur et druide la manient ; guerrier en Upgrade
   addon("Sylvane-Hyjal", "LA;" .. hsid .. ";bis;;", "WHISPER")
   addon("Brumelune-Ysondre", "LA;" .. hsid .. ";off;;", "WHISPER")
@@ -1676,13 +1689,16 @@ fire("CHAT_MSG_LOOT", "Tharok-Hyjal reçoit le butin : " .. item(242476, "Objet 
 addon("Tharok-Hyjal", "LW;k6;242476;Zephyra-Hyjal;council;bis;3 votes")
 local _, tz1, dz1 = recv("Zephyra-Hyjal")
 assert(tz1 == tz0 + 1 and dz1.bis >= 1, "LW : BiS compté")
--- Chemin 3 : ligne du relevé sans méthode (objet seulement noté) : compte, sans catégorie
+-- Chemin 3 : ligne du relevé sans méthode (butin vu dans le chat chez un autre que le chef de butin) : dans le bilan du
+-- site, mais pas dans l'historique de l'addon (0.4 : seul ce que Roster distribue y entre ; le conseil voit les nombres
+-- du chef de butin)
 local _, to0, do0 = recv("Orvane-Hyjal")
 fire("CHAT_MSG_LOOT", "Orvane-Hyjal reçoit le butin : " .. item(242477, "Objet noté") .. ".", "", "", "", "")
 local _, to1, do1 = recv("Orvane-Hyjal")
-assert(to1 == to0 + 1 and do1.bis == do0.bis and do1.up == do0.up and do1.ms == do0.ms, "objet seulement noté : compte, sans catégorie")
+assert(to1 == to0 and do1.bis == do0.bis and do1.up == do0.up and do1.ms == do0.ms, "objet seulement noté dans le bilan : pas compté par l'addon")
 assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
--- Chemin 4 : objet gagné au butin de groupe par un joueur qui n'a pas passé : noté, compte (même règle que le site)
+-- Chemin 4 : objet gagné au butin de groupe par un joueur qui n'a pas passé : noté dans l'historique du chef de butin,
+-- compte sans catégorie (même règle que le site)
 local _, ts0 = recv("Sylvane-Hyjal")
 S.loot[40] = { link = item(242478, "Objet de groupe"), need = true }
 fire("START_LOOT_ROLL", 40, 120000)
@@ -2268,6 +2284,278 @@ S.members = { S.members[1] }
 assert(errors() == 0, "partage sans erreur : " .. tostring(lastPrinted("erreur")))
 end
 sharing()
+--------------------------------------------------------------------------------------------------------------------
+-- 12. Historique durable (lot R4a, History.lua) : sans aucune donnée du site, dans une instance de raid avec la
+-- distribution active : soirée, présence et boss ; attributions (conseil, jets, garder, attribution refaite), butin de
+-- groupe gagné sans passer ; LW étendu reçu (versions, doublons, LW d'un addon 0.3) ; membre du conseil qui reçoit les
+-- nombres du chef de butin ; « Reçus » pendant la transition (site + historique après la date des données du site) ;
+-- page Butin › Historique ; sauvegarde complète et restauration ; attributions d'avant la 0.4 reprises ; /reload simulé
+-- (addon rechargé à neuf sur la sauvegarde), puis 13 h plus tard : l'historique est toujours là.
+--------------------------------------------------------------------------------------------------------------------
+local function history()
+local H = ns.Hist
+assert(H and H.Entries and H.Award and H.FromLW and H.Count, "module de l'historique chargé")
+local hist = RosterDB.hist
+assert(type(hist) == "table" and hist.schema == 1 and hist.node:match("^[0-9a-z]+$") and #hist.node == 5 and type(hist.seq) == "number", "RosterDB.hist : schema, node, seq")
+local function cand(c, name) for _, x in ipairs(c and c.cands or {}) do if x.name == name then return x end end end
+local function find(itemId) for _, e in ipairs(H.Entries()) do if e.itemId == itemId then return e end end end
+-- Objet reçu par le chef de butin (moi), rangé dans les sacs
+local function got(id, name, slot)
+  local link = item(id, name)
+  S.bags[4][slot] = link
+  fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. link .. ".", "", "", "", "")
+  local all = Lo.Items()
+  return all[#all]
+end
+
+-- 12a. Sans le site : raid formé, dans l'instance, distribution activée par le chef de raid (moi)
+RosterDB.groups, RosterDB.lootState = {}, nil
+assert(not G.Current() and not G.LootCounts() and not Lo.Enabled(), "aucune donnée du site, distribution coupée")
+local pmark = #printed
+S.raid, S.leader, S.members = true, true, { S.members[1] }
+for _, x in ipairs({ { "Tharok-Hyjal", "WARRIOR" }, { "Brumelune-Ysondre", "DRUID" }, { "Vex-Kael'Thas", "DEMONHUNTER" }, { "Orvane-Hyjal", "EVOKER" } }) do accept(x[1], x[2]) end
+S.instance = { name = "Faille de Sporefall", difficulty = 16 }
+advance(1)
+assert(not H.CurrentNight() and not printedSince(pmark, "soirée relevée"), "distribution coupée : pas de soirée")
+assert(Lo.SetMaster(nil) and Lo.SetEnabled(true) and Lo.IsMaster() and Lo.Enabled(), "distribution par Roster, sans le site")
+advance(2)
+local night = H.CurrentNight()
+assert(night and night.instance == "Faille de Sporefall" and night.difficulty == "mythic" and night.mapID == 2900 and night.ml == "Kaeldra-Hyjal"
+  and night.id:find("^" .. hist.node .. "%-"), "soirée relevée sans le site")
+assert(printedSince(pmark, "soirée relevée : Faille de Sporefall (Mythique)"), "message : soirée relevée")
+assert(not R.IsRecording(), "relevé du site : pas de raid du site, rien")
+advance(60)
+assert(night.people["Tharok-Hyjal"] and night.people["Orvane-Hyjal"].n >= 1 and night.people["Kaeldra-Hyjal"], "présence relevée chaque minute")
+startEncounter(3179, "Kith'ix")
+advance(30)
+endEncounter(3179, "Kith'ix", 1)
+advance(2)
+local boss = night.bosses[#night.bosses]
+assert(boss and boss.encounter == 3179 and boss.name == "Kith'ix" and boss.kill, "boss vaincu dans la soirée")
+buildPages(nil)
+assert(P.state.enraid.loot.night == night.id, "onglet En raid : soirée relevée par l'addon")
+
+-- 12b. Attributions sans le site : conseil, jets MS, garder ; LW étendu (identifiant, version, niveau de l'objet)
+local _, tTh, _, dTh = Lo.Received("Tharok-Hyjal")
+local _, tBr = Lo.Received("Brumelune-Ysondre")
+local helm = got(242510, "Heaume Kith'ix", 8)
+local okC, sid = Lo.StartCouncil(helm.key)
+assert(okC, "conseil sans le site")
+addon("Tharok-Hyjal", "LA;" .. sid .. ";bis;242111:636;tank", "WHISPER")
+addon("Brumelune-Ysondre", "LA;" .. sid .. ";upgrade;;", "WHISPER")
+local mark = #S.sent
+assert(Lo.AwardCouncil(sid, "Tharok-Hyjal"), "donné au conseil")
+advance(1)
+local e1 = H.Get(helm.histId)
+assert(e1 and e1.winner == "Tharok-Hyjal" and e1.class == "WARRIOR" and e1.method == "council" and e1.response == "bis" and e1.detail == "0 vote" and e1.votes == 0
+  and e1.note == "tank" and e1.cat == "bis" and e1.night == night.id and e1.boss == "Kith'ix" and e1.encounter == 3179 and e1.instance == "Faille de Sporefall"
+  and e1.difficulty == "mythic" and e1.mapID == 2900 and e1.src == "roster" and e1.ml == "Kaeldra-Hyjal" and e1.by == "Kaeldra-Hyjal" and e1.at == e1.v
+  and e1.ilvl == 639 and e1.itemId == 242510 and e1.name == "Heaume Kith'ix" and e1.seq == RosterDB.hist.entries[e1.id].seq, "entrée : attribution du conseil, sans le site")
+local lw = sentMsg("^LW;", mark + 1, "RAID")
+assert(lw and lw.msg == "LW;" .. helm.key .. ";242510;Tharok-Hyjal;council;bis;0 vote;" .. e1.id .. ";" .. e1.v .. ";639", "LW étendu : " .. tostring(lw and lw.msg))
+local ring = got(242511, "Anneau Kith'ix", 9)
+assert(Lo.Award(ring.key, "Vex-Kael'Thas", "roll", nil, "MS 77"), "jets MS")
+local cape = got(242512, "Cape Kith'ix", 10)
+assert(Lo.Keep(cape.key), "gardé")
+local e2, e3 = H.Get(ring.histId), H.Get(cape.histId)
+assert(e2 and e2.cat == "ms" and e2.detail == "MS 77" and e2.winner == "Vex-Kael'Thas" and e2.id ~= e1.id, "jet MS : compte")
+assert(e3 and e3.cat == nil and e3.detail == "gardé" and e3.method == "ml" and e3.winner == "Kaeldra-Hyjal", "gardé : ne compte pas")
+local s0, t0, c0, d0, since0 = Lo.Received("Tharok-Hyjal")
+assert(s0 == 0 and t0 == tTh + 1 and c0 == nil and since0 == nil and d0.bis == dTh.bis + 1, "Reçus sans le site : l'historique de l'addon (tout)")
+-- Attribution refaite : même entrée, version plus récente (même seconde : +1), ne compte plus pour l'ancien gagnant
+mark = #S.sent
+assert(Lo.Award(helm.key, "Brumelune-Ysondre", "council", "upgrade", "1 vote"), "attribué de nouveau")
+local e1b = H.Get(helm.histId)
+assert(e1b.id == e1.id and e1b.v == e1.v + 1 and e1b.winner == "Brumelune-Ysondre" and e1b.cat == "up", "même entrée, version plus récente")
+assert(sentMsg("^LW;.*;" .. e1.id:gsub("%-", "%%-") .. ";" .. e1b.v .. ";639$", mark + 1), "LW : nouvelle version")
+assert(select(2, Lo.Received("Tharok-Hyjal")) == tTh and select(2, Lo.Received("Brumelune-Ysondre")) == tBr + 1, "compté pour le nouveau gagnant seulement")
+-- Butin de groupe gagné sans passer : noté (le chef de butin), compte sans catégorie
+S.loot[50] = { link = item(242513, "Bottes Kith'ix"), need = true }
+fire("START_LOOT_ROLL", 50, 120000)
+fire("CHAT_MSG_LOOT", "Orvane-Hyjal reçoit le butin : " .. S.loot[50].link .. ".", "", "", "", "")
+local np = find(242513)
+assert(np and np.winner == "Orvane-Hyjal" and np.method == nil and np.detail == "butin de groupe" and np.cat == "other" and np.night == night.id, "butin de groupe sans passer : noté")
+-- Nombres du chef de butin relayés : les miens (historique) ; sans données du site ni historique : « - »
+mark = #S.sent
+local la = select(2, Lo.StartCouncil(got(242514, "Gants Kith'ix", 11).key))
+addon("Brumelune-Ysondre", "LA;" .. la .. ";bis;;", "WHISPER")
+advance(1)
+local sB, tB, _, dB = Lo.Received("Brumelune-Ysondre")
+local tail = ";" .. (sB + tB) .. ";" .. dB.bis .. ";" .. dB.up .. ";" .. dB.ms .. ";"
+assert(sB == 0 and tB >= 1 and sentMsg("^LA;" .. la .. ";bis;;;Brumelune%-Ysondre;r" .. tail .. "$", mark + 1, "RAID"), "relais au raid avec mes nombres (sans le site)")
+local saved = RosterDB.hist
+RosterDB.hist = nil
+assert(Lo.CountTail("Brumelune-Ysondre") == ";-;;;;" and not Lo.HasCounts(), "ni site ni historique : « - »")
+RosterDB.hist = saved
+assert(Lo.CountTail("Brumelune-Ysondre") == tail, "historique remis")
+Lo.Cancel(Lo.Items()[#Lo.Items()].key)
+
+-- 12c. Chez un autre joueur : LW de Tharok (chef de butin) ; reçu deux fois, version plus ancienne, plus récente, LW 0.3
+assert(Lo.SetMaster("Tharok-Hyjal") and not Lo.IsMaster(), "Tharok chef de butin")
+local V = time()
+addon("Tharok-Hyjal", "LW;k-1;242520;Orvane-Hyjal;council;upgrade;2 votes;t4r0k-abc-1;" .. V .. ";650")
+local w = H.Get("t4r0k-abc-1")
+assert(w and w.v == V and w.at == V and w.by == "Tharok-Hyjal" and w.ml == "Tharok-Hyjal" and w.winner == "Orvane-Hyjal" and w.ilvl == 650 and w.cat == "up"
+  and w.votes == 2 and w.night == night.id, "LW : la même entrée que chez le chef de butin")
+local seq = RosterDB.hist.seq
+addon("Tharok-Hyjal", "LW;k-1;242520;Orvane-Hyjal;council;upgrade;2 votes;t4r0k-abc-1;" .. V .. ";650")
+assert(RosterDB.hist.seq == seq and H.Get("t4r0k-abc-1") == w, "même LW reçu deux fois : rien ne change")
+addon("Tharok-Hyjal", "LW;k-1;242520;Vex-Kael'Thas;roll;;MS 12;t4r0k-abc-1;" .. (V - 5) .. ";650")
+assert(H.Get("t4r0k-abc-1").winner == "Orvane-Hyjal" and RosterDB.hist.seq == seq, "version plus ancienne : ignorée")
+addon("Tharok-Hyjal", "LW;k-1;242520;Vex-Kael'Thas;roll;;OS 12;t4r0k-abc-1;" .. (V + 5) .. ";650")
+w = H.Get("t4r0k-abc-1")
+assert(w.winner == "Vex-Kael'Thas" and w.v == V + 5 and w.cat == nil and RosterDB.hist.seq == seq + 1 and w.seq == seq + 1, "version plus récente : remplace (jet OS : ne compte pas)")
+addon("Vex-Kael'Thas", "LW;k-9;242521;Vex-Kael'Thas;ml;;;x-1;" .. V .. ";650")
+assert(not H.Get("x-1") and not find(242521), "LW d'un autre que le chef de butin : ignoré")
+addon("Tharok-Hyjal", "LW;k-2;242522;Brumelune-Ysondre;roll;;MS 50")
+local lid = H.LegacyId("Tharok-Hyjal", "k-2")
+local le = H.Get(lid)
+assert(lid:match("^lw%-[0-9a-z]+$") and le and le.winner == "Brumelune-Ysondre" and le.cat == "ms" and le.by == "Tharok-Hyjal", "LW d'un addon 0.3 : identifiant tiré du chef de butin et de la clé")
+addon("Tharok-Hyjal", "LW;k-2;242522;Vex-Kael'Thas;roll;;MS 50")
+assert(H.Get(lid).winner == "Vex-Kael'Thas" and H.Get(lid).v == le.v + 1, "LW 0.3 suivant : le dernier reçu gagne")
+addon("Tharok-Hyjal", "LW;k-3;242523;Vex-Kael'Thas;ml;;;mauvais id!;" .. V .. ";650")
+assert(H.Get(H.LegacyId("Tharok-Hyjal", "k-3")), "identifiant illisible : comme un LW 0.3")
+
+-- 12d. Membre du conseil (ligne L du site, sans N) : les nombres du chef de butin, relayés avec chaque réponse, sont ceux
+-- qu'on voit ; ceux d'un autre joueur sont ignorés ; « aucun historique chez Tharok » : chacun voit les siens
+local NOW = time()
+assert(D.Load(table.concat({ "RRG;1;g1;" .. NOW .. ";Les Veilleurs", "R;r12;" .. (NOW + 600) .. ";Faille de Sporefall;mythic;20;present;Kaeldra-Hyjal;council",
+  "L;r12;Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre", "END;1" }, "\n")), "conseil du raid (ligne L)")
+assert(Lo.IsCouncil("Tharok-Hyjal") and not Lo.IsMaster() and not G.LootCounts(), "membre du conseil, pas de compte du site")
+addon("Tharok-Hyjal", "LO;88001;item:242530::::::::90:::::;Gantelets Kith'ix")
+assert(Lo.Council("88001") and not Lo.Council("88001").isMaster, "conseil de Tharok chez moi")
+addon("Tharok-Hyjal", "LA;88001;bis;;;Brumelune-Ysondre;r;41;20;11;7;", "RAID")
+addon("Tharok-Hyjal", "LA;88001;upgrade;;chuchoté;Orvane-Hyjal;;3;0;1;0;", "WHISPER")
+addon("Vex-Kael'Thas", "LA;88001;off;;;;;9;9;9;9;", "WHISPER")
+local mc = Lo.Council("88001")
+local cb, co, cv = cand(mc, "Brumelune-Ysondre"), cand(mc, "Orvane-Hyjal"), cand(mc, "Vex-Kael'Thas")
+assert(select(2, Lo.Received("Brumelune-Ysondre")) ~= 41, "mes nombres diffèrent")
+assert(cb.received == 41 and cb.receivedBis == 20 and cb.receivedUp == 11 and cb.receivedMs == 7 and cb.receivedFrom == "Tharok-Hyjal" and cb.receivedSite == nil, "nombres du chef de butin, pas les miens")
+assert(co.received == 3 and co.receivedUp == 1 and co.whispered and co.receivedFrom == "Tharok-Hyjal", "réponse chuchotée relayée : nombres du chef de butin")
+assert(cv.received == select(2, Lo.Received("Vex-Kael'Thas")) and not cv.receivedFrom and not mc.mlNone, "nombres envoyés par un autre joueur : ignorés")
+addon("Tharok-Hyjal", "LA;88001;transmo;;;Mirwen-Hyjal;r;-;;;;", "RAID")
+mc = Lo.Council("88001")
+assert(mc.mlNone and not cand(mc, "Mirwen-Hyjal").receivedFrom, "pas d'historique chez le chef de butin : chacun voit ses nombres")
+LU.ShowCouncil("88001")
+assert(LU.Windows().council.hintText:GetText():find("aucun historique chez Tharok", 1, true), "dit dans la fenêtre du conseil")
+addon("Tharok-Hyjal", "LC;88001;Brumelune-Ysondre")
+
+-- 12e. « Reçus » pendant la transition (étude §5.7) : site (N, D) + historique après la date des données du site, sans
+-- double compte (l'attribution d'avant est déjà dans N)
+assert(Lo.SetMaster(nil) and Lo.IsMaster(), "de nouveau chef de butin")
+advance(1)
+local GEN = time()
+advance(5)
+local gl = got(242531, "Gantelets Kith'ix", 12)
+assert(Lo.Award(gl.key, "Brumelune-Ysondre", "council", "bis", "2 votes"), "attribué après la date des données du site")
+assert(D.Load(table.concat({ "RRG;1;g1;" .. GEN .. ";Les Veilleurs", "R;r12;" .. (GEN + 600) .. ";Faille de Sporefall;mythic;20;present;Kaeldra-Hyjal;council",
+  "L;r12;Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre", "N;saison;depuis le 01/11/2026;Brumelune-Ysondre:3,Tharok-Hyjal:1", "D;Brumelune-Ysondre:1:1:0", "END;1" }, "\n")),
+  "données du site avec N et D")
+local bs, bt, bc, bd, bsince = Lo.Received("Brumelune-Ysondre")
+assert(bs == 3 and bt == 1 and bc and bsince == GEN and bd.bis == 2 and bd.up == 1 and bd.ms == 0, "site 3 + 1 de l'historique (l'Upgrade d'avant : déjà dans N)")
+mark = #S.sent
+local la2 = select(2, Lo.StartCouncil(got(242532, "Bracelets Kith'ix", 13).key))
+addon("Brumelune-Ysondre", "LA;" .. la2 .. ";bis;;", "WHISPER")
+advance(1)
+assert(sentMsg("^LA;" .. la2 .. ";bis;;;Brumelune%-Ysondre;r;4;2;1;0;$", mark + 1, "RAID"), "relais : site + historique")
+local mine = Lo.Council(la2)
+assert(mine.since == GEN and cand(mine, "Brumelune-Ysondre").received == 4 and cand(mine, "Brumelune-Ysondre").receivedTonight == 1, "conseil : site + historique")
+Lo.Cancel(Lo.Items()[#Lo.Items()].key)
+
+-- 12f. Page Butin › Historique (lecture seule) : par soirée, recherche, filtre, par joueur ; dans les deux habillages
+buildPages(nil)
+local ps = P.state.loot
+assert(ps.total == #H.Entries() and ps.shown == ps.total and ps.groups >= 2 and not ps.test and not ps.empty, "page Historique : tout, par soirée (" .. ps.total .. ")")
+local joined = table.concat(ps.lines, "\n")
+assert(joined:find("Heaume Kith'ix", 1, true) and joined:find("[Upgrade]", 1, true) and joined:find("[jet MS]", 1, true) and joined:find("[ne compte pas]", 1, true)
+  and joined:find("butin de groupe, sans passer", 1, true) and joined:find("gardé", 1, true) and joined:find("Kith'ix", 1, true), "objets, catégories, méthode, boss")
+P.historyView.search = " BRUMELUNE "
+P.Refresh("loot")
+assert(#P.state.loot.lines >= 2, "recherche")
+for _, l in ipairs(P.state.loot.lines) do assert(l:find("Brumelune", 1, true), "recherche (sans casse) : " .. l) end
+P.historyView.search, P.historyView.filter = "", "skipped"
+P.Refresh("loot")
+local skipped = 0
+for _, e in ipairs(H.Entries()) do if not e.cat then skipped = skipped + 1 end end
+assert(P.state.loot.shown == skipped and skipped >= 3, "filtre : ce qui ne compte pas")
+P.historyView.filter, P.historyView.group = "counted", "player"
+P.Refresh("loot")
+assert(P.state.loot.shown == ps.total - skipped and P.state.loot.groups >= 3, "par joueur, ce qui compte")
+P.historyView.filter, P.historyView.group = "all", "night"
+buildPages("site")
+assert(P.state.loot.total == ps.total, "page Historique (site)")
+RosterDB.skin = nil
+
+-- 12g. Sauvegarde complète avant effacement (nouvelle saison, R4d) et restauration : l'horloge ne recule pas
+local n0, seq0, node0 = #H.Entries(), RosterDB.hist.seq, RosterDB.hist.node
+local b = H.Backup("nouvelle saison")
+assert(b and b.n == n0 and b.reason == "nouvelle saison" and #H.Backups() == 1 and b.hist ~= RosterDB.hist and b.hist.entries[e1.id], "sauvegarde complète")
+-- Effacement (ce que fera « Nouvelle saison » en R4d) : un changement, donc l'horloge avance
+RosterDB.hist.entries, RosterDB.hist.nights, RosterDB.hist.seq = {}, {}, RosterDB.hist.seq + 1
+assert(#H.Entries() == 0 and select(2, Lo.Received("Brumelune-Ysondre")) == 0, "effacé")
+assert(H.Restore(1) and #H.Entries() == n0 and RosterDB.hist.seq > seq0 and RosterDB.hist.node == node0 and H.Get(e1.id).winner == "Brumelune-Ysondre", "restaurée")
+for _ = 1, 4 do H.Backup() end
+assert(#H.Backups() == 3, "3 sauvegardes au plus")
+RosterDB.histBackups = nil
+night = H.Night(night.id)
+
+-- 12h. Attribution d'avant la 0.4 (encore dans les objets du chef de butin) : reprise au premier lancement, avec
+-- l'identifiant que lui ont donné les addons 0.4 qui ont reçu son LW
+local old = { key = time() .. "-242540-3", itemId = 242540, link = item(242540, "Vieux heaume"), name = "Vieux heaume", status = "traded",
+  winner = "Tharok-Hyjal", method = "roll", detail = "MS 90", at = time() - 600, awardedAt = time() - 500 }
+table.insert(RosterDB.loot.items, old)
+assert(H.Migrate() == 1 and old.histId == H.LegacyId("Kaeldra-Hyjal", old.key) and H.Get(old.histId).at == old.awardedAt and H.Get(old.histId).cat == "ms", "reprise d'avant la 0.4")
+assert(H.Migrate() == 0, "une seule fois")
+assert(errors() == 0, "historique sans erreur : " .. tostring(lastPrinted("erreur")))
+
+-- 12i. /reload simulé : la sauvegarde (données simples seulement, aucune valeur secrète) est relue par un addon
+-- rechargé à neuf ; puis 13 h plus tard (raid quitté), les objets du chef de butin sont partis, l'historique reste
+noSecret(RosterDB, "RosterDB")
+local function plain(v, path)
+  local t = type(v)
+  assert(t == "table" or t == "string" or t == "number" or t == "boolean", "sauvegarde : " .. t .. " (" .. path .. ")")
+  if t ~= "table" then return v end
+  local out = {}
+  for k, x in pairs(v) do
+    assert(type(k) == "string" or type(k) == "number", "sauvegarde : clé " .. type(k) .. " (" .. path .. ")")
+    out[k] = plain(x, path .. "." .. tostring(k))
+  end
+  return out
+end
+local ids = {}
+for _, e in ipairs(H.Entries()) do ids[#ids + 1] = e.id end
+local node, hseq, helmId, nightId = RosterDB.hist.node, RosterDB.hist.seq, helm.histId, night.id
+RosterDB = plain(RosterDB, "RosterDB")
+for k in pairs(events) do events[k] = nil end
+for i = #timers, 1, -1 do timers[i] = nil end
+local ns2 = { Laudit = ns.Laudit }
+for line in io.lines("addon/Roster/Roster.toc") do
+  line = line:gsub("%s+$", "")
+  if line:match("%.lua$") then
+    local path = addonFile(line)
+    if path then assert(loadfile(path))("Roster", ns2) else STUBS[line](ns2) end
+  end
+end
+fire("ADDON_LOADED", "Roster")
+fire("PLAYER_LOGIN")
+fire("PLAYER_ENTERING_WORLD", false, true)
+local H2, Lo2 = ns2.Hist, ns2.Loot
+assert(H2 and H2 ~= H and RosterDB.hist.node == node and RosterDB.hist.seq >= hseq, "après /reload : même installation, horloge gardée")
+local after = H2.Entries()
+assert(#after == #ids, "après /reload : toutes les entrées (" .. #after .. "/" .. #ids .. ")")
+for i, e in ipairs(after) do assert(e.id == ids[i], "mêmes entrées, même ordre") end
+assert(H2.Get(helmId).winner == "Brumelune-Ysondre" and #Lo2.Items() >= 1, "entrée relue ; objets du chef de butin encore là")
+advance(70)
+assert(H2.CurrentNight() and H2.CurrentNight().id == nightId and lastPrinted("soirée reprise : Faille de Sporefall"), "après /reload : la même soirée reprend")
+S.raid, S.members = false, { S.members[1] }
+rosterUpdate()
+advance(13 * 3600)
+assert(#Lo2.Items() == 0, "13 h plus tard : objets du chef de butin retirés (12 h)")
+assert(#H2.Entries() == #ids and H2.Get(helmId) and H2.Get(helmId).cat == "up" and select(2, ns2.Loot.Received("Brumelune-Ysondre")) >= 1, "13 h plus tard : l'historique est toujours là")
+assert(not H2.CurrentNight() and H2.Night(nightId) and H2.Night(nightId).bosses[1], "soirée finie, gardée")
+assert(errors() == 0, "historique après /reload sans erreur : " .. tostring(lastPrinted("erreur")))
+end
+history()
 assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
 -- Données du test autorisées par le contrôle des textes : noms de groupe et de raid écrits ici, noms d'objets du test
 -- coupés à 14 octets dans la bande d'objets (LootUI, objet sans icône)

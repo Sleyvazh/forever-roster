@@ -58,7 +58,7 @@ end
 -- Contrôle de chargement : chaque module doit avoir défini ses fonctions (sinon une erreur l'a arrêté en route)
 local SCRIPT_ERRORS = N("(fais /console scriptErrors 1 puis /reload pour voir l'erreur)")
 local MODULES = {
-  { "Format" }, { "Comm", "AskVersions" }, { "Groups" }, { "Compo", "Invite" }, { "Recorder", "IsRecording" },
+  { "Format" }, { "Comm", "AskVersions" }, { "Groups" }, { "Compo", "Invite" }, { "Recorder", "IsRecording" }, { "Hist", "Entries" },
   { "Loot", "Items" }, { "UI", "Show" }, { "Pages", "Build" }, { "LootUI", "ShowLoot" }, { "Test", "Start" }, { "Minimap", "Create" },
 }
 ns.on("ADDON_LOADED", function(name)
@@ -125,8 +125,8 @@ function ns.LangPending() return ns.uiLang ~= nil and ns.Lang() ~= ns.uiLang end
 -- Aide : textes en français (clés), traduits à l'affichage ; en anglais, l'aide montre les commandes anglaises
 local HELP_LANG = N("/roster langue [fr | en | auto] : langue de l'interface (auto : celle du jeu ; recharge l'interface)")
 local HELP = {
-  N("/roster : ouvrir ou fermer la fenêtre (onglets Synchro, Raids, En raid, Compo, Options) ; aussi par le bouton de la minicarte"),
-  N("/roster synchro | raids | enraid | compo | options : ouvrir directement un onglet"),
+  N("/roster : ouvrir ou fermer la fenêtre (onglets Synchro, Raids, En raid, Compo, Butin, Options) ; aussi par le bouton de la minicarte"),
+  N("/roster synchro | raids | enraid | compo | historique | options : ouvrir directement un onglet (historique : onglet Butin)"),
   N("/roster inviter : inviter les persos de la compo chargée ; /roster placer : les placer dans leurs groupes"),
   N("/roster versions : qui a l'addon dans le raid, et sa version"),
   N("/roster butin : fenêtre du chef de butin (objets reçus, conseil, jets MS / OS, jet libre, garder)"),
@@ -140,7 +140,7 @@ local HELP = {
 
 -- Commandes : mots français, et leurs équivalents anglais
 local TABS = { synchro = "synchro", raids = "raids", enraid = "enraid", compo = "compo", options = "options",
-  sync = "synchro", inraid = "enraid", comp = "compo" }
+  sync = "synchro", inraid = "enraid", comp = "compo", historique = "loot", history = "loot" }
 local ALIAS = {
   inviter = "invite", invite = "invite", placer = "arrange", place = "arrange", sort = "arrange", arrange = "arrange",
   versions = "versions", version = "versions", butin = "loot", loot = "loot", remettre = "handover", handover = "handover",

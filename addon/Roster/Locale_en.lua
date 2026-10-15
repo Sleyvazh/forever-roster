@@ -34,10 +34,10 @@ T["raccourci"] = "key binding"
 T["celle du jeu (%s)"] = "game client (%s)"
 T["/roster langue [fr | en | auto] : langue de l'interface (auto : celle du jeu ; recharge l'interface)"] =
   "/roster language [fr | en | auto]: interface language (auto: the game client's; reloads the interface)"
-T["/roster : ouvrir ou fermer la fenêtre (onglets Synchro, Raids, En raid, Compo, Options) ; aussi par le bouton de la minicarte"] =
-  "/roster: open or close the window (Sync, Raids, In raid, Comp, Options tabs); also with the minimap button"
-T["/roster synchro | raids | enraid | compo | options : ouvrir directement un onglet"] =
-  "/roster sync | raids | inraid | comp | options: open a tab directly"
+T["/roster : ouvrir ou fermer la fenêtre (onglets Synchro, Raids, En raid, Compo, Butin, Options) ; aussi par le bouton de la minicarte"] =
+  "/roster: open or close the window (Sync, Raids, In raid, Comp, Loot, Options tabs); also with the minimap button"
+T["/roster synchro | raids | enraid | compo | historique | options : ouvrir directement un onglet (historique : onglet Butin)"] =
+  "/roster sync | raids | inraid | comp | history | options: open a tab directly (history: Loot tab)"
 T["/roster inviter : inviter les persos de la compo chargée ; /roster placer : les placer dans leurs groupes"] =
   "/roster invite: invite the characters of the loaded comp; /roster sort: move them to their groups"
 T["/roster versions : qui a l'addon dans le raid, et sa version"] = "/roster versions: who has the addon in the raid, and which version"
@@ -179,6 +179,16 @@ T["relevé du raid démarré : %s (présence, boss et butin, envoyés avec ta sy
   "raid log started: %s (attendance, bosses and loot, sent with your sync). Options tab to turn it off."
 T["relevé du raid"] = "raid log"
 T["fin de rencontre"] = "encounter end"
+
+-------------------------------------------------------------------------------------------------------------------
+-- History.lua : historique durable du butin (lot R4a), soirées
+-------------------------------------------------------------------------------------------------------------------
+T["historique du butin"] = "loot history"
+T["instance de raid"] = "raid instance"
+T["soirée reprise : %s. Présence, boss et butin vont dans l'historique de Roster (onglet Butin)."] =
+  "raid night resumed: %s. Attendance, bosses and loot go into Roster's history (Loot tab)."
+T["soirée relevée : %s. Présence, boss et butin vont dans l'historique de Roster (onglet Butin), sans le site."] =
+  "raid night logged: %s. Attendance, bosses and loot go into Roster's history (Loot tab), no website needed."
 
 -------------------------------------------------------------------------------------------------------------------
 -- UI.lua : fenêtre principale, Synchro, Options, synchro rapide
@@ -366,6 +376,37 @@ T["placement en cours"] = "sorting in progress"
 T["Groupe %d"] = "Group %d"
 T["Pas placés"] = "Not placed"
 T["(hors ligne)"] = "(offline)"
+-- En raid : soirée relevée par l'addon ; Butin › Historique (lot R4a)
+T["%s · %s"] = "%s · %s"
+T["Soirée relevée par l'addon"] = "Raid night logged by the addon"
+T["Historique"] = "History"
+T["La soirée (présence, boss, butin) va dans l'historique de l'addon dès que tu es dans une instance de raid, distribution activée."] =
+  "The raid night (attendance, bosses, loot) goes into the addon's history as soon as you are in a raid instance with distribution on."
+T["autre"] = "other"
+T["Tous les objets"] = "All items"
+T["Ceux qui comptent"] = "Counted ones"
+T["Ceux qui ne comptent pas"] = "Not counted ones"
+T["ne compte pas"] = "not counted"
+T["butin de groupe, sans passer"] = "group loot, didn't pass"
+T["Chercher :"] = "Search:"
+T["Par soirée"] = "By raid night"
+T["Par joueur"] = "By player"
+T["Raid d'essai : historique en mémoire, effacé à la fin de l'essai."] = "Test raid: history in memory, cleared when the test ends."
+T["Tout ce que Roster distribue (attribué, gardé, gagné sans passer), gardé dans l'addon, même sans le site. Lecture seule."] =
+  "Everything Roster distributes (awarded, kept, won without passing), kept in the addon, even without the website. Read-only."
+T["%d objet enregistré"] = "%d item recorded"
+T["%d objets enregistrés"] = "%d items recorded"
+T["%d compte"] = "%d counted"
+T["%d comptent"] = "%d counted"
+T["%d soirée"] = "%d raid night"
+T["%d soirées"] = "%d raid nights"
+T["Aucun butin enregistré : il apparaîtra ici dès la première attribution (fenêtre du butin : /roster butin)."] =
+  "No loot recorded: it shows up here from the first award (loot window: /roster loot)."
+T["%d sur %d affichés."] = "%d of %d shown."
+T["Aucun objet ne correspond."] = "No matching item."
+T["Comptent : %d"] = "Counted: %d"
+T["Hors soirée relevée"] = "Outside a logged raid night"
+T["+ %d de plus : affine la recherche."] = "+ %d more: narrow the search."
 
 -------------------------------------------------------------------------------------------------------------------
 -- Minimap.lua : infobulle du bouton, liste des addons de la minicarte
@@ -405,6 +446,7 @@ T["conseil du butin"] = "loot council"
 T["jets"] = "rolls"
 T["échange"] = "trade"
 T["erreur (bilan)"] = "error (raid summary)"
+T["erreur (historique du butin)"] = "error (loot history)"
 -- Chef de butin, distribution par Roster
 T["pas pendant un combat de boss : réessaie juste après le combat."] = "not during a boss fight: try again right after the fight."
 T["raid d'essai : tu restes chef de butin."] = "test raid: you stay loot master."
@@ -596,7 +638,7 @@ T["%s sur %d joueurs"] = "%s out of %d players"
 T["Ton vote : %s"] = "Your vote: %s"
 T["Pas de conseil en cours."] = "No council in progress."
 T["Reçus · %s"] = "Received · %s"
-T["Reçus ce soir"] = "Received tonight"
+T["comptes : aucun historique chez %s"] = "counts: no history at %s's"
 T["(tri)"] = "(sorted)"
 T["Conseil terminé : %s reçoit l'objet."] = "Council over: %s receives the item."
 T["%d en attente"] = "%d waiting"
@@ -617,8 +659,9 @@ T["%s au total"] = "%s in total"
 T["dont %d autre (donné directement, noté sans catégorie)"] = "including %d other (given directly, logged without a category)"
 T["dont %d autres (donné directement, noté sans catégorie)"] = "including %d others (given directly, logged without a category)"
 T["%s sur le site, %s"] = "%s on the website, %s"
-T["Données du site non chargées : colle-les dans l'onglet Synchro."] = "Website data not loaded: paste it in the Sync tab."
-T["%s ce soir (pas encore sur le site)"] = "%s tonight (not on the website yet)"
+T["Nombres du chef de butin (%s) : tout le conseil voit les mêmes."] = "Loot master's numbers (%s): the whole council sees the same."
+T["%s dans l'historique de l'addon depuis les données du site (%s)"] = "%s in the addon's history since the website data (%s)"
+T["%s dans l'historique de l'addon"] = "%s in the addon's history"
 T["Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés."] = "Not counted: Off-spec, Transmog, OS and free rolls, kept items."
 T["En attente..."] = "Waiting..."
 T["Les réponses arrivent ici au fil de l'eau."] = "Responses show up here as they come in."
@@ -733,6 +776,11 @@ T["Chuchoter à %s"] = "Whisper %s"
 T["8. Côté joueur"] = "8. Player side"
 T["Tharok, chef de butin fictif, te propose deux objets d'un coup : la fenêtre de réponse des joueurs, avec la bande d'objets. Le second n'est pas de ton armure : seulement Transmo ou Passer. Après chaque réponse, la fenêtre passe à l'objet suivant ; tu peux changer une réponse tant que Tharok n'a pas terminé (quelques secondes après ta dernière réponse)."] = "Tharok, a test loot master, offers you two items at once: the players' response window, with the item strip. The second isn't your armor type: only Transmog or Pass. After each response, the window moves to the next item; you can change a response until Tharok is done (a few seconds after your last response)."
 T["Recevoir 2 propositions"] = "Receive 2 offers"
+T["9. Historique"] = "9. History"
+T["Chaque objet attribué ou gardé entre dans l'historique du butin (onglet Butin de la fenêtre Roster), avec sa catégorie (BiS, Upgrade, jet MS) et sa soirée. Pendant l'essai, en mémoire seulement : rien n'est gardé après."] =
+  "Every awarded or kept item goes into the loot history (Loot tab of the Roster window), with its category (BiS, Upgrade, MS roll) and its raid night. During the test, in memory only: nothing is kept afterwards."
+T["Dans l'historique : %d"] = "In the history: %d"
+T["Ouvrir l'historique"] = "Open history"
 T["Fin"] = "End"
 T["%d objet attribué pendant l'essai. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid."] = "%d item awarded during the test. Real group loot (auto-pass), trading and announcements still need checking in a real raid."
 T["%d objets attribués pendant l'essai. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid."] = "%d items awarded during the test. Real group loot (auto-pass), trading and announcements still need checking in a real raid."

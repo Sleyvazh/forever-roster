@@ -12,12 +12,17 @@
 --     (Lo.CanUseClass) ;
 --   - tout au conseil d'un coup, numéroté (Lo.StartAllCouncils, Lo.Councils) ; « bis 2 » chuchoté vise l'objet 2 ;
 --   - colonne « Reçus » détaillée : BiS · Upgrade · Jets MS (ligne D du site, Lo.Category, Lo.Received).
+-- Historique durable (R4a, 0.4.0 ; History.lua) : chaque attribution (Lo.Award, Lo.Keep), chaque LW reçu et chaque objet
+-- gagné au butin de groupe sans passer y crée ou met à jour une entrée, sans raid du site ; LW porte l'identifiant, la
+-- version et le niveau de l'entrée (champs 8 à 10). « Reçus » = site (N, D) + historique après la date des données du
+-- site ; le chef de butin joint ses nombres à chaque réponse qu'il relaie (LA, champs 8 à 12) : le conseil voit les mêmes.
 -- WoW 12.x : messages d'addon et chat bloqués pendant une rencontre de boss (file de Comm.lua), textes du chat
 -- (jets, chuchotements) secrets pendant le verrou du chat : jamais comparés ni gardés.
 -- Raid d'essai (Test.lua) : ns.Loot.test remplace le raid, ses membres, les messages, le chat et l'échange ; rien n'est
--- écrit dans le bilan ni dans la sauvegarde. Crochets : send, say, trade(entry), reroll, et facultatifs tradeShow(partner,
--- objets) (échange ouvert par un gagnant fictif) et armorRule (true : la règle de l'armure et des armes s'applique aussi
--- aux réponses des joueurs fictifs) ; counts (objets reçus, avec bis / up / ms par entrée si voulu).
+-- écrit dans le bilan ni dans la sauvegarde (historique en mémoire : ns.Hist.test). Crochets : send, say, trade(entry),
+-- reroll, et facultatifs tradeShow(partner, objets) (échange ouvert par un gagnant fictif) et armorRule (true : la règle
+-- de l'armure et des armes s'applique aussi aux réponses des joueurs fictifs) ; counts (objets reçus, avec bis / up / ms
+-- par entrée si voulu).
 -- Langue (addon/shared/Locale.lua) : L["texte"] et L("format", …) traduisent à l'affichage ; le module s'appelle donc Lo.
 -- Annonces et chuchotements partent dans la langue du chef de butin ; les chuchotements reçus sont lus en français et en
 -- anglais (Lo.ParseWhisper). Restent en français : messages entre addons et détails pour le site (« gardé », « MS 87 »).
@@ -33,7 +38,7 @@ Lo.KEEP = 12 * 3600      -- objets du chef de butin gardés 12 h au plus
 Lo.ML_EVERY = 10         -- secondes : état de la distribution renvoyé au plus toutes les 10 s quand le raid change
 Lo.NOT_PASSED_KEEP = 2 * 3600
 Lo.test = nil
-Lo.testItems, Lo.testNotPassed, Lo.testLog = {}, {}, { loot = {} }
+Lo.testItems, Lo.testNotPassed = {}, {}
 
 local function db() return ns.db and ns.db() end
 local function me() return Cm.Me() end
@@ -50,6 +55,12 @@ local function ui(fn, ...)
   if U and U[fn] then ns.safe(L["fenêtres du butin"], U[fn], ...) end
 end
 local function minQuality() return (ns.Recorder and ns.Recorder.MinQuality and ns.Recorder.MinQuality()) or 4 end
+-- Historique (History.lua) : relevé de la soirée un instant après un changement de la distribution
+local function histSoon()
+  if ns.Hist and ns.Hist.Sample and C_Timer and C_Timer.After then
+    C_Timer.After(1, function() ns.safe(L["historique du butin"], ns.Hist.Sample) end)
+  end
+end
 local seq = 0
 local function nextSeq() seq = seq + 1 return seq end
 local order = 0 -- ordre de proposition des conseils
@@ -263,6 +274,7 @@ function Lo.SetEnabled(on)
   sendML()
   ns.print(s.on and L["distribution du butin par Roster activée : les autres joueurs passeront le butin de groupe."]
     or L["distribution du butin par Roster coupée : butin de groupe habituel."])
+  histSoon()
   refresh()
   return true
 end
@@ -287,6 +299,7 @@ Cm.On("ML", function(sender, f, dist)
       ns.print(L("distribution du butin par Roster : %s distribue. %s", m and F.Display(m) or L["le chef de butin"],
         Lo.AutoPass() and L["Tu passeras automatiquement le butin de groupe (Options pour le couper)."] or L["Passer automatique coupé chez toi (Options)."]))
     end
+    histSoon()
   end
   refresh()
 end)
@@ -663,6 +676,8 @@ function Lo.OnLoot(msg)
   if not full or same(full, me()) then return end
   local np = notPassedList()
   np[#np + 1] = { name = full, link = link, itemId = id, at = time() }
+  -- Historique : noté pour lui (compte comme un objet seulement noté sur le site)
+  if ns.Hist and ns.Hist.Noted then ns.safe(L["historique du butin"], ns.Hist.Noted, full, link, id) end
   ns.print(L("%s a gagné %s au butin de groupe (il n'a pas passé : sans l'addon ?). Fenêtre du butin : « Chuchoter » pour lui demander de garder l'objet pour l'échange.", F.Display(full), link))
   ui("ShowLoot")
   refresh()
@@ -676,6 +691,7 @@ function Lo.AddTestNotPassed(name, link)
   if not (full and id) then return false end
   local np = notPassedList()
   np[#np + 1] = { name = full, link = link, itemId = id, at = time() }
+  if ns.Hist and ns.Hist.Noted then ns.safe(L["historique du butin"], ns.Hist.Noted, full, link, id) end -- historique de l'essai
   ui("ShowLoot")
   refresh()
   return true
@@ -1094,6 +1110,25 @@ end
 -- Ma réponse (changeable tant que le conseil est ouvert) : BiS, Upgrade et Off-spec refusés sur un objet que je ne peux
 -- pas porter (renvoie false et le message)
 local GEAR = { bis = true, upgrade = true, off = true }
+
+-- Nombres du chef de butin joints à chaque réponse qu'il relaie (étude §5.4, champs 8 à 12 de LA) : « ;<total>;<BiS>;
+-- <Upgrade>;<jets MS>;<main si alt> », ou « ;-;;;; » s'il n'a ni données du site ni historique (chacun voit alors ses
+-- propres nombres). Le main (R4c) reste vide pour l'instant.
+local function countTail(who)
+  if not Lo.HasCounts() then return ";-;;;;" end
+  local site, mine, _, d = Lo.Received(who)
+  local main = ns.Hist and ns.Hist.MainOf and ns.Hist.MainOf(who)
+  return ";" .. (site + mine) .. ";" .. d.bis .. ";" .. d.up .. ";" .. d.ms .. ";" .. F.clean(main or "")
+end
+Lo.CountTail = countTail
+-- Nombres du chef de butin lus dans un LA : { n, bis, up, ms, main }, { none = true } (pas d'historique chez lui), nil
+local function relayedCounts(f)
+  if f[8] == "-" then return { none = true } end
+  local n = tonumber(f[8])
+  if not n then return nil end
+  return { n = n, bis = tonumber(f[9]) or 0, up = tonumber(f[10]) or 0, ms = tonumber(f[11]) or 0, main = F.FullName(F.txt(f[12], 60)) }
+end
+
 function Lo.Answer(session, response, note)
   local o = findOffer(session)
   if not o or o.closed or not Lo.RESPONSES[response] then return false end
@@ -1108,6 +1143,8 @@ function Lo.Answer(session, response, note)
   end
   local gear = F.GearText(Lo.Equipped(o.itemString))
   local msg = "LA;" .. session .. ";" .. response .. ";" .. gear .. ";" .. F.cut(F.trim(F.clean(note or "")), 60) -- nolocale (message entre addons)
+  -- Chef de butin qui répond à son propre objet : ses nombres en fin de ligne (champs 6 et 7 vides : pas un relais)
+  if same(o.from, me()) then msg = msg .. ";;" .. countTail(me()) end
   toCouncil(msg, o.from)
   Cm.Deliver(me(), msg, "SELF")
   o.answered, o.response = time(), response
@@ -1147,11 +1184,12 @@ Cm.On("LA", function(sender, f, dist) -- nolocale (message entre addons)
   end
   local response, canUse = checked(c, who, f[3])
   c.cands[F.Fold(who)] = { name = who, response = response, asked = response ~= f[3] and f[3] or nil, canUse = canUse, gear = F.Gear(f[4]),
-    note = whispered and "" or F.txt(f[5], 60), whispered = whispered, at = time() }
-  -- Chef de butin : chaque réponse reçue d'un joueur est relayée au raid ; seuls les membres du conseil (qui ont ce
-  -- conseil) la gardent. Un joueur sans les données du site ne l'envoie qu'au chef de butin.
+    note = whispered and "" or F.txt(f[5], 60), whispered = whispered, at = time(),
+    ml = same(sender, c.master) and relayedCounts(f) or nil } -- nombres du chef de butin (0.4), de lui seulement
+  -- Chef de butin : chaque réponse reçue d'un joueur est relayée au raid, avec ses nombres (0.4) ; seuls les membres du
+  -- conseil (qui ont ce conseil) la gardent. Un joueur sans les données du site ne l'envoie qu'au chef de butin.
   if not relayed and not Lo.test and same(c.master, me()) and not same(sender, me()) then
-    send("LA;" .. c.session .. ";" .. response .. ";" .. F.clean(f[4] or "") .. ";" .. F.cut(F.clean(F.txt(f[5], 60)), 60) .. ";" .. who .. ";r") -- nolocale
+    send("LA;" .. c.session .. ";" .. response .. ";" .. F.clean(f[4] or "") .. ";" .. F.cut(F.clean(F.txt(f[5], 60)), 60) .. ";" .. who .. ";r" .. countTail(who)) -- nolocale
   end
   refresh()
 end)
@@ -1195,7 +1233,7 @@ function Lo.OnWhisper(text, sender)
   -- Règle de l'armure et des armes appliquée avant le relais : le conseil (même avec un addon 0.2) reçoit déjà Transmo
   local asked = r
   r = checked(c, who, r)
-  local msg = "LA;" .. c.session .. ";" .. r .. ";;chuchoté;" .. who -- nolocale (message entre addons)
+  local msg = "LA;" .. c.session .. ";" .. r .. ";;chuchoté;" .. who .. ";" .. countTail(who) -- nolocale (message entre addons ; 7e champ vide)
   toCouncil(msg, me())
   Cm.Deliver(me(), msg, "SELF")
   local x = r ~= asked and c.cands[F.Fold(who)]
@@ -1261,31 +1299,30 @@ function Lo.Category(l)
   return nil
 end
 
--- Objets reçus d'un joueur : compte du site (N), ce soir (bilan en cours), l'objet N du site, et le détail
--- { bis, up, ms } = site (ligne D) + ce soir (Lo.Category)
+-- Objets reçus d'un joueur (étude §5.7) : compte du site (ligne N, ses persos ensemble ; détail D) plus les entrées de
+-- l'historique de l'addon (History.lua) postérieures à la date de génération des données du site, sans double compte ;
+-- sans données du site, l'historique seul. Renvoie : compte du site, compte de l'historique, bloc N du site (ou nil),
+-- détail { bis, up, ms } (site + historique), date de génération des données du site (nil : tout l'historique).
+-- Butin des alts : compté pour la personne (ns.Hist.Person ; liens main / alts en R4c).
+local function histCount(names, since)
+  local H = ns.Hist
+  if H and H.Count then return H.Count(names, since) end
+  return { n = 0, bis = 0, up = 0, ms = 0 }
+end
 function Lo.Received(name)
-  local c = Lo.test and Lo.test.counts or ns.Groups.Counts(ns.Groups.LootRaid())
+  local c, since
+  if Lo.test then c = Lo.test.counts else c, since = ns.Groups.LootCounts() end
+  since = c and since or nil
   local entry = F.CountFor(c, name)
-  local names = entry and entry.names or { name }
-  local log = Lo.test and Lo.testLog or ns.Recorder.Current()
-  local tonight = 0
-  local detail = { bis = tonumber(entry and entry.bis) or 0, up = tonumber(entry and entry.up) or 0, ms = tonumber(entry and entry.ms) or 0 }
-  -- Objets du chef de butin pas encore distribués (ramassés, sans méthode) : pas les siens
-  local holder = Lo.Enabled() and Lo.Master()
-  for _, l in ipairs(log and log.loot or {}) do
-    local waiting = holder and (l.method or "") == "" and same(l.who, holder)
-    if not waiting and Lo.Counts(l) then
-      for _, n in ipairs(names) do
-        if same(l.who, n) then
-          tonight = tonight + 1
-          local cat = Lo.Category(l)
-          if cat then detail[cat] = detail[cat] + 1 end
-          break
-        end
-      end
-    end
-  end
-  return entry and entry.n or 0, tonight, c, detail
+  local mine = histCount(entry and entry.names or { name }, since)
+  local detail = { bis = (tonumber(entry and entry.bis) or 0) + mine.bis, up = (tonumber(entry and entry.up) or 0) + mine.up,
+    ms = (tonumber(entry and entry.ms) or 0) + mine.ms }
+  return entry and entry.n or 0, mine.n, c, detail, since
+end
+-- Le chef de butin a-t-il des nombres à donner au conseil ? (données du site, ou historique de l'addon)
+function Lo.HasCounts()
+  if Lo.test then return true end
+  return ns.Groups.LootCounts() ~= nil or (ns.Hist ~= nil and ns.Hist.HasData())
 end
 
 -- Conseils de moins de 2 h, dans l'ordre de proposition (bande d'objets des fenêtres) : { session, num, link, name,
@@ -1317,8 +1354,8 @@ function Lo.Council(session)
   end
   local out = { session = c.session, num = c.num, key = c.key, itemId = c.itemId, link = c.link, name = c.name, ilvl = c.ilvl, master = c.master,
     closed = c.closed == true, winner = c.winner, myVote = myVote, cands = {}, waiting = {}, council = Lo.CouncilNames(), isMaster = same(c.master, me()) }
-  local _, _, counts = Lo.Received(me())
-  out.counts = counts
+  local _, _, counts, _, since = Lo.Received(me())
+  out.counts, out.since = counts, since
   -- Classes des membres (règle de l'armure et des armes), lues une fois
   local members, classes, rule = Lo.Members(), {}, armorRuleOn()
   for _, m in ipairs(members) do if usable(m.class) then classes[m.key] = m.class end end
@@ -1328,12 +1365,18 @@ function Lo.Council(session)
     local gear = {}
     for _, g in ipairs(x.gear or {}) do gear[#gear + 1] = { id = g.id, ilvl = g.ilvl, link = Lo.LinkFor(g.id) } end
     local site, tonight, _, d = Lo.Received(x.name)
+    local received, from = site + tonight, nil
+    -- Nombres du chef de butin (relayés avec la réponse, 0.4) : ceux que tout le conseil voit ; « aucun historique chez
+    -- lui » : chacun voit les siens
+    local ml = not out.isMaster and x.ml or nil
+    if ml and ml.none then out.mlNone, ml = true, nil end
+    if ml then received, site, tonight, d, from = ml.n, nil, nil, ml, c.master end
     -- Peut-il le porter ? false : la règle de l'armure ou des armes dit non pour sa classe (réponse devenue Transmo s'il voulait BiS…)
     local canUse = x.canUse
     if canUse == nil and rule then canUse = Lo.CanUseClass(c.itemString, classes[k] or (same(x.name, me()) and myClass() or nil)) end
     out.cands[#out.cands + 1] = { name = x.name, response = x.response, asked = x.asked, canUse = canUse, gear = gear, note = x.note or "",
-      whispered = x.whispered, received = site + tonight, receivedSite = site, receivedTonight = tonight,
-      receivedBis = d.bis, receivedUp = d.up, receivedMs = d.ms, votes = #vs, voters = vs }
+      whispered = x.whispered, received = received, receivedSite = site, receivedTonight = tonight, receivedFrom = from,
+      receivedBis = d.bis, receivedUp = d.up, receivedMs = d.ms, main = ml and ml.main or nil, votes = #vs, voters = vs }
   end
   table.sort(out.cands, function(a, b)
     local ra, rb = RANK[a.response] or 9, RANK[b.response] or 9
@@ -1550,16 +1593,24 @@ function Lo.Award(key, winner, method, response, detail)
     sendChat((left and left > 0) and L("Tu reçois %s : passe me voir pour l'échange (encore %s).", e.link, F.Duration(left))
       or L("Tu reçois %s : passe me voir pour l'échange.", e.link), "WHISPER", full)
   end
-  if Lo.test then
-    Lo.testLog.loot[#Lo.testLog.loot + 1] = { id = e.itemId, who = full, method = method, response = response or "", detail = detail, at = time() }
-  else
+  -- Historique durable (History.lua ; raid d'essai : en mémoire) : l'entrée de cette attribution, remplacée par une version
+  -- plus récente si l'objet est attribué de nouveau. Une erreur ici n'empêche jamais l'attribution.
+  local cand = e.session and Lo.councils[e.session] and Lo.councils[e.session].cands[F.Fold(full)]
+  local entry
+  if ns.Hist and ns.Hist.Award then
+    local okH, res = pcall(ns.Hist.Award, e, full, method, response, detail, { note = cand and not cand.whispered and cand.note or nil })
+    if okH then entry = res else ns.print("|cffff6060" .. L["erreur (historique du butin)"] .. "|r " .. tostring(res)) end
+  end
+  if not Lo.test then
     local was = logging
     logging = true
     local ok, idx = pcall(ns.Recorder.Award, e.itemId, full, method, response, detail, e.name, e.logIndex, e.key, nil, e.at)
     logging = was
     if ok then e.logIndex, e.logged = idx, idx ~= nil else ns.print("|cffff6060" .. L["erreur (bilan)"] .. "|r " .. tostring(idx)) end
-    -- Les autres relevés (chef de raid…) notent aussi le gagnant : tous les bilans du raid concordent
-    send("LW;" .. e.key .. ";" .. e.itemId .. ";" .. full .. ";" .. method .. ";" .. (response or "") .. ";" .. F.cut(F.clean(detail), 40))
+    -- Les autres addons notent aussi le gagnant (bilan du site, historique) : champs 8 à 10 (0.4) = identifiant et version
+    -- de l'entrée, niveau de l'objet ; un addon 0.3 ne lit que les 7 premiers
+    local tail = entry and (";" .. entry.id .. ";" .. entry.v .. ";" .. (tonumber(e.ilvl) or "")) or ""
+    send("LW;" .. e.key .. ";" .. e.itemId .. ";" .. full .. ";" .. method .. ";" .. (response or "") .. ";" .. F.cut(F.clean(detail), 40) .. tail)
   end
   refresh()
   return true
@@ -1573,7 +1624,14 @@ Cm.On("LW", function(sender, f, dist)
   local id, winner, method = tonumber(f[3]), F.FullName(F.txt(f[4], 60)), f[5]
   if not (id and winner and METHODS[method or ""]) then return end
   local response = Lo.RESPONSES[f[6] or ""] and f[6] ~= "pass" and f[6] or nil
-  ns.Recorder.Award(id, winner, method, response, F.txt(f[7], 40), nil, nil, F.txt(f[2], 40), sender)
+  local detail, key = F.txt(f[7], 40), F.txt(f[2], 40)
+  ns.Recorder.Award(id, winner, method, response, detail, nil, nil, key, sender)
+  -- Historique (0.4) : la même entrée que chez le chef de butin (identifiant et version : champs 8 et 9 ; niveau : 10) ;
+  -- LW d'un addon 0.3 : identifiant tiré du chef de butin et de la clé de l'objet
+  local hid = usable(f[8]) and #f[8] <= 40 and f[8]:match("^[%w%-]+$") or nil
+  if ns.Hist and ns.Hist.FromLW then
+    ns.safe(L["historique du butin"], ns.Hist.FromLW, sender, key, id, winner, method, response, detail, hid, tonumber(f[9]), tonumber(f[10]))
+  end
 end)
 
 function Lo.Keep(key) return Lo.Award(key, me(), "ml", nil, Lo.KEPT) end
@@ -1820,7 +1878,8 @@ end)
 --------------------------------------------------------------------------------------------------------------------
 function Lo.StopTest()
   Lo.test = nil
-  Lo.testItems, Lo.testNotPassed, Lo.testLog = {}, {}, { loot = {} }
+  Lo.testItems, Lo.testNotPassed = {}, {}
+  if ns.Hist and ns.Hist.StopTest then ns.Hist.StopTest() end
   Lo.councils, Lo.offers, Lo.rollSessions, Lo.activeRoll, Lo.trading, Lo.tradeAsk = {}, {}, {}, nil, nil, nil
   reminded = {}
   ui("Close")

@@ -1,5 +1,6 @@
--- Pages des onglets Raids, En raid et Compo de la fenêtre principale (construites par UI.lua : ns.Pages.Build(clé, page),
--- puis ns.Pages.Refresh(clé) à l'affichage). Listes et boutons de la boîte à outils commune (ns.Kit, deux habillages).
+-- Pages des onglets Raids, En raid, Compo et Butin (historique, lot R4a) de la fenêtre principale (construites par UI.lua :
+-- ns.Pages.Build(clé, page), puis ns.Pages.Refresh(clé) à l'affichage). Listes et boutons de la boîte à outils commune
+-- (ns.Kit, deux habillages).
 local _, ns = ...
 local L, N = ns.L, ns.N
 local P = {}
@@ -7,7 +8,7 @@ ns.Pages = P
 local F = ns.Format
 
 local GOLD, GREY, GREEN = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f"
-local ORANGE, RED = "|cfff0b43c", "|cffff6b5e"
+local ORANGE, RED, BLUE, LIGHT = "|cfff0b43c", "|cffff6b5e", "|cff6fb7ff", "|cffc9cfdb"
 local pages, builders, refreshers = {}, {}, {}
 P.pages = pages
 P.state = {} -- ce que chaque page affiche (tests hors jeu)
@@ -30,6 +31,23 @@ local function names(list, max)
   local out = {}
   for i = 1, math.min(#list, max or 12) do out[i] = F.Display(list[i]) end
   return table.concat(out, ", ") .. (#list > #out and (" +" .. (#list - #out)) or "")
+end
+local function showTab(key) return function() if ns.UI and ns.UI.Show then ns.UI.Show(key) end end end
+
+-- Soirée de l'historique (History.lua) : titre (date, instance, difficulté) et ligne (boss vaincus, présents, chef de butin)
+local function nightTitle(n)
+  if n.test then return L["Raid d'essai"] end
+  local where = n.instance or L["instance de raid"]
+  if n.difficulty and ns.Groups.DIFFICULTY[n.difficulty] then where = where .. " (" .. ns.Groups.Difficulty(n.difficulty) .. ")" end
+  return L("%s · %s", when(n.start), where)
+end
+local function nightLine(n)
+  local kills, people = 0, 0
+  for _, b in ipairs(n.bosses or {}) do if b.kill then kills = kills + 1 end end
+  for _ in pairs(n.people or {}) do people = people + 1 end
+  local parts = { count(kills, N("%d boss vaincu"), N("%d boss vaincus")), count(people, N("%d présent"), N("%d présents")) }
+  if n.ml then parts[#parts + 1] = L("chef de butin : %s", F.Display(n.ml)) end
+  return table.concat(parts, " · ")
 end
 
 function P.Build(key, page)
@@ -231,6 +249,16 @@ local function lootSection(rows, state)
   if not st.isMaster then
     rows.Add(GREY .. L("Passer automatique : %s (onglet Options).", Lo.AutoPass() and L["oui"] or L["non"]) .. "|r")
   end
+  -- Soirée relevée par l'addon (historique durable, R4a), sans le site : instance de raid, distribution activée
+  local H = ns.Hist
+  local night = H and H.CurrentNight and H.CurrentNight()
+  st.night = night and night.id or nil
+  if night then
+    rows.Add(GREEN .. L["Soirée relevée par l'addon"] .. "|r" .. GREY .. "  · " .. nightTitle(night) .. "\n" .. nightLine(night) .. "|r",
+      { { L["Historique"], 120, showTab("loot") } })
+  elseif st.enabled and Cm.InRaid() then
+    rows.Add(GREY .. L["La soirée (présence, boss, butin) va dans l'historique de l'addon dès que tu es dans une instance de raid, distribution activée."] .. "|r")
+  end
   local held = Cm.Held()
   if held > 0 then
     rows.Add(ORANGE .. count(held, N("%d message d'addon en attente de la fin du combat de boss."), N("%d messages d'addon en attente de la fin du combat de boss.")) .. "|r")
@@ -312,6 +340,137 @@ refreshers.compo = function(p)
     rows.Add(string.format("%s  %s%s %s|r  %s%s|r%s", name, GREY, ns.Kit.roleIcon(m.role), m.spec or "", STATE_COLOR[s.state] or GREY,
       label and L[label] or s.state, (s.inGroup and s.online == false) and (RED .. " " .. L["(hors ligne)"] .. "|r") or ""))
   end
+  rows.Done()
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Butin › Historique (lot R4a) : tout ce que Roster a distribué, gardé dans l'addon (ns.Hist), même sans le site, en
+-- lecture seule. Recherche (joueur, objet ou boss), filtre (tout, ce qui compte, ce qui ne compte pas), regroupement par
+-- soirée ou par joueur ; 150 objets affichés au plus. Raid d'essai : son historique en mémoire. Classement, Mains & alts
+-- et Saisons viendront avec R4c et R4d (étude « Roster autonome », §5.11).
+--------------------------------------------------------------------------------------------------------------------
+local CAT = { bis = { N("BiS"), GREEN }, up = { N("Upgrade"), BLUE }, ms = { N("jet MS"), GOLD }, other = { N("autre"), LIGHT } }
+local FILTERS = { all = N("Tous les objets"), counted = N("Ceux qui comptent"), skipped = N("Ceux qui ne comptent pas") }
+local NEXT_FILTER = { all = "counted", counted = "skipped", skipped = "all" }
+P.MAX_HISTORY = 150
+local view = { group = "night", filter = "all", search = "" }
+P.historyView = view -- (tests hors jeu)
+
+-- Catégorie en pastille : BiS, Upgrade, jet MS, autre (compte) ; sinon « ne compte pas » en gris
+local function catTag(e)
+  local c = not e.excluded and CAT[e.cat or ""]
+  if c then return c[2] .. "[" .. L[c[1]] .. "]|r" end
+  return GREY .. "[" .. L["ne compte pas"] .. "]|r"
+end
+-- Méthode et détail : « conseil : BiS · 3 votes », « MS 87 », « jet libre 54 », « gardé », « butin de groupe, sans passer »
+local function how(e)
+  local Lo = ns.Loot
+  if not e.method then return L["butin de groupe, sans passer"] end
+  local text = Lo.awardLabel(e.method, e.response, e.detail, e.method == "ml" and e.detail == Lo.KEPT)
+  if e.method == "council" and e.detail then text = text .. " · " .. e.detail end
+  return text
+end
+local function itemText(e)
+  local link = ns.Loot.LinkFor(e.item or e.itemId, e.name)
+  return link .. (e.ilvl and (GREY .. "  " .. L("niv. %s", e.ilvl) .. "|r") or "")
+end
+local function matches(e, q)
+  if q == "" then return true end
+  for _, s in ipairs({ F.Display(e.winner), e.name or F.ItemName(e.item) or "", e.boss or "" }) do
+    if F.Fold(s):find(q, 1, true) then return true end
+  end
+  return false
+end
+
+builders.loot = function(p)
+  local K = ns.Kit
+  p.hintText = K.hint(p, "")
+  p.searchLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.searchLabel:SetPoint("TOPLEFT", 8, -46)
+  p.searchLabel:SetText(L["Chercher :"])
+  p.search = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+  p.search:SetSize(140, 22) p.search:SetPoint("TOPLEFT", 76, -40)
+  p.search:SetAutoFocus(false) p.search:SetMaxLetters(40)
+  p.search:SetScript("OnTextChanged", function(self) view.search = self:GetText() or "" P.Refresh("loot") end)
+  p.search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  p.group = K.button(p, "", 130, function() view.group = view.group == "night" and "player" or "night" P.Refresh("loot") end)
+  p.group:SetPoint("TOPLEFT", 226, -40)
+  p.filter = K.button(p, "", 170, function() view.filter = NEXT_FILTER[view.filter] or "all" P.Refresh("loot") end)
+  p.filter:SetPoint("LEFT", p.group, "RIGHT", 6, 0)
+  p.list = K.list(p, -72)
+end
+refreshers.loot = function(p)
+  local H, rows = ns.Hist, p.list
+  local test = ns.Loot and ns.Loot.test ~= nil
+  local state = { total = 0, counted = 0, shown = 0, groups = 0, test = test, lines = {} }
+  P.state.loot = state
+  p.group:SetText(view.group == "night" and L["Par soirée"] or L["Par joueur"])
+  p.filter:SetText(L[FILTERS[view.filter]])
+  p.hintText:SetText((test and (ORANGE .. L["Raid d'essai : historique en mémoire, effacé à la fin de l'essai."] .. "|r ") or "")
+    .. L["Tout ce que Roster distribue (attribué, gardé, gagné sans passer), gardé dans l'addon, même sans le site. Lecture seule."])
+  rows.Reset()
+  rows.Header(L["Historique"])
+  local all = H and H.Entries() or {}
+  local nights = H and #H.Nights() or 0
+  for _, e in ipairs(all) do if e.cat and not e.excluded then state.counted = state.counted + 1 end end
+  state.total = #all
+  rows.Add(table.concat({ count(#all, N("%d objet enregistré"), N("%d objets enregistrés")),
+    count(state.counted, N("%d compte"), N("%d comptent")), count(nights, N("%d soirée"), N("%d soirées")) }, " · "))
+  if #all == 0 then
+    state.empty = true
+    rows.Add(GREY .. L["Aucun butin enregistré : il apparaîtra ici dès la première attribution (fenêtre du butin : /roster butin)."] .. "|r")
+    rows.Done()
+    return
+  end
+  -- Objets retenus (recherche, filtre), regroupés par soirée ou par joueur ; groupes dans l'ordre de leur objet le plus récent
+  local q = F.Fold(F.trim(view.search or ""))
+  local groups, order = {}, {}
+  for _, e in ipairs(all) do
+    local counted = e.cat ~= nil and not e.excluded
+    local keep = (view.filter == "all" or (view.filter == "counted") == counted) and matches(e, q)
+    if keep then
+      local key
+      if view.group == "player" then key = H.Person(e.winner) or "?"
+      else key = (e.night and H.Night(e.night)) and e.night or "" end
+      local g = groups[key]
+      if not g then g = { key = key, list = {} } groups[key] = g order[#order + 1] = g end
+      g.list[#g.list + 1] = e
+    end
+  end
+  local kept = 0
+  for _, g in ipairs(order) do kept = kept + #g.list end
+  if kept < #all then rows.Add(GREY .. L("%d sur %d affichés.", kept, #all) .. "|r") end
+  if kept == 0 then rows.Add(GREY .. L["Aucun objet ne correspond."] .. "|r") end
+  for _, g in ipairs(order) do
+    if state.shown >= P.MAX_HISTORY then break end
+    state.groups = state.groups + 1
+    local first = g.list[1]
+    if view.group == "player" then
+      local c = H.Count({ first.winner })
+      rows.Header(who(first.winner, first.class) .. GREY .. "  · " .. count(#g.list, N("%d objet"), N("%d objets")) .. "|r")
+      local d = {}
+      for _, k in ipairs({ "bis", "up", "ms", "other" }) do if c[k] > 0 then d[#d + 1] = c[k] .. " " .. L[CAT[k][1]] end end
+      rows.Add(GREY .. L("Comptent : %d", c.n) .. (#d > 0 and (" (" .. table.concat(d, " · ") .. ")") or "") .. "|r")
+    else
+      local n = g.key ~= "" and H.Night(g.key)
+      rows.Header(n and nightTitle(n) or L["Hors soirée relevée"])
+      if n then rows.Add(GREY .. nightLine(n) .. "|r") end
+    end
+    for _, e in ipairs(g.list) do
+      if state.shown >= P.MAX_HISTORY then break end
+      state.shown = state.shown + 1
+      local text
+      if view.group == "player" then
+        text = itemText(e) .. "  " .. catTag(e) .. "\n" .. GREY .. how(e) .. (e.boss and (" · " .. e.boss) or "") .. " · " .. F.Stamp(e.at) .. "|r"
+      else
+        text = itemText(e) .. "  " .. GREY .. L["pour"] .. "|r " .. who(e.winner, e.class) .. "  " .. catTag(e) .. "\n"
+          .. GREY .. how(e) .. (e.boss and (" · " .. e.boss) or "") .. " · " .. date("%H:%M", e.at) .. "|r"
+      end
+      state.lines[#state.lines + 1] = text
+      rows.Add(text)
+    end
+  end
+  if kept > state.shown then rows.Add(GREY .. L("+ %d de plus : affine la recherche.", kept - state.shown) .. "|r") end
   rows.Done()
 end
 

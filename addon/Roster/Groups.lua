@@ -97,6 +97,23 @@ function G.Council(e)
 end
 -- Objets reçus sur la période du groupe (ligne N) : { short, label, entries } ou nil
 function G.Counts(e) return e and e.group.counts or nil end
+-- Objets reçus du site pour le butin (lot R4a, colonne « Reçus » : site + historique de l'addon après la date des données
+-- du site) : ceux du groupe du raid en cours (relevé ou raid du site), sinon ceux du seul groupe chargé qui en a (raid
+-- monté ailleurs, Raid-Helper…) ; plusieurs groupes sans raid du site : aucun (l'historique de l'addon seul).
+-- Renvoie le bloc N (ou nil) et la date de génération des données du site (en-tête RRG).
+function G.LootCounts(now)
+  local e = G.LootRaid(now)
+  if e then return e.group.counts, tonumber(e.group.at) end
+  local found
+  for _, g in pairs(groups()) do
+    if g.counts then
+      if found then return nil end
+      found = g
+    end
+  end
+  if found then return found.counts, tonumber(found.at) end
+  return nil
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Synchro : chargement des textes du site, export des bilans

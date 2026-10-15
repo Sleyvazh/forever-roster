@@ -605,12 +605,13 @@ run("")
 assert(ns.UI.IsShown() and RosterDB.tab == "synchro", "/roster : fenêtre ouverte sur Synchro")
 run("")
 assert(not ns.UI.IsShown(), "/roster : fenêtre fermée")
-for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "options" }) do
+for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "historique", "options" }) do
   run(tab)
+  if tab == "historique" then tab = "loot" end -- /roster historique : onglet Butin (historique du butin, R4a)
   assert(ns.UI.IsShown() and RosterDB.tab == tab and ns.UI.pages[tab]:IsShown(), "/roster " .. tab)
   for key, p in pairs(ns.UI.pages) do assert(p:IsShown() == (key == tab), "une seule page affichée") end
 end
-assert(n("Pages.Build") == 3 and lastArgs["Pages.Build"][2] == ns.UI.pages.compo, "Pages.Build une fois par onglet de Pages.lua")
+assert(n("Pages.Build") == 4 and lastArgs["Pages.Build"][2] == ns.UI.pages.loot, "Pages.Build une fois par onglet de Pages.lua")
 local refreshes = n("Pages.Refresh")
 run("raids")
 assert(n("Pages.Refresh") == refreshes + 1 and lastArgs["Pages.Refresh"][1] == "raids", "Pages.Refresh à l'affichage")
@@ -658,7 +659,7 @@ RosterDB.lang = "en"
 before = #printed
 run("help")
 help = table.concat(printed, "\n", before + 1)
-assert(help:find("/roster loot", 1, true) and help:find("/roster sync | raids | inraid | comp | options", 1, true) and help:find("/roster language", 1, true)
+assert(help:find("/roster loot", 1, true) and help:find("/roster sync | raids | inraid | comp | history | options", 1, true) and help:find("/roster language", 1, true)
   and not help:find("/roster butin", 1, true), "aide en anglais : commandes anglaises")
 RosterDB.lang = nil
 -- Fenêtre fermée : Refresh sans effet
@@ -1042,7 +1043,7 @@ GameTooltip.lines = {}
 GameTooltip.AddLine = function(self, text) self.lines[#self.lines + 1] = text end
 script(kr.hover[5], "OnEnter")
 local tipText = table.concat(GameTooltip.lines, "\n")
-assert(tipText:find("sur le site", 1, true) and tipText:find("ce soir", 1, true) and tipText:find("Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés.", 1, true), "infobulle des reçus : site, ce soir, ce qui compte")
+assert(tipText:find("sur le site", 1, true) and tipText:find("dans l'historique de l'addon", 1, true) and tipText:find("Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés.", 1, true), "infobulle des reçus : site, historique de l'addon, ce qui compte")
 GameTooltip.AddLine = nil
 -- Tri par objets reçus (en-tête), le moins servi d'abord, ceux qui passent en bas ; puis retour au tri du moteur
 script(cw.sort, "OnClick")
@@ -1200,9 +1201,30 @@ assert(its[#its].status == "roll" and #Lt.Rolls(its[#its].key).rows >= 4, "jets 
 assert(realSends == sends0 and realChat == chat0, "rien n'est parti au raid ni aux joueurs")
 assert(#ns.Recorder.Pending() == pending0, "rien de relevé pour le site")
 assert(errors() == baseErrors and failures == 0, "raid d'essai sans erreur")
+-- Historique (lot R4a) : chaque objet attribué ou gardé pendant l'essai est dans l'historique en mémoire, montré par
+-- Butin › Historique (panneau : « Ouvrir l'historique ») ; rien dans la sauvegarde
+local H = ns.Hist
+-- (objets attribués ou gardés, et celui qu'Orvane a gagné au butin de groupe sans passer)
+local histItems = byStatus("awarded") + byStatus("traded") + byStatus("kept") + 1
+assert(H.Store() == H.test and #H.Entries() == histItems and histItems >= 7, "essai : historique en mémoire (" .. #H.Entries() .. "/" .. histItems .. ")")
+assert(type(RosterDB.hist) == "table" and next(RosterDB.hist.entries) == nil, "essai : rien dans la sauvegarde")
+local kept, orvane, outside
+for _, e in ipairs(H.Entries()) do
+  if e.detail == "gardé" then kept = e end
+  if e.winner == "Orvane-Hyjal" and not e.method then orvane = e end
+  if e.night ~= "essai" then outside = e end
+end
+assert(kept and kept.cat == nil and orvane and orvane.cat == "other" and not outside, "essai : gardé (ne compte pas), butin de groupe sans passer, soirée de l'essai")
+T.Refresh()
+click("Ouvrir l'historique")
+local ps = ns.Pages.state.loot
+assert(ns.UI.IsShown() and RosterDB.tab == "loot" and ns.UI.pages.loot:IsShown() and ps and ps.test and ps.total == histItems and ps.shown == histItems,
+  "Butin › Historique : l'essai")
+assert(ps.lines[1]:find("|Hitem:", 1, true) and table.concat(ps.lines, "\n"):find("[BiS]", 1, true), "lignes : objet, catégorie")
+ns.UI.Toggle()
 -- Recommencer, quitter, /roster test fin ; rejoindre un groupe arrête l'essai
 click("Recommencer")
-assert(T.active and Lt.test and #entries() == 0, "recommencé : plus d'objets")
+assert(T.active and Lt.test and #entries() == 0 and #ns.Hist.Entries() == 0, "recommencé : plus d'objets, historique de l'essai vidé")
 assert(not win("council"):IsShown() and not ow:IsShown(), "fenêtres du butin fermées")
 click("Quitter l'essai")
 assert(not T.active and Lt.test == nil and not T.panel:IsShown(), "essai quitté")
@@ -1227,11 +1249,11 @@ RosterDB.skin = "site"
 assert(loadfile("addon/Roster/UI.lua"))("Roster", ns)
 assert(ns.UI.site(), "habillage du site choisi")
 local builds = n("Pages.Build")
-for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "options" }) do
+for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "loot", "options" }) do
   ns.UI.Show(tab)
   assert(ns.UI.pages[tab]:IsShown(), "onglet " .. tab .. " (site)")
 end
-assert(n("Pages.Build") == builds + 3, "pages reconstruites")
+assert(n("Pages.Build") == builds + 4, "pages reconstruites")
 ns.UI.Quick()
 assert(ns.UI.quick:IsShown(), "synchro rapide (site)")
 ns.UI.Quick()

@@ -476,8 +476,9 @@ local function recvParts(x, long)
   add(x.receivedMs, long and L["jet MS"] or "MS", long and L["jets MS"])
   return table.concat(parts, " · ")
 end
+-- Total, et entre parenthèses la part de l'historique de l'addon quand le site en donne une autre
 local function recvText(x)
-  local tonight = tonumber(x.receivedTonight) or 0
+  local tonight = (tonumber(x.receivedSite) or 0) > 0 and tonumber(x.receivedTonight) or 0
   local d = recvParts(x)
   return WHITE .. tostring(x.received or 0) .. "|r" .. (tonight > 0 and (GREY .. " (+" .. tonight .. ")|r") or "")
     .. (d ~= "" and ("\n" .. GREY .. d .. "|r") or "")
@@ -527,8 +528,9 @@ function U.RefreshCouncil()
   local isCouncil = Lx.IsCouncil(c.master)
   local nVotes = 0
   for _, x in ipairs(c.cands) do nVotes = nVotes + x.votes end
-  -- Titre : « Reçus · saison » (libellé court des données du site), sinon « Reçus ce soir »
-  G.SetTitle(RECV_COL, (byReceived and K.ACCENT or "") .. (c.counts and L("Reçus · %s", c.counts.short) or L["Reçus ce soir"])
+  -- Titre : « Reçus · saison » (libellé court des données du site, plus l'historique de l'addon), sinon « Reçus »
+  -- (historique de l'addon seul)
+  G.SetTitle(RECV_COL, (byReceived and K.ACCENT or "") .. (c.counts and L("Reçus · %s", c.counts.short) or L["Reçus"])
     .. (byReceived and (" " .. L["(tri)"] .. "|r") or ""))
   local head = (num and (K.ACCENT .. num .. "|r  ") or "") .. c.link .. (c.ilvl and (GREY .. "  " .. L("niv. %s", c.ilvl) .. "|r") or "")
     .. GREY .. "  · " .. L("chef de butin : %s", name(c.master)) .. (c.isMaster and (" " .. L["(toi)"]) or "") .. "|r"
@@ -538,6 +540,8 @@ function U.RefreshCouncil()
     head = head .. "\n" .. GOLD .. plural(#c.cands, N("%d réponse"), N("%d réponses")) .. "|r" .. GREY .. (#c.waiting > 0 and (", " .. L("%d en attente", #c.waiting)) or "")
       .. "  · " .. plural(nVotes, N("%d vote"), N("%d votes")) .. " " .. L("(conseil : %d)", #c.council) .. "|r"
   end
+  -- Le chef de butin n'a pas d'historique (installation neuve) : chacun voit ses propres nombres
+  if c.mlNone then head = head .. GREY .. "  · " .. L("comptes : aucun historique chez %s", name(c.master)) .. "|r" end
   councilWin.hintText:SetText(head)
   -- Tri du moteur (réponse, puis votes) ; ou par objets reçus, le moins servi d'abord (ceux qui passent restent en bas)
   local cands = {}
@@ -597,9 +601,16 @@ function U.RefreshCouncil()
               GameTooltip:AddLine(plural(rest, N("dont %d autre (donné directement, noté sans catégorie)"), N("dont %d autres (donné directement, noté sans catégorie)")), 1, 1, 1, true)
             end
           end
-          if c.counts then GameTooltip:AddLine(L("%s sur le site, %s", tostring(x.receivedSite or 0), c.counts.label), 1, 1, 1, true)
-          else GameTooltip:AddLine(L["Données du site non chargées : colle-les dans l'onglet Synchro."], 1, 1, 1, true) end
-          GameTooltip:AddLine(L("%s ce soir (pas encore sur le site)", tostring(x.receivedTonight or 0)), 1, 1, 1, true)
+          if x.receivedFrom then
+            -- Nombres relayés par le chef de butin avec la réponse : les mêmes pour tout le conseil
+            GameTooltip:AddLine(L("Nombres du chef de butin (%s) : tout le conseil voit les mêmes.", name(x.receivedFrom)), 1, 1, 1, true)
+          elseif c.counts then
+            GameTooltip:AddLine(L("%s sur le site, %s", tostring(x.receivedSite or 0), c.counts.label), 1, 1, 1, true)
+            GameTooltip:AddLine(c.since and L("%s dans l'historique de l'addon depuis les données du site (%s)", tostring(x.receivedTonight or 0), F.Stamp(c.since))
+              or L("%s dans l'historique de l'addon", tostring(x.receivedTonight or 0)), 1, 1, 1, true)
+          else
+            GameTooltip:AddLine(L("%s dans l'historique de l'addon", tostring(x.receivedTonight or 0)), 1, 1, 1, true)
+          end
           GameTooltip:AddLine(L["Ne comptent pas : Off-spec, Transmo, jets OS et libres, objets gardés."], 0.6, 0.64, 0.71, true)
         else
           return

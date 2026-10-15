@@ -2,6 +2,24 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.4.0
+
+- **Loot history kept by the addon**: every item Roster distributes (council, rolls, loot master's choice, kept) is saved in the addon, with no website raid needed and no time limit (it survives `/reload` and the loot master's 12-hour item list). Everyone who receives the award gets the same entry. Items won from group loot by a player who didn't pass are logged too.
+- **Raid nights**: in a raid instance, in a raid group, with Roster distribution on, the addon logs the night (attendance every minute, bosses, loot master), without the website. The In raid tab shows it.
+- **"Received" column of the council**: website count plus what the addon's history logged since the website data was generated (no double count); without the website, the addon's history alone. The loot master sends his numbers with every answer he relays: the whole council sees the same numbers, without the website.
+- **New Loot tab › History** (`/roster history`): dated list by raid night or by player, search, "counted / not counted" filter, category tags. Read-only for now.
+- Test raid: what you award goes into an in-memory history shown in the Loot tab (step 9).
+- For addons 0.3.x: the new fields are added at the end of the addon messages, nothing breaks.
+
+Français :
+
+- **Historique du butin gardé par l'addon** : chaque objet distribué par Roster (conseil, jets, choix du chef de butin, gardé) est gardé dans l'addon, sans raid du site et sans limite de durée (il survit au `/reload` et aux 12 h des objets du chef de butin). Chacun de ceux qui reçoivent l'attribution a la même entrée. Les objets gagnés au butin de groupe par un joueur qui n'a pas passé sont notés aussi.
+- **Soirées** : dans une instance de raid, en groupe de raid, distribution par Roster activée, l'addon relève la soirée (présence chaque minute, boss, chef de butin), sans le site. L'onglet En raid l'affiche.
+- **Colonne « Reçus » du conseil** : compte du site plus ce que l'historique de l'addon a noté depuis la date des données du site (pas de double compte) ; sans le site, l'historique de l'addon seul. Le chef de butin envoie ses nombres avec chaque réponse qu'il relaie : tout le conseil voit les mêmes, sans le site.
+- **Nouvel onglet Butin › Historique** (`/roster historique`) : liste datée par soirée ou par joueur, recherche, filtre « compte / ne compte pas », catégorie en pastille. En lecture seule pour l'instant.
+- Raid d'essai : ce que tu attribues va dans un historique en mémoire, montré dans l'onglet Butin (étape 9).
+- Avec les addons 0.3.x : les nouveaux champs sont ajoutés en fin des messages entre addons, rien ne casse.
+
 ## 0.3.3
 
 - **Shared data**: one player pastes "Copier pour le jeu" (or receives it from the Roster Companion app) and the addon passes the group data to every guildmate and raid member who has the addon. The website signs the data and each addon checks the signature: data changed by anyone, even by one character, is refused. Option in the Options tab (on by default); the Sync tab says where your data comes from.
