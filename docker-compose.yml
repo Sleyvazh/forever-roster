@@ -35,6 +35,8 @@ services:
       TRUST_PROXY: "true"
       SMTP_URL: ${SMTP_URL}
       MAIL_FROM: ${MAIL_FROM}
+      # Adresse de contact des mentions légales et de la confidentialité
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-contact@sleyvazh.fr}
       HIBP_CHECK: ${HIBP_CHECK:-true}
       BNET_CLIENT_ID: ${BNET_CLIENT_ID:-}
       BNET_CLIENT_SECRET: ${BNET_CLIENT_SECRET:-}

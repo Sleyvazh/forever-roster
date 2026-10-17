@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, setCsrf, uploadImage } from "../api";
 import { ImageUpload } from "../components/ImageUpload";
 import { useMe } from "../auth";
@@ -61,7 +61,10 @@ export function AccountPage() {
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <div className="page-head"><div><div className="eyebrow">Compte</div><h1>Compte &amp; sécurité</h1></div></div>
+      <div className="page-head">
+        <div><div className="eyebrow">Compte</div><h1>Compte &amp; sécurité</h1></div>
+        <p className="small muted" style={{ margin: 0 }}>Ce que le site garde sur toi, combien de temps, et tes droits : <Link to="/confidentialite">confidentialité</Link></p>
+      </div>
       {params.get("bnet") === "linked" && <div className="alert ok">Ton compte Battle.net est maintenant lié.</div>}
       {params.get("discord") === "linked" && <div className="alert ok">Ton compte Discord est maintenant lié : tes clics dans le bot t'inscrivent avec tes persos.</div>}
       {DISCORD_ERROR[params.get("error") ?? ""] && <div className="alert error" role="alert">{DISCORD_ERROR[params.get("error")!]}</div>}

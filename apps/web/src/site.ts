@@ -14,6 +14,8 @@ export interface SiteData {
   open: boolean;
   origin: string;
   other: { game: Game; name: string; origin: string } | null;
+  /** Adresse de contact des mentions légales et de la confidentialité (CONTACT_EMAIL du serveur) ; inconnue avant la réponse. */
+  contact?: string;
   /** Roster encore fermé mais ouvert pour ce compte (accès anticipé). */
   preview?: boolean;
 }

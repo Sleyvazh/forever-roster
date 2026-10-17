@@ -115,6 +115,7 @@ export function RegisterPage() {
         <div className="fld"><label htmlFor="pw2">Confirmation</label><input id="pw2" type="password" required autoComplete="new-password" value={form.confirm} onChange={set("confirm")} /></div>
         {s.error && <div className="alert error" role="alert">{s.error}</div>}
         <button className="btn primary" type="submit" disabled={s.busy}>{s.busy ? "Création…" : "Créer mon compte"}</button>
+        <p className="hint" style={{ margin: 0 }}>Ton e-mail et ton pseudo servent seulement à faire marcher le site : voir la <Link to="/confidentialite">politique de confidentialité</Link>.</p>
       </form>
       <p className="small">Déjà un compte ? <Link to="/login">Se connecter</Link></p>
     </AuthCard>

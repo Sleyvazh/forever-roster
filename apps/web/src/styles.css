@@ -48,7 +48,11 @@ h1, h2, h3, h4 { font-family: var(--f-disp); font-weight: 400; letter-spacing: .
 
 /* Structure */
 .shell { max-width: 1200px; margin: 0 auto; padding-inline: 16px; padding-block: 0 48px; display: grid; gap: 20px; }
-.site-foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; text-align: center; }
+.site-foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 12px; text-align: center;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; }
+.site-foot nav { display: flex; gap: 14px; }
+.site-foot a { color: var(--ink-2); text-underline-offset: 2px; }
+.site-foot a:hover { color: var(--gold); }
 
 .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .page-head h1 { font-size: clamp(26px, 4vw, 36px); }
@@ -1450,3 +1454,54 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .cr-set > span { font-size: 14px; }
 .cr-set .seg { justify-self: start; }
 @media (max-width: 560px) { .cr-set { grid-template-columns: 1fr; gap: 6px; } .cr-set .seg { margin-bottom: 6px; } }
+
+/* ---------- Mentions légales et confidentialité (pages publiques) ---------- */
+.legal { max-width: 1040px; width: 100%; margin: 8px auto 0; gap: 18px; }
+.legal .page-head { align-items: flex-end; }
+.legal-date { margin: 0; }
+.legal p, .legal li { max-width: 78ch; }
+.legal p { margin: 0; }
+.legal-lead { font-size: 16px; color: var(--ink-2); }
+.legal-lead b { color: var(--ink); font-weight: 600; }
+.legal-sec { display: grid; gap: 12px; }
+.legal-sec h2 { font-size: 22px; color: var(--gold); }
+.legal-sec h3 { font-size: 17px; margin-top: 6px; }
+.legal-list { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.legal-lead .legal-list { color: var(--ink-2); }
+.legal-dl { display: grid; grid-template-columns: 224px minmax(0, 1fr); gap: 6px 18px; margin: 0; }
+.legal-dl dt { font: 600 11px/1.2 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding-top: 4px; }
+.legal-dl dd { margin: 0; overflow-wrap: anywhere; }
+.legal-toc ol { margin: 0; padding-left: 22px; columns: 2 220px; column-gap: 28px; }
+.legal-toc li { padding: 2px 0; break-inside: avoid; }
+.legal-toc a { color: var(--ink-2); }
+.legal-toc a:hover { color: var(--gold); }
+.legal-tw { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.legal-t { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.45; }
+.legal-t thead th { font: 600 11px/1.2 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); text-align: left; padding: 9px 12px; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.legal-t th[scope=row], .legal-t td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); font-weight: 400; }
+.legal-t tbody tr:last-child > * { border-bottom: 0; }
+.legal-t th[scope=row] { width: 32%; }
+.legal-t:not(.small-t) td:nth-child(2) { width: 21%; }
+.legal-t:not(.small-t) td:nth-child(3) { width: 25%; }
+.legal-t th[scope=row] b { display: block; font-weight: 600; color: var(--ink); margin-bottom: 2px; }
+.legal-t th[scope=row] span { color: var(--ink-2); }
+.legal-t td { color: var(--ink-2); }
+.legal-t.small-t th[scope=row] { width: 24%; }
+.legal-t code { font: 500 13px var(--f-mono); color: var(--ink); overflow-wrap: anywhere; }
+.legal-basis { display: block; width: fit-content; margin-top: 6px; color: var(--gold); border-color: var(--frame); }
+.legal-basis.li { color: var(--ink-2); border-color: var(--line-2); }
+.legal-list .legal-basis { display: inline-block; margin: 0; vertical-align: 1px; }
+@media (max-width: 760px) {
+  .legal-sec h2 { font-size: 20px; }
+  .legal-dl { grid-template-columns: 1fr; gap: 2px; }
+  .legal-dl dd { margin-bottom: 8px; }
+  /* Tableaux en fiches sur téléphone : une fiche par ligne, l'intitulé de chaque colonne au-dessus de sa valeur */
+  .legal-t thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .legal-t, .legal-t tbody, .legal-t tr, .legal-t th[scope=row], .legal-t td { display: block; width: auto !important; }
+  .legal-t tr { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .legal-t tbody tr:last-child { border-bottom: 0; }
+  .legal-t th[scope=row], .legal-t td { padding: 0; border: 0; }
+  .legal-t td { margin-top: 8px; }
+  .legal-t td[data-l]::before { content: attr(data-l); display: block; font: 600 10.5px/1.2 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 2px; }
+  .legal-t.small-t th[scope=row] code { font-size: 14px; }
+}

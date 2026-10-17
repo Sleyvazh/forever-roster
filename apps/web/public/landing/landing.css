@@ -72,3 +72,6 @@ footer .wrap { padding-block: 22px 32px; color: var(--ink-3); font-size: 13px; d
   .hero { grid-template-columns: 1fr; padding-block: 30px 20px; gap: 24px; }
   .grid, .duo { grid-template-columns: 1fr; }
 }
+footer .legal { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 4px; }
+footer .legal a { color: var(--ink-2); text-underline-offset: 2px; }
+footer .legal a:hover { color: var(--gold); }

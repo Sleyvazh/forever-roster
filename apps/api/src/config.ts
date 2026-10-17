@@ -14,6 +14,8 @@ const schema = z.object({
   COOKIE_SECURE: bool.default(true),
   SMTP_URL: z.string().default("smtp://localhost:1025"),
   MAIL_FROM: z.string().default("Forever Roster <no-reply@forever-roster.local>"),
+  /** Adresse de contact publique (mentions légales, confidentialité : questions, droits sur les données, signalement d'un contenu). */
+  CONTACT_EMAIL: z.string().trim().default("").transform(v => v || "contact@sleyvazh.fr").pipe(z.email("CONTACT_EMAIL : adresse e-mail invalide").max(254)),
   HIBP_CHECK: bool.default(true),
   BNET_CLIENT_ID: z.string().default(""),
   BNET_CLIENT_SECRET: z.string().default(""),

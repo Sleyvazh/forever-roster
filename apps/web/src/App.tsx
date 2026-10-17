@@ -9,6 +9,7 @@ import { CharactersPage } from "./pages/CharactersPage";
 import { GroupPage } from "./pages/GroupPage";
 import { GroupsPage } from "./pages/GroupsPage";
 import { JoinPage } from "./pages/JoinPage";
+import { LegalNoticePage, PrivacyPage } from "./pages/LegalPages";
 import { PairPage } from "./pages/PairPage";
 import { RaidPage } from "./pages/RaidPage";
 import { AdminReportsPage, MyReportsPage } from "./pages/ReportsPage";
@@ -27,6 +28,9 @@ export function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/join" element={<JoinPage />} />
+            {/* Pages publiques, sans connexion, sur les deux adresses */}
+            <Route path="/mentions-legales" element={<LegalNoticePage />} />
+            <Route path="/confidentialite" element={<PrivacyPage />} />
             <Route path="/" element={<RequireAuth><Navigate to="/persos" replace /></RequireAuth>} />
             <Route path="/persos/:charId?/:tab?" element={<RequireAuth><CharactersPage /></RequireAuth>} />
             <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
@@ -42,8 +46,11 @@ export function App() {
             <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />
           </Routes>
         </main>
-        {/* Crédit de l'artiste des icônes, sur toutes les pages (Forever Roster et Roster) */}
-        <footer className="site-foot">Icônes de classes et de spécialisations réalisées par Pahpool</footer>
+        {/* Sur toutes les pages (Forever Roster et Roster) : crédit de l'artiste des icônes, pages légales */}
+        <footer className="site-foot">
+          <span>Icônes de classes et de spécialisations réalisées par Pahpool</span>
+          <nav aria-label="Informations légales"><Link to="/mentions-legales">Mentions légales</Link><Link to="/confidentialite">Confidentialité</Link></nav>
+        </footer>
       </div>
     </>
   );

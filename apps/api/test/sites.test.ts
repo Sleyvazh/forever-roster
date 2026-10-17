@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { loadConfig } from "../src/config";
 import { Client, setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
 
 /** Un site, deux adresses : Forever Roster (APP_ORIGIN) et Roster (RETAIL_ORIGIN), mêmes comptes. */
@@ -17,7 +18,7 @@ afterAll(async () => { await env.close(); });
 describe("un site, deux adresses", () => {
   it("chaque adresse se présente avec son jeu et désigne l'autre", async () => {
     const f = await new Client(env).get("/api/site");
-    expect(f.json()).toMatchObject({ game: "forever", name: "Forever Roster", open: true, other: { game: "retail", name: "Roster", origin: RETAIL } });
+    expect(f.json()).toMatchObject({ game: "forever", name: "Forever Roster", open: true, contact: "contact@sleyvazh.fr", other: { game: "retail", name: "Roster", origin: RETAIL } });
     const r = await new RetailClient(env).get("/api/site");
     expect(r.json()).toMatchObject({ game: "retail", name: "Roster", open: true, origin: RETAIL, other: { game: "forever" } });
   });
@@ -85,5 +86,18 @@ describe("un site, deux adresses", () => {
     try {
       expect((await new Client(solo).get("/api/site")).json()).toMatchObject({ game: "forever", other: null });
     } finally { await solo.close(); }
+  });
+
+  it("adresse de contact des mentions légales et de la confidentialité : réglable, contact@sleyvazh.fr par défaut", async () => {
+    const base = { APP_ORIGIN: "http://app.test", DATABASE_URL: "postgres://localhost/x" };
+    expect(loadConfig(base).CONTACT_EMAIL).toBe("contact@sleyvazh.fr");
+    expect(loadConfig({ ...base, CONTACT_EMAIL: "" }).CONTACT_EMAIL).toBe("contact@sleyvazh.fr");
+    expect(() => loadConfig({ ...base, CONTACT_EMAIL: "pas une adresse" })).toThrow(/CONTACT_EMAIL/);
+    const custom = await setup({ RETAIL_ORIGIN: RETAIL, CONTACT_EMAIL: " equipe@example.test " });
+    try {
+      // Servie aux deux adresses, sans connexion
+      expect((await new Client(custom).get("/api/site")).json()).toMatchObject({ game: "forever", contact: "equipe@example.test" });
+      expect((await new RetailClient(custom).get("/api/site")).json()).toMatchObject({ game: "retail", contact: "equipe@example.test" });
+    } finally { await custom.close(); }
   });
 });

@@ -192,6 +192,12 @@ unset SMTP_PASS
 sudo docker compose up -d api
 ```
 
+### Mentions légales et confidentialité
+
+Pages publiques `/mentions-legales` et `/confidentialite`, sur les deux adresses (`apps/web/src/pages/LegalPages.tsx`), liées en pied de page du site et des accueils publics. L'adresse de contact affichée vient de `CONTACT_EMAIL` dans `.env` (par défaut `contact@sleyvazh.fr`), servie par `GET /api/site` : créer la boîte (ou une redirection) chez OVH avant de la changer, puis `sudo docker compose up -d api`. Vérification : `curl -s https://forever-roster.sleyvazh.fr/api/site` contient `"contact":"…"`.
+
+Les durées de conservation de la page Confidentialité décrivent ce que fait le code : à mettre à jour, avec la date en tête (`UPDATED`), à chaque purge ajoutée ou changée, et à chaque nouvelle donnée gardée.
+
 ## Deuxième adresse : Roster (WoW Retail)
 
 Un seul site, deux adresses : même serveur, même code, même base. L'adresse de la requête choisit le jeu (`forever` ou `retail`), le nom, le logo, la couleur, la page d'accueil publique, l'adresse des liens dans les e-mails et les invitations, et le retour de la connexion Discord. Les comptes sont communs (même e-mail, même mot de passe, même liaison Discord) ; la connexion se fait une fois par adresse (cookie propre à chaque sous-domaine). Persos et groupes appartiennent à un jeu : chaque adresse ne montre que les siens.
