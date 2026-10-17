@@ -3,10 +3,19 @@
 #   docker compose up -d --build
 name: forever-roster
 
+# Journaux Docker : rotation par taille, 3 fichiers de 10 Mo au plus par conteneur (les plus anciens sont effacés).
+# Ne vaut que pour les conteneurs créés après : `sudo docker compose up -d` les recrée (voir docs/operations.md).
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -23,6 +32,7 @@ services:
   api:
     build: { context: ., target: api }
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db: { condition: service_healthy }
     environment:
@@ -57,6 +67,7 @@ services:
   bot:
     build: { context: ., target: bot }
     restart: unless-stopped
+    logging: *logging
     depends_on: [api]
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
@@ -75,6 +86,7 @@ services:
   web:
     build: { context: ., target: web }
     restart: unless-stopped
+    logging: *logging
     depends_on: [api]
     environment:
       DOMAIN: ${DOMAIN:-localhost}
@@ -97,6 +109,7 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     restart: unless-stopped
+    logging: *logging
     ports: ["127.0.0.1:8025:8025"]
     networks: [backend]
     profiles: [mail]

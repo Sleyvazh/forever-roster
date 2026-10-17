@@ -6,7 +6,7 @@ import { useSite, type SiteData } from "../site";
 /**
  * Mentions légales et politique de confidentialité : pages publiques (sans connexion), sur les deux adresses, avec le
  * nom du site de l'adresse. L'adresse de contact vient du serveur (CONTACT_EMAIL, servie par /api/site).
- * Les durées de conservation décrivent ce que fait le code : à mettre à jour avec lui.
+ * Les durées de conservation décrivent ce que fait le code (purges : apps/api/src/lib/purges.ts) : à mettre à jour avec lui.
  */
 const UPDATED = "17 octobre 2026";
 
@@ -230,7 +230,7 @@ const ROWS: Row[] = [
     data: "Type, titre, texte, page concernée, navigateur et système (lus dans ton navigateur), version de l'addon, capture d'écran facultative (réduite, métadonnées supprimées), ton pseudo, la réponse.",
     why: "Corriger les bugs et te répondre.",
     basis: "Intérêt légitime",
-    keep: "Jusqu'à ce qu'un admin du site le supprime. La suppression de ton compte ne les efface pas : ton pseudo y reste.",
+    keep: "Jusqu'à ce qu'un admin du site le supprime. Si tu supprimes ton compte, il reste pour les admins, sans ton pseudo ni ton navigateur, sur le site comme dans le salon Discord.",
     who: "Toi et les admins du site. Ils sont aussi publiés dans le salon Discord privé des admins.",
   },
   {
@@ -246,7 +246,7 @@ const ROWS: Row[] = [
     data: "Événements du compte (connexions, échecs, changements sensibles) avec la date, l'adresse IP, le navigateur et le système ; sessions ouvertes (adresse IP, navigateur, dernière activité) ; échecs de connexion avec une adresse inconnue (adresse IP et navigateur, sans l'adresse saisie).",
     why: "Protéger les comptes et te montrer qui s'est connecté.",
     basis: "Intérêt légitime",
-    keep: "Rien n'est effacé automatiquement : le journal et les sessions fermées restent tant que le compte existe. Après sa suppression, les événements du journal restent, détachés du compte (adresse IP et navigateur compris).",
+    keep: "Journal : effacé au bout de 12 mois ; une action faite dans un groupe reste dans le journal du groupe, sans adresse IP ni navigateur. Sessions : effacées 30 jours après leur fin (déconnexion, expiration ou 7 jours sans activité). Si tu supprimes ton compte, l'adresse IP et le navigateur sont effacés tout de suite de ton journal ; ses événements restent, détachés du compte.",
     who: "Toi (Compte & sécurité). Jamais les autres joueurs.",
   },
   {
@@ -254,7 +254,7 @@ const ROWS: Row[] = [
     data: "Nom de l'ordinateur, système, version de l'appli, dernière adresse IP, dates de synchro, jeton de l'appareil (haché), persos du jeu que tu as choisi d'ignorer. Demandes d'appairage : les mêmes informations et l'adresse IP.",
     why: "Synchroniser le jeu et le site sans copier-coller.",
     basis: "Contrat",
-    keep: "Appareils : tant que le compte existe (un appareil délié ne marche plus, mais reste en base). Demandes d'appairage : effacées un jour après leur expiration, à la demande suivante.",
+    keep: "Appareils : tant que le compte existe ; un appareil délié est effacé 30 jours après, avec sa dernière adresse IP. Demandes d'appairage : effacées un jour après leur expiration, à la demande suivante.",
     who: "Toi.",
   },
   {
@@ -262,7 +262,7 @@ const ROWS: Row[] = [
     data: "Liste des persos de ton compte Battle.net : nom, royaume, classe, niveau, faction.",
     why: "Choisir les persos à importer.",
     basis: "Contrat",
-    keep: "Utilisable 30 minutes, puis gardée en base jusqu'au prochain import ou à la suppression du compte. Le jeton donné par Blizzard n'est jamais gardé.",
+    keep: "Utilisable 30 minutes, puis effacée dans l'heure. Le jeton donné par Blizzard n'est jamais gardé.",
     who: "Toi.",
   },
   {
@@ -270,7 +270,7 @@ const ROWS: Row[] = [
     data: "Ton adresse et les liens envoyés (confirmation d'adresse : 24 heures ; nouveau mot de passe : 30 minutes), gardés hachés.",
     why: "Confirmer ton adresse, réinitialiser ton mot de passe, te prévenir d'une tentative d'inscription avec ton adresse.",
     basis: "Contrat",
-    keep: "Le site ne garde pas le contenu des e-mails. Les liens, hachés et inutilisables une fois expirés, restent tant que le compte existe.",
+    keep: "Le site ne garde pas le contenu des e-mails. Les liens, hachés, sont effacés 30 jours après leur utilisation ou leur expiration.",
     who: "OVHcloud, qui achemine les e-mails.",
   },
   {
@@ -278,7 +278,7 @@ const ROWS: Row[] = [
     data: "Pour chaque requête : adresse IP, page appelée, code de réponse, heure.",
     why: "Diagnostiquer les pannes et repérer les attaques.",
     basis: "Intérêt légitime",
-    keep: "Jusqu'à la mise à jour suivante du site, en pratique quelques jours ; aucune durée maximale n'est encore fixée.",
+    keep: "Jusqu'à la mise à jour suivante du site, en pratique quelques jours, et au plus 30 Mo par service : au-delà, les plus anciens sont effacés.",
     who: "L'éditeur seulement.",
   },
 ];
@@ -367,9 +367,10 @@ export function PrivacyPage() {
           supprime-le d'abord.
         </p>
         <p>
-          Restent, sans lien avec ton compte : ton pseudo dans tes signalements ; ton nom recopié sur certaines actions faites
-          dans un groupe (corrections du compte des objets, demandes « Demander à… ») ; les prénoms de tes persos dans les bilans
-          de raid ; le journal de sécurité, adresse IP et navigateur compris. Tu peux demander leur effacement (voir « Tes droits »).
+          Restent, sans lien avec ton compte : tes signalements, sans ton pseudo ni ton navigateur ; ton nom recopié sur certaines
+          actions faites dans un groupe (corrections du compte des objets, demandes « Demander à… ») ; les prénoms de tes persos dans
+          les bilans de raid ; les événements de ton journal de sécurité, sans adresse IP ni navigateur, jusqu'à leur effacement au
+          bout de 12 mois (ceux du journal d'un groupe restent avec lui). Tu peux demander leur effacement (voir « Tes droits »).
         </p>
         <h3>Sauvegardes</h3>
         <p>

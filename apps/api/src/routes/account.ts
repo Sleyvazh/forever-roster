@@ -11,6 +11,7 @@ import { currentUser, destroySession, requireAuth } from "../lib/session";
 import { normalizeEmail, publicUser } from "../lib/users";
 import { assertStrongPassword, invalidateEmailTokens, issueEmailToken } from "./auth";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
+import { anonymizeReports } from "../lib/reports";
 import { verifyEmail } from "../lib/email-templates";
 import { siteOf } from "../lib/site";
 
@@ -145,7 +146,10 @@ export async function accountRoutes(app: FastifyInstance) {
     return { events: rows };
   });
 
-  /** Droit à l'effacement (RGPD) : supprime le compte, ses persos et ses sessions. */
+  /**
+   * Droit à l'effacement (RGPD) : supprime le compte, ses persos et ses sessions. Dans la même transaction, son journal
+   * de sécurité perd l'IP et le navigateur (les lignes restent, détachées du compte) et ses signalements sont anonymisés.
+   */
   app.delete("/", { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } }, async (req, reply) => {
     const u = currentUser(req);
     const body = parse(z.object({ password: z.string().max(PASSWORD_MAX).optional(), confirm: z.string().optional() }), req.body ?? {});
@@ -157,8 +161,12 @@ export async function accountRoutes(app: FastifyInstance) {
     const owned = await db.select({ groupId: groupMembers.groupId }).from(groupMembers)
       .where(and(eq(groupMembers.userId, u.id), eq(groupMembers.role, "owner")));
     if (owned.length) throw conflict("Tu es propriétaire d'au moins un groupe : supprime-le ou transfère-le avant de supprimer ton compte.");
+    await db.transaction(async tx => {
+      await tx.update(auditEvents).set({ ip: null, userAgent: null }).where(eq(auditEvents.userId, u.id));
+      await anonymizeReports(tx, u.id);
+      await tx.delete(users).where(eq(users.id, u.id));
+    });
     await destroySession(app, req, reply);
-    await db.delete(users).where(eq(users.id, u.id));
     return { ok: true };
   });
 }

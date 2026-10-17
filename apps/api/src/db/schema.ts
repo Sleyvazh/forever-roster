@@ -89,7 +89,10 @@ export const bnetImports = pgTable("bnet_imports", {
   expiresAt: ts("expires_at").notNull(),
 });
 
-/** Journal de sécurité : connexions, échecs, changements sensibles. */
+/**
+ * Journal de sécurité : connexions, échecs, changements sensibles ; avec un groupe, c'est aussi le journal du groupe.
+ * Purge (lib/purges.ts) : effacé après 12 mois, sauf le journal des groupes, qui ne perd que l'IP et le navigateur.
+ */
 export const auditEvents = pgTable("audit_events", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
@@ -101,7 +104,10 @@ export const auditEvents = pgTable("audit_events", {
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   index("audit_user_idx").on(t.userId, t.createdAt),
+  // Aussi pour la purge des lignes sans groupe (group_id IS NULL, par date)
   index("audit_group_idx").on(t.groupId, t.createdAt),
+  // Purge du journal des groupes : seulement les lignes qui gardent une IP ou un navigateur, par date
+  index("audit_ip_created_idx").on(t.createdAt).where(sql`${t.ip} IS NOT NULL OR ${t.userAgent} IS NOT NULL`),
 ]);
 
 /* ---------- Jeu ---------- */

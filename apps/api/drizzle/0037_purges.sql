@@ -1,0 +1,1 @@
+CREATE INDEX "audit_ip_created_idx" ON "audit_events" USING btree ("created_at") WHERE "audit_events"."ip" IS NOT NULL OR "audit_events"."user_agent" IS NOT NULL;

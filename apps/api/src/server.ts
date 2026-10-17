@@ -4,6 +4,7 @@ import { loadConfig } from "./config";
 import { createDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
 import { createMailer } from "./lib/mailer";
+import { purgeOldData } from "./lib/purges";
 import { ensureRecurringRaids } from "./lib/recurring";
 
 const cfg = loadConfig();
@@ -31,8 +32,18 @@ const runRecurring = () => ensureRecurringRaids(db)
   .catch(err => app.log.error({ err }, "Échec de la création des raids récurrents"));
 const recurringTimer = setInterval(runRecurring, 15 * 60e3);
 
+// Purges des données qui ne servent plus (lib/purges.ts) : au démarrage, puis toutes les heures. Journal : lignes effacées.
+const runPurges = () => purgeOldData(db)
+  .then(n => {
+    const done = Object.fromEntries(Object.entries(n).filter(([, v]) => v > 0));
+    if (Object.keys(done).length) app.log.info(done, "Données anciennes purgées");
+  })
+  .catch(err => app.log.error({ err }, "Échec de la purge des données anciennes"));
+const purgeTimer = setInterval(runPurges, 60 * 60e3);
+
 const close = async () => {
   clearInterval(recurringTimer);
+  clearInterval(purgeTimer);
   await Promise.all([app.close(), internal?.close()]);
   await pool.end();
   process.exit(0);
@@ -43,3 +54,4 @@ process.on("SIGINT", close);
 await app.listen({ port: cfg.PORT, host: cfg.HOST });
 if (internal) await internal.listen({ port: cfg.INTERNAL_PORT, host: cfg.HOST });
 void runRecurring();
+void runPurges();

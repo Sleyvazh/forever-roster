@@ -122,7 +122,8 @@ Exception : les routes de Roster Companion sans cookie (`/api/sync/*`, `/api/dev
 
 ## Journalisation (ASVS V7, Top 10 A09)
 
-- Journal d'audit en base : inscriptions, connexions réussies ou échouées, verrouillages, changements et réinitialisations de mot de passe, révocations, liaisons Battle.net, actions de groupe. IP et user-agent sont conservés.
+- Journal d'audit en base : inscriptions, connexions réussies ou échouées, verrouillages, changements et réinitialisations de mot de passe, révocations, liaisons Battle.net, actions de groupe. IP et user-agent sont conservés 12 mois (purge automatique, `apps/api/src/lib/purges.ts`) ; les actions de groupe restent dans le journal du groupe, sans IP ni user-agent. À la suppression d'un compte, IP et user-agent de ses événements sont effacés tout de suite.
+- Journaux des conteneurs : rotation par taille (`json-file`, 3 × 10 Mo par conteneur).
 - Les journaux applicatifs masquent `Cookie`, `Authorization`, `X-CSRF-Token` et `Set-Cookie`.
 
 ## Serveur
@@ -146,7 +147,6 @@ Exception : les routes de Roster Companion sans cookie (`/api/sync/*`, `/api/dev
 - Pas encore de double authentification (TOTP / WebAuthn). C'est la prochaine étape logique.
 - Le verrouillage de compte peut servir à bloquer volontairement un joueur (déni de service ciblé). Il est atténué par la courte durée et par la connexion Battle.net, qui reste possible.
 - Les alertes `npm audit` sur esbuild concernent uniquement les outils de développement (serveur de dev de tsup et drizzle-kit), pas le code livré.
-- Le journal d'audit n'a pas encore de durée de rétention automatique.
 
 ## Signaler une vulnérabilité
 

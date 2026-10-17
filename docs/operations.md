@@ -198,6 +198,10 @@ Pages publiques `/mentions-legales` et `/confidentialite`, sur les deux adresses
 
 Les durées de conservation de la page Confidentialité décrivent ce que fait le code : à mettre à jour, avec la date en tête (`UPDATED`), à chaque purge ajoutée ou changée, et à chaque nouvelle donnée gardée.
 
+**Purges automatiques** (`apps/api/src/lib/purges.ts`) : au démarrage de l'API puis toutes les heures, par lots de 1 000 lignes (20 lots au plus par table et par passage). Journal de sécurité effacé après 12 mois (les actions d'un groupe restent dans le journal du groupe, sans IP ni navigateur) ; sessions finies, appareils Roster Companion déliés et liens d'e-mail utilisés ou expirés effacés après 30 jours ; liste de l'import Battle.net dès qu'elle expire. À la suppression d'un compte, dans la même transaction : son journal perd IP et navigateur, ses signalements perdent pseudo et navigateur. Le journal de l'API note les lignes effacées : `sudo docker compose logs api | grep "Données anciennes purgées"`. Migration `0037` (index du journal pour la purge), appliquée au démarrage de l'API.
+
+**Journaux Docker** : rotation par taille dans `docker-compose.yml` (ancre `x-logging`, pilote `json-file`, 3 fichiers de 10 Mo au plus par conteneur). Elle ne vaut que pour les conteneurs créés après le changement : `sudo docker compose up -d` les recrée (`restart` ne suffit pas ; `deploy.sh` le fait aussi). Vérification : `sudo docker inspect --format '{{.Name}} {{.HostConfig.LogConfig.Config}}' $(sudo docker compose ps -q)` affiche `map[max-file:3 max-size:10m]` pour chaque conteneur.
+
 ## Deuxième adresse : Roster (WoW Retail)
 
 Un seul site, deux adresses : même serveur, même code, même base. L'adresse de la requête choisit le jeu (`forever` ou `retail`), le nom, le logo, la couleur, la page d'accueil publique, l'adresse des liens dans les e-mails et les invitations, et le retour de la connexion Discord. Les comptes sont communs (même e-mail, même mot de passe, même liaison Discord) ; la connexion se fait une fois par adresse (cookie propre à chaque sous-domaine). Persos et groupes appartiennent à un jeu : chaque adresse ne montre que les siens.

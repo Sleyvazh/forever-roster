@@ -1,5 +1,5 @@
 import type { Game } from "@forever/game-data";
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import sharp from "sharp";
 import type { Db } from "../db/client";
 import { discordDeletions, reports, siteSettings } from "../db/schema";
@@ -10,6 +10,7 @@ import { sniffImage } from "./images";
  * Signalements (bug, idée, question) : vues pour le site et pour le bot, salon Discord des admins, capture d'écran.
  */
 export type ReportRow = typeof reports.$inferSelect;
+type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
 
 export const REPORT_KINDS = ["bug", "idea", "question"] as const;
 export const REPORT_AREAS = ["site", "addon", "bot", "companion"] as const;
@@ -22,6 +23,10 @@ export const STATUS_LABEL: Record<(typeof REPORT_STATUSES)[number], string> = { 
 export const SCREENSHOT_MAX = 1600;
 /** Une capture se joint dans les 15 minutes qui suivent le signalement, une seule fois. */
 export const SCREENSHOT_WINDOW_MS = 15 * 60 * 1000;
+/** Le bot publie et met à jour les signalements des 30 derniers jours ; il ne touche plus aux messages plus anciens. */
+export const REPORT_DISCORD_FOLLOW_MS = 30 * 86400e3;
+/** Auteur affiché quand le compte a été supprimé (pseudo effacé). */
+export const DELETED_AUTHOR = "Compte supprimé";
 
 /** Capture ré-encodée comme les portraits (décodage complet, WebP, métadonnées supprimées), sans recadrage. */
 export async function normalizeScreenshot(buf: Buffer): Promise<Buffer> {
@@ -50,11 +55,25 @@ export function browserOf(ua: string): string {
 /** Ce que voient le joueur (ses signalements) et les admins. */
 export function reportView(r: ReportRow) {
   return {
-    id: r.id, author: r.author, game: r.game, kind: r.kind, area: r.area, title: r.title, body: r.body,
+    id: r.id, author: r.author || DELETED_AUTHOR, game: r.game, kind: r.kind, area: r.area, title: r.title, body: r.body,
     page: r.page, browser: browserOf(r.userAgent), addonVersion: r.addonVersion, hasImage: !!r.image,
     status: r.status, reply: r.reply, repliedAt: r.repliedAt, repliedBy: r.repliedBy,
     unseen: !!r.repliedAt && !r.replySeenAt, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
+}
+
+/**
+ * Compte supprimé (même transaction) : ses signalements restent pour les admins, sans pseudo ni navigateur. Le bot
+ * corrige les messages Discord qu'il suit encore ; les plus anciens, qu'il ne met plus à jour, sont retirés du salon.
+ */
+export async function anonymizeReports(db: Tx, userId: string, now = new Date()) {
+  const rows = await db.update(reports).set({ author: "", userAgent: "", discordChangedAt: now, updatedAt: now })
+    .where(eq(reports.userId, userId))
+    .returning({ id: reports.id, createdAt: reports.createdAt, channelId: reports.discordChannelId, messageId: reports.discordMessageId });
+  const stale = rows.filter(r => r.channelId && r.messageId && now.getTime() - r.createdAt.getTime() >= REPORT_DISCORD_FOLLOW_MS);
+  if (!stale.length) return;
+  await db.insert(discordDeletions).values(stale.map(r => ({ channelId: r.channelId!, messageId: r.messageId! })));
+  await db.update(reports).set({ discordChannelId: null, discordMessageId: null, discordSyncedAt: null }).where(inArray(reports.id, stale.map(r => r.id)));
 }
 
 /* ----- Salon Discord des signalements ----- */
@@ -82,7 +101,7 @@ export async function bindReportsChannel(db: Db, ch: ReportsChannel) {
 export function reportDiscordView(r: ReportRow, channelId: string, origin: (g: Game) => string) {
   return {
     id: r.id, channelId, messageId: r.discordChannelId === channelId ? r.discordMessageId : null, changedAt: r.discordChangedAt.toISOString(),
-    kind: r.kind, area: r.area, title: r.title, body: r.body.slice(0, 1500), author: r.author,
+    kind: r.kind, area: r.area, title: r.title, body: r.body.slice(0, 1500), author: r.author || DELETED_AUTHOR,
     site: r.game === "retail" ? "Roster" : "Forever Roster", page: r.page.slice(0, 200), browser: browserOf(r.userAgent),
     addonVersion: r.addonVersion, hasImage: !!r.image,
     status: r.status, reply: r.reply.slice(0, 500), repliedBy: r.repliedBy, createdAt: r.createdAt.toISOString(),

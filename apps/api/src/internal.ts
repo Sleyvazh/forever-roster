@@ -17,7 +17,7 @@ import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { mayCreate, retireOutingMessages } from "./lib/outings";
 import { outingRoutes } from "./internal-outings";
-import { bindReportsChannel, reportDiscordView, reportsChannel } from "./lib/reports";
+import { bindReportsChannel, REPORT_DISCORD_FOLLOW_MS, reportDiscordView, reportsChannel } from "./lib/reports";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
 import { formatFor } from "./routes/raids";
@@ -559,7 +559,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const ch = await reportsChannel(db);
     if (!ch) return { reports: [] };
     const rows = await db.select().from(reports).where(and(
-      gt(reports.createdAt, new Date(Date.now() - 30 * 86400e3)),
+      gt(reports.createdAt, new Date(Date.now() - REPORT_DISCORD_FOLLOW_MS)),
       // La capture arrive juste après l'envoi : on lui laisse 30 s pour partir avec le premier message
       or(isNotNull(reports.image), lt(reports.createdAt, new Date(Date.now() - 30e3))),
       or(isNull(reports.discordSyncedAt), sql`${reports.discordSyncedAt} < date_trunc('milliseconds', ${reports.discordChangedAt})`,
