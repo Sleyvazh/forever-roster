@@ -20,6 +20,8 @@ export const toApi = (c: CharacterRow) => ({
   id: c.id, userId: c.userId, name: c.name, realm: c.realm, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2, level: c.level,
   talents: c.talents, talentLink: c.talentLink, talents2: c.talents2, talentLink2: c.talentLink2, professions: c.professions, gear: c.gear, legacy: c.legacy, notes: c.notes,
   portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null, addonKey: c.addonKey ?? null,
+  // Lot « Guilde » : GUID du perso en jeu (en-tête FRC de l'addon 1.6.2), pour reconnaître la fiche au Ctrl+V
+  guid: c.guid ?? null,
   // R2b (Roster) : lu chez Blizzard (import ou « Mettre à jour »)
   realmSlug: c.realmSlug, ilvl: c.ilvl ?? null, activeSpec: c.activeSpec, bnet: c.bnetId !== null, bnetSyncedAt: c.bnetSyncedAt ?? null,
 });

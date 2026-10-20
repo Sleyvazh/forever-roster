@@ -17,3 +17,4 @@ export * from "./roster-addon";
 export * from "./share";
 export * from "./dungeons";
 export * from "./outings";
+export * from "./guild";

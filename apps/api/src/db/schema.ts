@@ -1,4 +1,4 @@
-import type { BnetCharacter, Game, GameLangPref, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
+import type { BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -149,6 +149,8 @@ export const characters = pgTable("characters", {
   addonSyncedAt: ts("addon_synced_at"),
   /** Lot K1 : perso du jeu lié à cette fiche (« Prénom-Royaume ») : l'import de l'addon la retrouve d'un envoi à l'autre. */
   addonKey: text("addon_key"),
+  /** Lot « Guilde » : GUID du perso en jeu (en-tête FRC de l'addon 1.6.2) : le rapproche de la liste de guilde. */
+  guid: text("guid"),
   /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
   consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
   consumablesAt: ts("consumables_at"),
@@ -170,6 +172,7 @@ export const characters = pgTable("characters", {
   index("characters_user_idx").on(t.userId, t.sortOrder),
   uniqueIndex("characters_addon_key_uq").on(t.userId, t.game, t.addonKey),
   uniqueIndex("characters_bnet_uq").on(t.userId, t.bnetId),
+  index("characters_guid_idx").on(t.guid).where(sql`${t.guid} IS NOT NULL`),
   check("characters_level", sql`${t.level} BETWEEN 1 AND 90`),
   check("characters_game", sql`${t.game} IN ('forever', 'retail')`),
 ]);
@@ -211,8 +214,11 @@ export const groups = pgTable("groups", {
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
   raidCreators: text("raid_creators").$type<Creators>().notNull().default("officers"),
   outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
+  /** Course au 60 (Forever) : annonces des montées de niveau dans le salon de la guilde (rien, les 60, tous les 10 niveaux). */
+  levelAnnounces: text("level_announces").$type<LevelAnnounce>().notNull().default("sixty"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
+  check("groups_level_announces_chk", sql`${t.levelAnnounces} in ('none', 'sixty', 'tens')`),
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
   check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
   check("groups_raid_creators_chk", sql`${t.raidCreators} in ('officers', 'members')`),
@@ -700,6 +706,170 @@ export const outingNotices = pgTable("outing_notices", {
   index("outing_notices_pending_idx").on(t.createdAt).where(sql`${t.claimedAt} IS NULL`),
   check("outing_notices_kind", sql`${t.kind} IN ('full', 'soon', 'moved', 'cancelled', 'promoted')`),
 ]);
+
+/* ---------- Guilde du jeu (Forever, lot « Guilde ») ---------- */
+
+/** Premiers 60 figés (dès le troisième) : gardés tels quels, même si un perso quitte la guilde ensuite. */
+export interface FrozenPodiumPlace { guid: string; name: string; cls: string; at: string; exact: boolean; place: number; tie: boolean }
+
+/**
+ * Guilde du jeu liée à une guilde du site (Forever) : une au plus. Le lien se fait au premier relevé (FRL) envoyé par un
+ * officier du site qui n'a qu'une guilde Forever sans lien (sinon il est proposé, guild_link_proposals). « Délier » efface
+ * la ligne, et avec elle la liste, le journal et l'historique des niveaux (les rattachements, eux, restent : guild_links).
+ * Le relevé le plus récent (heure de la liste) l'emporte.
+ */
+export const gameGuilds = pgTable("game_guilds", {
+  groupId: uuid("group_id").primaryKey().references(() => groups.id, { onDelete: "cascade" }),
+  /** Clé de l'addon : « <guilde>-<royaume>-<faction> ». */
+  key: text("key").notNull(),
+  name: text("name").notNull(),
+  realm: text("realm").notNull().default(""),
+  faction: text("faction").notNull().default(""),
+  linkedAt: ts("linked_at").notNull().defaultNow(),
+  linkedBy: uuid("linked_by").references(() => users.id, { onDelete: "set null" }),
+  linkedByName: text("linked_by_name").notNull(),
+  /** Lien fait tout seul (premier relevé d'un officier) ; false : guilde proposée, liée dans l'Administration. */
+  auto: boolean("auto").notNull().default(true),
+  /** Dernière liste appliquée : heure de la liste (en-tête FRL), perso qui l'a relevée, complète ou non, membres selon le jeu. */
+  rosterAt: ts("roster_at"),
+  rosterBy: text("roster_by").notNull().default(""),
+  rosterComplete: boolean("roster_complete").notNull().default(false),
+  rosterTotal: integer("roster_total").notNull().default(0),
+  /** Première liste reçue : les membres déjà là ne sont pas des « arrivées ». */
+  firstRosterAt: ts("first_roster_at"),
+  journalAt: ts("journal_at"),
+  journalBy: text("journal_by").notNull().default(""),
+  /** Course au 60 : « Premiers 60 » figés dès le troisième (null tant qu'il y en a moins de 3). */
+  podium: jsonb("podium").$type<FrozenPodiumPlace[] | null>(),
+}, t => [index("game_guilds_key_idx").on(t.key)]);
+
+/**
+ * Membres de la guilde du jeu (liste de guilde relevée par l'addon), clé GUID. Les partis restent 90 jours (purges),
+ * marqués par left_at : relevé complet où ils manquent, ou départ lu dans le journal.
+ */
+export const guildMembers = pgTable("guild_members", {
+  groupId: uuid("group_id").notNull().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  guid: text("guid").notNull(),
+  /** Nom complet tel que le jeu le donne (« Prénom Nom »). */
+  name: text("name").notNull(),
+  cls: text("cls").notNull().default(""),
+  level: smallint("level").notNull(),
+  rank: text("rank").notNull().default(""),
+  rankIndex: smallint("rank_index").notNull().default(0),
+  online: boolean("online").notNull().default(false),
+  lastOnlineAt: ts("last_online_at"),
+  note: text("note").notNull().default(""),
+  /** Note d'officier : seulement d'un relevé envoyé par un officier du site, dont le rang en jeu peut la lire. */
+  officerNote: text("officer_note").notNull().default(""),
+  /** Dernière XP lue par l'addon du joueur (ligne P) : dans le niveau xp_level, relevée à xp_at. */
+  xp: integer("xp"),
+  xpMax: integer("xp_max"),
+  xpLevel: smallint("xp_level"),
+  xpAt: ts("xp_at"),
+  /** Premier et dernier relevé où il figure ; arrivée (journal) et départ. */
+  firstSeenAt: ts("first_seen_at").notNull(),
+  seenAt: ts("seen_at").notNull(),
+  joinedAt: ts("joined_at"),
+  leftAt: ts("left_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.groupId, t.guid] }),
+  index("guild_members_left_idx").on(t.leftAt).where(sql`${t.leftAt} IS NOT NULL`),
+]);
+
+/**
+ * Journal de guilde (arrivées, départs, promotions…), dédoublonné : le jeu ne donne qu'un « il y a N heures », la date
+ * n'est connue qu'à l'heure près. Effacé au bout de 12 mois (purges).
+ */
+export const guildEvents = pgTable("guild_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  groupId: uuid("group_id").notNull().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  type: text("type").$type<GuildEventType>().notNull(),
+  player1: text("player1").notNull().default(""),
+  player2: text("player2").notNull().default(""),
+  rankIndex: smallint("rank_index"),
+  /** Nom du rang (liste de guilde du même relevé), pour les promotions et rétrogradations. */
+  rankName: text("rank_name"),
+  at: ts("at").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("guild_events_group_idx").on(t.groupId, t.at),
+  index("guild_events_at_idx").on(t.at),
+  check("guild_events_type_chk", sql`${t.type} in ('invite', 'join', 'promote', 'demote', 'remove', 'quit')`),
+]);
+
+/**
+ * Historique des niveaux (Course au 60) : date exacte notée par l'addon à la montée (lignes U, « exact »), sinon date du
+ * relevé qui a vu le niveau (« roster » : montée vue entre deux listes ; « seen » : premier relevé, pas une montée).
+ * announced_at : annonce Discord déjà publiée (une fois par perso et par palier).
+ */
+export const guildLevels = pgTable("guild_levels", {
+  groupId: uuid("group_id").notNull().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  guid: text("guid").notNull(),
+  level: smallint("level").notNull(),
+  reachedAt: ts("reached_at").notNull(),
+  source: text("source").$type<"exact" | "roster" | "seen">().notNull(),
+  announcedAt: ts("announced_at"),
+}, t => [
+  primaryKey({ columns: [t.groupId, t.guid, t.level] }),
+  index("guild_levels_reached_idx").on(t.reachedAt),
+  check("guild_levels_source_chk", sql`${t.source} in ('exact', 'roster', 'seen')`),
+]);
+
+/**
+ * Joueur de la guilde (mains et alts) : un compte du site (user_id) ou un joueur sans compte, créé par un officier
+ * (« Rattacher à… », « Nouveau joueur ») ou par une suggestion acceptée. Les persos d'un même compte (GUID sur ses
+ * fiches) le rejoignent tout seuls : ils ne sont pas enregistrés ici. main_guid : main choisi (sinon le main du site,
+ * sinon le plus haut niveau).
+ */
+export const guildPlayers = pgTable("guild_players", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  mainGuid: text("main_guid"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  uniqueIndex("guild_players_user_uq").on(t.groupId, t.userId).where(sql`${t.userId} IS NOT NULL`),
+  index("guild_players_group_idx").on(t.groupId),
+]);
+
+/**
+ * Rattachement d'un perso de guilde (GUID) à un joueur : lien d'officier (« Rattacher à… », qui prime), suggestion d'une
+ * note acceptée par un officier (« note »), ou perso déclaré par le joueur (« declared »). Gardé si la guilde est déliée
+ * puis reliée. confirmed : réponse du joueur à « Est-ce ton perso ? » (null : pas encore ; « Non » retire le lien).
+ */
+export const guildLinks = pgTable("guild_links", {
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  guid: text("guid").notNull(),
+  playerId: uuid("player_id").notNull().references(() => guildPlayers.id, { onDelete: "cascade" }),
+  source: text("source").$type<"note" | "officer" | "declared">().notNull(),
+  confirmed: boolean("confirmed"),
+  byId: uuid("by_id").references(() => users.id, { onDelete: "set null" }),
+  byName: text("by_name").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.groupId, t.guid] }),
+  index("guild_links_player_idx").on(t.playerId),
+  check("guild_links_source_chk", sql`${t.source} in ('note', 'officer', 'declared')`),
+]);
+
+/**
+ * Guilde du jeu proposée (relevé d'un officier qui a plusieurs guildes Forever sans lien) : affichée dans
+ * l'Administration de chacune, avec « Lier ». Le relevé est gardé pour remplir la guilde tout de suite. 30 jours (purges).
+ */
+export const guildLinkProposals = pgTable("guild_link_proposals", {
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  key: text("key").notNull(),
+  name: text("name").notNull(),
+  realm: text("realm").notNull().default(""),
+  faction: text("faction").notNull().default(""),
+  members: integer("members").notNull().default(0),
+  proposedBy: uuid("proposed_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  proposedByName: text("proposed_by_name").notNull(),
+  text: text("text").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.groupId, t.key] }), index("guild_link_proposals_created_idx").on(t.createdAt)]);
 
 /* ---------- Signalements (bug, idée, question) ---------- */
 

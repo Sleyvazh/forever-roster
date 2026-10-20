@@ -9,7 +9,7 @@ import { notFound, parse } from "../lib/http";
 import { currentUser } from "../lib/session";
 import { otherSite, siteOf } from "../lib/site";
 import { syncSigner } from "../lib/sync-signing";
-import { allGroupsExport } from "./addon";
+import { allGroupsExport, MAX_ADDON_TEXT, UPLOAD_BODY_LIMIT } from "./addon";
 
 /**
  * Synchro de Roster Companion (lot K1), jeton de l'appareil obligatoire. Le jeu suit l'adresse appelée (un site,
@@ -56,14 +56,14 @@ export async function syncRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Du jeu vers le site : blocs FRC et FRB lus dans la sauvegarde de l'addon. Un perso inconnu revient « unknown » :
+   * Du jeu vers le site : blocs FRC, FRB et FRL (relevé de la guilde, jusqu'à 256 Kio) lus dans la sauvegarde de l'addon. Un perso inconnu revient « unknown » :
    * l'appli demande, puis renvoie avec create / ignore. Un bilan qui n'est pas celui du chef de raid ne remplace pas le sien.
    */
-  app.post("/upload", { config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
+  app.post("/upload", { bodyLimit: UPLOAD_BODY_LIMIT, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } }, async (req) => {
     const u = currentUser(req);
     const d = currentDevice(req);
     const body = parse(z.object({
-      text: z.string().max(250_000),
+      text: z.string().max(MAX_ADDON_TEXT),
       create: z.array(key).max(60).default([]),
       ignore: z.array(key).max(60).default([]),
       /** Envoi demandé par le joueur dans l'appli (bilan qui n'est pas celui du chef) : remplace, comme un Ctrl+V. */

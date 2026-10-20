@@ -1,12 +1,14 @@
 /**
- * Import d'un export de l'addon (lot K1) : blocs FRC (persos) et FRB (bilans de raid), appliqués côté serveur.
- * Sert au Ctrl+V du site (choix de la fiche par perso) et à Roster Companion (synchro automatique).
- * L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
+ * Import d'un export de l'addon (lot K1) : blocs FRC (persos), FRB (bilans de raid) et FRL (relevé de la guilde du jeu,
+ * lot « Guilde »), appliqués côté serveur. Sert au Ctrl+V du site (choix de la fiche par perso) et à Roster Companion
+ * (synchro automatique). L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont jamais touchés.
+ * En-tête FRC de l'addon 1.6.2 : GUID du perso (gardé sur la fiche, clé de la liste de guilde) et nom complet, qui
+ * complète une fiche qui n'a que le prénom (un nom saisi à la main, différent, est gardé et signalé).
  * Roster (WoW Retail, lot R3a) : seulement les bilans RRB de l'addon Roster (les persos viennent de Battle.net) ;
  * le texte de l'autre addon est refusé avec un message clair sur chaque site.
  */
 import {
-  addonKeyOf, foreignAddonErrors, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseRaidLogs,
+  addonKeyOf, foreignAddonErrors, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseGuildBlocks, parseRaidLogs,
   parseRRB, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, withoutCurrent,
   type CharacterExport, type Game, type ImportPart, type ImportResult, type RaidLogExport, type RosterRaidLog,
 } from "@forever/game-data";
@@ -19,6 +21,7 @@ import { MAX_CHARACTERS } from "../routes/characters";
 import { characterFields, crossCheck } from "./character-schema";
 import { charsChanged } from "./events";
 import { membership } from "./groups";
+import { importGuildExports } from "./guild-import";
 import { HttpError } from "./http";
 import { importKnownRecipes, setWantedPatterns } from "./recipes";
 import { signUpSiteUser } from "./signups";
@@ -39,6 +42,8 @@ export interface ImportOptions {
   unknown?: "ask" | "create";
   /** Adresse de l'autre site (message quand on y colle le texte de l'autre addon). */
   otherHost?: string;
+  /** Heure de référence des relevés de guilde (tests) ; maintenant sinon. */
+  now?: Date;
 }
 
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
@@ -46,8 +51,10 @@ const ALL_PARTS: ReadonlySet<ImportPart> = new Set(IMPORT_PARTS);
 
 /** Champs de la fiche à modifier : identité, équipement porté, métiers, talents. Validés comme une modification faite sur le site. */
 async function buildPatch(db: Db, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>) {
-  const patch: Partial<Pick<CharacterRow, "level" | "cls" | "race" | "gear" | "professions" | "talentNodes" | "talents" | "talentLink">> = {};
+  const patch: Partial<Pick<CharacterRow, "name" | "level" | "cls" | "race" | "gear" | "professions" | "talentNodes" | "talents" | "talentLink">> = {};
   if (parts.has("identity")) {
+    // Nom complet du jeu : complète une fiche qui n'a que le prénom (jamais un nom saisi autrement)
+    if (d.fullName && c.name !== d.fullName && !c.name.trim().includes(" ") && sameCharacter(d.fullName, c.name)) patch.name = d.fullName;
     if (d.level !== c.level) patch.level = d.level;
     if (d.cls && !c.cls) patch.cls = d.cls;
     if (d.race && !c.race && isValidCombo(d.race, d.cls ?? c.cls)) patch.race = d.race;
@@ -140,8 +147,10 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
         c = mine.find(x => x.id === target);
         if (!c) { out.push({ ...base, status: "error", message: "fiche introuvable" }); continue; }
       } else {
-        c = mine.find(x => x.addonKey === key)
-          ?? mine.find(x => !x.addonKey && sameCharacter(d.name, x.name) && (!x.cls || !d.cls || x.cls === d.cls));
+        // Le GUID (addon 1.6.2) identifie le perso même si son prénom existe deux fois
+        c = (d.guid ? mine.find(x => x.guid === d.guid) : undefined)
+          ?? mine.find(x => x.addonKey === key && (!d.guid || !x.guid))
+          ?? mine.find(x => !x.addonKey && !x.guid && sameCharacter(d.name, x.name) && (!x.cls || !d.cls || x.cls === d.cls));
         if (!c) {
           if (opts.ignore?.has(key)) {
             await db.insert(addonIgnored).values({ userId: user.id, game: opts.game, key }).onConflictDoNothing();
@@ -159,7 +168,7 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
         const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
           .where(and(eq(characters.userId, user.id), eq(characters.game, opts.game))) as [{ n: number; top: number | null }];
         if (n >= MAX_CHARACTERS) { out.push({ ...base, status: "error", message: `limite de ${MAX_CHARACTERS} personnages atteinte` }); continue; }
-        const [row] = await db.insert(characters).values({ userId: user.id, game: opts.game, name: d.name.slice(0, 40), sortOrder: (top ?? -1) + 1 }).returning();
+        const [row] = await db.insert(characters).values({ userId: user.id, game: opts.game, name: (d.fullName ?? d.name).slice(0, 40), sortOrder: (top ?? -1) + 1 }).returning();
         c = row!;
         mine.push(c);
         if (ignored.has(key)) { await db.delete(addonIgnored).where(and(eq(addonIgnored.userId, user.id), eq(addonIgnored.game, opts.game), eq(addonIgnored.key, key))); ignored.delete(key); }
@@ -172,21 +181,31 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       const err = crossCheck({ ...fiche, ...patch }, opts.game);
       if (err) { out.push({ ...base, status: "error", message: err }); continue; }
 
-      // 3. Lien perso du jeu → fiche (retiré d'une autre fiche si le joueur a changé de cible)
+      // 3. Lien perso du jeu → fiche (retiré d'une autre fiche si le joueur a changé de cible), GUID compris
       if (fiche.addonKey !== key) {
         const other = mine.find(x => x.addonKey === key && x.id !== fiche.id);
         if (other) { await db.update(characters).set({ addonKey: null }).where(eq(characters.id, other.id)); other.addonKey = null; }
       }
+      if (d.guid && fiche.guid !== d.guid) {
+        for (const other of mine.filter(x => x.guid === d.guid && x.id !== fiche.id)) {
+          await db.update(characters).set({ guid: null }).where(eq(characters.id, other.id)); other.guid = null;
+        }
+      }
       const consumables = Object.keys(d.consumables).length ? Object.fromEntries(Object.entries(d.consumables).slice(0, 60).map(([k, v]) => [k, Math.min(9999, v)])) : null;
       const [row] = await db.update(characters).set({
-        ...patch, addonKey: key, addonSyncedAt: new Date(), updatedAt: new Date(),
+        ...patch, addonKey: key, ...(d.guid && { guid: d.guid }), addonSyncedAt: new Date(), updatedAt: new Date(),
         // Consommables comptés en jeu (lot G) : toujours repris, ils servent à l'onglet Préparation des raids
         ...(consumables && { consumables, consumablesAt: new Date() }),
       }).where(eq(characters.id, fiche.id)).returning();
       Object.assign(fiche, row);
       changed = true;
       const extras = await applyExtras(db, user, fiche, d, parts);
-      out.push({ ...base, status: create ? "created" : "updated", characterId: fiche.id, message: `${create ? "fiche créée" : "fiche mise à jour"}${extras ? ` · ${extras}` : ""}` });
+      // Nom complet du jeu différent du nom saisi sur la fiche : gardé, mais signalé
+      const conflict = d.fullName && parts.has("identity") && !create && fiche.name !== d.fullName ? { fiche: fiche.name, game: d.fullName } : null;
+      out.push({
+        ...base, status: create ? "created" : "updated", characterId: fiche.id, ...(conflict && { nameConflict: conflict }),
+        message: `${create ? "fiche créée" : "fiche mise à jour"}${patch.name ? ` · nom complet : ${patch.name}` : ""}${extras ? ` · ${extras}` : ""}${conflict ? ` · nom en jeu « ${conflict.game} » différent de la fiche (« ${conflict.fiche} », gardé)` : ""}`,
+      });
     } catch (e) {
       out.push({ ...base, status: "error", message: errorText(e, "mise à jour impossible") });
     }
@@ -223,8 +242,11 @@ export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | 
   return out;
 }
 
-/** Texte collé ou envoyé : persos puis bilans. Les blocs abîmés sont signalés sans bloquer les autres. */
-export async function importAddonText(db: Db, user: User, text: string, opts: ImportOptions & { skipLogs?: ReadonlySet<string>; auto?: boolean }) {
+/**
+ * Texte collé ou envoyé : persos, bilans, puis relevés de guilde (après les persos : leur GUID rapproche les persos de la
+ * liste). Les blocs abîmés sont signalés sans bloquer les autres. skipGuild : Ctrl+V sans le relevé de guilde.
+ */
+export async function importAddonText(db: Db, user: User, text: string, opts: ImportOptions & { skipLogs?: ReadonlySet<string>; auto?: boolean; skipGuild?: boolean }) {
   const errors: string[] = [];
   // Roster : bilans RRB seulement (les persos viennent de Battle.net ou se créent à la main) ; un texte de Forever Roster est refusé
   if (opts.game === "retail") {
@@ -242,9 +264,12 @@ export async function importAddonText(db: Db, user: User, text: string, opts: Im
     const r = parseCharacterExports(text);
     if (r.ok) { blocks = r.data; errors.push(...r.errors.map(x => `Bloc ignoré : ${x}`)); } else errors.push(r.error);
   }
+  const guild = /(^|\n)\s*FRL;/.test(text) && !opts.skipGuild ? parseGuildBlocks(text) : { blocks: [], errors: [] };
+  errors.push(...guild.errors.map(x => `Relevé de guilde ignoré : ${x}`));
   const results = [
     ...await importCharacters(db, user, blocks, opts),
     ...await importRaidLogs(db, user, raid.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "forever" }),
+    ...await importGuildExports(db, user, guild.blocks, opts.now),
   ];
   return { results, errors };
 }

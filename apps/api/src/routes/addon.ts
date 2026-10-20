@@ -20,6 +20,10 @@ import { syncSigner, type SyncSigner } from "../lib/sync-signing";
 const MAX_RAIDS = 15;
 const RECENT_MS = 3 * 3600_000;
 const MAX_GROUPS = 10;
+/** Texte de l'addon collé ou envoyé : persos, bilans et relevé de guilde (FRL, 256 Kio pour 1 000 membres). */
+export const MAX_ADDON_TEXT = 900_000;
+/** Corps de la requête (JSON, texte échappé) : au-delà de la limite générale de 256 Kio. */
+export const UPLOAD_BODY_LIMIT = 2 * 1024 * 1024;
 
 /**
  * Persos rangés dans le groupe par ses membres actuels (mains et alts), avec le rôle du joueur : ligne M du partage
@@ -223,20 +227,22 @@ export async function addonRoutes(app: FastifyInstance) {
 
   /**
    * Export de l'addon collé sur le site (Ctrl+V n'importe où, lot K1 : appliqué côté serveur) : persos (FRC) sur la fiche
-   * choisie pour chacun, puis bilans de raid (FRB). Les choix de fiche sont retenus (clé du perso) pour les prochaines fois.
+   * choisie pour chacun, puis bilans de raid (FRB), puis relevés de la guilde du jeu (FRL, lot « Guilde »). Les choix de fiche sont retenus (clé du perso) pour les prochaines fois.
    */
-  app.post("/addon/import", async (req) => {
+  app.post("/addon/import", { bodyLimit: UPLOAD_BODY_LIMIT }, async (req) => {
     const u = currentUser(req);
     const body = parse(z.object({
-      text: z.string().max(250_000),
+      text: z.string().max(MAX_ADDON_TEXT),
       parts: z.array(z.enum(IMPORT_PARTS)).max(IMPORT_PARTS.length).optional(),
       targets: z.record(z.string().max(100), z.union([z.uuid(), z.literal("new"), z.literal("skip")])).refine(r => Object.keys(r).length <= 60).optional(),
       skipLogs: z.array(z.uuid()).max(10).optional(),
+      /** Lot « Guilde » : ne pas reprendre le relevé de guilde (FRL) du texte collé. */
+      skipGuild: z.boolean().optional(),
     }), req.body);
     const site = siteOf(app.ctx.cfg, req);
     return importAddonText(db, u, body.text, {
       game: site.game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
-      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host,
+      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host, skipGuild: body.skipGuild,
     });
   });
 }

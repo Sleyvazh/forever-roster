@@ -3,6 +3,7 @@
  * L'addon envoie ce que le jeu affiche ; on le traduit dans le vocabulaire du site (classes, races, métiers, emplacements).
  */
 import { CLASSES, GEAR_SLOTS, PRIMARY_PROFESSIONS, SIGNUP_STATUSES, type ClassName, type SignupStatus } from "./core";
+import { normalizeGuid } from "./guild";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 
@@ -30,6 +31,11 @@ export const professionFromGame = (name: string) => PROFESSION_NAMES[name.trim()
 export interface ExportedTalentNode { id: number; rank: number; max: number; x: number; y: number; spell: number; sub: number; tree: number }
 export interface CharacterExport {
   name: string; realm: string; cls: ClassName | null; race: string | null; level: number; faction: string; time: number; addon: string;
+  /**
+   * Lot « Guilde » (addon 1.6.2, deux champs en fin d'en-tête, absents d'un addon plus ancien) : GUID du perso
+   * (`UnitGUID("player")`, clé des persos de guilde) et nom complet (« Prénom Nom ») ; null si absents ou illisibles.
+   */
+  guid: string | null; fullName: string | null;
   gear: Partial<Record<Slot, number>>;
   /** Métiers reconnus, avec leur compétence. */
   professions: { name: string; skill: number; max: number; primary: boolean }[];
@@ -44,6 +50,13 @@ export interface CharacterExport {
   wanted: { itemId: number; on: boolean }[];
   /** Lot G : consommables demandés pour les raids à venir, comptés dans les sacs (et la banque) : objet → quantité. */
   consumables: Record<number, number>;
+}
+
+/** Nom complet de l'en-tête : gardé seulement s'il commence par le prénom du perso (« Greta » → « Greta Coulé »). */
+function fullNameOf(raw: string | undefined, first: string): string | null {
+  const full = (raw ?? "").replace(/[|\r\n;]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+  const lower = (x: string) => x.normalize("NFC").toLocaleLowerCase("fr");
+  return full && lower(full.split(" ")[0]!) === lower(first.trim()) ? full : null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -65,6 +78,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const data: CharacterExport = {
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
+    guid: normalizeGuid(head[10]), fullName: fullNameOf(head[11], head[2] ?? ""),
     gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], wanted: [], consumables: {},
   };
   for (const line of lines.slice(1, -1)) {

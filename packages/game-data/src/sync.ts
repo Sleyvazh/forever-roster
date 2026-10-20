@@ -23,14 +23,14 @@ export const IMPORT_PARTS = ["identity", "gear", "professions", "recipes", "tale
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 /**
- * Résultat d'un bloc importé (perso FRC ou bilan FRB).
+ * Résultat d'un bloc importé (perso FRC, bilan FRB, relevé de guilde FRL).
  * unknown : perso que le site ne connaît pas, à créer ou ignorer (l'appli demande) ; ignored : ignoré exprès ;
  * kept : bilan non remplacé (celui du chef de raid est déjà enregistré) ; refused : pas le droit (bilan d'un membre).
  */
 export type ImportStatus = "updated" | "created" | "unknown" | "ignored" | "skipped" | "kept" | "refused" | "error";
 export interface ImportResult {
   key: string;
-  kind: "character" | "raidlog";
+  kind: "character" | "raidlog" | "guild";
   name: string;
   status: ImportStatus;
   message: string;
@@ -39,4 +39,8 @@ export interface ImportResult {
   level?: number;
   characterId?: string;
   raidId?: string;
+  /** Perso : nom complet lu en jeu, différent du nom saisi sur la fiche (gardé tel quel). */
+  nameConflict?: { fiche: string; game: string };
+  /** Relevé de guilde : guildes du site mises à jour. */
+  groups?: { id: string; name: string }[];
 }
