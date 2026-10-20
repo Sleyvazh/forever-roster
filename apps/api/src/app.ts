@@ -22,6 +22,7 @@ import { reachRoutes } from "./routes/reach";
 import { absenceRoutes } from "./routes/absences";
 import { orderRoutes } from "./routes/orders";
 import { outingRoutes } from "./routes/outings";
+import { guildRoutes } from "./routes/guild";
 import { groupFeedbackRoutes } from "./routes/group-feedback";
 import { prepRoutes } from "./routes/prep";
 import { eventRoutes } from "./routes/events";
@@ -42,6 +43,8 @@ export interface AppContext {
   mailer: Mailer;
   /** Injectable pour les tests (Battle.net, Have I Been Pwned). */
   fetch: typeof fetch;
+  /** Horloge de la Course au 60 et de l'accueil de la guilde (tests : une date après la sortie) ; Date.now sinon. */
+  now?: () => Date;
 }
 
 declare module "fastify" {
@@ -108,6 +111,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(reachRoutes, { prefix: "/api/groups" });
   await app.register(orderRoutes, { prefix: "/api/groups" });
   await app.register(outingRoutes, { prefix: "/api/groups" });
+  await app.register(guildRoutes, { prefix: "/api/groups" });
   await app.register(groupFeedbackRoutes, { prefix: "/api/groups" });
   await app.register(prepRoutes, { prefix: "/api/groups" });
   await app.register(absenceRoutes, { prefix: "/api/absences" });

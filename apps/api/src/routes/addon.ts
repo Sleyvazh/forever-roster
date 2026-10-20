@@ -242,7 +242,7 @@ export async function addonRoutes(app: FastifyInstance) {
     const site = siteOf(app.ctx.cfg, req);
     return importAddonText(db, u, body.text, {
       game: site.game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
-      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host, skipGuild: body.skipGuild,
+      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host, skipGuild: body.skipGuild, now: app.ctx.now?.(),
     });
   });
 }

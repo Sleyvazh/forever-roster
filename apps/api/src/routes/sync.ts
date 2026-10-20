@@ -71,7 +71,7 @@ export async function syncRoutes(app: FastifyInstance) {
     }), req.body);
     const site = siteOf(cfg, req);
     const r = await importAddonText(db, u, body.text, {
-      game: site.game, otherHost: otherSite(cfg, site)?.host, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual,
+      game: site.game, otherHost: otherSite(cfg, site)?.host, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual, now: app.ctx.now?.(),
     });
     if (r.results.length) await synced(d.id);
     return r;
