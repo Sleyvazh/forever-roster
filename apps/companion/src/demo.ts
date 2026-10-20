@@ -34,8 +34,9 @@ function game(): GameView {
       { at: t - 180, label: "Tournicoti", status: "updated", message: "fiche mise à jour · 12 patrons cochés" },
       { at: t - 180, label: "Brakka", status: "updated", message: "fiche mise à jour" },
       { at: t - 180, label: "bilan de « Vroum Vroum »", status: "updated", message: "enregistré · 9 présents, 4 objets" },
+      { at: t - 180, label: "relevé de la guilde « Les Veilleurs »", status: "updated", message: "relevé enregistré · 14 membres" },
     ],
-    report: { at: t - 180, items: ["Tournicoti", "Brakka", "bilan de « Vroum Vroum »"] },
+    report: { at: t - 180, items: ["Tournicoti", "Brakka", "bilan de « Vroum Vroum »", "relevé de la guilde « Les Veilleurs »"] },
     groups: [{ name: "Bouaouad", raids: 3, patterns: 14, bis: 22 }],
     frgAt: t - 40, hasFrg: true, lastPush: t - 180, lastPull: t - 40,
     lastError: demoScreen === "probleme" ? "le site ne répond pas (connexion impossible)" : null,
@@ -48,7 +49,7 @@ function retailGame(): GameView {
 }
 
 let state: Status = {
-  version: "0.3.0", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
+  version: "0.3.1", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
   device: demoScreen === "appairage" ? null : { id: "d1", name: "PC-FLO", user: "Flo", linkedAt: now() - 3600 },
   setupDone: !["appairage", "dossiers"].includes(demoScreen), pausedUntil: null, settings, games: [game(), retailGame()],
   installs: [forever, retail, { ...forever, path: "C:\\Games\\World of Warcraft\\_classic_era_", dirName: "_classic_era_", version: "1.15.7.61000", game: null, test: false, addonVersion: null }],
@@ -61,8 +62,8 @@ const push = () => { state = { ...state, now: now() }; listeners.forEach(f => f(
 
 // Mises à jour de l'appli : ?ecran=maj montre le bandeau (installation simulée)
 let update: UpdateView = {
-  keyConfigured: true, current: "0.3.0", lastCheck: now() - 7200, checking: false,
-  available: demoScreen === "maj" ? { version: "0.3.1", notes: "- Mises à jour automatiques signées.\n- Corrections de fiabilité (renvoi sans fin, clics perdus, erreurs trompeuses).", date: now() - 86400 } : null,
+  keyConfigured: true, current: "0.3.1", lastCheck: now() - 7200, checking: false,
+  available: demoScreen === "maj" ? { version: "0.3.2", notes: "- Corrections de fiabilité.", date: now() - 86400 } : null,
   dismissed: false, installing: false, progress: null, error: null,
 };
 const updateListeners = new Set<(u: UpdateView) => void>();
@@ -73,10 +74,10 @@ export function demoListenUpdate(fn: (u: UpdateView) => void) {
 }
 
 const JOURNAL = [
-  "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.0 démarre (avec la session)",
+  "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.1 démarre (avec la session)",
   "2026-10-06T19:40:03Z  INFO dossiers trouvés : _classic_beta_ (Forever), _retail_ (Retail)",
-  "2026-10-06T21:42:11Z  INFO sauvegarde lue (compte 12345678#1) : 3 blocs",
-  "2026-10-06T21:42:12Z  INFO envoyé au site : Tournicoti, Brakka, bilan de « Vroum Vroum »",
+  "2026-10-06T21:42:11Z  INFO sauvegarde lue (compte 12345678#1) : 4 blocs",
+  "2026-10-06T21:42:12Z  INFO envoyé au site : Tournicoti, Brakka, bilan de « Vroum Vroum », relevé de la guilde « Les Veilleurs »",
   "2026-10-06T21:43:00Z  INFO données du site relevées : 1 groupe, 3 raids",
 ];
 

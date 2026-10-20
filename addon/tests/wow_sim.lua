@@ -1984,9 +1984,15 @@ if helper and helper ~= "" then
   local logId
   for id, log in pairs(ForeverRosterDB.raidLogs) do if next(log.people) then log.sentAt = nil log.given = 1 logId = id end end
   assert(logId, "un bilan à envoyer")
-  -- Relève de la guilde (section 8 quinquies) dans la sauvegarde : l'appli la lit sans s'arrêter
-  assert(ForeverRosterDB.guilds and next(ForeverRosterDB.guilds) and ForeverRosterDB.chars["Tournicoti-Forever EU"].levels, "relève de la guilde dans la sauvegarde")
+  -- Relève de la guilde (section 8 quinquies) dans la sauvegarde, à renvoyer : un bloc « frl » dans la boîte d'envoi (1.6.2)
+  local guildKey = "Les Veilleurs-Forever EU-Horde"
+  local guild = ForeverRosterDB.guilds and ForeverRosterDB.guilds[guildKey]
+  assert(guild and guild.roster and ForeverRosterDB.chars["Tournicoti-Forever EU"].levels, "relève de la guilde dans la sauvegarde")
+  guild.sentSig = nil
   fire("PLAYER_LOGOUT")
+  local frl
+  for _, b in ipairs(ForeverRosterDB.outbox.blocks) do if b.kind == "frl" then frl = b end end
+  assert(frl and frl.key == "frl:" .. guildKey and frl.text:match("^FRL;1;Les Veilleurs;"), "relevé de la guilde dans la boîte d'envoi")
   local out = { "\nForeverRosterDB = " }
   ser(ForeverRosterDB, out, 0)
   out[#out + 1] = "\n"
@@ -2008,13 +2014,15 @@ if helper and helper ~= "" then
   fire("PLAYER_LOGIN")
   for _, e in ipairs(ns.Export.Pending()) do assert(e.key ~= "Tournicoti-Forever EU", "perso marqué envoyé par l'accusé de l'appli") end
   assert(ForeverRosterDB.raidLogs[logId].sentAt, "bilan marqué envoyé par l'accusé de l'appli")
+  assert(guild.ackSig == frl.sig and guild.sentSig == frl.sig, "relevé de la guilde marqué envoyé par l'accusé de l'appli")
   local function groupNames()
     local names = {}
     for _, g in ipairs(ns.Group.List()) do names[#names + 1] = g.name end
     return table.concat(names, ",")
   end
   assert(groupNames():find("Les \"Veilleurs\"", 1, true), "données du site chargées, guillemets compris")
-  assert(ns.Companion.StatusText():find("bilan de", 1, true), "compte rendu de l'appli affiché")
+  assert(ns.Companion.StatusText():find("bilan de", 1, true) and ns.Companion.StatusText():find("relevé de la guilde « Les Veilleurs »", 1, true),
+    "compte rendu de l'appli affiché")
 
   -- Actualisation sans /reload : l'appli dépose de nouvelles données, l'addon charge la copie suivante
   ADDONS_DIR = dir

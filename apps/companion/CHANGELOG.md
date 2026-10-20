@@ -2,6 +2,10 @@
 
 La section « ## <version> » de la version publiée devient le texte de la GitHub Release et des « notes » de la mise à jour que l'appli affiche (scripts/companion-release.mjs la lit sur un tag `companion-v<version>`). En français : l'appli n'est pas traduite.
 
+## 0.3.1
+
+- Relevé de la guilde : avec l'addon Forever Roster 1.6.2, l'appli envoie aussi au site le relevé de ta guilde (liste des membres, journal, banque, niveaux de tes persos), seulement quand il a changé, comme les persos et les bilans. Un relevé trop gros pour le site (guilde immense) n'est pas envoyé : la raison s'affiche dans « Vers le site ».
+
 ## 0.3.0
 
 - Mises à jour automatiques signées : l'appli vérifie au démarrage puis une fois par jour si une version plus récente est publiée sur GitHub, l'annonce (bandeau, notification si activées) et l'installe sur un clic, jamais pendant que le jeu tourne. L'installateur est vérifié avec la clé publique de signature avant d'être lancé ; rien n'est envoyé.

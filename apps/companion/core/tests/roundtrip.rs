@@ -26,6 +26,12 @@ fn helper_ecrit_data_lua() {
             .any(|b| b.kind == BlockKind::Frc && b.key == "Tournicoti-Forever EU" && b.text.starts_with("FRC;2;Tournicoti;"))
     );
     assert!(ob.blocks.iter().any(|b| b.kind == BlockKind::Frb && b.lead), "bilan du chef de raid");
+    assert!(
+        ob.blocks
+            .iter()
+            .any(|b| b.kind == BlockKind::Frl && b.key == "frl:Les Veilleurs-Forever EU-Horde" && b.text.starts_with("FRL;1;Les Veilleurs;Horde;")),
+        "relevé de la guilde"
+    );
     let acks: BTreeMap<String, String> = ob.blocks.iter().map(|b| (b.key.clone(), b.sig.clone())).collect();
     // Nom de groupe piégé : guillemets et fin de chaîne longue ; s'il était exécuté, la simulation s'arrêterait
     let (frg, frg_at) = if step == "2" {

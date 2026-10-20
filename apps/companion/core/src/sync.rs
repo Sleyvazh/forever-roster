@@ -1,7 +1,7 @@
 //! Moteur de synchro d'un jeu (Forever ou Retail), sans interface : testé avec un faux site.
 //!
 //! 1. **Lecture** (`collect`) : à chaque nouvelle sauvegarde, les blocs de l'outbox de l'addon entrent dans la file
-//!    d'attente (un bloc par perso ou par bilan, la dernière version gagne).
+//!    d'attente (un bloc par perso, par relevé de guilde ou par bilan, la dernière version gagne).
 //! 2. **Envoi** (`push`) : la file part au site. Un bloc accepté devient un accusé de réception (`sent`), écrit
 //!    ensuite dans `ForeverRoster_Data` pour que l'addon le marque envoyé. Un perso inconnu attend la réponse du
 //!    joueur (`unknown`) ; un bilan qui n'est pas celui du chef de raid attend un envoi à la main (`manual`).
@@ -26,6 +26,10 @@ pub const MAX_SAVED_VARIABLES: u64 = 64 * 1024 * 1024;
 const MAX_BATCH: usize = 200_000;
 /// … et 50 persos (blocs FRC) par requête : au-delà, il refuse le lot entier sans résultat par bloc.
 const MAX_BATCH_FRC: usize = 50;
+/// Un bloc plus gros que ce que le site accepte en une requête (texte de 250 000 caractères, corps de 256 Kio) n'est pas
+/// envoyé : relevé d'une très grande guilde (jusqu'à 256 Kio lus dans l'outbox). Compté en octets, ce qui borne aussi
+/// les caractères et laisse la place des échappements JSON.
+pub const MAX_UPLOAD_TEXT: usize = 250_000;
 /// Accusés des bilans gardés 40 jours (l'addon garde ses bilans 30 jours).
 const KEEP_RAIDLOG_ACKS_S: i64 = 40 * 86400;
 /// Un bloc refusé par le site (réponse « error » pour ce bloc : la fiche est à corriger sur le site) n'est pas
@@ -398,7 +402,9 @@ impl GameState {
                         items.push(q.label.clone());
                     }
                 }
-                "unknown" => {
+                // Seul un perso peut être inconnu du site (le joueur crée sa fiche ou l'ignore) ; pour un autre bloc,
+                // c'est une erreur
+                "unknown" if q.kind == BlockKind::Frc => {
                     self.queue.remove(&r.key);
                     self.unknown.insert(
                         r.key.clone(),
@@ -455,6 +461,33 @@ impl GameState {
             self.report = Some(Report { at: now, items });
         }
         self.prune(now);
+        out
+    }
+
+    /// Blocs trop gros pour une requête : pas envoyés, la raison visible dans l'appli ; réessayés dans une heure (d'ici
+    /// là, l'addon en aura sans doute écrit une autre version, qui remplace celle-ci).
+    fn refuse_too_big(&mut self, blocks: &BTreeMap<String, Queued>, now: i64) -> PushOutcome {
+        let mut out = PushOutcome::default();
+        for (key, q) in blocks {
+            let message = format!(
+                "trop gros pour le site ({} Ko, {} Ko au plus)",
+                q.text.len().div_ceil(1024),
+                MAX_UPLOAD_TEXT / 1024
+            );
+            for entry in [self.queue.get_mut(key), self.manual.get_mut(key)].into_iter().flatten() {
+                entry.error = Some(message.clone());
+                entry.error_at = Some(now);
+                entry.tries = 0;
+            }
+            out.errors += 1;
+            self.remember(HistoryLine {
+                at: now,
+                key: key.clone(),
+                label: q.label.clone(),
+                status: "error".into(),
+                message,
+            });
+        }
         out
     }
 
@@ -517,7 +550,11 @@ impl<A: SyncApi> Engine<'_, A> {
         now: i64,
     ) -> Result<PushOutcome, ApiError> {
         let mut total = PushOutcome::default();
-        // Paquets de 200 000 caractères et de 50 persos au plus
+        let (too_big, blocks): (BTreeMap<String, Queued>, BTreeMap<String, Queued>) = blocks.into_iter().partition(|(_, q)| q.text.len() > MAX_UPLOAD_TEXT);
+        if !too_big.is_empty() {
+            total.add(&gs.refuse_too_big(&too_big, now));
+        }
+        // Paquets de 200 000 caractères et de 50 persos au plus ; un bloc plus gros (relevé de guilde) part seul
         let mut batches: Vec<BTreeMap<String, Queued>> = vec![BTreeMap::new()];
         let (mut size, mut frc) = (0usize, 0usize);
         for (k, q) in blocks {
@@ -562,7 +599,7 @@ impl<A: SyncApi> Engine<'_, A> {
         Ok(total)
     }
 
-    /// Envoie la file (persos et bilans du chef de raid).
+    /// Envoie la file (persos, relevés de guilde et bilans du chef de raid).
     pub async fn push(&self, gs: &mut GameState, now: i64) -> Result<PushOutcome, ApiError> {
         if !gs.can_try(now) {
             return Ok(PushOutcome::default());
@@ -678,12 +715,13 @@ mod tests {
         frg: Mutex<Option<(String, String)>>,
     }
 
+    /// Clé d'un bloc, comme le site : perso « prénom-royaume », bilan « frb:<raid> », relevé « frl:<guilde>-<royaume>-<faction> ».
     fn key_of(block: &str) -> String {
         let f: Vec<&str> = block.lines().next().unwrap_or("").split(';').collect();
-        if f[0] == "FRB" {
-            format!("frb:{}", f[2])
-        } else {
-            format!("{}-{}", f[2], f[3])
+        match f[0] {
+            "FRB" => format!("frb:{}", f[2]),
+            "FRL" => format!("frl:{}-{}-{}", f[2], f[9], f[3]),
+            _ => format!("{}-{}", f[2], f[3]),
         }
     }
 
@@ -712,7 +750,7 @@ mod tests {
             let silent = self.silent.lock().unwrap().clone();
             let mut blocks: Vec<String> = Vec::new();
             for line in req.text.lines() {
-                if line.starts_with("FRC;") || line.starts_with("FRB;") {
+                if line.starts_with("FRC;") || line.starts_with("FRB;") || line.starts_with("FRL;") {
                     blocks.push(line.to_string());
                 }
             }
@@ -744,9 +782,14 @@ mod tests {
                     } else {
                         status.get(&key).cloned().unwrap_or_else(|| "updated".into())
                     };
+                    let kind = match &head[..3] {
+                        "FRB" => "raidlog",
+                        "FRL" => "guild",
+                        _ => "character",
+                    };
                     ImportResult {
                         key: key.clone(),
-                        kind: if head.starts_with("FRB") { "raidlog".into() } else { "character".into() },
+                        kind: kind.into(),
                         name: key,
                         status: s,
                         message: String::new(),
@@ -1018,6 +1061,164 @@ mod tests {
         assert!(gs.queue.is_empty());
         let sizes: Vec<usize> = site.uploads.lock().unwrap().iter().map(|u| u.text.matches("FRC;").count()).collect();
         assert_eq!(sizes, vec![50, 50, 20], "le site refuse tout lot de plus de 50 persos");
+    }
+
+    /// Relevé de guilde (FRL) d'environ `size` octets : en-tête, puis des lignes M.
+    fn frl(guild: &str, size: usize) -> String {
+        let head = format!("FRL;1;{guild};Horde;1790000000;Tournicoti;0;Membre;3;Forever EU;1.6.2\n");
+        let line = "M;Brindille Courtepaille;MAGE;24;Membre;3;0;30;note;;Player-4321-00000002\n";
+        let n = size.saturating_sub(head.len()) / line.len();
+        format!("{head}{}END;{n}", line.repeat(n))
+    }
+    const GUILD_KEY: &str = "frl:Les Veilleurs-Forever EU-Horde";
+
+    #[tokio::test]
+    async fn releve_de_guilde_envoye_avec_les_persos_et_accuse() {
+        let dir = tempfile::tempdir().unwrap();
+        let site = FakeSite::default();
+        let engine = Engine {
+            api: &site,
+            game: Game::Forever,
+            token: "rc_x",
+        };
+        let mut gs = GameState::default();
+        let text = frl("Les Veilleurs", 2_000);
+        let acc = save(
+            dir.path(),
+            "1#1",
+            100,
+            &[("frc", "Tournicoti-Forever EU", "s1", false, TOURNI), ("frl", GUILD_KEY, "g1", false, &text)],
+        );
+        assert_eq!(gs.collect(std::slice::from_ref(&acc), 100), 2);
+        assert_eq!(gs.queue[GUILD_KEY].kind, BlockKind::Frl);
+        assert_eq!(gs.queue[GUILD_KEY].label, "relevé de la guilde « Les Veilleurs »");
+        let o = engine.push(&mut gs, 101).await.unwrap();
+        assert_eq!((o.sent, o.acked, o.accepted, o.errors), (2, 2, 2, 0));
+        let uploads = site.uploads.lock().unwrap().clone();
+        assert_eq!(uploads.len(), 1, "même lot que le perso");
+        assert!(
+            uploads[0].text.starts_with("FRC;2;Tournicoti;") && uploads[0].text.ends_with(&format!("\n{text}")),
+            "relevé après le perso"
+        );
+        assert_eq!(gs.sent[GUILD_KEY].sig, "g1");
+        assert_eq!(
+            gs.data_file("0.3.1", 110).acks.get(GUILD_KEY).map(String::as_str),
+            Some("g1"),
+            "accusé pour l'addon"
+        );
+        assert_eq!(gs.report.as_ref().unwrap().items, vec!["Tournicoti", "relevé de la guilde « Les Veilleurs »"]);
+        // Même empreinte (l'addon garde le bloc tel quel tant que la forme stable ne change pas) : rien à renvoyer
+        let acc = save(dir.path(), "1#1", 120, &[("frl", GUILD_KEY, "g1", false, &text)]);
+        assert_eq!(gs.collect(std::slice::from_ref(&acc), 120), 0);
+        assert_eq!(engine.push(&mut gs, 121).await.unwrap().sent, 0);
+        // Relevé changé : renvoyé ; un relevé plus ancien que celui du site (« kept ») est accusé aussi
+        site.status.lock().unwrap().insert(GUILD_KEY.into(), "kept".into());
+        let acc = save(dir.path(), "1#1", 130, &[("frl", GUILD_KEY, "g2", false, &frl("Les Veilleurs", 3_000))]);
+        assert_eq!(gs.collect(std::slice::from_ref(&acc), 130), 1);
+        let o = engine.push(&mut gs, 131).await.unwrap();
+        assert_eq!((o.sent, o.acked, o.accepted), (1, 1, 0));
+        assert_eq!(gs.sent[GUILD_KEY].sig, "g2");
+        assert!(gs.queue.is_empty());
+        assert_eq!(gs.history[0].status, "kept");
+    }
+
+    #[tokio::test]
+    async fn gros_releve_dans_un_lot_a_part() {
+        let dir = tempfile::tempdir().unwrap();
+        let site = FakeSite::default();
+        let engine = Engine {
+            api: &site,
+            game: Game::Forever,
+            token: "rc_x",
+        };
+        let mut gs = GameState::default();
+        // Guilde de 1 000 membres : plus gros qu'un lot ordinaire, mais dans ce que le site accepte en une requête
+        let big = frl("Les Veilleurs", 230_000);
+        assert!(big.len() > MAX_BATCH && big.len() <= MAX_UPLOAD_TEXT);
+        let acc = save(
+            dir.path(),
+            "1#1",
+            100,
+            &[
+                ("frc", "Tournicoti-Forever EU", "s1", false, TOURNI),
+                ("frb", "frb:r1", "50", true, LOG_LEAD),
+                ("frl", GUILD_KEY, "g1", false, &big),
+            ],
+        );
+        gs.collect(&[acc], 100);
+        let o = engine.push(&mut gs, 101).await.unwrap();
+        assert_eq!((o.sent, o.acked, o.errors), (3, 3, 0));
+        let sizes: Vec<(usize, bool)> = site
+            .uploads
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|u| (u.text.len(), u.text.starts_with("FRL;")))
+            .collect();
+        assert_eq!(sizes.len(), 2, "{sizes:?}");
+        assert!(!sizes[0].1 && sizes[1] == (big.len(), true), "le relevé part seul : {sizes:?}");
+        assert!(sizes.iter().all(|(n, _)| *n <= MAX_UPLOAD_TEXT));
+    }
+
+    #[tokio::test]
+    async fn releve_trop_gros_pour_le_site_pas_envoye() {
+        let dir = tempfile::tempdir().unwrap();
+        let site = FakeSite::default();
+        let engine = Engine {
+            api: &site,
+            game: Game::Forever,
+            token: "rc_x",
+        };
+        let mut gs = GameState::default();
+        // Lu dans l'outbox (moins de 256 Kio) mais plus que ce qu'une requête accepte : pas envoyé, signalé, le perso part
+        let huge = frl("Les Veilleurs", 255_000);
+        assert!(huge.len() > MAX_UPLOAD_TEXT && huge.len() <= crate::outbox::MAX_TEXT_FRL);
+        let acc = save(
+            dir.path(),
+            "1#1",
+            100,
+            &[("frc", "Tournicoti-Forever EU", "s1", false, TOURNI), ("frl", GUILD_KEY, "g1", false, &huge)],
+        );
+        assert_eq!(gs.collect(&[acc], 100), 2);
+        let o = engine.push(&mut gs, 101).await.unwrap();
+        assert_eq!((o.sent, o.accepted, o.errors), (1, 1, 1));
+        assert!(site.uploads.lock().unwrap().iter().all(|u| !u.text.contains("FRL;")), "jamais envoyé");
+        let q = &gs.queue[GUILD_KEY];
+        assert_eq!((q.error_at, q.tries), (Some(101), 0));
+        assert_eq!(
+            q.error.as_deref(),
+            Some(format!("trop gros pour le site ({} Ko, 244 Ko au plus)", huge.len().div_ceil(1024)).as_str())
+        );
+        assert!(gs.history.iter().any(|h| h.key == GUILD_KEY && h.status == "error"), "{:?}", gs.history);
+        // Pas réessayé avant une heure ; une nouvelle version, plus petite, part tout de suite
+        assert_eq!(engine.push(&mut gs, 200).await.unwrap(), PushOutcome::default());
+        let acc = save(dir.path(), "1#1", 300, &[("frl", GUILD_KEY, "g2", false, &frl("Les Veilleurs", 5_000))]);
+        assert_eq!(gs.collect(&[acc], 300), 1);
+        assert_eq!(engine.push(&mut gs, 301).await.unwrap().accepted, 1);
+        assert_eq!(gs.sent[GUILD_KEY].sig, "g2");
+    }
+
+    #[tokio::test]
+    async fn releve_jamais_inconnu() {
+        let dir = tempfile::tempdir().unwrap();
+        let site = FakeSite::default();
+        site.status.lock().unwrap().insert(GUILD_KEY.into(), "unknown".into());
+        let engine = Engine {
+            api: &site,
+            game: Game::Forever,
+            token: "rc_x",
+        };
+        let mut gs = GameState::default();
+        gs.collect(
+            &[save(dir.path(), "1#1", 100, &[("frl", GUILD_KEY, "g1", false, &frl("Les Veilleurs", 500))])],
+            100,
+        );
+        let o = engine.push(&mut gs, 101).await.unwrap();
+        assert_eq!((o.unknown, o.errors), (0, 1));
+        assert!(
+            gs.unknown.is_empty() && gs.queue[GUILD_KEY].error_at == Some(101),
+            "seul un perso attend « Créer la fiche »"
+        );
     }
 
     #[test]
