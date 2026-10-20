@@ -1,6 +1,6 @@
 -- Fenêtre à onglets (Synchro, Raids, En raid, Compo, Butin, Options) et synchro rapide.
 -- Synchro et Options sont construits ici ; Raids, En raid, Compo et Butin (historique, lot R4a) par Pages.lua
--- (ns.Pages.Build / Refresh).
+-- (ns.Pages.Build / Refresh), comme la page Options › Conseil du butin (lot R4b, construite à son premier affichage).
 -- Deux habillages (Options) : celui du jeu, ou celui du site (sombre, liserés argent-azur). Boîte à outils : addon/shared/Kit.lua.
 local ADDON, ns = ...
 local L, N = ns.L, ns.N
@@ -204,15 +204,44 @@ function U.StartCapture(action)
 end
 U.capturing = function() return capture and capture:IsShown() and capture.action or nil end
 
+-- Options en deux pages : Général (cette liste) et Conseil du butin (Pages.lua, lot R4b) ; boutons en haut
+local OPTION_VIEWS = { { key = "general", label = N("Général") }, { key = "council", label = N("Conseil du butin") } }
+U.optionsView = "general"
+local councilBuilt = false
 local function buildOptions(p)
   hint(p, L["Réglages de l'addon, gardés pour tous tes persos. Les touches se changent aussi dans Échap > Options > Raccourcis > AddOns."])
-  p.list = list(p, -40)
+  p.views, p.viewButtons = {}, {}
+  for i, v in ipairs(OPTION_VIEWS) do
+    local b = K.statusButton(p)
+    b:SetSize(170, 22)
+    b:SetPoint("TOPLEFT", 4 + (i - 1) * 176, -40)
+    b:SetScript("OnClick", function() U.ShowOptions(v.key) end)
+    p.viewButtons[v.key] = b
+    local view = CreateFrame("Frame", nil, p)
+    view:SetAllPoints(p)
+    view:Hide()
+    p.views[v.key] = view
+  end
+  p.list = list(p.views.general, -72)
 end
 
 local QUALITY = { { 3, N("Rare"), { 0, 0.44, 0.87 } }, { 4, N("Épique"), { 0.64, 0.21, 0.93 } }, { 5, N("Légendaire"), { 1, 0.5, 0 } } }
 local YES, NO = { 0.31, 0.83, 0.37 }, { 0.6, 0.64, 0.71 }
 local function yesNo(on) return on and (GREEN .. L["oui"] .. "|r") or (GREY .. L["non"] .. "|r") end
 refreshers.options = function(p)
+  local view = p.views[U.optionsView] and U.optionsView or "general"
+  local accent = { C.gold[1], C.gold[2], C.gold[3] }
+  for _, v in ipairs(OPTION_VIEWS) do
+    K.styleStatus(p.viewButtons[v.key], L[v.label], accent, v.key == view)
+    if v.key == view then p.views[v.key]:Show() else p.views[v.key]:Hide() end
+  end
+  if view == "council" then
+    -- Page construite à son premier affichage (Pages.lua), liste de guilde redemandée au serveur (au plus toutes les 10 s)
+    if not councilBuilt and ns.Pages and ns.Pages.Build then councilBuilt = ns.Pages.Build("council", p.views.council) end
+    if ns.Council and ns.Council.Ask then ns.safe(L["conseil du butin"], ns.Council.Ask, true) end
+    if ns.Pages and ns.Pages.Refresh then ns.Pages.Refresh("council") end
+    return
+  end
   local list, R = p.list, db()
   list.Reset()
   list.Header(L["Touches"])
@@ -228,7 +257,6 @@ refreshers.options = function(p)
     end
   end
   list.Header(L["Affichage"])
-  local accent = { C.gold[1], C.gold[2], C.gold[3] }
   -- Langue : celle du jeu (nil), français ou anglais ; comme l'habillage, appliquée partout au rechargement de l'interface
   local lang, langPending = ns.LangChoice(), ns.LangPending()
   local function setLang(v) return function() R.lang = v U.Refresh() end end
@@ -381,6 +409,11 @@ function U.Show(tab)
 end
 function U.Toggle()
   if main and main:IsShown() then main:Hide() else U.Show() end
+end
+--- Onglet Options, page « general » ou « council » (conseil du butin, lot R4b)
+function U.ShowOptions(view)
+  U.optionsView = view == "council" and "council" or "general"
+  U.Show("options")
 end
 function U.IsShown() return main and main:IsShown() or false end
 

@@ -2,6 +2,22 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.4.1
+
+- **Loot council set in game**, no website needed: guild ranks down to a minimum rank (by default the Guild Master and the next rank), plus names added by hand (from the guild or not), minus names removed by hand. Kept up to date from the guild roster: a promoted officer joins on their own, a demoted former officer leaves on their own. New page **Options › Loot council** (`/roster council`): change the minimum rank in 2 clicks, add a member (completion on the guild roster), remove or put back, who can change it, tonight's council. Only ranks down to the minimum rank can change it (Flo's choice); others see it read-only. The setting is kept in your addon, one per guild (not shared between officers yet: the loot master's applies to the raid).
+- **Tonight's council**, in this order: the one sent by the loot master, the council set in game, the website's (raid council, otherwise the group's officers), then the guild's at the default rank. The loot master sends it to the raid (new `MC` message) when distribution is turned on, when it changes and before the items: every addon in the raid agrees, even without the guild roster or the website. The In raid tab shows it, and where it comes from.
+- The guild roster is never read or requested in combat or during a boss encounter.
+- Test raid: test guild (step 10): Tharok and Ashlen are officers, Brumelune is added by hand; "Demote Ashlen" (he leaves the council), "Try as Recruit" (your change is refused).
+- With addons 0.4.0 and 0.3.x in the raid: `MC` is ignored by them, nothing breaks; they keep their council from the website.
+
+Français :
+
+- **Conseil du butin défini en jeu**, sans le site : les rangs de la guilde jusqu'à un rang minimal (par défaut le maître de guilde et le rang suivant), plus les noms ajoutés à la main (de la guilde ou non), moins ceux retirés à la main. Tenu à jour d'après la liste de guilde : un officier promu entre tout seul, un ancien officier rétrogradé sort tout seul. Nouvelle page **Options › Conseil du butin** (`/roster conseil`) : changer le rang minimal en 2 clics, ajouter un membre (complétion sur la liste de guilde), retirer ou remettre, qui peut modifier, conseil de ce soir. Seuls les rangs jusqu'au rang minimal le modifient (choix de Flo) ; les autres le voient en lecture seule. Le réglage est gardé dans ton addon, un par guilde (pas encore partagé entre officiers : celui du chef de butin s'applique au raid).
+- **Conseil de ce soir**, dans l'ordre : celui envoyé par le chef de butin, le conseil défini en jeu, celui du site (conseil du raid, sinon officiers du groupe), puis celui de la guilde au rang par défaut. Le chef de butin l'envoie au raid (nouveau message `MC`) quand la distribution s'active, quand il change et avant les objets : tous les addons du raid sont d'accord, même sans liste de guilde ni site. L'onglet En raid l'affiche, avec sa provenance.
+- La liste de guilde n'est jamais lue ni demandée en combat ni pendant une rencontre de boss.
+- Raid d'essai : guilde fictive (étape 10) : Tharok et Ashlen officiers, Brumelune ajoutée à la main ; « Rétrograder Ashlen » (il sort du conseil), « Essayer en Recrue » (ta modification est refusée).
+- Avec les addons 0.4.0 et 0.3.x dans le raid : ils ignorent `MC`, rien ne casse ; ils gardent leur conseil du site.
+
 ## 0.4.0
 
 - **Loot history kept by the addon**: every item Roster distributes (council, rolls, loot master's choice, kept) is saved in the addon, with no website raid needed and no time limit (it survives `/reload` and the loot master's 12-hour item list). Everyone who receives the award gets the same entry. Items won from group loot by a player who didn't pass are logged too.

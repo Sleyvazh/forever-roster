@@ -2,7 +2,9 @@
 -- la distribution par Roster : objets reçus, tout au conseil (réponses à chaque objet selon l'armure de chaque classe,
 -- objets portés, votes), jets MS / OS avec égalité, jet libre, garder, échange, joueur sans l'addon qui n'a pas passé, et
 -- la fenêtre de réponse d'un joueur (deux objets proposés, dont un qu'il ne peut pas porter), et l'historique du butin
--- (lot R4a : onglet Butin, ici en mémoire, ns.Hist.test, effacé à la fin de l'essai). Le moteur du butin
+-- (lot R4a : onglet Butin, ici en mémoire, ns.Hist.test, effacé à la fin de l'essai), et le conseil défini en jeu (lot
+-- R4b : guilde fictive ns.Loot.test.guild, réglage en mémoire ; un officier rétrogradé qui sort du conseil, un essai de
+-- modification par un rang trop bas, refusé). Le moteur du butin
 -- (Loot.lua) lit ns.Loot.test : membres fictifs, messages d'addon (T.send), chat (T.say) et échange (T.trade). Rien ne
 -- part au chat du raid, aux autres joueurs ni au site : les annonces s'affichent dans ta fenêtre de chat, après « [essai] ».
 -- Langue (addon/shared/Locale.lua) : textes traduits à l'affichage ; « [essai] » devient « [test] » en anglais.
@@ -13,18 +15,23 @@ ns.Test = T
 local K, F = ns.Kit, ns.Format
 local GREY, GREEN, ORANGE = K.GREY, K.GREEN, "|cfff0b43c"
 
--- Joueurs fictifs (classes et spés de Retail) ; Tharok et Brumelune sont au conseil, Orvane n'a pas l'addon
+-- Joueurs fictifs (classes et spés de Retail) ; Orvane n'a pas l'addon. rank : rang dans la guilde fictive (1 : maître de
+-- guilde, toi). Conseil défini en jeu (rangs 1 et 2) : toi, Tharok et Ashlen (officiers), et Brumelune, ajoutée à la main
+-- (elle n'est pas de la guilde) ; Ashlen peut être rétrogradé (il sort du conseil), Mirwen est Recrue.
 local PLAYERS = {
-  { name = "Kaeldra-Hyjal", class = "DEMONHUNTER", role = "Tank", spec = "Vengeance", subgroup = 1 },
-  { name = "Tharok-Hyjal", class = "WARRIOR", role = "Tank", spec = "Protection", subgroup = 1, council = true },
-  { name = "Brumelune-Ysondre", class = "DRUID", role = "Heal", spec = "Restoration", subgroup = 1, council = true },
+  { name = "Kaeldra-Hyjal", class = "DEMONHUNTER", role = "Tank", spec = "Vengeance", subgroup = 1, rank = 4 },
+  { name = "Tharok-Hyjal", class = "WARRIOR", role = "Tank", spec = "Protection", subgroup = 1, rank = 2 },
+  { name = "Brumelune-Ysondre", class = "DRUID", role = "Heal", spec = "Restoration", subgroup = 1 },
   { name = "Thessaly-Ysondre", class = "PALADIN", role = "Heal", spec = "Holy", subgroup = 1 },
-  { name = "Orvane-Hyjal", class = "SHAMAN", role = "Heal", spec = "Restoration", subgroup = 2, noAddon = true },
+  { name = "Orvane-Hyjal", class = "SHAMAN", role = "Heal", spec = "Restoration", subgroup = 2, noAddon = true, rank = 4 },
   { name = "Vex-Kael'Thas", class = "ROGUE", role = "DPS", spec = "Outlaw", subgroup = 2 },
   { name = "Lysenn-Dalaran", class = "EVOKER", role = "DPS", spec = "Devastation", subgroup = 2 },
-  { name = "Mirwen-Hyjal", class = "MAGE", role = "DPS", spec = "Frost", subgroup = 2 },
-  { name = "Ashlen-Hyjal", class = "DEATHKNIGHT", role = "DPS", spec = "Unholy", subgroup = 2 },
+  { name = "Mirwen-Hyjal", class = "MAGE", role = "DPS", spec = "Frost", subgroup = 2, rank = 5 },
+  { name = "Ashlen-Hyjal", class = "DEATHKNIGHT", role = "DPS", spec = "Unholy", subgroup = 2, rank = 2 },
 }
+-- Guilde fictive : rangs (traduits au lancement de l'essai), officier rétrogradé, membre ajouté à la main, rang trop bas
+local GUILD_RANKS = { N("Maître de guilde"), N("Officier"), N("Vétéran"), N("Membre"), N("Recrue") }
+local DEMOTED, ADDED, LOW, LOW_RANK = "Ashlen-Hyjal", "Brumelune-Ysondre", "Mirwen-Hyjal", 5
 local CHEF, NOADDON = "Tharok-Hyjal", "Orvane-Hyjal" -- chef de butin fictif (côté joueur), joueur sans l'addon
 -- Objets reçus sur la saison (colonne « Reçus » du conseil, comme les lignes N et D des données du site) : total, puis
 -- BiS, Upgrade et jets MS (les autres objets qui comptent sont dans le total seulement)
@@ -501,6 +508,46 @@ function T.Offer()
   refresh()
 end
 
+-- Conseil défini en jeu (lot R4b) : guilde fictive de l'essai
+local function guild() return ns.Loot and ns.Loot.test and ns.Loot.test.guild end
+local function guildMember(name)
+  for _, m in ipairs((guild() or {}).members or {}) do if F.SameName(m.name, name) then return m end end
+end
+local function councilChanged() if ns.Council and ns.Council.TestChanged then ns.Council.TestChanged() end end
+-- Ashlen rétrogradé (Officier → Vétéran) : il sort du conseil tout seul ; promu de nouveau : il y revient
+function T.Demote()
+  local g, m = guild(), guildMember(DEMOTED)
+  if not (g and m) then return end
+  m.rank = m.rank <= 2 and 3 or 2
+  if m.rank == 3 then chat(L("%s passe %s : il sort du conseil du butin tout seul, sans que personne n'y touche.", colored(DEMOTED), g.ranks[3]))
+  else chat(L("%s redevient %s : il revient au conseil du butin tout seul.", colored(DEMOTED), g.ranks[2])) end
+  councilChanged()
+  refresh()
+end
+-- Toi en Recrue (comme Mirwen) : le conseil passe en lecture seule, et ta tentative de retirer Tharok est refusée ;
+-- de nouveau : tu redeviens maître de guilde
+function T.LowRank()
+  local g = guild()
+  if not g then return end
+  if g.me == 1 then
+    g.me = LOW_RANK
+    councilChanged()
+    chat(L("tu passes %s, comme %s, et tu essaies de retirer Tharok du conseil :", g.ranks[LOW_RANK], colored(LOW)))
+    if ns.Council then ns.Council.Remove(CHEF) end
+  else
+    g.me = 1
+    councilChanged()
+    chat(L("tu redeviens %s : tu peux de nouveau modifier le conseil.", g.ranks[1]))
+  end
+  if ns.UI and ns.UI.ShowOptions then ns.UI.ShowOptions("council") end
+  refresh()
+end
+function T.CouncilText()
+  local list = {}
+  for _, n in ipairs((ns.Council and ns.Council.Members()) or {}) do list[#list + 1] = F.SameName(n, me()) and L["toi"] or colored(n) end
+  return #list > 0 and table.concat(list, ", ") or L["personne"]
+end
+
 --------------------------------------------------------------------------------------------------------------------
 -- Début et fin de l'essai
 --------------------------------------------------------------------------------------------------------------------
@@ -522,10 +569,12 @@ function T.Start()
   local m = me()
   local ok, _, class = pcall(UnitClass, "player")
   local members = { { name = m, class = ok and F.usable(class) and class or nil, subgroup = 1, online = true, addon = true } }
-  local council = { m }
+  -- Guilde fictive (conseil défini en jeu, lot R4b) : toi maître de guilde ; les rangs de PLAYERS
+  local guild = { name = L["Guilde d'essai"], me = 1, ranks = {}, members = {} }
+  for i, r in ipairs(GUILD_RANKS) do guild.ranks[i] = L[r] end
   for _, p in ipairs(PLAYERS) do
     members[#members + 1] = { name = p.name, class = p.class, role = p.role, spec = p.spec, subgroup = p.subgroup, online = true, addon = not p.noAddon }
-    if p.council then council[#council + 1] = p.name end
+    if p.rank then guild.members[#guild.members + 1] = { name = p.name, rank = p.rank, class = p.class } end
   end
   -- Objets reçus comme dans les données du site (libellés du site, ici dans la langue de l'interface)
   local counts = { short = L["saison"], label = L["Reçus · saison"], entries = {} }
@@ -533,7 +582,9 @@ function T.Start()
     local r = RECEIVED[p.name] or { 0, 0, 0, 0 }
     counts.entries[#counts.entries + 1] = { names = { p.name }, n = r[1], bis = r[2], up = r[3], ms = r[4] }
   end
-  ns.Loot.test = { armorRule = true, members = members, council = council, counts = counts, send = T.send, say = T.say, trade = T.trade, reroll = T.reroll }
+  ns.Loot.test = { armorRule = true, members = members, guild = guild, counts = counts, send = T.send, say = T.say, trade = T.trade, reroll = T.reroll }
+  -- Brumelune, pas de la guilde, ajoutée au conseil à la main (réglage dans l'historique en mémoire de l'essai)
+  if ns.Council and ns.Council.Add then ns.safe(L["raid d'essai"], ns.Council.Add, ADDED, true) end
   -- Objets de secours (et ceux d'une autre armure, côté joueur) demandés au jeu dès maintenant : leurs noms seront prêts
   if C_Item and C_Item.RequestLoadItemDataByID then
     if #links() < 6 then for _, id in ipairs(FALLBACK) do pcall(C_Item.RequestLoadItemDataByID, id) end end
@@ -572,7 +623,9 @@ end)
 --------------------------------------------------------------------------------------------------------------------
 local function signature()
   local s = T.state or {}
-  local parts = { tostring(s.lastCouncil), size(loot("NotPassed")) }
+  local g = guild()
+  local parts = { tostring(s.lastCouncil), size(loot("NotPassed")), g and g.me or 0, (guildMember(DEMOTED) or {}).rank or 0,
+    table.concat((ns.Council and ns.Council.Members()) or {}, "+") } -- conseil (Options › Conseil du butin)
   for _, o in ipairs(s.offerBatch or {}) do parts[#parts + 1] = o.session .. tostring(o.response) .. tostring(o.closed) end
   for _, e in ipairs(items()) do parts[#parts + 1] = tostring(e.key) .. ":" .. tostring(e.status) .. ":" .. tostring(e.winner) end
   return table.concat(parts, ",")
@@ -626,7 +679,7 @@ function T.Refresh()
   p.hintText:SetText(ORANGE .. L["Tu es chef de butin, avec 9 joueurs fictifs. Rien ne part au chat du raid, aux autres joueurs ni au site."] .. "|r")
   li.Reset()
   li.Header(L["Le raid"])
-  li.Add(rosterText() .. "\n" .. GREY .. L["Conseil du butin : toi, Tharok et Brumelune. Les annonces s'affichent dans ta fenêtre de chat, après [essai]."] .. "|r")
+  li.Add(rosterText() .. "\n" .. GREY .. L("Conseil du butin : %s. Les annonces s'affichent dans ta fenêtre de chat, après [essai].", "|r" .. T.CouncilText() .. GREY) .. "|r")
   li.Header(L["1. Recevoir des objets"])
   li.Add(L["Le butin de groupe te donne 3 objets (ceux que tu portes : infobulles du jeu) ; les autres ont passé. Échange possible pendant 2 h : il reste 1 h 52 pour deux d'entre eux, 25 min pour le troisième (en orange)."]
     .. GREY .. "\n" .. L("Reçus : %d · à attribuer : %d", #all, count.new or 0) .. "|r",
@@ -676,6 +729,14 @@ function T.Refresh()
   li.Add(L["Chaque objet attribué ou gardé entre dans l'historique du butin (onglet Butin de la fenêtre Roster), avec sa catégorie (BiS, Upgrade, jet MS) et sa soirée. Pendant l'essai, en mémoire seulement : rien n'est gardé après."]
     .. GREY .. "\n" .. L("Dans l'historique : %d", #hist) .. "|r",
     { { L["Ouvrir l'historique"], 170, function() if ns.UI and ns.UI.Show then ns.UI.Show("loot") end end } })
+  li.Header(L["10. Conseil défini en jeu"])
+  local g = guild() or {}
+  local demoted = (guildMember(DEMOTED) or {}).rank == 3
+  li.Add(L["Le conseil vient de la guilde fictive, sans le site : les rangs Maître de guilde (toi) et Officier (Tharok, Ashlen), plus Brumelune, ajoutée à la main (elle n'est pas de la guilde). Options › Conseil du butin : change le rang minimal, ajoute ou retire des membres. « Rétrograder Ashlen » : il sort du conseil tout seul. « Essayer en Recrue » : tu passes Recrue, comme Mirwen, et ta modification est refusée."]
+    .. GREY .. "\n" .. L("Conseil : %s", "|r" .. T.CouncilText() .. GREY) .. "|r",
+    { { L["Conseil du butin"], 150, function() if ns.UI and ns.UI.ShowOptions then ns.UI.ShowOptions("council") end end },
+      { demoted and L["Promouvoir Ashlen"] or L["Rétrograder Ashlen"], 170, function() T.Demote() end },
+      { g.me == 1 and L["Essayer en Recrue"] or L["Redevenir maître de guilde"], 190, function() T.LowRank() end } })
   li.Header(L["Fin"])
   local done = (count.awarded or 0) + (count.traded or 0) + (count.kept or 0)
   -- Pluriel : en français 0 et 1 au singulier, en anglais 1 seulement

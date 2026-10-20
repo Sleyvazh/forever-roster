@@ -6,7 +6,8 @@
 -- distribution du butin (section 9 : chef de butin, passer automatique, conseil, jets, échange, raid d'essai), retours
 -- du raid de test (section 10 : échange ouvert par le gagnant, objets portables, tout au conseil, détail des reçus), pages
 -- et fenêtres dans les deux habillages, valeurs secrètes, historique durable du butin (section 12, lot R4a : sans le
--- site, nombres du chef de butin relayés au conseil, /reload simulé puis 13 h plus tard). Échoue au premier problème.
+-- site, nombres du chef de butin relayés au conseil, /reload simulé puis 13 h plus tard), conseil défini en jeu (section
+-- 13, lot R4b : guilde simulée, priorité sur le site, MC du chef de butin, rang trop bas). Échoue au premier problème.
 -- Textes de l'interface (addon/tests/locale_audit.lua) ; langue du client : WOW_LOCALE (frFR par défaut)
 LOCALE_AUDIT = dofile("addon/tests/locale_audit.lua")
 function GetLocale() return os.getenv("WOW_LOCALE") or "frFR" end
@@ -98,6 +99,9 @@ local S = {
   -- objets que le jeu ne connaît pas du tout ; classe et sous-classe d'un objet qui n'est pas une armure à type (armes :
   -- classe 2 et Enum.ItemWeaponSubclass, bouclier : classe 4 et sous-classe 6)
   armor = {}, redLine = {}, unknownItem = {}, itemClass = {}, itemSub = {},
+  -- Guilde (R4b) : S.guildRoster = { name, ranks = { noms, 1 : maître de guilde }, members = { { name, realm, rank (0 : maître
+  -- de guilde), class, secret } } } ; lectures et demandes au serveur comptées, et celles faites en combat ou en rencontre
+  guildReads = 0, guildAsks = 0, guildBusy = 0,
 }
 local function fullOf(m) return m.name .. "-" .. m.realm end
 local function findMember(full) for i, m in ipairs(S.members) do if fullOf(m) == full then return m, i end end end
@@ -177,6 +181,31 @@ local BLIZZARD = {
   UnitIsConnected = function() return true end,
   IsInRaid = function() return S.raid end,
   IsInGuild = function() return S.guild == true end,
+  GetGuildInfo = function(unit)
+    local g = S.guild and S.guildRoster
+    if not g or unit ~= "player" then return nil end
+    local me = S.members[1]
+    for _, m in ipairs(g.members) do
+      if m.name == me.name and (m.realm or "Hyjal") == me.realm then return g.name, g.ranks[m.rank + 1], m.rank, nil end
+    end
+    return g.name, nil, nil, nil
+  end,
+  GetNumGuildMembers = function() local g = S.guild and S.guildRoster return g and #g.members or 0, g and #g.members or 0 end,
+  GetGuildRosterInfo = function(i)
+    if S.combat or S.inEncounter then S.guildBusy = S.guildBusy + 1 end
+    S.guildReads = S.guildReads + 1
+    local g = S.guild and S.guildRoster
+    local m = g and g.members[i]
+    if not m then return nil end
+    if m.secret then return secretValue("GetGuildRosterInfo"), secretValue("rankName"), secretValue("rankIndex") end
+    return m.name .. "-" .. (m.realm or "Hyjal"), g.ranks[m.rank + 1], m.rank, 90, "Classe", "Dornogal", "", "", true, 0, m.class, 0, 0, false, false, 8, "Player-1-" .. i
+  end,
+  GuildControlGetNumRanks = function() local g = S.guild and S.guildRoster return g and #g.ranks or 0 end,
+  GuildControlGetRankName = function(i) local g = S.guild and S.guildRoster return g and g.ranks[i] or "" end,
+  C_GuildInfo = { GuildRoster = function()
+    if S.combat or S.inEncounter then S.guildBusy = S.guildBusy + 1 end
+    S.guildAsks = S.guildAsks + 1
+  end },
   IsInGroup = function() return inGroup() end,
   GetNumGroupMembers = function() return inGroup() and #S.members or 0 end,
   GetNumSubgroupMembers = function() return S.raid and 0 or #S.members - 1 end,
@@ -2554,13 +2583,299 @@ assert(#Lo2.Items() == 0, "13 h plus tard : objets du chef de butin retirés (12
 assert(#H2.Entries() == #ids and H2.Get(helmId) and H2.Get(helmId).cat == "up" and select(2, ns2.Loot.Received("Brumelune-Ysondre")) >= 1, "13 h plus tard : l'historique est toujours là")
 assert(not H2.CurrentNight() and H2.Night(nightId) and H2.Night(nightId).bosses[1], "soirée finie, gardée")
 assert(errors() == 0, "historique après /reload sans erreur : " .. tostring(lastPrinted("erreur")))
+return ns2
 end
-history()
+--------------------------------------------------------------------------------------------------------------------
+-- 13. Conseil défini en jeu (lot R4b, Council.lua) : liste de guilde simulée (jamais lue en combat ni en rencontre,
+-- valeurs secrètes ignorées), confiance mise de côté tant qu'elle n'est pas lue ; conseil par le rang (2 par défaut),
+-- ajouté à la main, retiré, rang minimal ; calcul en continu (officier rétrogradé qui sort, membre promu qui entre) ;
+-- priorité : MC du chef de butin, puis conseil réglé en jeu, puis site (L, O), puis guilde au rang par défaut ; rang trop
+-- bas qui essaie de modifier le conseil (refusé, rien ne change) ; MC envoyé par le chef de butin (activé, MQ, changement,
+-- avant les objets, en parties de 255 octets), reçu par un membre du conseil (parties dans le désordre, d'un autre que le
+-- chef de butin, mal formé) ; messages inconnus ignorés ; page Options › Conseil du butin dans les deux habillages ;
+-- réglage gardé après /reload et après une restauration de l'historique. Addon rechargé par la section 12 (ns).
+--------------------------------------------------------------------------------------------------------------------
+local function council(ns)
+local Cn, Lo, P, H, D = ns.Council, ns.Loot, ns.Pages, ns.Hist, ns.Data
+assert(Cn and Cn.Members and Cn.Trust and Cn.WhenReady and Lo.CouncilSource and Lo.SendCouncil, "module du conseil chargé")
+local function joined(list) return table.concat(list, ",") end
+local function cfg() local d = Cn.Config(false) return d end
+
+-- 13a. Hors guilde : rien de lu ; puis dans une guilde pas encore connue : confiance indécise, mise de côté
+S.guild = false
+fire("PLAYER_GUILD_UPDATE", "player")
+advance(2)
+assert(Cn.InGuild() == false and not Cn.Ready() and Cn.Trust("Tharok-Hyjal") == false and #Cn.Members() == 0 and S.guildReads == 0, "hors guilde : rien")
+assert(not Cn.CanModify() and not Cn.Add("Tharok-Hyjal", true), "hors guilde : pas de réglage")
+S.guild = true
+fire("PLAYER_GUILD_UPDATE", "player")
+advance(2)
+local waited
+assert(Cn.InGuild() == nil and Cn.Trust("Tharok-Hyjal") == nil, "guilde pas encore connue : confiance indécise")
+assert(Cn.WhenReady(function() waited = Cn.Trust("Tharok-Hyjal") end) == nil and Cn.Held() == 1, "demande mise de côté")
+-- Liste de guilde : 8 persos, un nom secret, 40 autres membres ; je suis officier (rang 2)
+S.guildRoster = { name = "Les Veilleurs", ranks = { "Maître de guilde", "Officier", "Vétéran", "Membre", "Recrue" }, members = {
+  { name = "Grumbar", rank = 0, class = "WARRIOR" }, { name = "Kaeldra", rank = 1, class = "PRIEST" }, { name = "Tharok", rank = 1, class = "WARRIOR" },
+  { name = "Ashlen", rank = 1, class = "DEATHKNIGHT" }, { name = "Orvane", rank = 3, class = "EVOKER" }, { name = "Mirwen", rank = 4, class = "MAGE" },
+  { name = "Vex", realm = "Kael'Thas", rank = 3, class = "DEMONHUNTER" }, { name = "Secret", rank = 1, secret = true } } }
+for i = 1, 40 do table.insert(S.guildRoster.members, { name = "Nov" .. string.char(97 + i % 26) .. string.char(97 + math.floor(i / 26)), rank = 4, class = "ROGUE" }) end
+-- En combat : ni lecture ni demande au serveur ; après le combat : lue, la demande mise de côté reprend
+S.combat = true
+local asks = S.guildAsks
+fire("GUILD_ROSTER_UPDATE", true)
+advance(5)
+assert(S.guildReads == 0 and S.guildAsks == asks and not Cn.Ready() and waited == nil, "en combat : rien de lu ni demandé")
+S.combat = false
+fire("PLAYER_REGEN_ENABLED")
+advance(2)
+assert(Cn.Ready() and S.guildReads > 0 and waited == "officer" and Cn.Held() == 0, "après le combat : lue, demande reprise")
+-- Pendant une rencontre : notée, lue après la rencontre ; jamais de lecture ni de demande en combat ou en rencontre
+local reads = S.guildReads
+startEncounter(3180, "Gardienne des spores")
+fire("GUILD_ROSTER_UPDATE", true)
+advance(5)
+assert(S.guildReads == reads, "pendant la rencontre : rien de lu")
+endEncounter(3180, "Gardienne des spores", 0)
+advance(5)
+assert(S.guildReads > reads and S.guildBusy == 0, "lue après la rencontre ; jamais en combat ni en rencontre")
+-- 13b. Ce qui a été lu : rangs (1 : maître de guilde), valeur secrète ignorée ; conseil par défaut : rangs 1 et 2
+assert(Cn.NumRanks() == 5 and Cn.RankName(2) == "Officier" and Cn.RankOf("Tharok-Hyjal") == 2 and Cn.RankOf("Vex-Kael'Thas") == 4
+  and Cn.RankOf("Brumelune-Ysondre") == false and Cn.MyRank() == 2 and Cn.GuildName() == "Les Veilleurs", "rangs lus")
+assert(not Cn.Configured() and Cn.MinRank() == 2 and joined(Cn.Members()) == "Grumbar-Hyjal,Ashlen-Hyjal,Kaeldra-Hyjal,Tharok-Hyjal", "par défaut : rangs 1 et 2 (" .. joined(Cn.Members()) .. ")")
+assert(Cn.Trust("Tharok-Hyjal") == "officer" and Cn.Trust("Orvane-Hyjal") == false and Cn.Trust("Brumelune-Ysondre") == false and Cn.CanModify(), "confiance selon la guilde")
+assert(errors() == 0, "liste de guilde sans erreur : " .. tostring(lastPrinted("erreur")))
+
+-- 13c. Priorité : rien de réglé en jeu, le site d'abord ; réglé en jeu (un nom ajouté), avant le site
+S.raid, S.leader = true, true
+for _, x in ipairs({ { "Tharok-Hyjal", "WARRIOR" }, { "Ashlen-Hyjal", "DEATHKNIGHT" }, { "Brumelune-Ysondre", "DRUID" }, { "Orvane-Hyjal", "EVOKER" },
+  { "Mirwen-Hyjal", "MAGE" }, { "Vex-Kael'Thas", "DEMONHUNTER" } }) do if not findMember(x[1]) then accept(x[1], x[2]) end end
+advance(1)
+local NOW = time()
+assert(D.Load(table.concat({ "RRG;1;g1;" .. NOW .. ";Les Veilleurs", "R;r13;" .. (NOW + 600) .. ";Faille de Sporefall;mythic;20;present;Kaeldra-Hyjal;council",
+  "L;r13;Kaeldra-Hyjal,Orvane-Hyjal", "END;1" }, "\n")), "données du site (ligne L)")
+assert(Lo.IsMaster() and Lo.Enabled(), "chef de butin, distribution d'office")
+local names, source = Lo.CouncilSource()
+assert(source == "site" and joined(names) == "Kaeldra-Hyjal,Orvane-Hyjal", "rien de réglé en jeu : le site d'abord")
+local mark = #S.sent
+assert(Cn.Add("Brumelune-Ysondre") and lastPrinted("conseil du butin : ajout de Brumelune-Ysondre, à la main.", 1, true), "ajout à la main (pas de la guilde)")
+names, source = Lo.CouncilSource()
+assert(source == "game" and joined(names) == "Ashlen-Hyjal,Kaeldra-Hyjal,Tharok-Hyjal,Brumelune-Ysondre", "réglé en jeu : avant le site (" .. joined(names) .. ")")
+local x = cfg().extra["brumelune-ysondre"]
+assert(x and x.on == true and x.name == "Brumelune-Ysondre" and x.by == "Kaeldra-Hyjal" and x.v == time() and x.seq == RosterDB.hist.seq, "réglage : version, auteur, horloge")
+assert(Cn.Trust("Brumelune-Ysondre") == "member", "ajoutée à la main : membre, pas officier")
+assert(not sentMsg("^MC;", mark + 1), "MC un instant après (changements regroupés)")
+advance(3)
+assert(sentMsg("^MC;%d+;1/1;Ashlen%-Hyjal,Kaeldra%-Hyjal,Tharok%-Hyjal,Brumelune%-Ysondre$", mark + 1, "RAID"), "chef de butin : conseil changé, MC au raid")
+
+-- 13d. En continu : Ashlen rétrogradé sort, Orvane promu entre, sans toucher au réglage
+S.guildRoster.members[4].rank, S.guildRoster.members[5].rank = 2, 1
+mark = #S.sent
+fire("GUILD_ROSTER_UPDATE", false)
+advance(5)
+assert(joined(Lo.CouncilNames()) == "Kaeldra-Hyjal,Orvane-Hyjal,Tharok-Hyjal,Brumelune-Ysondre" and Cn.Trust("Ashlen-Hyjal") == false and Cn.Trust("Orvane-Hyjal") == "officer",
+  "rétrogradé : sort ; promu : entre (" .. joined(Lo.CouncilNames()) .. ")")
+assert(sentMsg("^MC;%d+;1/1;Kaeldra%-Hyjal,Orvane%-Hyjal,Tharok%-Hyjal,Brumelune%-Ysondre$", mark + 1, "RAID"), "MC renvoyé")
+mark = #S.sent
+fire("GUILD_ROSTER_UPDATE", false)
+advance(5)
+assert(not sentMsg("^MC;", mark + 1), "liste relue sans changement : pas de MC")
+
+-- 13e. Retirer, remettre, rang minimal ; versions de la même seconde : +1
+local seq0 = RosterDB.hist.seq
+assert(Cn.Remove("Tharok-Hyjal") and not Cn.IsMember("Tharok-Hyjal") and Cn.Trust("Tharok-Hyjal") == "officer" and cfg().extra["tharok-hyjal"].on == false, "officier retiré à la main")
+local st = Cn.Status()
+assert(#st.removed == 1 and st.removed[1].name == "Tharok-Hyjal" and RosterDB.hist.seq == seq0 + 1, "liste des retirés")
+local v1 = cfg().extra["tharok-hyjal"].v
+assert(Cn.Add("Tharok-Hyjal") and Cn.IsMember("Tharok-Hyjal") and cfg().extra["tharok-hyjal"].on == nil and cfg().extra["tharok-hyjal"].v == v1 + 1
+  and lastPrinted("Tharok suit de nouveau son rang de guilde", 1, true), "remis : suit son rang (version + 1)")
+assert(Cn.Remove("Brumelune-Ysondre") and not Cn.IsMember("Brumelune-Ysondre") and Cn.Trust("Brumelune-Ysondre") == false, "nom ajouté retiré")
+assert(Cn.Add("brumelune-Ysondre") and Cn.IsMember("Brumelune-Ysondre") and cfg().extra["brumelune-ysondre"].name == "Brumelune-Ysondre", "ajouté de nouveau (majuscule au prénom)")
+assert(not Cn.Remove("Mirwen-Hyjal") and lastPrinted("Mirwen n'est pas au conseil du butin.", 1, true), "pas au conseil : rien à retirer")
+assert(not Cn.Add("Tharok-Hyjal") and lastPrinted("Tharok est déjà au conseil du butin.", 1, true), "déjà au conseil")
+assert(not Cn.Add("12 ab") and not Cn.Add("") and lastPrinted("nom illisible", 1, true), "nom illisible")
+assert(Cn.SetMinRank(3) and Cn.MinRank() == 3 and Cn.IsMember("Ashlen-Hyjal") and not Cn.IsMember("Vex-Kael'Thas") and Cn.Configured()
+  and lastPrinted("conseil du butin : rangs 1 à 3 de la guilde (Maître de guilde, Officier, Vétéran).", 1, true), "rang minimal 3 : Vétéran entre")
+assert(not Cn.SetMinRank(1) and Cn.MinRank() == 3 and lastPrinted("au-dessus du tien", 1, true), "pas un rang au-dessus du mien")
+assert(not Cn.SetMinRank(9) and Cn.MinRank() == 3, "rang inconnu")
+assert(Cn.SetMinRank(2) and Cn.MinRank() == 2 and cfg().by == "Kaeldra-Hyjal", "rang minimal 2")
+local sug = Cn.Suggest("mir")
+assert(#sug == 1 and sug[1].name == "Mirwen-Hyjal" and #Cn.Suggest("THAR") == 0 and #Cn.Suggest("nov", 5) == 5, "complétion sur la liste de guilde")
+
+-- 13f. Rang trop bas (moi rétrogradé Membre) : lecture seule, chaque modification refusée, rien ne change
+S.guildRoster.members[2].rank = 3
+fire("GUILD_ROSTER_UPDATE", false)
+advance(3)
+local function snapshot() local out = {} for k, e in pairs(cfg().extra) do out[#out + 1] = k .. "=" .. tostring(e.on) .. "@" .. e.v end table.sort(out) return cfg().minRank .. "@" .. cfg().v .. ";" .. joined(out) end
+local before, hseq = snapshot(), RosterDB.hist.seq
+local ok, why = Cn.CanModify()
+assert(not ok and why == "seuls les rangs 1 à 2 de la guilde (Maître de guilde, Officier) modifient le conseil du butin ; tu es Membre.", "rang trop bas : " .. tostring(why))
+assert(not Cn.Add("Mirwen-Hyjal") and lastPrinted(why, 1, true) and not Cn.Remove("Tharok-Hyjal") and not Cn.SetMinRank(5), "rang trop bas : ajout, retrait, rang refusés")
+assert(snapshot() == before and RosterDB.hist.seq == hseq and Cn.IsMember("Tharok-Hyjal") and not Cn.IsMember("Mirwen-Hyjal"), "rien n'a changé")
+assert(Cn.Trust("Kaeldra-Hyjal") == false and Cn.Trust("Mirwen-Hyjal") == false, "confiance : rang trop bas")
+local cpage = CreateFrame("Frame")
+assert(P.Build("council", cpage), "page Options › Conseil du butin")
+P.Refresh("council")
+assert(P.state.council.canModify == false and #P.state.council.members == 4 and cpage.add.shown == false and cpage.addLabel:GetText():find("tu es Membre", 1, true),
+  "page en lecture seule")
+S.guildRoster.members[2].rank = 1
+fire("GUILD_ROSTER_UPDATE", false)
+advance(3)
+assert(Cn.CanModify(), "de nouveau officier")
+
+-- 13g. Page Options › Conseil du butin (deux habillages) : membres, retirés, complétion, conseil de ce soir
+assert(Cn.Remove("Tharok-Hyjal"), "Tharok retiré")
+P.councilView.add = "mir"
+P.Refresh("council")
+local ps = P.state.council
+assert(ps.canModify and joined(ps.members) == "Grumbar-Hyjal,Kaeldra-Hyjal,Orvane-Hyjal,Brumelune-Ysondre" and joined(ps.removed) == "Tharok-Hyjal"
+  and joined(ps.suggestions) == "Mirwen-Hyjal" and ps.councilSource == "game" and cpage.add.shown, "page : membres, retirés, complétion, ce soir")
+P.councilView.pickRank = true
+P.Refresh("council")
+assert(#P.state.council.ranks == 5, "page : liste des rangs")
+RosterDB.skin = "site"
+local spage = CreateFrame("Frame")
+assert(P.Build("council", spage), "page (site)")
+P.Refresh("council")
+assert(P.state.council.canModify and #P.state.council.members == 4, "page (site)")
+RosterDB.skin, P.councilView.add, P.councilView.pickRank = nil, "", false
+assert(Cn.Add("Tharok-Hyjal"), "Tharok remis")
+assert(P.Build("enraid", CreateFrame("Frame")), "onglet En raid")
+P.Refresh("enraid")
+local es = P.state.enraid.loot
+assert(es.councilSource == "game" and joined(es.council) == joined(Lo.CouncilNames()), "onglet En raid : conseil de ce soir")
+
+-- 13h. Chef de butin : MC forcé (activation, MQ), seulement s'il a changé sinon, et avant les objets ; en parties de
+-- 255 octets au plus, noms jamais coupés
+mark = #S.sent
+assert(Lo.SetEnabled(true), "distribution activée")
+advance(1)
+local mc = sentMsg("^MC;", mark + 1, "RAID")
+assert(mc and mc.msg:match("^MC;%d+;1/1;(.*)$") == "Kaeldra-Hyjal,Orvane-Hyjal,Tharok-Hyjal,Brumelune-Ysondre", "activée : MC forcé " .. tostring(mc and mc.msg))
+assert(not Lo.SendCouncil(false), "sans changement : rien")
+mark = #S.sent
+addon("Orvane-Hyjal", "MQ")
+advance(1)
+assert(sentMsg("^ML;1;Kaeldra%-Hyjal$", mark + 1) and sentMsg("^MC;", mark + 1), "MQ : ML et MC")
+local LONG = { "Aelindrasse", "Brennowaldt", "Cassivelaune", "Dravonnelle", "Elthariande", "Faelmorwen", "Gwendaroche", "Haldurevien",
+  "Isolvandine", "Jorvallenne", "Kestrevolde", "Lunathrielle", "Morvennacle", "Nimrovandel" }
+for _, n in ipairs(LONG) do accept(n .. "-Brumevaldargent", "PALADIN") end
+advance(1)
+mark = #S.sent
+for _, n in ipairs(LONG) do assert(Cn.Add(n .. "-Brumevaldargent", true), "ajout " .. n) end
+advance(5)
+local last = sentMsg("^MC;", 1, "RAID")
+local id = last.msg:match("^MC;(%d+);")
+local parts, got, nmc = {}, {}, 0
+for i = mark + 1, #S.sent do if S.sent[i].msg:find("^MC;%d+;1/") then nmc = nmc + 1 end end
+assert(nmc == 1, "14 ajouts d'affilée : un seul MC (" .. nmc .. ")")
+for _, e in ipairs(S.sent) do
+  local pid, i, n, list = e.msg:match("^MC;(%d+);(%d+)/(%d+);(.*)$")
+  if pid == id then parts[tonumber(i)] = list got.n = tonumber(n) assert(#e.msg <= 255, "MC de 255 octets au plus") end
+end
+assert(got.n == 2 and parts[1] and parts[2], "MC en 2 parties")
+local all = {}
+for i = 1, got.n do for name in parts[i]:gmatch("[^,]+") do all[#all + 1] = name end end
+assert(joined(all) == joined(Lo.CouncilNames()) and #all == 18, "parties réunies : tout le conseil, noms entiers")
+-- Avant les objets : MC (vieux de plus de 10 min) renvoyé juste avant le LO
+advance(Lo.MC_EVERY + 1)
+mark = #S.sent
+S.bags[4][14] = item(242601, "Casque Kith'ix")
+fire("CHAT_MSG_LOOT", "Vous recevez le butin : " .. S.bags[4][14] .. ".", "", "", "", "")
+local okC, sidC = Lo.StartCouncil(Lo.Items()[#Lo.Items()].key)
+advance(1)
+local _, imc = sentMsg("^MC;", mark + 1)
+local _, ilo = sentMsg("^LO;" .. tostring(sidC), mark + 1)
+assert(okC and imc and ilo and imc < ilo, "MC avant le LO")
+Lo.Cancel(Lo.Items()[#Lo.Items()].key)
+for _, n in ipairs(LONG) do assert(Cn.Remove(n .. "-Brumevaldargent", true), "retrait " .. n) end
+
+-- 13i. Membre du conseil, Tharok chef de butin : son MC fait foi (même contre mon réglage), parties dans le désordre,
+-- MC d'un autre ignoré, mal formé ignoré ; devenu membre, le conseil de son objet déjà proposé s'ouvre
+assert(Lo.SetMaster("Tharok-Hyjal") and not Lo.IsMaster() and Lo.mc == nil, "Tharok chef de butin")
+names, source = Lo.CouncilSource()
+assert(source == "game" and Lo.IsCouncil("Tharok-Hyjal"), "sans MC : mon conseil (réglé en jeu)")
+addon("Tharok-Hyjal", "MC;5001;1/1;Orvane-Hyjal,Brumelune-Ysondre")
+names, source = Lo.CouncilSource()
+local _, _, from = Lo.CouncilSource()
+assert(source == "mc" and from == "Tharok-Hyjal" and joined(names) == "Orvane-Hyjal,Brumelune-Ysondre" and not Lo.IsCouncil("Tharok-Hyjal"), "MC du chef de butin : il fait foi")
+addon("Tharok-Hyjal", "LO;99001;item:242601::::::::90:::::;Casque Kith'ix")
+assert(#Lo.Offers() == 1 and not Lo.councils["99001"], "pas du conseil : fenêtre de réponse seulement")
+addon("Vex-Kael'Thas", "MC;5002;1/1;Kaeldra-Hyjal")
+assert(Lo.mc.id == "5001", "MC d'un autre que le chef de butin : ignoré")
+for _, bad in ipairs({ "MC;;1/1;Kaeldra-Hyjal", "MC;5004;3/2;Kaeldra-Hyjal", "MC;5004;0/1;Kaeldra-Hyjal", "MC;5004;1/99;Kaeldra-Hyjal", "MC;5004;x;Kaeldra-Hyjal" }) do
+  addon("Tharok-Hyjal", bad)
+  assert(Lo.mc.id == "5001", "MC mal formé ignoré : " .. bad)
+end
+addon("Tharok-Hyjal", "MC;5003;2/2;Kaeldra-Hyjal")
+assert(Lo.mc.id == "5001" and not Lo.councils["99001"], "MC incomplet : pas encore appliqué")
+addon("Tharok-Hyjal", "MC;5003;1/2;Orvane-Hyjal;champ ajouté plus tard")
+assert(Lo.mc.id == "5003" and joined(Lo.CouncilNames()) == "Orvane-Hyjal,Kaeldra-Hyjal" and Lo.IsCouncil("Tharok-Hyjal"), "MC complet (parties dans le désordre, champ en plus ignoré)")
+assert(Lo.councils["99001"] and Lo.Council("99001").master == "Tharok-Hyjal" and ns.LootUI.state.council.session == "99001", "devenu membre : conseil de l'objet déjà proposé")
+mark = #S.sent
+assert(Lo.Answer("99001", "bis", ""), "ma réponse")
+advance(1)
+local to = {}
+for i = mark + 1, #S.sent do if S.sent[i].msg:find("^LA;99001;bis;") then to[S.sent[i].target] = true end end
+assert(to["Orvane-Hyjal"] and to["Tharok-Hyjal"] and not to["Ashlen-Hyjal"], "réponse au conseil du MC et au chef de butin")
+addon("Orvane-Hyjal", "LV;99001;Kaeldra-Hyjal", "WHISPER")
+addon("Ashlen-Hyjal", "LV;99001;Kaeldra-Hyjal", "WHISPER")
+assert(Lo.Council("99001").cands[1].votes == 1, "vote d'Orvane (conseil du MC) compté, pas celui d'Ashlen")
+-- Compatibilité : message inconnu (addon plus récent) et champs en plus ignorés, sans erreur
+addon("Tharok-Hyjal", "ZZ;1;2;3")
+addon("Tharok-Hyjal", "LC;99001;Kaeldra-Hyjal;champ;ajouté")
+assert(Lo.Council("99001").closed and errors() == 0, "message inconnu ignoré, champs en plus ignorés : " .. tostring(lastPrinted("erreur")))
+-- Nouveau chef de butin : le MC de l'ancien ne compte plus
+assert(Lo.SetMaster(nil) and Lo.IsMaster() and Lo.mc == nil and select(2, Lo.CouncilSource()) == "game", "de nouveau chef de butin : mon conseil")
+
+-- 13j. Réglage gardé : sauvegarde sans valeur secrète ; restauration de l'historique (le réglage reste) ; /reload
+noSecret(RosterDB, "RosterDB")
+local key = next(RosterDB.hist.councils)
+assert(key == "les veilleurs-hyjal", "réglage par guilde : " .. tostring(key))
+assert(H.Backup("essai") and Cn.Add("Mirwen-Hyjal", true) and H.Restore(1) and Cn.IsMember("Mirwen-Hyjal"), "restauration de l'historique : le réglage du conseil reste")
+assert(Cn.Remove("Mirwen-Hyjal", true), "Mirwen retiré")
+RosterDB.histBackups = nil
+local function plain(v)
+  if type(v) ~= "table" then return v end
+  local out = {}
+  for k, y in pairs(v) do out[k] = plain(y) end
+  return out
+end
+local members = joined(Cn.Members())
+RosterDB = plain(RosterDB)
+for k in pairs(events) do events[k] = nil end
+for i = #timers, 1, -1 do timers[i] = nil end
+local ns3 = { Laudit = ns.Laudit }
+for line in io.lines("addon/Roster/Roster.toc") do
+  line = line:gsub("%s+$", "")
+  if line:match("%.lua$") then
+    local path = addonFile(line)
+    if path then assert(loadfile(path))("Roster", ns3) else STUBS[line](ns3) end
+  end
+end
+fire("ADDON_LOADED", "Roster")
+fire("PLAYER_LOGIN")
+fire("PLAYER_ENTERING_WORLD", false, true)
+local Cn3 = ns3.Council
+assert(not Cn3.Ready(), "après /reload : liste de guilde pas encore lue")
+advance(8)
+assert(Cn3.Ready() and Cn3.Configured() and joined(Cn3.Members()) == members and Cn3.MinRank() == 2, "après /reload : réglage gardé, liste relue")
+-- Plus dans la guilde : le conseil du site reprend
+S.guild = false
+fire("PLAYER_GUILD_UPDATE", "player")
+advance(2)
+local _, src3 = ns3.Loot.CouncilSource()
+assert(Cn3.InGuild() == false and src3 == "site", "hors guilde : le site")
+assert(S.guildBusy == 0 and errors() == 0, "conseil en jeu sans erreur : " .. tostring(lastPrinted("erreur")))
+S.raid, S.members = false, { S.members[1] }
+end
+local nsH = history()
+council(nsH)
 assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
 -- Données du test autorisées par le contrôle des textes : noms de groupe et de raid écrits ici, noms d'objets du test
 -- coupés à 14 octets dans la bande d'objets (LootUI, objet sans icône)
 local LOOT_NAMES = { "Jambières de", "Anneau des spo", "Cuirasse de la", "Objet au nom v", "Objet au conse", "Objet chuchot", "Objet pas enco" }
-LOCALE_AUDIT.check("Roster", { "Les Veilleurs", "Raid à définir", unpack(LOOT_NAMES) })
+-- Guilde simulée (section 13) : noms des rangs
+LOCALE_AUDIT.check("Roster", { "Les Veilleurs", "Raid à définir", "Maître de guilde", "Officier", "Vétéran", "Membre", "Recrue", unpack(LOOT_NAMES) })
 print = function(...) io.stdout:write(table.concat({ ... }, " "), "\n") end
 print("roster_sim : tout est bon" .. (#stubbed > 0 and (" (socle simulé : " .. table.concat(stubbed, ", ") .. ")") or "")
   .. (realChecked and " ; partage : vraie signature du site vérifiée" or " ; partage : signature simulée (pas de ns.Crypto.VerifyRSA)"))

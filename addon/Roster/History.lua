@@ -14,7 +14,8 @@
 --     winner, class, method, response, detail, votes, note, cat (bis | up | ms | other ; nil : ne compte pas), boss,
 --     encounter, instance, mapID, difficulty, night, ml (chef de butin), src (« roster »), excluded, del (tombe) ;
 --   - soirée : id (<node>-<début base 36>), start, stop, instance, mapID, difficulty, ml, v, by, seq,
---     bosses = { { encounter, name, at, kill } }, people = { ["Prénom-Royaume"] = { first, last, n } }.
+--     bosses = { { encounter, name, at, kill } }, people = { ["Prénom-Royaume"] = { first, last, n } } ;
+--   - councils : réglage du conseil du butin défini en jeu, un par guilde (lot R4b, Council.lua).
 --   La version la plus récente gagne (v, puis by, puis une somme du contenu) : une même entrée reçue deux fois ne change
 --   rien, et une attribution refaite (nouveau gagnant) remplace l'ancienne partout.
 -- Identifiants : le chef de butin crée l'entrée et l'envoie au raid avec son identifiant et sa version (LW, Loot.lua) :
@@ -120,6 +121,9 @@ local function bump(h, t)
   h.seq = h.seq + 1
   t.seq = h.seq
 end
+--- Changement fait ici hors des entrées et des soirées (réglage du conseil, Council.lua) : l'horloge avance et le
+--- numéro est recopié dans t (synchro incrémentale, R4g)
+function H.Bump(t) bump(store(), t) end
 
 function H.Node() return store().node end
 --- Nouvel identifiant d'entrée : <node>-<heure base 36>-<n>
@@ -541,7 +545,8 @@ function H.Backups()
   return d and type(d.histBackups) == "table" and d.histBackups or {}
 end
 --- Remet la sauvegarde i (1 : la plus récente). Le node et l'horloge (seq) de l'installation sont gardés : l'horloge ne
---- recule jamais (synchro). R4d : rajeunir les versions pour que la restauration gagne sur les tombes déjà envoyées.
+--- recule jamais (synchro). Le réglage du conseil (councils, R4b) n'est pas de l'historique : celui d'aujourd'hui reste.
+--- R4d : rajeunir les versions pour que la restauration gagne sur les tombes déjà envoyées.
 function H.Restore(i)
   local d = db()
   local b = H.Backups()[i or 1]
@@ -549,6 +554,7 @@ function H.Restore(i)
   local cur = store()
   local h = copy(b.hist)
   h.node, h.seq = cur.node, math.max(tonumber(cur.seq) or 0, tonumber(h.seq) or 0) + 1
+  h.councils = cur.councils
   d.hist, H.current = h, nil
   refresh()
   return true

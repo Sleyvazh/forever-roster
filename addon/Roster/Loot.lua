@@ -16,6 +16,9 @@
 -- gagné au butin de groupe sans passer y crée ou met à jour une entrée, sans raid du site ; LW porte l'identifiant, la
 -- version et le niveau de l'entrée (champs 8 à 10). « Reçus » = site (N, D) + historique après la date des données du
 -- site ; le chef de butin joint ses nombres à chaque réponse qu'il relaie (LA, champs 8 à 12) : le conseil voit les mêmes.
+-- Conseil défini en jeu (R4b, 0.4.1 ; Council.lua) : le conseil de ce soir (Lo.CouncilSource) vient, dans l'ordre, du MC
+-- du chef de butin, du conseil réglé en jeu, du site (lignes L / O), puis de la guilde au rang par défaut ; le chef de
+-- butin envoie le sien au raid (MC) pour que tous les addons soient d'accord, même sans liste de guilde ni site.
 -- WoW 12.x : messages d'addon et chat bloqués pendant une rencontre de boss (file de Comm.lua), textes du chat
 -- (jets, chuchotements) secrets pendant le verrou du chat : jamais comparés ni gardés.
 -- Raid d'essai (Test.lua) : ns.Loot.test remplace le raid, ses membres, les messages, le chat et l'échange ; rien n'est
@@ -238,10 +241,13 @@ local LOCKED = N("pas pendant un combat de boss : réessaie juste après le comb
 -- État de la distribution : ML (chef de raid ou chef de butin → raid), MQ (demande)
 --------------------------------------------------------------------------------------------------------------------
 local lastML = 0
-local function sendML()
+-- force : le conseil de ce soir (MC) repart même s'il n'a pas changé (nouveau chef de butin, demande MQ)
+local function sendML(force)
   if Lo.test or not Cm.InGroup() then return false end
   lastML = time()
-  return send("ML;" .. (Lo.Enabled() and "1" or "0") .. ";" .. F.clean(Lo.Master() or ""))
+  local ok = send("ML;" .. (Lo.Enabled() and "1" or "0") .. ";" .. F.clean(Lo.Master() or ""))
+  if Lo.IsMaster() and Lo.Enabled() and Lo.SendCouncil then Lo.SendCouncil(force) end
+  return ok
 end
 Lo.SendState = sendML
 
@@ -255,7 +261,8 @@ function Lo.SetMaster(name)
   if s.on == nil then s.on = Lo.Enabled() end -- l'état d'office devient celui de tous
   s.master = (full and not same(full, me())) and full or nil
   s.at = time()
-  sendML()
+  Lo.mc = nil -- conseil de ce soir de l'ancien chef de butin : le nouveau envoie le sien
+  sendML(true)
   local m = Lo.Master()
   local shown = m and F.Display(m) or "?"
   ns.print(Lo.IsMaster() and L("chef de butin : %s (toi).", shown) or L("chef de butin : %s.", shown))
@@ -271,7 +278,7 @@ function Lo.SetEnabled(on)
   end
   local s = state()
   s.on, s.at = on and true or false, time()
-  sendML()
+  sendML(true)
   ns.print(s.on and L["distribution du butin par Roster activée : les autres joueurs passeront le butin de groupe."]
     or L["distribution du butin par Roster coupée : butin de groupe habituel."])
   histSoon()
@@ -292,6 +299,11 @@ Cm.On("ML", function(sender, f, dist)
     s.master = (named and not same(named, sender)) and named or nil
   end
   local on, m = Lo.Enabled(), Lo.Master()
+  -- Autre chef de butin : son conseil de ce soir (MC) remplacera celui de l'ancien ; devenu chef de butin : j'envoie le mien
+  if not same(m, wasMaster) then Lo.mc = nil end
+  if on and Lo.IsMaster() and (not wasOn or not same(m, wasMaster)) and C_Timer and C_Timer.After then
+    C_Timer.After(1, function() ns.safe(L["conseil du butin"], Lo.SendCouncil, true) end)
+  end
   if on ~= wasOn or not same(m, wasMaster) then
     if not on then ns.print(L["distribution du butin par Roster coupée : butin de groupe habituel."])
     elseif Lo.IsMaster() then ns.print(L["tu es chef de butin : les objets du butin de groupe te reviennent (fenêtre du butin : /roster butin)."])
@@ -306,7 +318,7 @@ end)
 
 Cm.On("MQ", function(sender, _, dist)
   if Lo.test or echo(sender, dist) or same(sender, me()) then return end
-  if Cm.IsLeader() or Lo.IsMaster() then sendML() end
+  if Cm.IsLeader() or Lo.IsMaster() then sendML(true) end
 end)
 
 -- Arrivée dans un groupe, /reload en groupe : on demande l'état ; le groupe change : le chef de raid et le chef de
@@ -322,7 +334,7 @@ local function rosterChanged()
     -- Groupe quitté : état oublié, conseils et jets arrêtés (les objets restent à remettre)
     local d = db()
     if d then d.lootState = nil end
-    Lo.pending, Lo.offers, Lo.activeRoll = {}, {}, nil
+    Lo.pending, Lo.offers, Lo.activeRoll, Lo.mc = {}, {}, nil, nil
     for _, c in pairs(Lo.councils) do c.closed = true end
     for _, s in pairs(Lo.rollSessions) do s.open = false end
     for _, e in ipairs(list()) do if e.status == "council" or e.status == "roll" then e.status = "new" end end
@@ -726,17 +738,38 @@ Lo.councils = {} -- session → { session, num, order, key, itemId, itemString, 
 Lo.offers = {}   -- { session, num, itemString, itemId, link, name, from, at, answered, response, closed, usable, reason }
 Lo.COUNCIL_KEEP = 2 * 3600 -- conseils listés (Lo.Councils) : ceux de moins de 2 h
 
--- Conseil : choisi pour le raid (RRG L), sinon les officiers (O), présents dans le raid
-function Lo.CouncilNames()
-  local names = Lo.test and (Lo.test.council or { me() }) or ns.Groups.Council(ns.Groups.LootRaid())
+-- Conseil de ce soir (lot R4b, étude §5.3), membres présents dans le raid, pris dans l'ordre : le conseil envoyé par le
+-- chef de butin (MC, s'il n'est pas moi) ; le conseil défini en jeu s'il a été réglé (Council.lua) ; celui du site (ligne
+-- L du raid, sinon O) ; celui de la guilde au rang par défaut. Renvoie les noms, la source (« mc », « game », « site »,
+-- « guild », « test » ; nil : aucun, le chef de butin décide seul) et, pour « mc », le chef de butin qui l'a envoyé.
+-- Raid d'essai : test.council, sinon la guilde fictive (test.guild), sinon moi.
+Lo.mc = nil -- dernier conseil complet reçu du chef de butin : { master, id, names, at }
+function Lo.CouncilSource()
+  local Co = ns.Council
+  local names, source, from
+  if Lo.test then
+    if Lo.test.council then names, source = Lo.test.council, "test"
+    elseif Lo.test.guild and Co then names, source = Co.Members(), "game"
+    else names, source = { me() }, "test" end
+  else
+    local mc = Lo.mc
+    if mc and Cm.InGroup() and not Lo.IsMaster() and same(mc.master, Lo.Master()) then names, source, from = mc.names, "mc", mc.master
+    elseif Co and Co.Ready() and Co.Configured() then names, source = Co.Members(), "game"
+    else
+      local site = ns.Groups.Council(ns.Groups.LootRaid())
+      if #site > 0 then names, source = site, "site" -- nolocale (source)
+      elseif Co and Co.Ready() then names, source = Co.Members(), "guild" end
+    end
+  end
   local out, seen = {}, {}
   for _, n in ipairs(names or {}) do
     local full = F.FullName(n)
     local k = full and F.Fold(full)
     if k and not seen[k] and member(full) then seen[k] = true out[#out + 1] = full end
   end
-  return out
+  return out, source, from
 end
+function Lo.CouncilNames() return (Lo.CouncilSource()) end
 local function inCouncil(name)
   for _, n in ipairs(Lo.CouncilNames()) do if same(n, name) then return true end end
   return false
@@ -813,6 +846,8 @@ local function canPropose()
   if not Lo.IsMaster() then ns.print(L["seul le chef de butin lance le conseil."]) return false end
   if not Lo.test and not Cm.Channel() then ns.print(L["il faut être en groupe ou en raid."]) return false end
   if chatLocked() then ns.print(L[LOCKED]) return false end
+  -- Conseil de ce soir envoyé avant les objets (s'il a changé) : ses membres ouvrent la fenêtre du conseil au LO
+  Lo.SendCouncil(false)
   return true
 end
 
@@ -855,6 +890,14 @@ function Lo.StartAllCouncils()
   return #sessions, sessions
 end
 
+-- Membre du conseil : le conseil d'un objet proposé par le chef de butin (fenêtre du conseil)
+local function councilFor(o)
+  if Lo.councils[o.session] then return end
+  Lo.councils[o.session] = { session = o.session, num = o.num, order = nextOrder(), itemId = o.itemId, itemString = o.itemString, link = o.link,
+    name = o.name, ilvl = ilvlOf(o.itemString), master = o.from, cands = {}, votes = {}, at = time() }
+  ui("ShowCouncil", o.session)
+end
+
 -- Numéro d'une proposition reçue : comme le chef de butin (le suivant des propositions ouvertes, 1 s'il n'y en a pas) ;
 -- le format LO ne le porte pas
 local function nextOfferNum()
@@ -880,11 +923,7 @@ Cm.On("LO", function(sender, f, dist)
   o.usable, o.reason = Lo.CanUse(itemString)
   Lo.offers[#Lo.offers + 1] = o
   -- Raid d'essai : la proposition d'un chef de butin fictif te met côté joueur (pas de conseil chez toi)
-  if not c and not Lo.test and Lo.IsCouncil(sender) then
-    Lo.councils[sid] = { session = sid, num = o.num, order = nextOrder(), itemId = id, itemString = itemString, link = link, name = name,
-      ilvl = ilvlOf(itemString), master = sender, cands = {}, votes = {}, at = time() }
-    ui("ShowCouncil", sid)
-  end
+  if not c and not Lo.test and Lo.IsCouncil(sender) then councilFor(o) end
   ui("ShowOffer", sid)
   refresh()
 end)
@@ -1273,6 +1312,85 @@ Cm.On("LC", function(sender, f, dist)
   local o = findOffer(sid)
   if o and (dist == "SELF" or Lo.test or same(sender, o.from)) then o.closed = true end
   ui("ShowOffer")
+  refresh()
+end)
+
+--------------------------------------------------------------------------------------------------------------------
+-- Conseil de ce soir envoyé par le chef de butin (lot R4b) : MC;<id>;<partie>/<parties>;<Prénom-Royaume>,… au raid,
+-- membres du conseil présents (lui compris s'il en est), en parties de 255 octets au plus (noms jamais coupés). Accepté
+-- seulement du chef de butin ; appliqué quand toutes les parties sont là. Un addon 0.4.0 ou 0.3 l'ignore (message inconnu).
+--------------------------------------------------------------------------------------------------------------------
+Lo.MC_EVERY = 600 -- secondes : le même conseil n'est renvoyé qu'au bout de 10 min (sauf demande, nouveau chef de butin)
+Lo.MC_PARTS = 20
+local lastMC, lastMCText, mcSeq = 0, nil, 0
+--- Chef de butin : envoie le conseil de ce soir s'il a changé (force : même s'il n'a pas changé). Rien sans conseil connu
+--- (ni réglé en jeu, ni site, ni guilde) : chacun garde le sien. Renvoie true si envoyé.
+function Lo.SendCouncil(force)
+  if Lo.test or not Cm.InGroup() or not Lo.IsMaster() or not Lo.Enabled() then return false end
+  local names, source = Lo.CouncilSource()
+  if not source then return false end
+  local list = {}
+  for i, n in ipairs(names) do list[i] = F.clean(n) end
+  local text = table.concat(list, ",")
+  if not force and text == lastMCText and time() - lastMC < Lo.MC_EVERY then return false end
+  lastMC, lastMCText, mcSeq = time(), text, mcSeq + 1
+  local id = string.format("%d%02d", time() % 100000, mcSeq % 100)
+  local room = 250 - #("MC;" .. id .. ";" .. Lo.MC_PARTS .. "/" .. Lo.MC_PARTS .. ";")
+  local parts, cur = {}, ""
+  for _, n in ipairs(list) do
+    if cur ~= "" and #cur + 1 + #n > room then parts[#parts + 1] = cur cur = n
+    else cur = cur == "" and n or (cur .. "," .. n) end
+  end
+  parts[#parts + 1] = cur
+  if #parts > Lo.MC_PARTS then return false end
+  for i, p in ipairs(parts) do send("MC;" .. id .. ";" .. i .. "/" .. #parts .. ";" .. p) end
+  return true
+end
+--- Le conseil défini en jeu a changé (réglage, liste de guilde) : le chef de butin renvoie le conseil de ce soir 2 s
+--- après (plusieurs changements d'affilée : un seul MC)
+Lo.MC_DELAY = 2
+local councilDue = false
+function Lo.CouncilChanged()
+  if not Lo.test and not councilDue and Cm.InGroup() and Lo.IsMaster() and Lo.Enabled() then
+    if C_Timer and C_Timer.After then
+      councilDue = true
+      C_Timer.After(Lo.MC_DELAY, function() councilDue = false ns.safe(L["conseil du butin"], Lo.SendCouncil, false) end)
+    else
+      Lo.SendCouncil(false)
+    end
+  end
+  refresh()
+end
+
+local mcParts = nil -- parties reçues du MC en cours : { id, master, n, parts, got }
+Cm.On("MC", function(sender, f, dist)
+  if Lo.test or echo(sender, dist) or same(sender, me()) or not same(sender, Lo.Master()) then return end
+  local id = F.txt(f[2], 12)
+  local i, n = tostring(f[3] or ""):match("^(%d+)/(%d+)$")
+  i, n = tonumber(i), tonumber(n)
+  if id == "" or not (i and n) or i < 1 or i > n or n > Lo.MC_PARTS then return end
+  local p = mcParts
+  if not (p and p.id == id and p.n == n and same(p.master, sender)) then
+    p = { id = id, master = sender, n = n, parts = {}, got = 0 }
+    mcParts = p
+  end
+  if p.parts[i] == nil then p.parts[i], p.got = F.txt(f[4], 255), p.got + 1 end
+  if p.got < p.n then return end
+  mcParts = nil
+  local names, seen = {}, {}
+  for k = 1, p.n do
+    for x in (p.parts[k] .. ","):gmatch("([^,]*),") do
+      local full = F.FullName(F.txt(x, 60))
+      local key = full and F.Fold(full)
+      if key and not seen[key] then seen[key] = true names[#names + 1] = full end
+    end
+  end
+  local was = Lo.IsCouncil(sender)
+  Lo.mc = { master = sender, id = id, names = names, at = time() }
+  -- Devenu membre du conseil : les objets de ce chef de butin déjà proposés (LO reçu avant le MC) ont leur conseil
+  if not was and Lo.IsCouncil(sender) then
+    for _, o in ipairs(Lo.offers) do if not o.closed and same(o.from, sender) then councilFor(o) end end
+  end
   refresh()
 end)
 

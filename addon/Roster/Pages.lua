@@ -1,6 +1,6 @@
--- Pages des onglets Raids, En raid, Compo et Butin (historique, lot R4a) de la fenêtre principale (construites par UI.lua :
--- ns.Pages.Build(clé, page), puis ns.Pages.Refresh(clé) à l'affichage). Listes et boutons de la boîte à outils commune
--- (ns.Kit, deux habillages).
+-- Pages des onglets Raids, En raid, Compo et Butin (historique, lot R4a) de la fenêtre principale, et de la page
+-- Options › Conseil du butin (lot R4b) (construites par UI.lua : ns.Pages.Build(clé, page), puis ns.Pages.Refresh(clé) à
+-- l'affichage). Listes et boutons de la boîte à outils commune (ns.Kit, deux habillages).
 local _, ns = ...
 local L, N = ns.L, ns.N
 local P = {}
@@ -33,6 +33,35 @@ local function names(list, max)
   return table.concat(out, ", ") .. (#list > #out and (" +" .. (#list - #out)) or "")
 end
 local function showTab(key) return function() if ns.UI and ns.UI.Show then ns.UI.Show(key) end end end
+local function showCouncil() if ns.UI and ns.UI.ShowOptions then ns.UI.ShowOptions("council") end end
+-- Classe d'un joueur (couleur du nom) : membre du raid, sinon de la guilde
+local function classOf(name)
+  local m = ns.Loot and ns.Loot.Member and ns.Loot.Member(name)
+  return (m and m.class) or (ns.Council and ns.Council.ClassOf(name)) or nil
+end
+
+-- Conseil de ce soir (lot R4b) : membres présents et d'où vient ce conseil (Loot.lua, Lo.CouncilSource)
+local SOURCE = {
+  mc = N("envoyé par le chef de butin (%s), le même pour tous"),
+  game = N("défini en jeu (Options › Conseil du butin)"),
+  site = N("celui du site (conseil du raid, sinon officiers du groupe)"),
+  guild = N("rangs 1 à %d de la guilde (rang par défaut, pas encore réglé en jeu)"),
+  test = N("raid d'essai"),
+}
+local function sourceText(source, from)
+  if source == "mc" then return L(SOURCE.mc, F.Display(from)) end
+  if source == "guild" then return L(SOURCE.guild, ns.Council.MinRank()) end
+  if SOURCE[source] then return L[SOURCE[source]] end
+  return L["aucun : le chef de butin décide seul (règle le conseil dans Options › Conseil du butin, ou charge les données du site)"]
+end
+local function tonightLine(rows, state, buttons)
+  local names, source, from = ns.Loot.CouncilSource()
+  local shown = {}
+  for i, n in ipairs(names) do shown[i] = who(n, classOf(n)) end
+  state.council, state.councilSource = names, source
+  rows.Add(L("Conseil de ce soir : %s", #shown > 0 and table.concat(shown, ", ") or (GREY .. L["personne"] .. "|r")) .. GREY .. "  " .. L["(et le chef de butin)"] .. "|r"
+    .. "\n" .. GREY .. sourceText(source, from) .. "|r", buttons)
+end
 
 -- Soirée de l'historique (History.lua) : titre (date, instance, difficulté) et ligne (boss vaincus, présents, chef de butin)
 local function nightTitle(n)
@@ -249,6 +278,8 @@ local function lootSection(rows, state)
   if not st.isMaster then
     rows.Add(GREY .. L("Passer automatique : %s (onglet Options).", Lo.AutoPass() and L["oui"] or L["non"]) .. "|r")
   end
+  -- Conseil de ce soir (lot R4b) : qui vote, et d'où vient ce conseil
+  if Lo.CouncilSource then tonightLine(rows, st, { { L["Conseil du butin"], 150, showCouncil } }) end
   -- Soirée relevée par l'addon (historique durable, R4a), sans le site : instance de raid, distribution activée
   local H = ns.Hist
   local night = H and H.CurrentNight and H.CurrentNight()
@@ -471,6 +502,131 @@ refreshers.loot = function(p)
     end
   end
   if kept > state.shown then rows.Add(GREY .. L("+ %d de plus : affine la recherche.", kept - state.shown) .. "|r") end
+  rows.Done()
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Options › Conseil du butin (lot R4b, Council.lua ; étude §5.11 n° 6) : rang minimal (« Changer le rang » puis
+-- « Choisir » : 2 clics), membres qui en découlent (Retirer), officiers retirés à la main (Remettre), ajouter un membre
+-- (complétion sur la liste de guilde ; un nom hors de la guilde s'écrit Prénom-Royaume), qui peut modifier, conseil de
+-- ce soir. En lecture seule pour ceux qui ne peuvent pas modifier. Raid d'essai : la guilde fictive.
+--------------------------------------------------------------------------------------------------------------------
+local councilView = { add = "", pickRank = false }
+P.councilView = councilView -- (tests hors jeu)
+local function refreshCouncil() P.Refresh("council") end
+
+-- « Ajouter » ou Entrée : un perso de la guilde qui porte ce prénom, sinon la seule suggestion, sinon le nom tapé
+local function addTyped(p)
+  local Co = ns.Council
+  local q = F.trim(p.add:GetText() or "")
+  if q == "" then return end
+  local name = q
+  if not Co.RankOf(q) then
+    local list = Co.Suggest(q, 2)
+    if #list == 1 then name = list[1].name end
+  end
+  if Co.Add(name) then
+    p.add:SetText("")
+    councilView.add = ""
+    p.add:ClearFocus()
+  end
+  refreshCouncil()
+end
+
+builders.council = function(p)
+  local K = ns.Kit
+  p.addLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.addLabel:SetPoint("TOPLEFT", 8, -78) p.addLabel:SetWidth(520) p.addLabel:SetJustifyH("LEFT")
+  p.add = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+  p.add:SetSize(170, 22) p.add:SetPoint("TOPLEFT", 150, -72)
+  p.add:SetAutoFocus(false) p.add:SetMaxLetters(60)
+  -- Frappe du joueur seulement (SetText de l'addon : rien)
+  p.add:SetScript("OnTextChanged", function(self, user) if not user then return end councilView.add = self:GetText() or "" refreshCouncil() end)
+  p.add:SetScript("OnEnterPressed", function() addTyped(p) end)
+  p.add:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+  p.addButton = K.button(p, L["Ajouter"], 100, function() addTyped(p) end)
+  p.addButton:SetPoint("LEFT", p.add, "RIGHT", 8, 0)
+  p.list = K.list(p, -104)
+end
+
+refreshers.council = function(p)
+  local Co, rows = ns.Council, p.list
+  local s = Co.Status()
+  local state = { canModify = s.canModify, minRank = s.minRank, configured = s.configured, ready = s.ready, test = s.test, members = {}, removed = {}, suggestions = {}, ranks = {} }
+  P.state.council = state
+  local me = ns.Comm.Me()
+  if s.canModify then
+    p.addLabel:SetText(L["Ajouter un membre :"])
+    p.add:Show() p.addButton:Show()
+  else
+    p.addLabel:SetText(GREY .. tostring(s.why or "") .. "|r")
+    p.add:Hide() p.addButton:Hide()
+  end
+  rows.Reset()
+  if s.test then rows.Add(ORANGE .. L["Raid d'essai : guilde fictive, réglage en mémoire effacé à la fin de l'essai."] .. "|r") end
+  rows.Header(s.guild and L("Conseil du butin · %s", s.guild) or L["Conseil du butin"])
+  rows.Add(GREY .. L["Membres : la guilde jusqu'au rang minimal, plus les noms ajoutés à la main, moins ceux retirés à la main. Calculé en continu : un officier promu entre tout seul, un ancien officier rétrogradé sort tout seul. Quand tu es chef de butin, le conseil de ce soir part au raid : tous les addons sont d'accord."] .. "|r")
+  if not s.inGuild then
+    if s.known then rows.Add(GREY .. L["Tu n'es pas dans une guilde : le conseil vient du chef de butin ou du site."] .. "|r")
+    else rows.Add(GREY .. L["Liste de guilde pas encore lue : elle arrive quelques secondes après la connexion."] .. "|r",
+      { { L["Actualiser"], 120, function() Co.Ask(true) Co.ReadSoon(1) end } }) end
+  else
+    -- Rang minimal : « Changer le rang » ouvre la liste des rangs, « Choisir » (2 clics)
+    local setLine
+    if s.setBy then setLine = L("réglé par %s le %s", F.Display(s.setBy), F.Stamp(s.setAt))
+    elseif s.configured then setLine = L["rang par défaut ; noms ajoutés ou retirés en jeu"]
+    else setLine = L["rang par défaut, pas encore réglé en jeu : le conseil du site passe d'abord, sinon ces membres"] end
+    local span = s.minRank == 1 and L("(rang 1 sur %d)", s.numRanks) or L("(rangs 1 à %d sur %d)", s.minRank, s.numRanks)
+    rows.Add(L("Rang minimal : %s", ns.Kit.ACCENT .. s.minRank .. " · " .. Co.RankName(s.minRank) .. "|r") .. GREY .. "  " .. span .. "|r"
+      .. "\n" .. GREY .. setLine .. "|r",
+      s.canModify and { { councilView.pickRank and L["Fermer la liste"] or L["Changer le rang"], 150, function() councilView.pickRank = not councilView.pickRank refreshCouncil() end } } or nil)
+    if councilView.pickRank and s.canModify then
+      for i = 1, s.numRanks do
+        local current, above = i == s.minRank, i < (s.myRank or 1)
+        state.ranks[i] = s.ranks[i]
+        rows.Add("   " .. i .. " · " .. s.ranks[i] .. (current and (GREEN .. "  " .. L["(actuel)"] .. "|r") or "") .. (above and (GREY .. "  " .. L["(au-dessus de ton rang)"] .. "|r") or ""),
+          (not current and not above) and { { L["Choisir"], 100, function() if Co.SetMinRank(i) then councilView.pickRank = false end refreshCouncil() end } } or nil)
+      end
+    end
+    local mine = s.myRank and Co.RankName(s.myRank) or L["sans rang connu"]
+    rows.Add((s.minRank == 1 and L("Qui peut modifier : le rang 1 (%s).", Co.RankNames(1)) or L("Qui peut modifier : les rangs 1 à %d (%s).", s.minRank, Co.RankNames(s.minRank))) .. "\n"
+      .. (s.canModify and (GREEN .. L("Toi : %s, tu peux modifier.", mine)) or (GREY .. L("Toi : %s, lecture seule.", mine))) .. "|r")
+    -- Membres, puis officiers retirés à la main
+    rows.Header(L("Membres (%d)", #s.members))
+    if #s.members == 0 then rows.Add(GREY .. L["Personne : ajoute un membre, ou choisis un rang plus bas."] .. "|r") end
+    for _, m in ipairs(s.members) do
+      state.members[#state.members + 1] = m.name
+      local tag = m.rank and Co.RankName(m.rank) or L["hors de la guilde"]
+      if m.added then tag = tag .. " · " .. L["ajout à la main"] end
+      rows.Add(who(m.name, m.class) .. GREY .. "  · " .. tag .. "|r" .. (F.SameName(m.name, me) and (GREEN .. "  " .. L["(toi)"] .. "|r") or ""),
+        s.canModify and { { L["Retirer"], 100, function() Co.Remove(m.name) refreshCouncil() end } } or nil)
+    end
+    if #s.removed > 0 then
+      rows.Header(L["Retirés à la main"])
+      for _, m in ipairs(s.removed) do
+        state.removed[#state.removed + 1] = m.name
+        rows.Add(who(m.name, m.class) .. GREY .. "  · " .. Co.RankName(m.rank) .. "|r",
+          s.canModify and { { L["Remettre"], 100, function() Co.Add(m.name) refreshCouncil() end } } or nil)
+      end
+    end
+    -- Complétion de « Ajouter un membre »
+    local q = F.trim(councilView.add or "")
+    if s.canModify and q ~= "" then
+      rows.Header(L["Ajouter un membre"])
+      local list = Co.Suggest(q, 8)
+      for _, m in ipairs(list) do
+        state.suggestions[#state.suggestions + 1] = m.name
+        rows.Add(who(m.name, m.class) .. GREY .. "  · " .. Co.RankName(m.rank) .. "|r", { { L["Ajouter"], 100, function()
+          if Co.Add(m.name) then p.add:SetText("") councilView.add = "" end
+          refreshCouncil()
+        end } })
+      end
+      if #list == 0 then rows.Add(GREY .. L("Aucun membre de la guilde ne correspond : « Ajouter » prend « %s » tel quel (Prénom-Royaume pour un autre royaume).", F.txt(q, 40)) .. "|r") end
+    end
+  end
+  rows.Header(L["Ce soir"])
+  if ns.Loot and (ns.Comm.InGroup() or ns.Loot.test) then tonightLine(rows, state)
+  else rows.Add(GREY .. L["Hors groupe. En raid, le conseil de ce soir est celui du chef de butin."] .. "|r") end
   rows.Done()
 end
 

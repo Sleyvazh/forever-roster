@@ -1,7 +1,8 @@
 -- Simulation de l'API de WoW Retail pour l'addon Roster : charge les fichiers du .toc dans l'ordre, puis la fenêtre,
 -- les commandes /roster, les onglets dans les deux habillages, la synchro rapide, les options, la minicarte, la
 -- liste des addons de la minicarte et le raid d'essai de la distribution du butin (R3b, retours du test 0.3 : tout au
--- conseil, bandes d'objets, objets portables, détail des reçus), de bout en bout, dans les deux habillages.
+-- conseil, bandes d'objets, objets portables, détail des reçus ; R4b : conseil défini en jeu, page Options › Conseil du
+-- butin), de bout en bout, dans les deux habillages.
 -- lua5.1 addon/tests/roster_ui_test.lua (depuis la racine du dépôt).
 -- Les fichiers de jeu (Format, Comm, Groups, Compo, Recorder, Loot, Pages, LootUI) absents sont remplacés par des
 -- doublures qui respectent le contrat ; présents, ce sont eux qui servent. Fonctions du contrat 0.3 absentes du moteur :
@@ -824,6 +825,22 @@ click("Français")
 assert(RosterDB.lang == "fr" and ns.Lang() == "fr" and not ns.LangPending(), "français choisi : déjà la langue des fenêtres")
 click("Celle du jeu (Français)")
 assert(RosterDB.lang == nil and ns.Lang() == "fr", "retour à la langue du jeu")
+-- Options › Conseil du butin (lot R4b) : deuxième page des options, construite à son premier affichage ; hors guilde
+-- (ce client simulé n'a pas de guilde) : rien à régler, lecture seule ; /roster conseil l'ouvre directement
+local builds0 = n("Pages.Build")
+click("Conseil du butin")
+local opt = ns.UI.pages.options
+assert(opt.views.council:IsShown() and not opt.views.general:IsShown() and n("Pages.Build") == builds0 + 1 and lastArgs["Pages.Build"][1] == "council", "page Conseil du butin")
+local cs = ns.Pages.state.council
+local function shown(sub) for t, f in pairs(TEXTS) do if type(t) == "string" and f:GetText() == t and t:find(sub, 1, true) then return true end end end
+assert(cs and not cs.canModify and #cs.members == 0 and shown("Tu n'es pas dans une guilde : le conseil vient du chef de butin ou du site."), "hors guilde : lecture seule")
+click("Général")
+assert(opt.views.general:IsShown() and not opt.views.council:IsShown() and n("Pages.Build") == builds0 + 1, "retour à la page Général")
+run("conseil")
+assert(ns.UI.IsShown() and RosterDB.tab == "options" and opt.views.council:IsShown(), "/roster conseil")
+run("council")
+assert(opt.views.council:IsShown() and n("Pages.Build") == builds0 + 1, "/roster council (construite une fois)")
+ns.UI.ShowOptions("general")
 
 -- 7. Minicarte : clic, clic droit, glisser, minicarte carrée, infobulle ; liste des addons de la minicarte
 ns.UI.Toggle()
@@ -1222,9 +1239,68 @@ assert(ns.UI.IsShown() and RosterDB.tab == "loot" and ns.UI.pages.loot:IsShown()
   "Butin › Historique : l'essai")
 assert(ps.lines[1]:find("|Hitem:", 1, true) and table.concat(ps.lines, "\n"):find("[BiS]", 1, true), "lignes : objet, catégorie")
 ns.UI.Toggle()
+-- Étape 10 (lot R4b) : conseil défini en jeu, guilde fictive ; toi maître de guilde, Tharok et Ashlen officiers,
+-- Brumelune ajoutée à la main. Options › Conseil du butin : rang minimal (2 clics), ajout (complétion, Entrée), retrait,
+-- remise ; Ashlen rétrogradé sort tout seul ; toi en Recrue : lecture seule, modification refusée
+local Cn, me = ns.Council, ns.Comm.Me()
+local function members() return table.concat(Cn.Members(), ",") end
+assert(members() == me .. ",Ashlen-Hyjal,Tharok-Hyjal,Brumelune-Ysondre" and select(2, Lt.CouncilSource()) == "game", "essai : conseil de la guilde fictive (" .. members() .. ")")
+assert(type(RosterDB.hist.councils) ~= "table" or next(RosterDB.hist.councils) == nil, "essai : réglage en mémoire, rien dans la sauvegarde")
+T.Refresh()
+assert(TEXTS["10. Conseil défini en jeu"], "panneau : étape 10")
+clickRow("Le conseil vient de la guilde fictive", "Conseil du butin")
+local cp = ns.UI.pages.options.views.council
+cs = ns.Pages.state.council
+assert(ns.UI.IsShown() and cp:IsShown() and cs.test and cs.canModify and cs.minRank == 2 and #cs.members == 4, "Options › Conseil du butin : la guilde fictive")
+clickRow("Rang minimal", "Changer le rang")
+assert(#ns.Pages.state.council.ranks == 5, "liste des rangs")
+clickRow("4 · Membre", "Choisir")
+assert(Cn.MinRank() == 4 and Cn.IsMember("Kaeldra-Hyjal") and Cn.IsMember("Orvane-Hyjal") and not Cn.IsMember("Mirwen-Hyjal") and not ns.Pages.councilView.pickRank, "rang minimal Membre, en 2 clics")
+clickRow("Rang minimal", "Changer le rang")
+clickRow("1 · Maître de guilde", "Choisir")
+assert(Cn.MinRank() == 1 and members() == me .. ",Brumelune-Ysondre" and printed[#printed]:find("conseil du butin : rang 1 de la guilde seulement (Maître de guilde).", 1, true)
+  and shown("Qui peut modifier : le rang 1 (Maître de guilde)."), "rang minimal Maître de guilde (rang 1 seul)")
+clickRow("Rang minimal", "Changer le rang")
+clickRow("2 · Officier", "Choisir")
+assert(Cn.MinRank() == 2 and not Cn.IsMember("Kaeldra-Hyjal"), "rang minimal Officier")
+cp.add:SetText("mir")
+script(cp.add, "OnTextChanged", true)
+assert(table.concat(ns.Pages.state.council.suggestions, ",") == "Mirwen-Hyjal", "complétion sur la guilde fictive")
+clickRow("Recrue", "Ajouter")
+assert(Cn.IsMember("Mirwen-Hyjal") and cp.add:GetText() == "" and ns.Pages.councilView.add == "", "ajout depuis la complétion")
+cp.add:SetText("Vex-Kael'Thas")
+script(cp.add, "OnEnterPressed")
+assert(Cn.IsMember("Vex-Kael'Thas") and Cn.Trust("Vex-Kael'Thas") == "member", "ajout d'un nom hors de la guilde (Entrée)")
+clickRow("Tharok", "Retirer")
+assert(not Cn.IsMember("Tharok-Hyjal") and table.concat(ns.Pages.state.council.removed, ",") == "Tharok-Hyjal", "officier retiré")
+clickRow("Tharok", "Remettre")
+assert(Cn.IsMember("Tharok-Hyjal"), "officier remis")
+before = #printed
+T.Refresh()
+clickRow("Le conseil vient de la guilde fictive", "Rétrograder Ashlen")
+assert(not Cn.IsMember("Ashlen-Hyjal") and said(before, "Ashlen.* passe Vétéran : il sort du conseil du butin tout seul"), "Ashlen rétrogradé : il sort du conseil")
+clickRow("Le conseil vient de la guilde fictive", "Promouvoir Ashlen")
+assert(Cn.IsMember("Ashlen-Hyjal"), "Ashlen promu : il revient")
+clickRow("Le conseil vient de la guilde fictive", "Rétrograder Ashlen")
+local wanted = me .. ",Tharok-Hyjal,Mirwen-Hyjal,Brumelune-Ysondre,Vex-Kael'Thas" -- rang, puis ajoutés hors de la guilde
+assert(members() == wanted, "conseil : " .. members())
+before = #printed
+clickRow("Le conseil vient de la guilde fictive", "Essayer en Recrue")
+local refused
+for i = before + 1, #printed do if printed[i]:find("seuls les rangs 1 à 2 de la guilde (Maître de guilde, Officier) modifient le conseil du butin ; tu es Recrue.", 1, true) then refused = true end end
+cs = ns.Pages.state.council
+assert(refused and said(before, "tu passes Recrue") and members() == "Tharok-Hyjal,Mirwen-Hyjal,Brumelune-Ysondre,Vex-Kael'Thas" and not cs.canModify and not cp.add:IsShown(),
+  "toi en Recrue : retrait de Tharok refusé, lecture seule")
+assert(not Cn.SetMinRank(5) and Cn.MinRank() == 2, "rang trop bas : rang minimal refusé")
+clickRow("Le conseil vient de la guilde fictive", "Redevenir maître de guilde")
+assert(Cn.CanModify() and ns.Pages.state.council.canModify and members() == wanted, "de nouveau maître de guilde")
+assert(errors() == baseErrors and failures == 0 and realSends == sends0 and realChat == chat0, "conseil de l'essai : sans erreur, rien envoyé")
+ns.UI.ShowOptions("general")
+ns.UI.Toggle()
 -- Recommencer, quitter, /roster test fin ; rejoindre un groupe arrête l'essai
 click("Recommencer")
 assert(T.active and Lt.test and #entries() == 0 and #ns.Hist.Entries() == 0, "recommencé : plus d'objets, historique de l'essai vidé")
+assert(members() == me .. ",Ashlen-Hyjal,Tharok-Hyjal,Brumelune-Ysondre", "recommencé : conseil de départ")
 assert(not win("council"):IsShown() and not ow:IsShown(), "fenêtres du butin fermées")
 click("Quitter l'essai")
 assert(not T.active and Lt.test == nil and not T.panel:IsShown(), "essai quitté")
@@ -1254,6 +1330,9 @@ for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "loot", "options" 
   assert(ns.UI.pages[tab]:IsShown(), "onglet " .. tab .. " (site)")
 end
 assert(n("Pages.Build") == builds + 4, "pages reconstruites")
+ns.UI.ShowOptions("council")
+assert(n("Pages.Build") == builds + 5 and ns.UI.pages.options.views.council:IsShown() and ns.Pages.state.council, "Options › Conseil du butin (site)")
+ns.UI.ShowOptions("general")
 ns.UI.Quick()
 assert(ns.UI.quick:IsShown(), "synchro rapide (site)")
 ns.UI.Quick()

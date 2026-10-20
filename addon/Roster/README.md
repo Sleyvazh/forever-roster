@@ -13,13 +13,14 @@ La fenêtre complète, ouverte par le bouton de la minicarte ou `/roster`, a six
 | **En raid** | Pendant le raid : qui a l'addon (et sa version), relevé de la présence et du butin, chef de butin et distribution par Roster (0.2.0) |
 | **Compo** | La compo collée : **Inviter**, **Placer les groupes** |
 | **Butin** | Historique du butin distribué par Roster (0.4.0), gardé dans l'addon, même sans le site : par soirée ou par joueur, recherche, ce qui compte ou non (lecture seule) |
-| **Options** | Touches (choisir, retirer), habillage (jeu ou site), bouton de la minicarte, relevé de la présence et du butin, seuil de qualité du butin, passer automatiquement quand le chef de butin distribue, partage des données du site avec la guilde et le raid |
+| **Options** | Deux pages. **Général** : touches (choisir, retirer), habillage (jeu ou site), bouton de la minicarte, relevé de la présence et du butin, seuil de qualité du butin, passer automatiquement quand le chef de butin distribue, partage des données du site avec la guilde et le raid. **Conseil du butin** (0.4.1) : le conseil défini en jeu (voir plus bas) |
 
 | Commande | Rôle |
 |---|---|
 | Raccourcis (AddOns > Roster) | « Synchro rapide avec le site (copier / coller) » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/roster` | Ouvrir ou fermer la fenêtre |
 | `/roster synchro`, `raids`, `enraid`, `compo`, `historique`, `options` | Ouvrir un onglet (`historique` : onglet Butin) |
+| `/roster conseil` (ou `council`) | Options › Conseil du butin : rang minimal, membres ajoutés ou retirés |
 | `/roster inviter` | Inviter les persos de la compo chargée |
 | `/roster placer` | Placer les persos dans leurs groupes (chef du raid ou assistant, hors combat) |
 | `/roster versions` | Qui a l'addon dans le raid, et sa version |
@@ -40,7 +41,7 @@ Comme RCLootCouncil : le butin de groupe du jeu va au chef de butin, qui le dist
 - **Chef de butin** : le chef de raid, sauf s'il en désigne un autre (onglet **En raid**). Il active **Distribution par Roster** pour le raid ; elle l'est d'office quand le raid chargé est en mode « conseil » sur le site.
 - **Passer automatiquement** : à chaque jet du butin de groupe, ton addon attend que le chef de butin ait pris l'objet (20 s au plus), puis passe pour toi. Si le chef de butin ne l'a pas pris (pas éligible à cet objet…), il ne passe pas et te le dit. Tu peux couper ce passer automatique pour toi dans **Options** (`RosterDB.autoPass = false`) : passe alors toi-même, sinon l'objet peut te revenir au lieu d'aller au chef de butin.
 - **Fenêtre du butin** (`/roster butin`, chef de butin) : les objets reçus et le temps qui reste pour les échanger (2 h après le butin, lu dans l'infobulle de l'objet ; en orange quand il presse). Pour chaque objet :
-  - **Conseil** (ou **Tout au conseil**, 0.3.0) : chacun reçoit une fenêtre de réponse (BiS, Upgrade, Off-spec, Transmo, Passer, et une note) ; la réponse part avec les objets qu'il porte sur cet emplacement. Sans l'addon, on chuchote « bis », « up », « os » ou « transmo » au chef de butin, suivi du numéro de l'objet s'il y en a plusieurs (« bis 2 »). Le chef de butin relaie chaque réponse au conseil (0.2.1) : seuls lui et les membres du conseil ont besoin des données du site. Le conseil (officiers et propriétaire du groupe, ou celui choisi pour ce raid sur le site) voit les réponses et les objets reçus (colonne « Reçus » : site et historique de l'addon, nombres du chef de butin depuis 0.4.0), vote, et le chef de butin donne l'objet.
+  - **Conseil** (ou **Tout au conseil**, 0.3.0) : chacun reçoit une fenêtre de réponse (BiS, Upgrade, Off-spec, Transmo, Passer, et une note) ; la réponse part avec les objets qu'il porte sur cet emplacement. Sans l'addon, on chuchote « bis », « up », « os » ou « transmo » au chef de butin, suivi du numéro de l'objet s'il y en a plusieurs (« bis 2 »). Le chef de butin relaie chaque réponse au conseil (0.2.1) : seuls lui et les membres du conseil ont besoin des données du site. Le conseil (défini en jeu depuis 0.4.1, sinon officiers et propriétaire du groupe, ou celui choisi pour ce raid sur le site) voit les réponses et les objets reçus (colonne « Reçus » : site et historique de l'addon, nombres du chef de butin depuis 0.4.0), vote, et le chef de butin donne l'objet.
   - **Jets MS / OS** : MS `/roll 100`, OS `/roll 99` ; le premier jet de chacun compte, la MS passe avant l'OS ; en cas d'égalité, « Relancer » : seuls les ex æquo relancent.
   - **Jet libre** : `/roll 100` pour tous, le plus haut l'emporte.
   - **Garder** : le chef de butin garde l'objet (désenchantement, banque de guilde) ; il ne compte pas dans ses objets reçus.
@@ -67,9 +68,20 @@ Premier lot de « Roster autonome » (étude du 15/10/2026) : l'addon garde lui-
 - **Onglet Butin › Historique** (`/roster historique`) : liste datée, par soirée ou par joueur, recherche (joueur, objet, boss), filtre « tous / ceux qui comptent / ceux qui ne comptent pas », catégorie en pastille (BiS, Upgrade, jet MS, autre, ne compte pas). Lecture seule : corrections, saisons, classement et mains & alts viennent avec les lots suivants.
 - **Saison suivante** (choix de Flo : on efface) : l'historique tient dans `RosterDB.hist`, une copie complète est gardée juste avant (`RosterDB.histBackups`), restaurable.
 
+### Conseil défini en jeu (0.4.1)
+
+Deuxième lot de « Roster autonome » : le conseil du butin vient de la guilde, sans le site. Code `Council.lua`, réglage dans `RosterDB.hist.councils` (un par guilde), message `MC` : `docs/addon-format.md`, « Conseil défini en jeu ».
+
+- **Qui en est** : les membres de la guilde d'un rang 1 à N (« rang minimal », 2 par défaut : le maître de guilde et le rang suivant), plus les noms ajoutés à la main (de la guilde ou non, `Prénom-Royaume` pour un autre royaume), moins ceux retirés à la main. Tenu à jour d'après la liste de guilde : un officier promu entre tout seul, un ancien officier rétrogradé sort tout seul (sauf s'il a été ajouté à la main).
+- **Qui le modifie** (choix de Flo) : les rangs 1 à N. Un nom ajouté à la main vote, mais ne modifie pas le conseil ; un rang plus bas le voit en lecture seule, et toute modification est refusée. On ne peut pas choisir un rang minimal au-dessus du sien.
+- **Options › Conseil du butin** (`/roster conseil`) : rang minimal (« Changer le rang », puis « Choisir » : 2 clics), membres (Retirer), officiers retirés à la main (Remettre), « Ajouter un membre » (complétion sur la liste de guilde, Entrée ou « Ajouter »), qui peut modifier, conseil de ce soir. Deux habillages.
+- **Conseil de ce soir**, membres présents dans le raid, dans l'ordre : celui envoyé par le chef de butin (`MC`), le conseil défini en jeu s'il a été réglé (rang ou noms), celui du site (conseil du raid, sinon officiers du groupe), puis celui de la guilde au rang par défaut. Le chef de butin l'envoie au raid quand la distribution s'active, quand il change, à la demande d'un addon qui arrive (`MQ`) et avant les objets : tous les addons du raid ont le même conseil, même sans liste de guilde ni données du site. Onglet **En raid** : « Conseil de ce soir » et sa provenance.
+- **Réglage** : gardé dans l'addon de celui qui le règle, un par guilde (persos du compte dans plusieurs guildes), avec sa version ; pas encore partagé entre officiers (synchro entre officiers, lot R4g) : quand tu es chef de butin, c'est le tien qui part au raid.
+- **Liste de guilde** : lue un instant après chaque mise à jour du jeu (`GUILD_ROSTER_UPDATE`), demandée au serveur à la connexion, à l'arrivée dans un raid et à l'ouverture de la page (au plus toutes les 10 s), sinon au plus toutes les 5 min ; jamais en combat ni pendant une rencontre (reprise après).
+
 ### Raid d'essai (`/roster test`)
 
-Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) : tu es chef de butin d'un raid fictif, toi et 9 joueurs (Kaeldra-Hyjal et Tharok-Hyjal en tanks ; Brumelune-Ysondre, Thessaly-Ysondre et Orvane-Hyjal, sans l'addon, en soins ; Vex-Kael'Thas, Lysenn-Dalaran, Mirwen-Hyjal et Ashlen-Hyjal en dégâts). Tharok et Brumelune sont au conseil avec toi. Un panneau propose les étapes :
+Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) : tu es chef de butin d'un raid fictif, toi et 9 joueurs (Kaeldra-Hyjal et Tharok-Hyjal en tanks ; Brumelune-Ysondre, Thessaly-Ysondre et Orvane-Hyjal, sans l'addon, en soins ; Vex-Kael'Thas, Lysenn-Dalaran, Mirwen-Hyjal et Ashlen-Hyjal en dégâts). Le conseil vient d'une guilde fictive (0.4.1) : toi (maître de guilde), Tharok et Ashlen (officiers), et Brumelune, ajoutée à la main. Un panneau propose les étapes :
 
 1. **Recevoir 3 objets** : ceux que tu portes (infobulles du jeu), 1 h 52 pour les échanger, 25 min pour le troisième (en orange).
 2. **Tout au conseil** : les 3 objets d'un coup. Chacun répond à chaque objet avec ses objets portés (Transmo ou Passer si ce n'est pas l'armure de sa classe), Orvane te chuchote « bis 1 », Tharok et Brumelune votent sur chaque objet : passe d'un objet à l'autre par la bande, vote pour départager, puis « Donner » (la fenêtre passe au conseil suivant).
@@ -78,6 +90,7 @@ Pour tout essayer seul, hors groupe (l'essai s'arrête si tu rejoins un groupe) 
 7. **Joueur sans l'addon** : Orvane gagne un objet au butin de groupe sans avoir passé ; chuchote-lui de le garder.
 8. **Côté joueur** : Tharok, chef de butin fictif, te propose deux objets d'un coup, le second d'une autre armure (seulement Transmo ou Passer) : la fenêtre de réponse des joueurs et sa bande ; tu peux changer une réponse tant qu'il n'a pas terminé.
 9. **Historique** (0.4.0) : chaque objet attribué ou gardé pendant l'essai est dans l'onglet Butin › Historique, en mémoire seulement (rien n'est gardé après l'essai).
+10. **Conseil défini en jeu** (0.4.1) : Options › Conseil du butin sur la guilde fictive (rang minimal, ajouts, retraits) ; « Rétrograder Ashlen » : il sort du conseil tout seul ; « Essayer en Recrue » : tu passes Recrue, comme Mirwen, le conseil passe en lecture seule et ta tentative de retirer Tharok est refusée. Réglage en mémoire seulement.
 
 Rien ne part au chat du raid, aux autres joueurs ni au site : annonces, chuchotements et jets s'affichent dans ta fenêtre de chat, précédés de « [essai] ». `/roster test` affiche ou masque le panneau ; « Quitter l'essai » ou `/roster test fin` l'arrête. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.
 
@@ -104,7 +117,7 @@ Télécharger le zip sur la page **Addon** de Roster, puis copier le dossier `Ro
 ```bash
 for f in addon/Roster/*.lua addon/shared/*.lua; do luac5.1 -p "$f"; done
 lua5.1 addon/tests/roster_format_test.lua   # formats RRG (lignes M et Z, signature de sample.rrg), RRR, RRB et noms « Prénom-Royaume » (écrit sample.rrb, relit sample.rrg et sample.rrr du site)
-lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan, partage entre joueurs (plusieurs joueurs simulés), historique du butin sans le site (/reload simulé, 13 h plus tard)
+lua5.1 addon/tests/roster_sim.lua           # jeu simulé : compo, invitations, placement, versions, file des messages, relevé et bilan, partage entre joueurs (plusieurs joueurs simulés), historique du butin sans le site (/reload simulé, 13 h plus tard), conseil défini en jeu (guilde simulée, MC, rang trop bas)
 lua5.1 addon/tests/roster_ui_test.lua       # fenêtre, commandes, synchro rapide, options, minicarte, fenêtres du butin (bandes d'objets), raid d'essai de bout en bout
 ```
 
@@ -117,5 +130,7 @@ Les simulations chargent les fichiers du `.toc` dans l'ordre (dossier de l'addon
 **Correctif 0.3.1** : chaque objet donné est noté dans le bilan, même si le relevé était en pause au moment du clic (après un `/reload`), et rattrapé avant l'export ; seul l'équipement est relevé (plus les Étincelles et autres composants).
 
 **À vérifier en jeu (partage entre joueurs)** : messages `SHV`, `SHQ`, `SHD` sur la guilde (`GUILD`), au raid et chuchotés (persos d'autres royaumes compris) ; texte partagé en plusieurs messages (retours à la ligne, accents) ; diffusion retenue pendant un combat de boss, puis envoyée ; annonce à la connexion, après un collage, à l'arrivée dans un raid ; message dans le chat à la réception ; option coupée.
+
+**À vérifier en jeu (0.4.1)** : liste de guilde lue (rangs et leurs noms, membres d'autres royaumes) quelques secondes après la connexion et après un `/reload` ; promotion et rétrogradation vues sans `/reload` ; page Options › Conseil du butin dans les deux habillages (complétion, Entrée, lecture seule pour un rang trop bas) ; `MC` reçu par les membres du conseil (fenêtre du conseil au `LO`, votes acceptés), avec un chef de butin qui n'a ni site ni réglage ; rien de lu en combat ni pendant un boss.
 
 **À vérifier en jeu (0.3.0)** : « Tout au conseil » sur 5 objets ou plus (une seule annonce, numéros, « bis 2 » chuchoté) ; bande d'objets dans les deux habillages (icônes, coches, infobulles, flèches quand elle déborde, fenêtre redimensionnée) ; passage à l'objet suivant après une réponse et au conseil suivant après « Donner » ; nouvel objet qui arrive pendant une réponse ; objet d'une autre armure, arme ou jeton réservé à d'autres classes (seulement Transmo et Passer, raison) ; « ne peut pas le porter » au conseil ; colonne « Reçus » (total, détail sur deux lignes, infobulle, tri par l'en-tête) ; objets posés tout seuls quand le gagnant ouvre l'échange.
