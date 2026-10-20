@@ -17,6 +17,8 @@ import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { mayCreate, retireOutingMessages } from "./lib/outings";
 import { outingRoutes } from "./internal-outings";
+import { guildAnnounceRoutes } from "./internal-guild";
+import { fullNames } from "./lib/guild";
 import { bindReportsChannel, REPORT_DISCORD_FOLLOW_MS, reportDiscordView, reportsChannel } from "./lib/reports";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
@@ -96,8 +98,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   /** Persos placés dans la compo (dont le joueur est toujours membre du groupe). */
   async function placed(raid: typeof raids.$inferSelect) {
     const ids = raid.slots.flatMap(s => (s.characterId ? [s.characterId] : []));
-    if (!ids.length) return new Map<string, { id: string; name: string; cls: string; spec1: string }>();
-    const rows = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1 }).from(characters)
+    if (!ids.length) return new Map<string, { id: string; name: string; cls: string; spec1: string; guid: string | null }>();
+    const rows = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, guid: characters.guid }).from(characters)
       .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, raid.groupId)))
       .where(inArray(characters.id, ids));
     return new Map(rows.map(r => [r.id, r]));
@@ -108,6 +110,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { raid, group, channelId } = await loadRaid(raidId);
     const signups = await listSignups(db, raid.id);
     const chars = await placed(raid);
+    // Nom complet des persos quand la liste de guilde le donne (Forever)
+    const full = await fullNames(db, group.id);
     const bySignup = new Map(signups.map(s => [s.id, s]));
     const byChar = new Map(signups.filter(s => s.characterId).map(s => [s.characterId!, s]));
     // Place → membre affiché : perso du site, ou inscrit sans compte (classe et spé choisies sur Discord)
@@ -119,7 +123,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       const c = chars.get(slot.characterId!);
       if (!c) return null;
       const su = byChar.get(c.id);
-      return { signupId: su?.id ?? null, name: c.name, cls: c.cls, spec: su?.spec || c.spec1 || "" };
+      return { signupId: su?.id ?? null, name: full(c.name, c.guid), cls: c.cls, spec: su?.spec || c.spec1 || "" };
     };
     const live = raid.slots.flatMap(slot => { const m = member(slot); return m ? [{ slot, m }] : []; });
     const groupOfSignup = new Map(live.filter(x => x.m.signupId).map(x => [x.m.signupId!, x.slot.group]));
@@ -142,12 +146,12 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       // Message déjà publié dans le salon effectif du raid (sinon : à publier)
       messageId: raid.discordChannelId === channelId ? raid.discordMessageId : null,
       signups: signups.map(s => ({
-        displayName: s.displayName, characterName: s.characterName, cls: s.cls, spec: s.spec, role: s.role,
+        displayName: s.displayName, characterName: s.characterName ? full(s.characterName, s.characterId ? chars.get(s.characterId)?.guid : null) : s.characterName, cls: s.cls, spec: s.spec, role: s.role,
         status: s.status, note: s.note, guest: !s.userId, group: groupOfSignup.get(s.id) ?? null,
       })),
       roster,
     };
-    return { view, groupOfSignup };
+    return { view, groupOfSignup, full };
   }
 
   const view = async (raidId: string) => (await layout(raidId)).view;
@@ -410,7 +414,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       .where(and(inArray(raids.id, due.map(d => d.id)), isNull(raids.reminderSentAt))).returning({ id: raids.id });
     const reminders = [];
     for (const { id } of claimed) {
-      const { view: v, groupOfSignup } = await layout(id);
+      const { view: v, groupOfSignup, full } = await layout(id);
       // Inscrits qui viennent (ou peut-être) : compte lié avec rappels activés, ou inscription libre
       const rows = await db.select({
         id: raidSignups.id, status: raidSignups.status, displayName: raidSignups.displayName, spec: raidSignups.spec, cls: raidSignups.cls,
@@ -423,7 +427,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         const discordUserId = r.guestId ?? (r.wants ? r.linkedId : null);
         if (!discordUserId) return [];
         return [{
-          discordUserId, status: r.status, name: r.characterName ?? r.displayName, cls: r.cls, spec: r.spec, guest: !!r.guestId,
+          discordUserId, status: r.status, name: r.characterName ? full(r.characterName) : r.displayName, cls: r.cls, spec: r.spec, guest: !!r.guestId,
           group: v.roster ? groupOfSignup.get(r.id) ?? null : null,
         }];
       });
@@ -487,18 +491,19 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     for (const { id } of claimed) {
       const [a] = await db.select({
         id: raidAsks.id, raidId: raidAsks.raidId, userId: raidAsks.userId, spec: raidAsks.spec, askedByName: raidAsks.askedByName,
-        discordUserId: users.discordId, reminders: users.discordReminders, name: characters.name, cls: characters.cls,
+        discordUserId: users.discordId, reminders: users.discordReminders, name: characters.name, cls: characters.cls, guid: characters.guid,
       }).from(raidAsks).innerJoin(users, eq(users.id, raidAsks.userId)).innerJoin(characters, eq(characters.id, raidAsks.characterId))
         .where(eq(raidAsks.id, id));
       if (!a) continue;
       if (!canDm({ discordId: a.discordUserId, reminders: a.reminders })) { await askFailed(id); continue; }
       const v = await view(a.raidId);
+      const full = await fullNames(db, v.group.id);
       const [cur] = await db.select({ status: raidSignups.status, characterName: characters.name }).from(raidSignups)
         .leftJoin(characters, eq(characters.id, raidSignups.characterId))
         .where(and(eq(raidSignups.raidId, a.raidId), eq(raidSignups.userId, a.userId)));
       asks.push({
-        id: a.id, discordUserId: a.discordUserId!, character: { name: a.name, cls: a.cls }, spec: a.spec, role: roleOf(a.spec), askedBy: a.askedByName,
-        current: cur ?? null, raid: { id: v.raid.id, name: v.raid.name, scheduledAt: v.raid.scheduledAt, url: v.raid.url }, group: v.group,
+        id: a.id, discordUserId: a.discordUserId!, character: { name: full(a.name, a.guid), cls: a.cls }, spec: a.spec, role: roleOf(a.spec), askedBy: a.askedByName,
+        current: cur ? { ...cur, characterName: cur.characterName ? full(cur.characterName) : null } : null, raid: { id: v.raid.id, name: v.raid.name, scheduledAt: v.raid.scheduledAt, url: v.raid.url }, group: v.group,
       });
     }
     return { asks };
@@ -682,6 +687,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
 
   feedbackRoutes(app, db, cfg);
   outingRoutes(app, db, cfg, { linkedMember, groupForChannel });
+  guildAnnounceRoutes(app, ctx);
   return app;
 }
 

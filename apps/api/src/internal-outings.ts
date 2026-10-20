@@ -12,6 +12,7 @@ import { badRequest, forbidden, parse } from "./lib/http";
 import {
   assertForever, createOuting, joinOuting, leaveOuting, loadOuting, noticePayload, openCounts, outingDiscordView, OUTINGS_CHANNEL, purgeExpired, signupsOf,
 } from "./lib/outings";
+import { fullNames } from "./lib/guild";
 import { canDm } from "./lib/reach";
 import { siteForGame } from "./lib/site";
 
@@ -216,6 +217,16 @@ export function outingRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpe
       .returning({ id: outingNotices.id, discordUserId: outingNotices.discordUserId, kind: outingNotices.kind, payload: outingNotices.payload });
     // Ménage : MP remis depuis plus d'une semaine
     await db.delete(outingNotices).where(lte(outingNotices.claimedAt, new Date(now.getTime() - 7 * 86400e3)));
+    // Nom complet des persos quand la liste de guilde le donne (sortie encore là)
+    const ids = [...new Set(notices.map(n => n.payload.outingId))];
+    const groupOf = new Map(ids.length ? (await db.select({ id: outings.id, g: outings.groupId }).from(outings).where(inArray(outings.id, ids))).map(o => [o.id, o.g]) : []);
+    const names = new Map<string, Awaited<ReturnType<typeof fullNames>>>();
+    for (const g of new Set(groupOf.values())) names.set(g, await fullNames(db, g));
+    for (const n of notices) {
+      const full = names.get(groupOf.get(n.payload.outingId) ?? "");
+      if (!full) continue;
+      n.payload = { ...n.payload, creator: full(n.payload.creator), ...(n.payload.character && { character: full(n.payload.character) }) };
+    }
     return { notices: notices.sort((a, b) => a.id - b.id) };
   });
 }

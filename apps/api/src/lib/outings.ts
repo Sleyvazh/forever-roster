@@ -9,6 +9,7 @@ import {
   type Creators, type OutingNoticeKind, type OutingNoticePayload,
 } from "../db/schema";
 import { bus } from "./events";
+import { fullNames } from "./guild";
 import { ensureInGroup } from "./group-characters";
 import type { GroupRole } from "./groups";
 import { badRequest, conflict, forbidden, notFound } from "./http";
@@ -437,12 +438,14 @@ export async function outingDiscordView(db: Tx, outingId: string, origin: string
   if (!r) return null;
   const channelId = outingsChannelOf(r.g);
   const { placed, waiting } = (await signupsOf(db, [outingId])).get(outingId)!;
-  const one = (s: SignupRow) => ({ role: s.role, name: signupName(s), cls: s.cls, spec: s.spec, guest: !s.userId });
+  // Nom complet des persos quand la liste de guilde le donne
+  const full = await fullNames(db, r.g.id);
+  const one = (s: SignupRow) => ({ role: s.role, name: s.userId ? full(signupName(s)) : signupName(s), cls: s.cls, spec: s.spec, guest: !s.userId });
   return {
     id: r.o.id, group: { id: r.g.id, name: r.g.name }, channelId, messageId: r.o.discordChannelId === channelId ? r.o.discordMessageId : null,
     changedAt: r.o.discordChangedAt.toISOString(), today: dayKeyOf(now), url: `${origin}/groups/${r.g.id}/sorties`,
     dungeon: r.o.dungeon, title: r.o.title, levels: levelsText(r.o.minLevel, r.o.maxLevel), day: r.o.day, at: r.o.scheduledAt?.toISOString() ?? null,
-    note: r.o.note, creator: r.o.creatorName, places: placesOfRow(r.o),
+    note: r.o.note, creator: full(r.o.creatorName), places: placesOfRow(r.o),
     signups: placed.map(one), waiting: waiting.map(one),
   };
 }

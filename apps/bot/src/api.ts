@@ -75,6 +75,14 @@ export interface OutingNotice {
     oldDay?: string; oldAt?: string | null; isCreator?: boolean; role?: string; character?: string; count?: number; waiting?: number;
   };
 }
+/** Course au 60 (Forever) : montée de niveau à annoncer dans le salon de la guilde (une seule fois, remise par le site). */
+export interface LevelAnnounce {
+  id: string; channelId: string; group: { id: string; name: string }; url: string;
+  /** Nom complet du perso. */
+  name: string; cls: string; level: number;
+  /** Rang dans la guilde pour ce palier, date (ISO) exacte ou approximative, et en clair (« samedi 14/11 à 16:52 », « vers le 14/11 »). */
+  rank: number; at: string; exact: boolean; when: string;
+}
 export interface DungeonChoice { key: string; name: string; levels: string; count: number; fits: boolean }
 
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
@@ -229,6 +237,8 @@ export class InternalApi {
     return this.req<{ choices: DungeonChoice[] }>("GET", `/internal/discord/outings/dungeons?${qs}`);
   }
   claimOutingNotices() { return this.req<{ notices: OutingNotice[] }>("POST", "/internal/discord/outings/notices/claim", {}); }
+  /* Course au 60 (Forever) */
+  claimLevelAnnounces() { return this.req<{ announces: LevelAnnounce[] }>("POST", "/internal/discord/guild/levels/claim", {}); }
   unsign(raidId: string, discordUserId: string) {
     return this.req<RaidView>("DELETE", `/internal/discord/raids/${raidId}/signup/${discordUserId}`);
   }

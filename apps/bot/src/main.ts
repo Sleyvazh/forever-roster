@@ -13,6 +13,7 @@ import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus, type S
 import { decodeId, decodeOutingId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
 import { createOutingSync, onOutingClass, onOutingRole, outingConfirmation, renderNotice, renderOuting, ROLE_WORD, waitChooser, type OutingStep } from "./outings";
+import { createLevelAnnouncer } from "./race";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { CAPTURE_NAME, createReportSync, renderReport } from "./reports";
@@ -194,6 +195,13 @@ async function start() {
     }
   };
 
+  /** Course au 60 : montées de niveau dans le salon de la guilde (réglage de la guilde, une fois par perso et par palier). */
+  const levels = createLevelAnnouncer(api, async (channelId, payload) => {
+    const ch = await client.channels.fetch(channelId);
+    if (!ch || !ch.isSendable()) throw new Error(`Salon ${channelId} inaccessible`);
+    await ch.send(payload);
+  }, log);
+
   /** MP des sorties : complète (au créateur), 15 min avant, heure changée, annulée, place libérée. MP fermés : ignoré. */
   const sendOutingNotices = async () => {
     const { notices } = await api.claimOutingNotices();
@@ -209,6 +217,7 @@ async function start() {
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { outings.tick().catch(e => log.warn("Relève des sorties impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendOutingNotices().catch(e => log.warn("MP des sorties impossibles", e?.message)); }, 30e3);
+    setInterval(() => { levels.tick().catch(e => log.warn("Annonces de niveau impossibles", e?.message)); }, 60e3);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
     // Noms des salons (renommage des salons des raids récurrents, nom des salons liés) : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
