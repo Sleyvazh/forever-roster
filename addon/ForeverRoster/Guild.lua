@@ -1,8 +1,10 @@
--- Relève de la guilde (1.6.0, en essai sur la bêta de Forever) : liste de guilde, journal de guilde, banque de guilde
--- (seulement pendant qu'elle est ouverte), niveau et XP des persos du compte. Relève silencieuse, gardée dans la
--- sauvegarde de l'addon (ForeverRosterDB.guilds ; xp, levels et guild de chaque perso de ForeverRosterDB.chars). Rien ne
--- part aux autres joueurs ni dans la boîte d'envoi lue par Roster Companion (outbox) : le site lira ces données dans un
--- lot suivant. /fr guilde montre ce qui a été relevé et donne le texte FRL v1 à copier (Format.lua, docs/addon-format.md).
+-- Relève de la guilde (1.6.0) : liste de guilde, journal de guilde, banque de guilde (seulement pendant qu'elle est
+-- ouverte), niveau et XP des persos du compte. Relève silencieuse, gardée dans la sauvegarde de l'addon
+-- (ForeverRosterDB.guilds ; xp, levels et guild de chaque perso de ForeverRosterDB.chars). Envoi au site (1.6.2) : le
+-- texte FRL v1 de chaque guilde (Format.lua, docs/addon-format.md) part avec la synchro (Ctrl+C de l'onglet Synchro et de
+-- la synchro rapide, après les persos) et dans la boîte d'envoi de Roster Companion (Companion.lua), seulement quand sa
+-- forme stable a changé depuis le dernier envoi. Rien ne part aux autres joueurs. /fr guilde montre ce qui a été relevé
+-- et donne le texte à copier.
 -- Client de Forever : API de Retail 12.1.5 avec les restrictions de Midnight. Chaque fonction du jeu est cherchée au
 -- moment de l'appel (elle peut manquer sur ce client) et appelée sous pcall ; chaque valeur rendue passe par ns.secret /
 -- ns.str (Core.lua). Rien n'est demandé ni relu en combat ou pendant une rencontre : c'est remis à la fin.
@@ -446,14 +448,18 @@ ns.on("GUILDBANK_UPDATE_MONEY", function()
 end)
 
 --------------------------------------------------------------------------------------------------------------------
--- Texte FRL v1 (Format.lua) d'une guilde relevée : la fiche, et les persos du compte qui en sont
+-- Texte FRL v1 (Format.lua) d'une guilde relevée : la fiche, et les persos du compte qui en sont (avec leur GUID, relevé
+-- par l'export du perso : Export.lua)
 --------------------------------------------------------------------------------------------------------------------
 function G.Data(key)
   local g = key and guilds()[key]
   if not g then return nil end
   local chars = {}
   for ckey, c in pairs(ForeverRosterDB.chars or {}) do
-    if c.guild == key and (c.xp or c.levels) then chars[#chars + 1] = { name = ckey:match("^(.-)%-") or ckey, xp = c.xp, levels = c.levels } end
+    if c.guild == key and (c.xp or c.levels) then
+      local h = c.snapshot and c.snapshot.header
+      chars[#chars + 1] = { name = ckey:match("^(.-)%-") or ckey, xp = c.xp, levels = c.levels, guid = h and h.guid }
+    end
   end
   table.sort(chars, function(a, b) return a.name < b.name end)
   return { name = g.name, faction = g.faction, realm = g.realm, addon = ns.version, roster = g.roster, events = g.events, bank = g.bank, chars = chars }
@@ -464,7 +470,66 @@ function G.Text(key, stable)
 end
 
 --------------------------------------------------------------------------------------------------------------------
--- /fr guilde : ce qui a été relevé (diagnostic pour l'essai sur la bêta), et le relevé à copier
+-- Envoi au site (1.6.2) : un relevé par guilde, envoyé quand sa forme stable a changé depuis le dernier envoi (Ctrl+C de
+-- la synchro, ou accusé de réception de Roster Companion : g.sentSig). Clé dans la boîte d'envoi et les accusés de
+-- l'appli : « frl:<guilde>-<royaume>-<faction> ».
+--------------------------------------------------------------------------------------------------------------------
+G.PREFIX = "frl:"
+
+-- Relevé d'une guilde à envoyer : { key, name, sig, text, g } ; nil s'il n'y a rien de relevé, ou (sauf all) si rien
+-- n'a changé depuis le dernier envoi
+local function entryOf(key, all)
+  local g, d = guilds()[key], G.Data(key)
+  if not (d and (d.roster or d.events or d.bank or #d.chars > 0)) then return nil end
+  local sig = ns.Format.Hash(ns.Format.BuildFRL(d, true))
+  if not all and g.sentSig == sig then return nil end
+  return { key = key, name = g.name, sig = sig, text = ns.Format.BuildFRL(d), g = g }
+end
+
+-- Relevés à envoyer (all : tous ceux qui ont quelque chose), triés par clé
+function G.Pending(all)
+  local out = {}
+  if not ForeverRosterDB then return out end
+  for key in pairs(guilds()) do out[#out + 1] = entryOf(key, all) end
+  table.sort(out, function(a, b) return a.key < b.key end)
+  return out
+end
+
+-- Copié (Ctrl+C) : ces relevés sont sur le site jusqu'au prochain changement
+function G.MarkSent(list)
+  for _, e in ipairs(list or {}) do e.g.sentSig, e.g.sentAt = e.sig, time() end
+end
+
+-- Accusé de réception de Roster Companion (clé « frl:… ») : seulement un accusé pas encore vu (l'appli le redonne à
+-- chaque chargement, il ne doit pas remplacer une empreinte plus récente notée par un Ctrl+C). Vrai si le relevé est
+-- marqué envoyé.
+function G.Ack(key, sig, at)
+  local g = ForeverRosterDB.guilds and ForeverRosterDB.guilds[key]
+  if not g or g.ackSig == sig then return false end
+  g.ackSig = sig
+  if g.sentSig == sig then return false end
+  g.sentSig, g.sentAt = sig, at
+  return true
+end
+
+-- Blocs de la boîte d'envoi (Companion.lua) : un par guilde à envoyer. previous : blocs de la boîte précédente ; un bloc
+-- dont l'empreinte n'a pas changé est gardé tel quel (même texte), sinon il est remplacé.
+function G.Outbox(previous)
+  local before, out = {}, {}
+  for _, b in ipairs(previous or {}) do
+    if type(b) == "table" and b.kind == "frl" and type(b.key) == "string" then before[b.key] = b end
+  end
+  for _, e in ipairs(G.Pending()) do
+    local key = G.PREFIX .. e.key
+    local old = before[key]
+    if old and old.sig == e.sig and type(old.text) == "string" then out[#out + 1] = old
+    else out[#out + 1] = { kind = "frl", key = key, sig = e.sig, text = e.text } end
+  end
+  return out
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- /fr guilde : ce qui a été relevé (diagnostic), son envoi au site, et le relevé à copier
 --------------------------------------------------------------------------------------------------------------------
 local GOLD, GREY, GREEN = K.GOLD, K.GREY, K.GREEN
 local win, copy
@@ -545,7 +610,7 @@ function G.Refresh()
   if not (win and win:IsShown()) then return end
   local li = win.list
   local g, key = G.Current()
-  win.hintText:SetText(GREY .. L["Relève en essai : rien n'est envoyé, ni au site ni aux autres joueurs. « Copier le relevé » donne le texte à transmettre."] .. "|r")
+  win.hintText:SetText(GREY .. L["Le relevé part au site avec ta synchro (onglet Synchro ou Roster Companion), seulement quand il a changé. Rien ne part aux autres joueurs."] .. "|r")
   li.Reset()
   li.Header(L["Guilde"])
   if g then addGuild(li, g)
@@ -555,9 +620,14 @@ function G.Refresh()
     addBank(li, g.bank)
   end
   addChar(li)
-  if g then
-    li.Header(L["Relevé à copier"])
-    li.Add(GREY .. L["Texte FRL v1 : tout ce qui est relevé pour cette guilde (pas encore lu par le site)."] .. "|r",
+  local e = g and entryOf(key, true)
+  if e then
+    li.Header(L["Envoi au site"])
+    local status
+    if not g.sentAt then status = L["Pas encore envoyé : il part avec ta prochaine synchro."]
+    elseif g.sentSig ~= e.sig then status = L("Envoyé le %s ; changé depuis : il repart avec ta prochaine synchro.", when(g.sentAt))
+    else status = L("Envoyé le %s ; rien de nouveau depuis.", when(g.sentAt)) end
+    li.Add(status .. "\n" .. GREY .. L["« Copier le relevé » : le texte FRL seul, à coller sur le site (Ctrl+V sur n'importe quelle page)."] .. "|r",
       { { L["Copier le relevé"], 170, function() G.ShowCopy(key) end } })
   end
   li.Done()
@@ -568,7 +638,7 @@ function G.Show()
   -- Habillage changé depuis la construction (essai hors jeu ; en jeu, changer d'habillage recharge l'interface)
   if not win or win.skin ~= K.site() then
     if win then win:Hide() end
-    win = ns.Raid.listWindow("ForeverRosterGuild", L["Guilde (relève en essai)"], 520)
+    win = ns.Raid.listWindow("ForeverRosterGuild", L["Relève de la guilde"], 520)
     win.skin = K.site()
   end
   K.front(win)
@@ -577,9 +647,11 @@ function G.Show()
   G.Refresh()
 end
 
--- Relevé FRL dans une boîte sélectionnable : déjà sélectionné, Ctrl+C (Ctrl+A pour tout resélectionner)
+-- Relevé FRL dans une boîte sélectionnable : déjà sélectionné, Ctrl+C (Ctrl+A pour tout resélectionner). Ctrl+C le
+-- marque envoyé, comme dans l'onglet Synchro.
 function G.ShowCopy(key)
-  local text = G.Text(key) or ""
+  local entry = entryOf(key, true)
+  local text = entry and entry.text or G.Text(key) or ""
   if not copy or copy.skin ~= K.site() then
     if copy then copy:Hide() end
     copy = K.window("ForeverRosterGuildCopy", L["Relevé de la guilde (FRL)"], 560, 330)
@@ -590,10 +662,16 @@ function G.ShowCopy(key)
     copy.box:SetScript("OnTextChanged", function(self, user) if user then self:SetText(copy.value or "") self:HighlightText() end end)
     copy.box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
     copy.box:SetScript("OnEscapePressed", function() copy:Hide() end)
+    copy.box:SetScript("OnKeyDown", function(_, k)
+      if k == "C" and IsControlKeyDown and IsControlKeyDown() and copy.entry then
+        G.MarkSent({ copy.entry })
+        refresh()
+      end
+    end)
   end
-  copy.value = text
+  copy.value, copy.entry = text, entry
   copy.hintText:SetText(L["Le relevé est déjà sélectionné : Ctrl+C pour le copier (Ctrl+A pour tout resélectionner)."] .. "\n" ..
-    GREY .. L("%d lignes. En essai : le site ne le lit pas encore.", select(2, text:gsub("\n", "\n")) + 1) .. "|r")
+    GREY .. L("%d lignes. Sur le site : Ctrl+V sur n'importe quelle page.", select(2, text:gsub("\n", "\n")) + 1) .. "|r")
   copy.box:SetText(text)
   K.front(copy)
   copy:Show()

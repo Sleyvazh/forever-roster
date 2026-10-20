@@ -1,8 +1,8 @@
 -- Formats d'échange avec le site (une information par ligne, champs séparés par « ; ») :
 --   FRR v1 : compo d'un raid, du site vers le jeu (docs/addon-format.md)
---   FRC v1 : un perso, du jeu vers le site
+--   FRC v2 : un perso, du jeu vers le site (1.6.2 : GUID et nom complet en fin d'en-tête)
 --   FRG v1 : données d'un groupe (raids à venir, patrons recherchés), du site vers le jeu ; signé par le site (M, Z)
---   FRL v1 : relève de la guilde (liste, journal, banque, niveaux et XP), du jeu vers le site ; en essai, pas encore lu par le site
+--   FRL v1 : relève de la guilde (liste, journal, banque, niveaux et XP), du jeu vers le site (lue par le site depuis 1.6.2)
 -- Ce fichier n'utilise aucune fonction du jeu : il est testé hors jeu (addon/tests).
 local _, ns = ...
 ns = ns or {}
@@ -275,13 +275,14 @@ function F.Compact(lines)
   return compact
 end
 
--- Relève de la guilde (FRL v1, 1.6.0, en essai : pas encore lue par le site) : liste de guilde, journal, banque, niveau
--- et XP des persos du compte, du jeu vers le site (docs/addon-format.md). d = { name, faction, realm, addon, roster,
--- events, bank, chars } (Guild.lua, G.Data) ; chaque partie est facultative (absente : pas de lignes). Chaque champ passe
--- par F.clean (sans « ; », « | » ni retour à la ligne) ; END compte toutes les lignes entre l'en-tête et END.
+-- Relève de la guilde (FRL v1, 1.6.0 ; envoyée au site depuis 1.6.2) : liste de guilde, journal, banque, niveau et XP
+-- des persos du compte, du jeu vers le site (docs/addon-format.md). d = { name, faction, realm, addon, roster, events,
+-- bank, chars } (Guild.lua, G.Data) ; chaque partie est facultative (absente : pas de lignes). Chaque champ passe par
+-- F.clean (sans « ; », « | » ni retour à la ligne) ; END compte toutes les lignes entre l'en-tête et END. Lignes P et U
+-- (1.6.2) : GUID du perso en dernier champ (vide s'il n'est pas encore connu).
 -- stable : forme sans ce qui bouge tout seul (heures de relève, qui a relevé, version de l'addon, en ligne, « il y a »
--- des journaux ; dernière connexion au jour près, XP au dixième de niveau près), pour l'empreinte qui décidera d'un
--- nouvel envoi (lot suivant).
+-- des journaux ; dernière connexion au jour près, XP au dixième de niveau près) : son empreinte (F.Hash) décide d'un
+-- nouvel envoi (Guild.lua, G.Pending).
 local function dayOf(at, hours) return math.floor(((at or 0) - hours * 3600) / 86400) end
 function F.BuildFRL(d, stable)
   local c = F.clean
@@ -320,14 +321,14 @@ function F.BuildFRL(d, stable)
   for _, ch in ipairs(d.chars or {}) do
     local x = ch.xp
     if x and stable then
-      add("P", ch.name, x.level, (x.max or 0) > 0 and math.floor((x.xp or 0) * 10 / x.max) or "", "", "")
+      add("P", ch.name, x.level, (x.max or 0) > 0 and math.floor((x.xp or 0) * 10 / x.max) or "", "", "", ch.guid)
     elseif x then
-      add("P", ch.name, x.level, x.xp, x.max, x.at or 0)
+      add("P", ch.name, x.level, x.xp, x.max, x.at or 0, ch.guid)
     end
     local levels = {}
     for lvl in pairs(ch.levels or {}) do levels[#levels + 1] = lvl end
     table.sort(levels)
-    for _, lvl in ipairs(levels) do add("U", ch.name, lvl, ch.levels[lvl]) end
+    for _, lvl in ipairs(levels) do add("U", ch.name, lvl, ch.levels[lvl], ch.guid) end
   end
   local out = { join(head) }
   for _, f in ipairs(lines) do out[#out + 1] = join(f) end
@@ -335,10 +336,20 @@ function F.BuildFRL(d, stable)
   return table.concat(out, "\n")
 end
 
+-- Empreinte d'un texte (djb2 et longueur) : savoir si un perso ou un relevé a changé depuis son dernier envoi
+function F.Hash(str)
+  local h = 5381
+  for i = 1, #str do h = (h * 33 + str:byte(i)) % 4294967296 end
+  return string.format("%08x", h) .. "-" .. #str
+end
+
 -- lines : liste de tables de champs ; la ligne END donne le nombre de lignes utiles (détecte un copier-coller tronqué).
+-- En fin d'en-tête (1.6.2, un site plus ancien les ignore) : GUID du perso (UnitGUID) et nom complet (« Prénom Nom »),
+-- vides s'ils ne sont pas connus.
 function F.BuildFRC(header, lines)
   local out = { table.concat({ "FRC", "2", F.clean(header.name), F.clean(header.realm), header.class or "", header.race or "",
-    tostring(header.level or 0), header.faction or "", tostring(header.time or 0), F.clean(header.addon or "") }, ";") }
+    tostring(header.level or 0), header.faction or "", tostring(header.time or 0), F.clean(header.addon or ""),
+    F.clean(header.guid), F.clean(header.fullName) }, ";") }
   for _, fields in ipairs(lines) do
     local parts = {}
     for i, v in ipairs(fields) do parts[i] = F.clean(v) end

@@ -144,7 +144,7 @@ local HELP = {
   N("/fr rappels : couper ou remettre le rappel de raid à la connexion"),
   N("/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)"),
   N("/fr langue fr | en | jeu : langue de l'addon (Français, English ou celle du jeu ; recharge l'interface)"),
-  N("/fr guilde : ce que l'addon a relevé de ta guilde (liste, journal, banque, XP ; en essai) et le relevé à copier"),
+  N("/fr guilde : ce que l'addon a relevé de ta guilde (liste, journal, banque, XP), son envoi au site et le relevé à copier"),
 }
 
 SLASH_FOREVERROSTER1 = "/fr"

@@ -140,13 +140,54 @@ local function captureLines(quiet)
   return lines
 end
 
+-- Identité du perso pour le site (1.6.2, fin de l'en-tête FRC) : GUID et nom complet de Forever (« Prénom Nom »).
+-- Fonctions du jeu cherchées à l'appel (elles peuvent manquer sur ce client) et appelées sous pcall ; valeur secrète,
+-- absente ou d'une autre forme : ignorée (ns.str).
+local function gameValue(fn, ...)
+  if type(fn) ~= "function" then return nil end
+  local ok, v = pcall(fn, ...)
+  return ok and ns.str(v) or nil
+end
+-- GUID du perso connecté (Player-<serveur>-<hex>), sinon nil
+local function playerGuid()
+  local v = gameValue(UnitGUID, "player")
+  if v and #v <= 80 and v:match("^Player%-%d+%-%x+$") then return v end
+end
+-- « Prénom » ou « Prénom Nom » (exact = true : il faut un nom de famille) ; « Prénom-Royaume », un titre ou autre chose : non
+local function fullNameOf(full, first, exact)
+  if type(full) ~= "string" or type(first) ~= "string" or first == "" or #full > 80 or full:find("[|\r\n;]") then return false end
+  if full == first then return not exact end
+  return full:sub(1, #first + 1) == first .. " " and full:find("%S", #first + 2) ~= nil
+end
+-- Nom complet donné par le jeu, s'il en donne un (le client de Retail n'a pas de nom de famille : UnitFullName et
+-- GetUnitName ne donnent en général que le prénom, gardés seulement s'ils ont le nom de famille)
+local function gameFullName(first)
+  for _, v in ipairs({ gameValue(UnitFullName, "player") or false, gameValue(GetUnitName, "player", true) or false }) do
+    if v and fullNameOf(v, first, true) then return v end
+  end
+end
+-- Nom complet d'un perso : celui de la liste de guilde relevée pour son GUID (Guild.lua), sinon celui du jeu, sinon ""
+local function fullName(snap)
+  local h = snap.header or {}
+  local guid, first = h.guid, h.name
+  if guid then
+    for _, g in pairs(ForeverRosterDB.guilds or {}) do
+      for _, m in ipairs(g.roster and g.roster.members or {}) do
+        if m.guid == guid and fullNameOf(m.name, first, false) then return m.name end
+      end
+    end
+  end
+  return fullNameOf(h.gameName, first, true) and h.gameName or ""
+end
+
 -- Relevé du perso connecté, gardé dans la sauvegarde (commune au compte) : l'export contient ainsi tous les persos.
 function E.Snapshot(quiet)
   local _, raceFile = UnitRace("player")
   local c = ns.charDB()
+  local name = UnitName("player")
   c.snapshot = {
-    header = { name = UnitName("player"), realm = GetRealmName(), class = select(2, UnitClass("player")), race = raceFile,
-      level = UnitLevel("player"), faction = (UnitFactionGroup("player")) },
+    header = { name = name, realm = GetRealmName(), class = select(2, UnitClass("player")), race = raceFile,
+      level = UnitLevel("player"), faction = (UnitFactionGroup("player")), guid = playerGuid(), gameName = gameFullName(name) },
     lines = captureLines(quiet), at = time(),
   }
   return c.snapshot
@@ -200,16 +241,12 @@ end
 local function block(c, snap)
   local h = {}
   for k, v in pairs(snap.header or {}) do h[k] = v end
-  h.time, h.addon = snap.at or 0, ns.version
+  h.time, h.addon, h.fullName = snap.at or 0, ns.version, fullName(snap)
   return ns.Format.BuildFRC(h, linesOf(c, snap))
 end
 
 -- Empreinte du contenu d'un perso (sans la date du relevé) : sert à savoir s'il a changé depuis le dernier envoi
-local function hash(str)
-  local h = 5381
-  for i = 1, #str do h = (h * 33 + str:byte(i)) % 4294967296 end
-  return string.format("%08x", h) .. "-" .. #str
-end
+local function hash(str) return ns.Format.Hash(str) end
 local function signature(c, snap)
   local parts = { tostring(snap.header and snap.header.level) }
   for _, l in ipairs(linesOf(c, snap)) do
@@ -220,6 +257,10 @@ local function signature(c, snap)
   -- Heure des clics d'inscription en jeu (1.5.4) : un nouveau clic fait repartir le perso, même statut compris
   local ok, stamp = pcall(ns.Group.SignupStamp, c)
   if ok and stamp ~= "" then parts[#parts + 1] = stamp end
+  -- GUID et nom complet (1.6.2) : le perso repart une fois quand ils sont connus (le site rapproche les persos par GUID) ;
+  -- un relevé plus ancien, sans GUID, garde son empreinte
+  local guid = snap.header and snap.header.guid
+  if guid then parts[#parts + 1] = "guid;" .. guid .. ";" .. fullName(snap) end
   return hash(table.concat(parts, "\n"))
 end
 
@@ -246,6 +287,8 @@ end
 
 -- Export : un bloc FRC par perso. Par défaut, seulement les persos qui ont changé depuis le dernier envoi ;
 -- opts.all : tous les persos relevés ; opts.onlyCurrent : le perso connecté seul. Renvoie le texte et les persos inclus.
+-- Après les persos et les bilans de raid (1.6.2) : le relevé de chaque guilde (FRL) qui a changé depuis son dernier envoi
+-- (tous avec opts.all). En dernier : un site d'avant 1.6.2 ne reconnaît un collage que s'il commence par FRC ou FRB.
 function E.Build(opts)
   opts = type(opts) == "table" and opts or { onlyCurrent = opts == true, all = true }
   E.Snapshot(false)
@@ -266,11 +309,22 @@ function E.Build(opts)
     end
   end
   included.logs = logs
+  local guilds = {}
+  if not opts.onlyCurrent and ns.Guild then
+    for _, g in ipairs(ns.Guild.Pending(opts.all)) do
+      blocks[#blocks + 1] = g.text
+      guilds[#guilds + 1] = g
+    end
+  end
+  included.guilds = guilds
   return table.concat(blocks, "\n"), included
 end
 
--- Contenu d'un export : nombre d'éléments, et leurs noms à afficher (persos, puis « bilan de … »)
-function E.Size(included) return #(included or {}) + #((included or {}).logs or {}) end
+-- Contenu d'un export : nombre d'éléments, et leurs noms à afficher (persos, « bilan de … », puis relevés de guilde)
+function E.Size(included)
+  included = included or {}
+  return #included + #(included.guilds or {}) + #(included.logs or {})
+end
 function E.Names(included, color)
   local names = {}
   for _, e in ipairs(included or {}) do
@@ -278,6 +332,7 @@ function E.Names(included, color)
     names[#names + 1] = color and color(h.class, h.name or e.key) or (h.name or e.key)
   end
   for _, log in ipairs((included or {}).logs or {}) do names[#names + 1] = L("bilan de %s", log.name or "raid") end
+  for _, g in ipairs((included or {}).guilds or {}) do names[#names + 1] = L("relevé de la guilde %s", g.name) end
   return names
 end
 
@@ -300,6 +355,7 @@ function E.MarkSent(included)
     e.char.sentAt = time()
     ns.safe(N("inscriptions"), ns.Group.MarkReceived, e.char, nil)
   end
+  if ns.Guild then ns.Guild.MarkSent((included or {}).guilds) end
   if ns.Recorder then ns.Recorder.MarkSent((included or {}).logs) end
   if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
 end

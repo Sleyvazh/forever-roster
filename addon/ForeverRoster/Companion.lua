@@ -1,7 +1,8 @@
 -- Roster Companion (lot K1) : l'appli (en option) qui fait la synchro sans copier-coller.
--- Jeu → site : à la déconnexion (et au /reload), l'addon range dans sa sauvegarde les blocs à envoyer (outbox) ;
--- l'appli les lit et les envoie. Site → jeu : l'appli écrit les données des groupes et les accusés de réception dans
--- l'addon ForeverRoster_Data (variable ForeverRosterData), lu à la connexion et au /reload.
+-- Jeu → site : à la déconnexion (et au /reload), l'addon range dans sa sauvegarde les blocs à envoyer (outbox : persos,
+-- relevé de chaque guilde depuis 1.6.2, bilans) ; l'appli les lit et les envoie. Site → jeu : l'appli écrit les données
+-- des groupes et les accusés de réception dans l'addon ForeverRoster_Data (variable ForeverRosterData), lu à la connexion
+-- et au /reload.
 -- Actualisation sans /reload (1.4) : l'appli copie aussi ses données dans ForeverRoster_Data1 à 20, chargés à la demande.
 -- Le jeu lit leurs fichiers au moment du chargement : chaque copie donne une actualisation, une seule fois par session
 -- (le /reload remet tout à zéro). Le jeu ne voit pas les fichiers créés après son lancement (vérifié sur Forever) :
@@ -44,14 +45,17 @@ function C.Active()
   return seen ~= nil and time() - seen < ACTIVE_DAYS * 86400
 end
 
--- Accusés de réception : le site a reçu ces blocs (perso : empreinte envoyée ; bilan : date de mise à jour envoyée)
+-- Accusés de réception : le site a reçu ces blocs (perso : empreinte envoyée ; relevé de guilde : empreinte de sa forme
+-- stable ; bilan : date de mise à jour envoyée)
 local function applyAcks(acks, at)
   if type(acks) ~= "table" then return 0 end
   local n = 0
   for key, sig in pairs(acks) do
     if type(key) == "string" and type(sig) == "string" then
-      local raidId = key:match("^frb:(.+)$")
-      if raidId then
+      local raidId, guildKey = key:match("^frb:(.+)$"), key:match("^frl:(.+)$")
+      if guildKey then
+        if ns.Guild.Ack(guildKey, sig, at) then n = n + 1 end
+      elseif raidId then
         local log = ForeverRosterDB.raidLogs and ForeverRosterDB.raidLogs[raidId]
         local t = tonumber(sig)
         if log and t and (log.sentAt or 0) < t then log.sentAt = t n = n + 1 end
@@ -263,18 +267,27 @@ end
 
 -- À la déconnexion et au /reload (le jeu écrit la sauvegarde juste après) : blocs à envoyer par l'appli.
 -- Écrit même sans appli : peu de place (seulement ce qui a changé), et l'appli installée plus tard a tout de suite de quoi envoyer.
+-- Relevé de guilde (1.6.2) : un bloc par guilde, gardé tel quel tant que sa forme stable ne change pas (Guild.Outbox) ;
+-- XP relue juste avant (sinon celle d'avant la déconnexion partirait).
 function C.WriteOutbox()
   local blocks = ns.Export.Outbox()
+  ns.safe(N("relève de la guilde"), function()
+    ns.Guild.ReadXP(true)
+    for _, b in ipairs(ns.Guild.Outbox(ForeverRosterDB.outbox and ForeverRosterDB.outbox.blocks)) do blocks[#blocks + 1] = b end
+  end)
   for _, log in ipairs(ns.Recorder.Pending()) do
     blocks[#blocks + 1] = { kind = "frb", key = "frb:" .. log.raidId, sig = tostring(log.updated or 0), lead = ns.Recorder.IsLead(log), text = ns.Recorder.Block(log) }
   end
   ForeverRosterDB.outbox = { v = 1, at = time(), addon = ns.version, blocks = blocks }
 end
 
--- Compte rendu de l'appli (écrit en français par l'appli) : « bilan de « Raid » » traduit à l'affichage, prénoms tels quels
+-- Compte rendu de l'appli (écrit en français par l'appli) : « bilan de « Raid » » et « relevé de la guilde « Guilde » »
+-- traduits à l'affichage, prénoms tels quels
 local function reportItem(s)
   local raid, rest = tostring(s):match("^bilan de « (.-) »(.*)$") -- nolocale (texte de l'appli)
   if raid then return L("bilan de « %s »", raid) .. rest end
+  local guild, more = tostring(s):match("^relevé de la guilde « (.-) »(.*)$") -- nolocale (texte de l'appli)
+  if guild then return L("relevé de la guilde « %s »", guild) .. more end
   return s
 end
 

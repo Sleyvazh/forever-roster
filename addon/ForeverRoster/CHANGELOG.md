@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.2
+
+- **Guild scan sent to the website**: the guild scan (roster, guild log, guild bank, your characters' levels) now goes to the website with your sync: after your characters and raid logs in the text you copy (Sync tab, quick sync), and through Roster Companion. It only goes again when something has really changed (not just time passing). `/fr guild` shows when it was last sent.
+- Your character's export now carries its game identifier and its full name (first name and Forever surname) when the addon knows them, so the website can tell your characters apart even when two of them share a first name.
+
+Français :
+
+- **Relevé de la guilde envoyé au site** : le relevé de la guilde (liste, journal de guilde, banque, niveaux de tes persos) part maintenant au site avec ta synchro : après tes persos et tes bilans dans le texte à copier (onglet Synchro, synchro rapide), et par Roster Companion. Il ne repart que s'il a vraiment changé (pas seulement parce que le temps passe). `/fr guilde` dit quand il a été envoyé.
+- L'export de ton perso donne maintenant son identifiant du jeu et son nom complet (prénom et nom de famille de Forever) quand l'addon les connaît : le site reconnaît ainsi tes persos, même deux qui ont le même prénom.
+
 ## 1.6.1
 
 - **Dungeon runs in game**: the new Runs tab (`/fr runs`) shows today's and tomorrow's dungeon runs from your groups on the website: open places by role, who signed up, waiting list and note, with your own characters recognised. 15 minutes before the start (or as soon as an "as soon as full" run is full), a small banner shows up once per run: "Invite all 4" if you created it (characters only, out of combat; Discord-only sign-ups are listed to invite manually), "Whisper <creator>" if you signed up (it only opens the whisper box). Never in combat or during an encounter, and nothing is sent to other players. Signing up is done on the website or on Discord.

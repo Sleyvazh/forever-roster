@@ -1397,10 +1397,11 @@ do
   ROSTER, R.boss, ForeverRosterDB.bossNames, ForeverRosterDB.bossNpcs = keep.roster, keep.boss, keep.bossNames, keep.bossNpcs
 end
 
--- 8 quinquies. Relève de la guilde (1.6.0, en essai) : liste (20 membres, noms avec nom de famille ou royaume, notes
--- d'officier invisibles puis visibles, un champ secret), journal, banque (deux onglets lus, un non visible, un lien
--- secret), XP et montées de niveau ; rien demandé ni relu en combat ou pendant une rencontre ; rien envoyé aux autres
--- joueurs ni rangé dans la boîte d'envoi de Roster Companion ; /fr guilde dans les deux habillages, « Copier le relevé ».
+-- 8 quinquies. Relève de la guilde (1.6.0) : liste (20 membres, noms avec nom de famille ou royaume, notes d'officier
+-- invisibles puis visibles, un champ secret), journal, banque (deux onglets lus, un non visible, un lien secret), XP et
+-- montées de niveau ; rien demandé ni relu en combat ou pendant une rencontre ; /fr guilde dans les deux habillages,
+-- « Copier le relevé ». 1.6.2 : GUID et nom complet dans l'en-tête FRC ; envoi du relevé (texte de la synchro, boîte
+-- d'envoi de Roster Companion, accusé de l'appli), rien envoyé aux autres joueurs.
 -- L'horloge est placée après celle du partage (section 8 ter) ; bilans de raid et inscriptions mis de côté (la connexion
 -- à cette date les effacerait), tout est remis en place à la fin. La fiche de guilde reste dans la sauvegarde : la
 -- section 9 la fait lire par Roster Companion.
@@ -1417,7 +1418,7 @@ do
     return u
   end
   local keep = { time = time, type = type, tostring = tostring, UnitLevel = UnitLevel, InCombatLockdown = InCombatLockdown, skin = ForeverRosterDB.skin,
-    raidLogs = ForeverRosterDB.raidLogs, signups = c.signups }
+    raidLogs = ForeverRosterDB.raidLogs, signups = c.signups, UnitGUID = UnitGUID }
   ForeverRosterDB.raidLogs, c.signups = {}, {}
   local before, sentBefore, saidBefore = errors(), #sent, #said
   local function quiet(what) assert(errors() == before and failures == 0, what .. " : " .. tostring(printed[#printed])) end
@@ -1583,7 +1584,7 @@ do
     "membres dans le relevé")
   assert(text:find("\nJ;%d+;Tournicoti\nE;promote;Tournicoti Tournicoton;Greta Coulé;1;3\n") and text:find("\nT;3;Officers;0;0\n", 1, true) and not text:find("\nI;3;", 1, true)
     and text:find("\nI;1;98;19019;1\n", 1, true) and text:find("\nO;deposit;Tournicoti Tournicoton;500000;1\n", 1, true), "journal et banque dans le relevé")
-  assert(text:find("\nP;Tournicoti;43;50;8000;%d+\nU;Tournicoti;42;%d+\nU;Tournicoti;43;" .. up43 .. "\nEND;"), "XP et niveaux dans le relevé")
+  assert(text:find("\nP;Tournicoti;43;50;8000;%d+;\nU;Tournicoti;42;%d+;\nU;Tournicoti;43;" .. up43 .. ";\nEND;"), "XP et niveaux dans le relevé (GUID pas encore connu)")
   local count = 0
   for _ in text:gmatch("\n") do count = count + 1 end
   assert(text:match("\nEND;(%d+)$") == tostring(count - 1) and not text:find("|", 1, true), "END compte les lignes, aucun « | »")
@@ -1598,6 +1599,7 @@ do
   local function shownText(pattern) for t in pairs(TEXTS) do if keep.type(t) == "string" and t:find(pattern, 1, true) then return t end end end
   assert(shownText("Membres : 20 lus sur 20") and shownText("Notes d'officier : visibles") and shownText("(clé : tournicoti)")
     and shownText("Onglets : 2 lus, 1 non visibles (rang), 0 pas encore lus") and shownText("Niveaux notés : 2 (dernier : 43"), "diagnostic affiché")
+  assert(shownText("Pas encore envoyé : il part avec ta prochaine synchro.") and shownText("Rien ne part aux autres joueurs."), "envoi au site : pas encore envoyé")
   local copyButton = TEXTS["Copier le relevé"]
   assert(copyButton and copyButton:IsShown(), "bouton « Copier le relevé »")
   rawget(copyButton, "scripts").OnClick(copyButton)
@@ -1606,6 +1608,13 @@ do
   cw.box:SetText("frappe")
   rawget(cw.box, "scripts").OnTextChanged(cw.box, true)
   assert(cw.box:GetText() == Gd.Text(KEY), "la frappe ne casse pas le relevé")
+  -- Ctrl+C dans la boîte : relevé marqué envoyé (comme dans l'onglet Synchro), la fenêtre le dit ; une autre touche : rien
+  assert(#Gd.Pending() == 1 and Gd.Pending()[1].key == KEY, "relevé à envoyer")
+  rawget(cw.box, "scripts").OnKeyDown(cw.box, "C")
+  assert(#Gd.Pending() == 1, "C sans Ctrl : rien")
+  keep.IsControlKeyDown, IsControlKeyDown = IsControlKeyDown, function() return true end
+  rawget(cw.box, "scripts").OnKeyDown(cw.box, "C")
+  assert(#Gd.Pending() == 0 and guild().sentAt == clock and shownText("rien de nouveau depuis."), "Ctrl+C dans la boîte : relevé envoyé")
   ForeverRosterDB.skin = "site"
   run("guild")
   local w2 = Gd.Windows()
@@ -1619,14 +1628,103 @@ do
   assert(printed[#printed]:find("/fr guilde", 1, true), "ligne dans l'aide de /fr")
   quiet("/fr guilde")
 
-  -- Rien envoyé aux autres joueurs ni au chat, rien dans la boîte d'envoi de Roster Companion
+  -- En-tête FRC (1.6.2) : GUID du perso et nom complet. GUID secret : champs vides, sans erreur. GUID hors de la liste de
+  -- guilde : le nom complet que le jeu donne, seulement s'il a le nom de famille. GUID dans la liste : celui de la liste.
+  -- Le perso repart une fois quand son GUID est connu (le site rapproche les persos d'un compte par GUID).
+  local E = ns.Export
+  local function header() return (E.Build(true):match("^([^\n]*)\n")) end
+  UnitGUID = function(u) if u == "player" then return secretValue("UnitGUID") end end
+  assert(header():match("^FRC;2;Tournicoti;Forever EU;DRUID;Tauren;43;Horde;%d+;[^;]*;;$") and c.snapshot.header.guid == nil, "GUID secret : champs vides")
+  E.MarkSent(select(2, E.Build({ all = true })))
+  assert(E.IsSent(c) and #Gd.Pending() == 0, "départ : perso et relevé envoyés")
+  UnitGUID = function(u) if u == "player" then return "Player-4321-000000FF" end end
+  local gameName = "Tournicoti-ForeverEU"
+  UnitFullName = function(u) if u == "player" then return "Tournicoti", "ForeverEU" end end
+  GetUnitName = function(u) if u == "player" then return gameName end end
+  assert(header():match(";Player%-4321%-000000FF;$"), "prénom seul, ou avec le royaume : pas de nom complet")
+  assert(not E.IsSent(c), "GUID connu : le perso repart")
+  gameName = "Tournicoti Ventfeuille"
+  assert(header():match(";Player%-4321%-000000FF;Tournicoti Ventfeuille$"), "nom complet donné par le jeu")
+  UnitGUID = function(u) if u == "player" then return "Player-4321-00000001" end end
+  assert(header():match(";Player%-4321%-00000001;Tournicoti Tournicoton$"), "nom complet de la liste de guilde pour ce GUID")
+  quiet("en-tête FRC")
+
+  -- Envoi du relevé (1.6.2) : la forme stable a changé (GUID dans les lignes P et U) ; il suit le perso dans le texte de
+  -- l'onglet Synchro, Ctrl+C le marque envoyé, il ne repart que s'il change
+  assert(#Gd.Pending() == 1 and Gd.Text(KEY):find("\nP;Tournicoti;43;50;8000;%d+;Player%-4321%-00000001\nU;Tournicoti;42;%d+;Player%-4321%-00000001\n"),
+    "GUID du perso dans les lignes P et U : relevé à renvoyer")
+  run("synchro")
+  local sp = ns.UI.pages.synchro
+  local value = sp.text:GetText()
+  assert(value:match("^FRC;2;Tournicoti;[^\n]*;Player%-4321%-00000001;Tournicoti Tournicoton\n") and value:find("\nEND;%d+\nFRL;1;Les Veilleurs;Horde;")
+    and value:match("\nEND;%d+$") and sp.status:GetText():find("relevé de la guilde Les Veilleurs", 1, true), "onglet Synchro : le relevé après le perso")
+  rawget(sp.text, "scripts").OnKeyDown(sp.text, "C")
+  assert(#Gd.Pending() == 0 and E.IsSent(c) and guild().sentSig == ns.Format.Hash(Gd.Text(KEY, true)), "Ctrl+C : perso et relevé envoyés")
+  clock = clock + 120
+  Gd.ReadRoster()
+  assert(not E.Build({}):find("FRL;", 1, true), "relu sans changement : le relevé ne repart pas")
+  -- Synchro rapide : un membre a monté de niveau, le relevé repart seul
+  MEMBERS[4][4] = MEMBERS[4][4] + 1
+  clock = clock + 120
+  Gd.ReadRoster()
+  if ns.UI.quick and ns.UI.quick:IsShown() then ns.UI.quick:Hide() end
+  ForeverRoster_Sync()
+  local q = ns.UI.quick
+  assert(q:IsShown() and q.box:GetText():match("^FRL;1;Les Veilleurs;") and q.box:GetText():find("\nM;Brunehilde;PALADIN;19;", 1, true)
+    and q.status:GetText():find("relevé de la guilde Les Veilleurs", 1, true), "synchro rapide : le relevé changé, seul")
+  rawget(q.box, "scripts").OnKeyDown(q.box, "C")
+  assert(#Gd.Pending() == 0 and not q:IsShown(), "synchro rapide : Ctrl+C = relevé envoyé")
+
+  -- Boîte d'envoi de Roster Companion : rien tant que le relevé est envoyé ; un bloc « frl » quand il change, gardé tel quel
+  -- (même texte) tant que sa forme stable ne change pas, remplacé sinon ; l'accusé de l'appli le marque envoyé
+  local function frlBlock()
+    local found, n = nil, 0
+    for _, blk in ipairs(ForeverRosterDB.outbox.blocks) do if blk.kind == "frl" then found, n = blk, n + 1 end end
+    assert(n <= 1, "un bloc par guilde")
+    return found
+  end
   fire("PLAYER_LOGOUT")
   assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat")
-  for _, blk in ipairs(ForeverRosterDB.outbox.blocks) do
-    assert((blk.kind == "frc" or blk.kind == "frb") and not blk.text:find("FRL;", 1, true), "boîte d'envoi : seulement les persos et les bilans")
-  end
+  assert(not frlBlock(), "relevé déjà envoyé : rien dans la boîte d'envoi")
+  MEMBERS[3][4] = MEMBERS[3][4] + 1
+  clock = clock + 120
+  Gd.ReadRoster()
+  fire("PLAYER_LOGOUT")
+  local b1 = frlBlock()
+  assert(b1 and b1.key == "frl:" .. KEY and b1.sig == ns.Format.Hash(Gd.Text(KEY, true)) and b1.text:match("^FRL;1;Les Veilleurs;Horde;" .. clock .. ";")
+    and b1.text:find("\nM;Alaric;WARRIOR;17;", 1, true), "boîte d'envoi : un bloc « frl » après une relève")
+  clock = clock + 300
+  Gd.ReadRoster()
+  fire("PLAYER_LOGOUT")
+  local b2 = frlBlock()
+  assert(b2 and b2.text == b1.text and b2.sig == b1.sig and Gd.Text(KEY) ~= b1.text, "rien de changé : bloc gardé tel quel")
+  MEMBERS[3][4] = MEMBERS[3][4] + 1
+  clock = clock + 300
+  Gd.ReadRoster()
+  fire("PLAYER_LOGOUT")
+  local b3 = frlBlock()
+  assert(b3 and b3.sig ~= b1.sig and b3.text:find("\nM;Alaric;WARRIOR;18;", 1, true) and b3.text:match("^FRL;1;Les Veilleurs;Horde;" .. clock .. ";"), "relevé changé : bloc remplacé")
+  local st = ForeverRosterDB.companion
+  local companionBefore = { seen = st.seen, app = st.app, report = st.report }
+  ForeverRosterData = { v = 1, at = clock, app = "0.3.1", acks = { [b3.key] = b3.sig }, report = { at = clock, items = { "relevé de la guilde « Les Veilleurs »" } } }
+  ns.Companion.Apply()
+  assert(#Gd.Pending() == 0 and guild().ackSig == b3.sig and guild().sentAt == clock, "accusé de l'appli : relevé marqué envoyé")
+  assert(ns.Companion.StatusText():find("relevé de la guilde « Les Veilleurs »", 1, true), "compte rendu de l'appli : relevé nommé")
+  fire("PLAYER_LOGOUT")
+  assert(not frlBlock(), "accusé reçu : plus rien dans la boîte d'envoi")
+  -- Ctrl+C plus récent, puis le même accusé redonné à la connexion suivante : l'empreinte la plus récente reste
+  MEMBERS[3][4] = MEMBERS[3][4] + 1
+  Gd.ReadRoster()
+  E.MarkSent(select(2, E.Build({})))
+  local newer = guild().sentSig
+  ns.Companion.Apply()
+  assert(newer ~= b3.sig and guild().sentSig == newer and #Gd.Pending() == 0, "accusé déjà vu : pas de retour en arrière")
+  ForeverRosterData = nil
+  st.seen, st.app, st.report = companionBefore.seen, companionBefore.app, companionBefore.report
+  quiet("envoi du relevé")
 
   -- Remise en place (la fiche de guilde et l'XP restent dans la sauvegarde)
+  UnitGUID, UnitFullName, GetUnitName, IsControlKeyDown = keep.UnitGUID, nil, nil, keep.IsControlKeyDown
   issecretvalue, type, tostring, time = nil, keep.type, keep.tostring, keep.time
   UnitLevel, InCombatLockdown, IsInGuild, GetGuildInfo, C_GuildInfo = keep.UnitLevel, keep.InCombatLockdown, nil, nil, nil
   GetNumGuildMembers, GetGuildRosterInfo, GetGuildRosterLastOnline, QueryGuildEventLog, GetNumGuildEvents, GetGuildEventInfo = nil, nil, nil, nil, nil, nil
@@ -1886,7 +1984,7 @@ if helper and helper ~= "" then
   local logId
   for id, log in pairs(ForeverRosterDB.raidLogs) do if next(log.people) then log.sentAt = nil log.given = 1 logId = id end end
   assert(logId, "un bilan à envoyer")
-  -- Relève de la guilde (section 8 quinquies) dans la sauvegarde : l'appli la lit sans s'arrêter, hors de la boîte d'envoi
+  -- Relève de la guilde (section 8 quinquies) dans la sauvegarde : l'appli la lit sans s'arrêter
   assert(ForeverRosterDB.guilds and next(ForeverRosterDB.guilds) and ForeverRosterDB.chars["Tournicoti-Forever EU"].levels, "relève de la guilde dans la sauvegarde")
   fire("PLAYER_LOGOUT")
   local out = { "\nForeverRosterDB = " }
