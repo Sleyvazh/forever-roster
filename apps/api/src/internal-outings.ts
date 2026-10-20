@@ -169,7 +169,7 @@ export function outingRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpe
     assertForever(g);
     const { user, role: member } = await h.linkedMember(body.discordUserId, g.id);
     if (!user) throw forbidden("Lie d'abord ton compte Discord au site (Compte & sécurité).");
-    if (!member) throw forbidden("Tu n'es pas membre de ce groupe.");
+    if (!member) throw forbidden("Tu n'es pas membre de cette guilde.");
     const d = dungeonOf(body.dungeon);
     const dg = FOREVER_DUNGEONS.find(x => x.key === d.dungeon);
     // Son perso : celui qui a le niveau (main d'abord), dans le rôle de sa spé principale

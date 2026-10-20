@@ -160,7 +160,7 @@ export async function accountRoutes(app: FastifyInstance) {
     }
     const owned = await db.select({ groupId: groupMembers.groupId }).from(groupMembers)
       .where(and(eq(groupMembers.userId, u.id), eq(groupMembers.role, "owner")));
-    if (owned.length) throw conflict("Tu es propriétaire d'au moins un groupe : supprime-le ou transfère-le avant de supprimer ton compte.");
+    if (owned.length) throw conflict("Tu es propriétaire d'au moins une guilde : supprime-la ou transfère-la avant de supprimer ton compte.");
     await db.transaction(async tx => {
       await tx.update(auditEvents).set({ ip: null, userAgent: null }).where(eq(auditEvents.userId, u.id));
       await anonymizeReports(tx, u.id);

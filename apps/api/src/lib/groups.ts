@@ -10,13 +10,13 @@ const RANK: Record<GroupRole, number> = { member: 0, officer: 1, owner: 2 };
 export async function membership(db: Db, groupId: string, userId: string): Promise<GroupRole> {
   const [m] = await db.select({ role: groupMembers.role }).from(groupMembers)
     .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)));
-  if (!m) throw notFound("Groupe introuvable.");
+  if (!m) throw notFound("Guilde introuvable.");
   return m.role;
 }
 
 export async function requireRole(db: Db, groupId: string, userId: string, min: GroupRole): Promise<GroupRole> {
   const role = await membership(db, groupId, userId);
-  if (RANK[role] < RANK[min]) throw forbidden(min === "owner" ? "Réservé au propriétaire du groupe." : "Réservé aux officiers du groupe.");
+  if (RANK[role] < RANK[min]) throw forbidden(min === "owner" ? "Réservé au propriétaire de la guilde." : "Réservé aux officiers de la guilde.");
   return role;
 }
 

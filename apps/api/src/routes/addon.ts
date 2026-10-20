@@ -44,7 +44,7 @@ const playedInGroup = (db: Db, groupId: string) => db.select({ userId: groupChar
  */
 export async function groupExport(db: Db, groupId: string, userId: string, signer: SyncSigner | null) {
   const [g] = await db.select({ id: groups.id, name: groups.name, game: groups.game }).from(groups).where(eq(groups.id, groupId));
-  if (!g) throw notFound("Groupe introuvable.");
+  if (!g) throw notFound("Guilde introuvable.");
   // Roster (WoW Retail) : format RRG de l'addon Roster
   if (g.game === "retail") return rosterGroupExport(db, g, userId, signer);
 

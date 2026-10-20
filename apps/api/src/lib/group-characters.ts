@@ -21,7 +21,7 @@ export async function assignCharacter(db: Tx, groupId: string, characterId: stri
   // Un site, deux adresses : un perso ne rejoint qu'un groupe de son jeu (Forever ou Retail)
   const [c] = await db.select({ game: characters.game }).from(characters).where(eq(characters.id, characterId));
   const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, groupId));
-  if (c && g && c.game !== g.game) throw badRequest("Ce perso n'est pas du même jeu que ce groupe.");
+  if (c && g && c.game !== g.game) throw badRequest("Ce perso n'est pas du même jeu que cette guilde.");
   const [other] = await db.select().from(groupCharacters)
     .where(and(eq(groupCharacters.characterId, characterId), ne(groupCharacters.groupId, groupId)));
   if (other) {
@@ -67,7 +67,7 @@ export async function ensureInGroup(db: Tx, groupId: string, characterId: string
   const [row] = await db.select({ groupId: groupCharacters.groupId, groupName: groups.name, name: characters.name }).from(groupCharacters)
     .innerJoin(groups, eq(groups.id, groupCharacters.groupId)).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
     .where(eq(groupCharacters.characterId, characterId));
-  if (row && row.groupId !== groupId) throw badRequest(`${row.name} est rangé dans « ${row.groupName} ». Change son groupe dans Mes persos, ou choisis un autre perso.`);
+  if (row && row.groupId !== groupId) throw badRequest(`${row.name} est rangé dans « ${row.groupName} ». Change sa guilde dans Mes persos, ou choisis un autre perso.`);
   if (!row) {
     await assignCharacter(db, groupId, characterId, userId);
     return true;

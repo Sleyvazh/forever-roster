@@ -134,7 +134,7 @@ export async function raidRoutes(app: FastifyInstance) {
     // Qui crée les raids : réglage du groupe (officiers par défaut, ou tous les membres) ; « chaque semaine » reste aux officiers
     const myRole = await membership(db, id, u.id);
     const [grp] = await db.select({ raidCreators: groups.raidCreators }).from(groups).where(eq(groups.id, id));
-    if (!mayCreate(grp!.raidCreators, myRole)) throw forbidden("Réservé aux officiers du groupe.");
+    if (!mayCreate(grp!.raidCreators, myRole)) throw forbidden("Réservé aux officiers de la guilde.");
     // « Chaque semaine » (lot E) : le raid devient aussi un raid récurrent, créé `leadDays` jours à l'avance
     const body = parse(raidFields.extend({ weekly: z.object({ leadDays: z.int().min(1).max(28) }).optional() }), req.body);
     if (body.weekly && myRole === "member") throw forbidden("Seuls les officiers créent un raid récurrent.");
@@ -230,7 +230,7 @@ export async function raidRoutes(app: FastifyInstance) {
     if (seatKeys.size !== slots.length) throw badRequest("Deux personnages occupent la même place.");
     if (new Set(slots.map(slotKey)).size !== slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
     const chars = await slotCharacters(p.id, slots);
-    if (chars.length !== slots.filter(s => s.characterId).length) throw badRequest("Certains personnages n'appartiennent pas à un membre du groupe.");
+    if (chars.length !== slots.filter(s => s.characterId).length) throw badRequest("Certains personnages n'appartiennent pas à un membre de la guilde.");
     const guests = await slotGuests(p.raidId, slots);
     if (guests.length !== slots.filter(s => s.signupId).length) throw badRequest("Certains inscrits sans compte ne sont pas inscrits à ce raid.");
 

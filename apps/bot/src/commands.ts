@@ -5,22 +5,22 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   {
     type: ApplicationCommandType.ChatInput,
     name: "forever-lier",
-    description: "Lie ce salon à un groupe Forever Roster : raids, sorties ou commandes (code donné par le site).",
+    description: "Lie ce salon à une guilde Forever Roster : raids, sorties ou commandes (code donné par le site).",
     contexts: [InteractionContextType.Guild],
-    options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
+    options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page de la guilde (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
   },
   {
     // Même commande pour Roster (WoW Retail) : un seul bot, deux sites
     type: ApplicationCommandType.ChatInput,
     name: "roster-lier",
-    description: "Lie ce salon à un groupe Roster ou Forever Roster : raids ou commandes (code donné par le site).",
+    description: "Lie ce salon à une guilde Roster ou Forever Roster : raids ou commandes (code donné par le site).",
     contexts: [InteractionContextType.Guild],
-    options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page du groupe (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
+    options: [{ type: ApplicationCommandOptionType.String, name: "code", description: "Code affiché sur la page de la guilde (valable 30 min)", required: true, min_length: 6, max_length: 32 }],
   },
   {
     type: ApplicationCommandType.ChatInput,
     name: "raid",
-    description: "Crée un raid dans le groupe lié à ce salon (officiers).",
+    description: "Crée un raid dans la guilde liée à ce salon (officiers).",
     contexts: [InteractionContextType.Guild],
     options: [
       { type: ApplicationCommandOptionType.String, name: "nom", description: "Ex. Molten Core", required: true, min_length: 2, max_length: 60 },
@@ -32,7 +32,7 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
     // Sorties donjon (WoW Forever) : droits vérifiés par le site (réglage « Qui peut créer des sorties » du groupe)
     type: ApplicationCommandType.ChatInput,
     name: "sortie",
-    description: "Propose une sortie donjon (groupe de 5, aujourd'hui ou demain) au groupe lié à ce salon.",
+    description: "Propose une sortie donjon (groupe de 5, aujourd'hui ou demain) à la guilde liée à ce salon.",
     contexts: [InteractionContextType.Guild],
     options: [
       { type: ApplicationCommandOptionType.String, name: "donjon", description: "Ex. Gnomeregan, ou un titre libre (quête de groupe, élite…)", required: true, autocomplete: true, max_length: 60 },
@@ -69,9 +69,9 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
           { type: ApplicationCommandOptionType.Channel, name: "bouton", description: "Salon dédié où le bot pose le bouton « Donner mon avis » (il le verrouille)", required: false, channel_types: [ChannelType.GuildText] },
           { type: ApplicationCommandOptionType.Boolean, name: "anonyme", description: "Autoriser les avis anonymes (oui par défaut)", required: false },
           // Suivi sur le site (facultatif) : groupe déjà lié à ce serveur ; absent = on garde le réglage actuel
-          { type: ApplicationCommandOptionType.String, name: "site", description: "Site du groupe qui suit les avis (filtre la liste des groupes)", required: false,
+          { type: ApplicationCommandOptionType.String, name: "site", description: "Site de la guilde qui suit les avis (filtre la liste des guildes)", required: false,
             choices: [{ name: "Forever Roster", value: "forever" }, { name: "Roster", value: "retail" }] },
-          { type: ApplicationCommandOptionType.String, name: "groupe", description: "Groupe du site qui suit les avis (Administration → Avis), lié à ce serveur", required: false, autocomplete: true },
+          { type: ApplicationCommandOptionType.String, name: "guilde", description: "Guilde du site qui suit les avis (Administration → Avis), liée à ce serveur", required: false, autocomplete: true },
         ],
       },
       { type: ApplicationCommandOptionType.Subcommand, name: "retirer", description: "Désactive les avis et retire le bouton" },

@@ -101,7 +101,7 @@ describe("avis suivis par un groupe (Administration → Avis)", () => {
 
     const refused = await config({ groupId: autre });
     expect(refused.statusCode).toBe(400);
-    expect(refused.json().error).toMatch(/pas lié à ce serveur/);
+    expect(refused.json().error).toMatch(/pas liée à ce serveur/);
 
     const ok = await config({ groupId: gid });
     expect(ok.statusCode).toBe(200);

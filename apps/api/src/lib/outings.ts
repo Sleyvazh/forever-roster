@@ -308,7 +308,7 @@ export async function openCounts(db: Tx, groupId: string, userId: string) {
 
 export async function createOuting(db: Db, g: GroupRow, role: GroupRole | null, user: { id: string; displayName: string }, input: CreateInput) {
   assertForever(g);
-  if (!mayCreate(g.outingCreators, role)) throw forbidden("Seuls les officiers du groupe peuvent créer une sortie.");
+  if (!mayCreate(g.outingCreators, role)) throw forbidden("Seuls les officiers de la guilde peuvent créer une sortie.");
   const when = checkWhen(input.day, input.at);
   const d = checkDungeon(input.dungeon, input.title);
   const places = input.places ?? { tank: 1, heal: 1, dps: 3 };
@@ -320,7 +320,7 @@ export async function createOuting(db: Db, g: GroupRow, role: GroupRole | null, 
     await tx.select({ id: groups.id }).from(groups).where(eq(groups.id, g.id)).for("update");
     const n = await openCounts(tx, g.id, user.id);
     if (n.mine >= MAX_OPEN_OUTINGS_PER_PLAYER) throw badRequest(`Tu as déjà ${MAX_OPEN_OUTINGS_PER_PLAYER} sorties ouvertes : attends qu'elles soient passées, ou annules-en une.`);
-    if (n.group >= MAX_OUTINGS_PER_GROUP) throw badRequest(`Le groupe a déjà ${MAX_OUTINGS_PER_GROUP} sorties ouvertes.`);
+    if (n.group >= MAX_OUTINGS_PER_GROUP) throw badRequest(`La guilde a déjà ${MAX_OUTINGS_PER_GROUP} sorties ouvertes.`);
     const ch = await pickCharacter(tx, g.id, user.id, input.characterId, input.role, d);
     const [o] = await tx.insert(outings).values({
       groupId: g.id, ...d, day: when.day, scheduledAt: when.at, expiresAt: outingExpiry(when.at, when.day),

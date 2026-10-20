@@ -289,7 +289,7 @@ async function start() {
         void orders.tick().catch(() => {});
         return;
       }
-      await i.editReply(`✅ Salon lié au groupe **${group.name}**. Les raids à venir y seront publiés dans quelques secondes, sauf ceux des raids récurrents qui ont leur propre salon.`);
+      await i.editReply(`✅ Salon lié à la guilde **${group.name}**. Les raids à venir y seront publiés dans quelques secondes, sauf ceux des raids récurrents qui ont leur propre salon.`);
       void sync.tick().catch(() => {});
       return;
     }

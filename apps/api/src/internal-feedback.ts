@@ -77,7 +77,7 @@ export function feedbackRoutes(app: FastifyInstance, db: Db, cfg: Config) {
     const groupId = body.groupId === undefined ? previous?.groupId ?? null : body.groupId;
     if (groupId && groupId !== previous?.groupId) {
       const [g] = await db.select({ id: groups.id }).from(groups).where(and(eq(groups.id, groupId), linkedTo(guildId)));
-      if (!g) throw badRequest("Ce groupe n'est pas lié à ce serveur Discord : un officier le lie d'abord avec /forever-lier ou /roster-lier (salon des raids ou des commandes).");
+      if (!g) throw badRequest("Cette guilde n'est pas liée à ce serveur Discord : un officier la lie d'abord avec /forever-lier ou /roster-lier (salon des raids ou des commandes).");
     }
     const values = {
       inboxChannelId: body.inboxChannelId, panelChannelId: body.panelChannelId, panelMessageId: body.panelMessageId,

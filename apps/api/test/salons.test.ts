@@ -87,7 +87,7 @@ describe("salon à part pour un raid récurrent", () => {
     expect(code).toMatch(/^[A-Z2-9]{8}$/);
     const refused = await bot("POST", "/internal/discord/bind", { code, guildId: s.ids.guild, channelId: s.ids.group, discordUserId: s.ids.gm });
     expect(refused.statusCode).toBe(400);
-    expect(refused.json().error).toBe("Ce salon est déjà celui du groupe : choisis un autre salon pour ce raid récurrent.");
+    expect(refused.json().error).toBe("Ce salon est déjà celui de la guilde : choisis un autre salon pour ce raid récurrent.");
     expect((await bot("POST", "/internal/discord/bind", { code, guildId: s.ids.guild, channelId: tpl, discordUserId: s.ids.p1 })).statusCode).toBe(403);
 
     // Annonce déjà publiée dans le salon du groupe : effacée à la liaison, republiée dans le salon du raid récurrent
@@ -118,7 +118,7 @@ describe("salon à part pour un raid récurrent", () => {
     // Ce salon ne peut plus servir au groupe, ni à ses commandes, ni à un autre raid récurrent
     const gcode = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/code`)).json().code;
     expect((await bot("POST", "/internal/discord/bind", { code: gcode, guildId: s.ids.guild, channelId: tpl, discordUserId: s.ids.gm })).json().error)
-      .toBe("Ce salon est déjà celui du raid récurrent « Molten Core » : choisis un autre salon pour le groupe.");
+      .toBe("Ce salon est déjà celui du raid récurrent « Molten Core » : choisis un autre salon pour la guilde.");
     const ocode = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/orders-code`)).json().code;
     expect((await bot("POST", "/internal/discord/bind", { code: ocode, guildId: s.ids.guild, channelId: tpl, discordUserId: s.ids.gm })).statusCode).toBe(400);
     const t2 = (await s.gm.c.post(`/api/groups/${s.g.id}/raid-templates`, { name: "Onyxia", weekday: 7, time: "20:30", leadDays: 7 })).json().template;

@@ -104,7 +104,7 @@ describe("avis : messages", () => {
   });
 });
 
-describe("avis suivis par un groupe du site", () => {
+describe("avis suivis par une guilde du site", () => {
   const track = { group: "Les Veilleurs", site: "Forever Roster", url: "https://forever.test/groups/g1/admin" };
 
   it("message de l'équipe : statut, suivi et lien vers l'avis sur le site", () => {
@@ -132,18 +132,18 @@ describe("avis suivis par un groupe du site", () => {
     expect(withStatus({ title: "Nouvel avis", description: "x" }, "wip", track).fields![0]).toEqual({ name: "Statut", value: "🔧 En cours", inline: true });
   });
 
-  it("aperçu : le joueur sait que le chef et les officiers du groupe le verront sur le site", () => {
+  it("aperçu : le joueur sait que le chef et les officiers de la guilde le verront sur le site", () => {
     const s = { ...base, text: "Idée", expiresAt: 0, track } as Session & { text: string };
-    expect(json(previewMessage(s))).toContain("officiers du groupe « Les Veilleurs » sur Forever Roster");
+    expect(json(previewMessage(s))).toContain("officiers de la guilde « Les Veilleurs » sur Forever Roster");
     expect(json(previewMessage({ ...s, track: null }))).not.toContain("officiers");
   });
 
-  it("commande : options site et groupe (autocomplétion), facultatives", () => {
+  it("commande : options site et guilde (autocomplétion), facultatives", () => {
     const regler = COMMANDS.find(c => c.name === "feedback-config")!.options!.find(o => o.name === "regler") as { options: { name: string; description: string; required?: boolean; autocomplete?: boolean; choices?: unknown[] }[] };
-    const site = regler.options.find(o => o.name === "site")!, groupe = regler.options.find(o => o.name === "groupe")!;
+    const site = regler.options.find(o => o.name === "site")!, guilde = regler.options.find(o => o.name === "guilde")!;
     expect(site.required).toBe(false);
     expect(site.choices).toEqual([{ name: "Forever Roster", value: "forever" }, { name: "Roster", value: "retail" }]);
-    expect(groupe).toMatchObject({ required: false, autocomplete: true });
+    expect(guilde).toMatchObject({ required: false, autocomplete: true });
     for (const o of regler.options) expect(o.description.length).toBeLessThanOrEqual(100);
   });
 });

@@ -104,7 +104,7 @@ export function onOutingRole(outingId: string, role: OutingRole, wait: boolean, 
     return { kind: "signup", body: { role, cls: c.current.cls, spec: c.current.spec, wait } };
   }
   const why = c.linked
-    ? "Ton Discord est lié au site, mais tu n'es pas membre de ce groupe : inscription libre."
+    ? "Ton Discord est lié au site, mais tu n'es pas membre de cette guilde : inscription libre."
     : "Inscription libre, sans compte. Lie ton Discord sur le site (Compte & sécurité) pour t'inscrire avec tes persos.";
   const classes = CLASS_NAMES.filter(cls => classRoles(cls).includes(role)).sort((a, b) => classLabel("forever", a, lang).localeCompare(classLabel("forever", b, lang), lang));
   return {

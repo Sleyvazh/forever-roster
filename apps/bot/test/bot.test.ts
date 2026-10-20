@@ -261,9 +261,9 @@ describe("synchronisation", () => {
 
 describe("client de l'API interne", () => {
   it("envoie le secret et relaie les messages d'erreur du site", async () => {
-    const f = vi.fn(async () => new Response(JSON.stringify({ error: "Réservé aux officiers du groupe." }), { status: 403 }));
+    const f = vi.fn(async () => new Response(JSON.stringify({ error: "Réservé aux officiers de la guilde." }), { status: 403 }));
     const api = new InternalApi("http://api:3001", "s".repeat(40), f as unknown as typeof fetch);
-    await expect(api.view(RAID)).rejects.toEqual(new ApiError(403, "Réservé aux officiers du groupe."));
+    await expect(api.view(RAID)).rejects.toEqual(new ApiError(403, "Réservé aux officiers de la guilde."));
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`http://api:3001/internal/discord/raids/${RAID}/view`);
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${"s".repeat(40)}`);

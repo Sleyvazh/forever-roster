@@ -127,7 +127,7 @@ export async function saveRaidLog(db: Db, userId: string, body: RaidLogInput, op
     .from(raids).innerJoin(groups, eq(groups.id, raids.groupId)).where(eq(raids.id, body.raidId));
   if (!raid) throw notFound("Raid introuvable (supprimé du site ?).");
   const role = await membership(db, raid.groupId, userId);
-  if (role === "member" && raid.createdBy !== userId) throw forbidden("Seuls les officiers du groupe enregistrent le bilan d'un raid.");
+  if (role === "member" && raid.createdBy !== userId) throw forbidden("Seuls les officiers de la guilde enregistrent le bilan d'un raid.");
   if (opts.game && raid.game !== opts.game) throw badRequest(raid.game === "retail" ? "Ce bilan est celui d'un raid de Roster (WoW Retail)." : "Ce bilan est celui d'un raid de Forever Roster.");
   if (body.end < body.start) throw badRequest("Heures du bilan incohérentes.");
 
@@ -233,7 +233,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
     const [m] = await db.select({ userId: users.id, displayName: users.displayName, avatarId: users.avatarId, discordId: users.discordId, role: groupMembers.role, joinedAt: groupMembers.joinedAt })
       .from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
-    if (!m) throw notFound("Ce joueur n'est pas membre du groupe.");
+    if (!m) throw notFound("Ce joueur n'est pas membre de la guilde.");
 
     const mine = await db.select({ c: characters, isMain: gc.isMain }).from(characters)
       .innerJoin(gc, and(eq(gc.characterId, characters.id), eq(gc.groupId, p.id)))

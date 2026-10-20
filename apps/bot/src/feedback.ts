@@ -159,9 +159,9 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
     const allowAnonymous = i.options.getBoolean("anonyme") ?? true;
     // Suivi sur le site : absent = on garde le groupe actuel ; « none » = plus de suivi ; sinon un groupe proposé par la liste
     const site = i.options.getString("site");
-    const picked = i.options.getString("groupe");
-    if (site && !picked) return i.editReply("Avec l'option **site**, choisis aussi le **groupe** dans la liste proposée.");
-    if (picked && picked !== "none" && !UUID.test(picked)) return i.editReply("Choisis le groupe dans la liste proposée (les groupes de ce serveur, liés par /forever-lier ou /roster-lier).");
+    const picked = i.options.getString("guilde");
+    if (site && !picked) return i.editReply("Avec l'option **site**, choisis aussi la **guilde** dans la liste proposée.");
+    if (picked && picked !== "none" && !UUID.test(picked)) return i.editReply("Choisis la guilde dans la liste proposée (les guildes de ce serveur, liées par /forever-lier ou /roster-lier).");
     const groupId = picked === null ? undefined : picked === "none" ? null : picked.toLowerCase();
     if (panel && panel.id === inbox.id) return i.editReply("Le salon du bouton doit être différent du salon où arrivent les avis (celui-ci est réservé à l'équipe).");
     if (!inbox.permissionsFor(me).has(INBOX_NEEDS)) return i.editReply(`Il me manque des droits dans ${inbox} : Voir le salon, Envoyer des messages, Intégrer des liens et Voir les anciens messages.`);
@@ -202,7 +202,7 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
       `• Arrivée des avis : ${inbox} (bouton « Répondre » sous chaque avis).`,
       panel ? `• Bouton « Donner mon avis » : ${panel}.` : "• Pas de salon dédié : les membres utilisent /feedback.",
       `• Anonymat : ${allowAnonymous ? "au choix de chacun" : "refusé, avis signés seulement"}.`,
-      ...(track ? [`• Suivi sur ${track.site} : groupe « ${track.groupName} », Administration → Avis (chef et officiers).${groupId === undefined ? " Pour l'arrêter : option groupe « Aucun »." : ""}`]
+      ...(track ? [`• Suivi sur ${track.site} : guilde « ${track.groupName} », Administration → Avis (chef et officiers).${groupId === undefined ? " Pour l'arrêter : option guilde « Aucune »." : ""}`]
         : previous?.groupId && groupId === null ? ["• Suivi sur le site arrêté : les avis restent dans Discord."] : []),
       ...notes,
     ].join("\n"));
@@ -218,7 +218,7 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
   async function autocomplete(i: AutocompleteInteraction) {
     if (!i.inCachedGuild() || !i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) return i.respond([]);
     const focused = i.options.getFocused(true);
-    if (focused.name !== "groupe") return i.respond([]);
+    if (focused.name !== "guilde") return i.respond([]);
     const q = String(focused.value ?? "").trim();
     const game = (i.options.getString("site") ?? undefined) as Game | undefined;
     const { groups } = await api.feedbackGroups(i.guildId, q, game);
@@ -227,7 +227,7 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
       const where = [channel(g.raidsChannelId) && `raids #${channel(g.raidsChannelId)}`, channel(g.ordersChannelId) && `commandes #${channel(g.ordersChannelId)}`].filter(Boolean).join(", ");
       return { name: `${g.name} · ${g.site}${where ? ` (${where})` : ""}`.slice(0, 100), value: g.id };
     });
-    const none = { name: "Aucun : avis seulement dans Discord", value: "none" };
+    const none = { name: "Aucune : avis seulement dans Discord", value: "none" };
     return i.respond([...(!q || "aucun".startsWith(q.toLowerCase()) ? [none] : []), ...choices].slice(0, 25));
   }
 

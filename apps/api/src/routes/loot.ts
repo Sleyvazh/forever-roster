@@ -83,7 +83,7 @@ export async function lootRoutes(app: FastifyInstance) {
     }), req.body);
     const [c] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
       .where(and(eq(groupCharacters.groupId, id), eq(groupCharacters.characterId, body.characterId)));
-    if (!c) throw badRequest("Ce perso ne joue pas dans ce groupe.");
+    if (!c) throw badRequest("Ce perso ne joue pas dans cette guilde.");
     const [me] = await db.select({ name: users.displayName }).from(users).where(eq(users.id, u.id));
     const kind = body.kind ?? null;
     const [row] = await db.insert(lootCorrections).values({ groupId: id, characterId: c.id, delta: body.delta, kind, note: body.note, createdBy: u.id, createdByName: me?.name ?? "?" }).returning({ id: lootCorrections.id });

@@ -75,7 +75,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const game = siteOf(cfg, req).game;
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
       .where(and(eq(groupMembers.userId, u.id), eq(groups.game, game))) as [{ n: number }];
-    if (n >= MAX_GROUPS_PER_USER) throw badRequest(`Limite de ${MAX_GROUPS_PER_USER} groupes atteinte.`);
+    if (n >= MAX_GROUPS_PER_USER) throw badRequest(`Limite de ${MAX_GROUPS_PER_USER} guildes atteinte.`);
     const g = await db.transaction(async tx => {
       const [g] = await tx.insert(groups).values({ name, game }).returning();
       await tx.insert(groupMembers).values({ groupId: g!.id, userId: u.id, role: "owner" });
@@ -187,12 +187,12 @@ export async function groupRoutes(app: FastifyInstance) {
       const theirs = await membership(db, p.id, c.userId).catch(() => null);
       if (!theirs) throw notFound("Personnage introuvable.");
       if (myRole === "member") throw forbidden("Seuls les officiers modifient les persos des autres membres.");
-      if (theirs === "owner" && myRole !== "owner") throw forbidden("Tu ne peux pas modifier les persos du propriétaire du groupe.");
+      if (theirs === "owner" && myRole !== "owner") throw forbidden("Tu ne peux pas modifier les persos du propriétaire de la guilde.");
     }
     const [current] = await db.select().from(groupCharacters)
       .where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.characterId, c.id)));
     if (body.assigned) {
-      if (!current && !mine) throw forbidden("Seul le joueur ajoute ses persos au groupe.");
+      if (!current && !mine) throw forbidden("Seul le joueur ajoute ses persos à la guilde.");
       await db.transaction(async tx => {
         if (!current) await assignCharacter(tx, p.id, c.id, c.userId, body.main === true);
         else if (body.main === true && !current.isMain) await setMain(tx, p.id, c.id, c.userId);
@@ -351,7 +351,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const p = parse(z.object({ id: z.uuid(), userId: z.uuid() }), req.params);
     const myRole = await membership(db, p.id, u.id);
     if (p.userId === u.id) {
-      if (myRole === "owner") throw conflict("Transfère la propriété du groupe ou supprime-le avant de le quitter.");
+      if (myRole === "owner") throw conflict("Transfère la propriété de la guilde ou supprime-la avant de la quitter.");
     } else {
       const target = await membership(db, p.id, p.userId);
       if (!outranks(myRole, target)) throw forbidden("Tu ne peux retirer que des membres de rang inférieur.");

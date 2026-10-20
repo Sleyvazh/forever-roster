@@ -236,7 +236,7 @@ export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | 
       out.push({ ...base, status: "updated", message: `enregistré · ${plural(r.attendees, "présent")}, ${plural(r.loot, "objet")}${roster ? `, ${kills} boss vaincu${kills > 1 ? "s" : ""}` : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
     } catch (e) {
       const refused = e instanceof HttpError && e.status === 403;
-      out.push({ ...base, status: refused ? "refused" : "error", message: refused ? "pas officier du groupe" : errorText(e, "enregistrement impossible") });
+      out.push({ ...base, status: refused ? "refused" : "error", message: refused ? "pas officier de la guilde" : errorText(e, "enregistrement impossible") });
     }
   }
   return out;

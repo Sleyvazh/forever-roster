@@ -135,10 +135,10 @@ describe("qui crée : réglage des officiers, pour les raids et pour les sorties
     const raid = (who: string) => bot("POST", "/internal/discord/raids", { guildId: guild, channelId: channel, discordUserId: who, name: "Molten Core", scheduledAt: tomorrowAt() });
     expect((await raid(ana.discordId)).statusCode).toBe(200);
     await s.gm.c.put(`/api/groups/${s.g.id}/creators`, { raids: "officers" });
-    expect((await raid(ana.discordId)).json().error).toBe("Seuls les officiers du groupe peuvent créer un raid.");
+    expect((await raid(ana.discordId)).json().error).toBe("Seuls les officiers de la guilde peuvent créer un raid.");
     // /sortie : réservé aux officiers ici
     const sortie = await bot("POST", "/internal/discord/outings", { guildId: guild, channelId: channel, discordUserId: ana.discordId, dungeon: "gnomeregan", day: tomorrow(), at: tomorrowAt("20:00") });
-    expect(sortie.json().error).toBe("Seuls les officiers du groupe peuvent créer une sortie.");
+    expect(sortie.json().error).toBe("Seuls les officiers de la guilde peuvent créer une sortie.");
   });
 });
 
@@ -240,7 +240,7 @@ describe("bot Discord (API interne)", () => {
     expect((await s.people.Bramm!.s.c.post(`/api/groups/${s.g.id}/discord/outings-code`)).statusCode).toBe(403);
     let { code } = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/outings-code`)).json();
     expect((await bot("POST", "/internal/discord/bind", { code, guildId: guild, channelId: raidsCh, discordUserId: s.lead.discordId })).json().error)
-      .toMatch(/^Ce salon est déjà celui des raids du groupe/);
+      .toMatch(/^Ce salon est déjà celui des raids de la guilde/);
     ({ code } = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/outings-code`)).json());
     expect((await bot("POST", "/internal/discord/bind", { code, guildId: guild, channelId: outCh, discordUserId: s.lead.discordId, channelName: "sorties" })).json())
       .toEqual({ group: { id: s.g.id, name: "Salons" }, kind: "outings" });

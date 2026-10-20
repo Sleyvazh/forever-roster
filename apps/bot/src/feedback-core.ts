@@ -175,7 +175,7 @@ export function previewMessage(s: Session & { text: string }, note: string | nul
     s.allowAnonymous
       ? `**Anonyme** : ton nom n'apparaît nulle part. L'équipe peut quand même te répondre par mon intermédiaire, sans savoir qui tu es. Je garde ce lien ${KEEP_DAYS} jours, puis je l'efface.`
       : "Ce serveur n'accepte que les avis signés.",
-    ...(s.track ? [`Ton avis et les réponses sont aussi visibles du chef et des officiers du groupe « ${escapeMd(s.track.group)} » sur ${s.track.site}${s.allowAnonymous ? " (sans ton nom si tu l'envoies anonyme)" : ""}.`] : []),
+    ...(s.track ? [`Ton avis et les réponses sont aussi visibles du chef et des officiers de la guilde « ${escapeMd(s.track.group)} » sur ${s.track.site}${s.allowAnonymous ? " (sans ton nom si tu l'envoies anonyme)" : ""}.`] : []),
     "",
     "-# Pour corriger, envoie simplement un nouveau message : il remplace celui-ci.",
   ];

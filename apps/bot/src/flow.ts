@@ -45,7 +45,7 @@ export function onStatus(raidId: string, status: SignupStatus, c: Choices, force
   if (!force && cur?.cls && cur.spec) return { kind: "signup", body: { status, cls: cur.cls, spec: cur.spec }, label: guestLabel(game, lang, cur.cls, cur.spec) };
   if (status === "absent" && !force) return { kind: "signup", body: { status }, label: "" };
   const why = c.linked
-    ? "Ton Discord est lié au site, mais tu n'es pas membre de ce groupe : inscription libre."
+    ? "Ton Discord est lié au site, mais tu n'es pas membre de cette guilde : inscription libre."
     : "Inscription libre, sans compte. Lie ton Discord sur le site (Compte & sécurité) pour t'inscrire avec tes persos.";
   return {
     kind: "reply",

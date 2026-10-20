@@ -130,7 +130,7 @@ export async function battlenetImportRoutes(app: FastifyInstance) {
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     await requireRole(db, id, u.id, "officer");
     const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, id));
-    if (g?.game !== "retail") throw badRequest("Ce groupe n'est pas un groupe de Roster.");
+    if (g?.game !== "retail") throw badRequest("Cette guilde n'est pas une guilde de Roster.");
     const rows = (await db.select({ c: characters }).from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
       .where(and(eq(groupCharacters.groupId, id), eq(characters.game, "retail"))).limit(MAX_GROUP_REFRESH)).map(r => r.c);
     const due = rows.filter(c => !c.bnetSyncedAt || Date.now() - c.bnetSyncedAt.getTime() > FRESH_MS);

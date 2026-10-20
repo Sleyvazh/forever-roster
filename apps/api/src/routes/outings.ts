@@ -30,7 +30,7 @@ export async function outingRoutes(app: FastifyInstance) {
   async function forGroup(groupId: string, userId: string) {
     const role = await membership(db, groupId, userId);
     const [g] = await db.select().from(groups).where(eq(groups.id, groupId));
-    if (!g) throw notFound("Groupe introuvable.");
+    if (!g) throw notFound("Guilde introuvable.");
     assertForever(g);
     return { role, g, origin: siteForGame(cfg, g.game).origin };
   }
