@@ -20,9 +20,9 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   account_created_battlenet: ["Compte créé via Battle.net", ""],
   battlenet_import_list: ["Liste des persos lue sur Battle.net", ""], battlenet_import: ["Persos importés de Battle.net", ""],
   discord_linked: ["Discord lié", "warn"], discord_unlinked: ["Discord délié", "warn"],
-  group_discord_linked: ["Salon Discord lié à un groupe", ""], reports_channel_linked: ["Salon Discord des signalements lié", ""], group_discord_unlinked: ["Salon Discord délié d'un groupe", ""],
-  group_created: ["Groupe créé", ""], group_joined: ["Groupe rejoint", ""], group_left: ["Groupe quitté", ""],
-  group_role_changed: ["Rôle modifié dans un groupe", ""], group_member_removed: ["Membre retiré d'un groupe", ""],
+  group_discord_linked: ["Salon Discord lié à une guilde", ""], reports_channel_linked: ["Salon Discord des signalements lié", ""], group_discord_unlinked: ["Salon Discord délié d'une guilde", ""],
+  group_created: ["Guilde créée", ""], group_joined: ["Guilde rejointe", ""], group_left: ["Guilde quittée", ""],
+  group_role_changed: ["Rôle modifié dans une guilde", ""], group_member_removed: ["Membre retiré d'une guilde", ""],
   invite_created: ["Invitation créée", ""], invite_revoked: ["Invitation révoquée", ""], raid_created: ["Raid créé", ""], raid_deleted: ["Raid supprimé", ""],
   device_linked: ["Appareil relié", "warn"], device_pair_denied: ["Appairage refusé", "warn"], device_unlinked: ["Appareil délié", ""],
 };
@@ -70,7 +70,7 @@ export function AccountPage() {
       {DISCORD_ERROR[params.get("error") ?? ""] && <div className="alert error" role="alert">{DISCORD_ERROR[params.get("error")!]}</div>}
       <div className="grid acct-grid">
         <Profile name={user.displayName} onDone={refreshMe} />
-        <Section title="Image du compte" hint="Visible par toi et les membres de tes groupes.">
+        <Section title="Image du compte" hint="Visible par toi et les membres de tes guildes.">
           <ImageUpload title="Avatar" hint="PNG, JPEG ou WebP. Recadrée en 200 × 200, métadonnées supprimées." currentId={user.avatarId} round
             onUpload={async blob => { await uploadImage("/account/avatar", blob); await refreshMe(); }}
             onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />

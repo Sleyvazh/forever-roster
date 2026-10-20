@@ -49,10 +49,10 @@ export function TemplateChannel({ groupId, t, canEdit, guard, refresh, groupLink
       <div className="row" style={{ gap: 8 }}>
         <span className="small"><span className="muted">Salon Discord :</span>{" "}
           {d.linked ? <><b>{d.channelName ? `#${d.channelName}` : "salon à part"}</b> <span className="muted">(à part)</span></>
-            : <>celui du groupe{!groupLinked && <span className="muted"> (aucun salon lié pour l'instant)</span>}</>}</span>
+            : <>celui de la guilde{!groupLinked && <span className="muted"> (aucun salon lié pour l'instant)</span>}</>}</span>
         {canEdit && <span className="row" style={{ gap: 6 }}>
           <button type="button" className="btn ghost sm" onClick={askCode}>{d.linked ? "Changer de salon…" : "Salon à part…"}</button>
-          {d.linked && <button type="button" className="btn ghost sm" onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${t.id}/discord`); await refresh(); })}>Revenir au salon du groupe</button>}
+          {d.linked && <button type="button" className="btn ghost sm" onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${t.id}/discord`); await refresh(); })}>Revenir au salon de la guilde</button>}
         </span>}
       </div>
       {canEdit && (d.linked || code) && (
@@ -65,7 +65,7 @@ export function TemplateChannel({ groupId, t, canEdit, guard, refresh, groupLink
       {canEdit && d.linked && d.rename && !d.renameError && <span className="hint">Le bot a besoin de « Gérer les salons » sur ce salon.</span>}
       {canEdit && wantCode && !hasDiscord && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       {code && <LinkCodeBox key={code.code} game={game} code={code} intro={`Dans le salon Discord voulu pour « ${t.name} », tape cette commande`} label={`Commande de liaison du salon pour « ${t.name} »`}
-        footer={<span className="small muted">Ce salon recevra les annonces de ce raid récurrent seulement (les raids ponctuels restent dans le salon du groupe). Pour le renommer, le bot a besoin de « Gérer les salons » sur ce salon.</span>} />}
+        footer={<span className="small muted">Ce salon recevra les annonces de ce raid récurrent seulement (les raids ponctuels restent dans le salon de la guilde). Pour le renommer, le bot a besoin de « Gérer les salons » sur ce salon.</span>} />}
     </div>
   );
 }

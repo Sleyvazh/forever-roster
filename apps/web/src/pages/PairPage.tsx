@@ -72,8 +72,8 @@ export function PairPage() {
           </div>
           <div><div className="lbl">Le code affiché dans l'appli doit être</div><div className="cp-code num">{pairing.code}</div></div>
           <div className="cp-two">
-            <div><strong className="small">Elle pourra</strong><ul><li>envoyer tes persos et les bilans de raid relevés par l'addon</li><li>recevoir les données de tes groupes pour le jeu</li><li>télécharger l'addon</li></ul></div>
-            <div><strong className="small">Elle ne pourra pas</strong><ul><li>changer ton e-mail, ton mot de passe ou tes liaisons</li><li>gérer tes groupes et tes raids</li><li>voir tes sessions ou ton journal</li></ul></div>
+            <div><strong className="small">Elle pourra</strong><ul><li>envoyer tes persos et les bilans de raid relevés par l'addon</li><li>recevoir les données de tes guildes pour le jeu</li><li>télécharger l'addon</li></ul></div>
+            <div><strong className="small">Elle ne pourra pas</strong><ul><li>changer ton e-mail, ton mot de passe ou tes liaisons</li><li>gérer tes guildes et tes raids</li><li>voir tes sessions ou ton journal</li></ul></div>
           </div>
           <div className="alert cp-warn">Si tu n'as pas lancé Roster Companion toi-même, refuse : quelqu'un essaie de relier son appareil à ton compte.</div>
           {error && <div className="alert error" role="alert">{error}</div>}

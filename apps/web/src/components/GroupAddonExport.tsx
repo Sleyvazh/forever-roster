@@ -36,7 +36,7 @@ export function GroupAddonExport({ groupId }: { groupId: string }) {
             </div>
             <textarea id="ga-text" readOnly className="num" rows={Math.min(10, q.data.text.split("\n").length)} value={q.data.text} onFocus={e => e.currentTarget.select()} />
             <p className="hint" style={{ margin: 0 }}>
-              En jeu : <code>/fr</code>, onglet <strong>Raids</strong>, colle ce texte puis « Charger ». Ce groupe seul ; pour tous tes groupes d'un coup,
+              En jeu : <code>/fr</code>, onglet <strong>Raids</strong>, colle ce texte puis « Charger ». Cette guilde seule ; pour toutes tes guildes d'un coup,
               et pour renvoyer tes persos au site : page <Link to="/addon">Addon</Link>.
             </p>
           </div>

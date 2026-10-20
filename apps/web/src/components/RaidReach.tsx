@@ -67,7 +67,7 @@ export function RaidReach({ groupId, raidId, reach, onChanged }: { groupId: stri
           </button>
         )}
       </div>
-      {pending.length === 0 ? <p className="hint" style={{ margin: 0 }}>Tous les membres du groupe ont répondu.</p> : (
+      {pending.length === 0 ? <p className="hint" style={{ margin: 0 }}>Tous les membres de la guilde ont répondu.</p> : (
         <div className="rr-chips">
           {pending.map(p => (
             <span key={p.userId} className={`gm-chip rr-chip${p.dm ? "" : " off"}`} title={p.dm ? "Joignable par MP" : p.why === "dm-off" ? "Messages du bot désactivés" : "Discord non lié"}>

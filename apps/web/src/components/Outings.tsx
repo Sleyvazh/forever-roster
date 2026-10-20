@@ -112,7 +112,7 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
         {data.canCreate
           ? <><p>Propose la tienne : le donjon est trié pour ton perso, et la guilde la voit ici, sur Discord et en jeu.</p>
             <button type="button" className="btn primary" onClick={onCreate}>+ Proposer une sortie</button></>
-          : <p>Dans ce groupe, les officiers proposent les sorties : elles apparaîtront ici, sur Discord et en jeu.</p>}
+          : <p>Dans cette guilde, les officiers proposent les sorties : elles apparaîtront ici, sur Discord et en jeu.</p>}
       </div>
     </div>
   );
@@ -564,7 +564,7 @@ function NewOuting({ groupId, data, channelName, discordLinked, onClose }: { gro
       </div>
       {err && <div className="alert error" role="alert">{err}</div>}
       <p className="hint" style={{ margin: 0 }}>
-        {discordLinked ? <>Publiée ici, dans <b>{channelName ? `#${channelName}` : "le salon du groupe"}</b> sur Discord, et en jeu à la prochaine synchro.</> : "Publiée ici, et en jeu à la prochaine synchro."}
+        {discordLinked ? <>Publiée ici, dans <b>{channelName ? `#${channelName}` : "le salon de la guilde"}</b> sur Discord, et en jeu à la prochaine synchro.</> : "Publiée ici, et en jeu à la prochaine synchro."}
         {full && <><br /><b>Tu as déjà {data.open.max} sorties ouvertes :</b> attends qu'une soit passée, ou annules-en une.</>}
       </p>
     </form>

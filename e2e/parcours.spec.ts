@@ -174,7 +174,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   });
 
   await test.step("groupe : l'onglet Artisans montre le patron coché", async () => {
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.fill("#g-name", "Les Testeurs");
     await page.getByRole("button", { name: "Créer" }).click();
     await page.getByRole("tab", { name: "Artisans" }).click();
@@ -247,7 +247,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     // Dernière synchro, page Addon
     await page.getByRole("link", { name: "Addon" }).first().click();
     await expect(page.locator(".addon-sync")).toContainText("synchro il y a moins d'une heure");
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
@@ -274,7 +274,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await section.getByRole("button", { name: "Délier" }).click();
     await expect(page.getByText("PC-E2E délié.")).toBeVisible();
     expect((await page.request.get("/api/sync/frg", { headers: { authorization: `Bearer ${done.token}` } })).status()).toBe(401);
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
@@ -288,7 +288,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   await test.step("persos du groupe : main et alts", async () => {
     await page.getByRole("tab", { name: "Personnages" }).click();
     // Rien par défaut : on choisit ses persos, le premier devient main
-    const mine = page.getByRole("region", { name: "Mes persos dans ce groupe" });
+    const mine = page.getByRole("region", { name: "Mes persos dans cette guilde" });
     await expect(mine).toContainText("Tu ne joues encore aucun perso dans Les Testeurs");
     await mine.getByRole("button", { name: /Tournicoti/ }).click();
     await expect(page.locator(".gm-fold")).toContainText("★ Tournicoti");
@@ -301,7 +301,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".ch-sec").filter({ hasText: "Les Testeurs" })).toContainText("Greta");
     await expect(page.locator(".ch-gbar").getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/persos-par-groupe.png", fullPage: true });
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
     await page.getByRole("tab", { name: "Personnages" }).click();
     await expect(page.locator(".grow").filter({ hasText: "Greta" })).toContainText("alt");
@@ -394,7 +394,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.getByText("Tu es inscrit : En retard")).toBeVisible();
     await expect(other.getByText("Tu es inscrit : En retard")).toBeVisible({ timeout: 5000 });
     await other.close();
-    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await page.getByRole("link", { name: "Retour à la guilde" }).click();
     await expect(page.locator(".gr-raid").filter({ hasText: "Molten Core" })).toContainText("En retard");
   });
 
@@ -411,7 +411,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("button", { name: "Créer le raid" }).click();
     await expect(page.getByRole("heading", { name: "Zul'Gurub" })).toBeVisible();
     await expect(page.locator(".rp-meta")).toContainText("20:30");
-    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await page.getByRole("link", { name: "Retour à la guilde" }).click();
     await page.getByRole("button", { name: /Récurrents \(1\)/ }).click();
     await expect(page.locator(".gr-recrow")).toContainText(/Zul'Gurub.*chaque .* 20:30/);
     await expect(page.locator(".gr-raid").filter({ hasText: "Zul'Gurub" }).first()).toBeVisible();
@@ -447,7 +447,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/band-mobile.png" });
     await page.setViewportSize({ width: 1360, height: 900 });
     // Page Groupes : carte avec prochain raid, ma réponse, roster et raccourcis vers les onglets
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     const card = page.getByRole("article", { name: "Les Testeurs" });
     await expect(card).toContainText("Molten Core");
     await expect(card).toContainText("Peut-être");
@@ -489,7 +489,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
     await expect(dialog).toContainText("Bilan de Molten Core : enregistré · 2 présents, 1 objet · sans fiche : Chamy");
     await dialog.getByRole("button", { name: "Fermer" }).click();
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.getByRole("article", { name: "Les Testeurs" }).getByRole("link", { name: /Molten Core/ }).click();
     await page.getByRole("tab", { name: "Bilan" }).click();
     const bilan = page.getByRole("region", { name: "Bilan du raid" });
@@ -497,7 +497,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(bilan).toContainText("Lucifron");
     await expect(bilan.getByRole("row", { name: /Tournicoti.*Présent/ })).toBeVisible();
     if (process.env.SHOTS) await bilan.screenshot({ path: "test-results/shots/bilan.png" });
-    await page.getByRole("link", { name: "Retour au groupe" }).click();
+    await page.getByRole("link", { name: "Retour à la guilde" }).click();
     await page.getByRole("tab", { name: "Présence & butin" }).click();
     await expect(page).toHaveURL(/\/presence$/);
     await expect(page.getByRole("row", { name: /Tournicoti.*1\/1.*Helm of Might/ })).toBeVisible();
@@ -519,7 +519,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/absences.png" });
     await ab.getByRole("button", { name: /Retirer l'absence/ }).click();
     await expect(ab).toContainText("aucune de prévue");
-    await page.getByRole("link", { name: "Groupes" }).first().click();
+    await page.getByRole("link", { name: "Guildes" }).first().click();
     await page.getByRole("link", { name: /Les Testeurs/ }).click();
   });
 
@@ -527,7 +527,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: "Administration" }).click();
     await expect(page.getByRole("heading", { name: "Invitations" })).toBeVisible();
     await page.locator(".adm-nav").getByRole("button", { name: "Zone sensible" }).click();
-    await expect(page.getByRole("button", { name: "Supprimer le groupe" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Supprimer la guilde" })).toBeVisible();
     await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
     await expect(page.getByRole("heading", { name: "Salon Discord" })).toBeVisible();
     // Sans Discord lié à son compte, l'officier est invité à le lier d'abord (le bot vérifie qui tape la commande)

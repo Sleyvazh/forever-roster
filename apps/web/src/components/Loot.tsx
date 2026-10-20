@@ -237,8 +237,8 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
       {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
       <LootHistoryImport groupId={groupId} />
       {retail
-        ? <p className="hint" style={{ margin: 0 }}>Conseil : les officiers du groupe le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).</p>
-        : <p className="hint" style={{ margin: 0 }}>Loot council : les officiers du groupe forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>}
+        ? <p className="hint" style={{ margin: 0 }}>Conseil : les officiers de la guilde le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).</p>
+        : <p className="hint" style={{ margin: 0 }}>Loot council : les officiers de la guilde forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>}
     </section>
   );
 }
@@ -252,7 +252,7 @@ interface HistoryRow {
 }
 interface HistoryResult { label: string; rows: HistoryRow[]; created: number; ignored: string[] }
 const HISTORY_STATUS: Record<HistoryRow["status"], [string, string]> = {
-  new: ["à ajouter", "tag ok"], exists: ["déjà importé", "tag"], unknown: ["pas dans le groupe", "tag warn"],
+  new: ["à ajouter", "tag ok"], exists: ["déjà importé", "tag"], unknown: ["pas dans la guilde", "tag warn"],
   ambiguous: ["plusieurs persos", "tag warn"], empty: ["rien à compter", "tag"],
 };
 const HISTORY_SAMPLE = "Season loot count - 64 items (Season 2)\n\nQuinlan - BiS 3, Spé 1 4 (total 7)\n  - Crochet de malveillance ombreuse\n  - Crispins roussis par le venin\n…";
@@ -288,8 +288,8 @@ function LootHistoryImport({ groupId }: { groupId: string }) {
       <div className="lt-sub">Importer un historique</div>
       <p className="hint" style={{ margin: 0 }}>
         Colle la liste telle quelle : une ligne par joueur « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ».
-        Chaque joueur reconnu parmi les persos du groupe (nom, avec ou sans royaume) reçoit une correction BiS et une correction Upgrade (« Spé 1 »), visibles sur sa fiche ; sans ce détail, une correction du total.
-        Un joueur pas encore dans le groupe : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.
+        Chaque joueur reconnu parmi les persos de la guilde (nom, avec ou sans royaume) reçoit une correction BiS et une correction Upgrade (« Spé 1 »), visibles sur sa fiche ; sans ce détail, une correction du total.
+        Un joueur pas encore dans la guilde : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.
       </p>
       <textarea rows={8} value={text} onChange={e => { setText(e.target.value); setRes(null); }} placeholder={HISTORY_SAMPLE} aria-label="Liste des objets reçus" />
       <div className="row" style={{ alignItems: "flex-end" }}>
@@ -304,7 +304,7 @@ function LootHistoryImport({ groupId }: { groupId: string }) {
         <p className="small muted" style={{ margin: 0 }}>Motif des corrections : « {res.label} : … ». Elles comptent tant que la période du compte inclut aujourd'hui (Saison : laisse le début de saison avant aujourd'hui).</p>
         <div style={{ overflowX: "auto" }}>
           <table className="data">
-            <thead><tr><th>Dans la liste</th><th>Objets</th><th>Perso du groupe</th><th>État</th></tr></thead>
+            <thead><tr><th>Dans la liste</th><th>Objets</th><th>Perso de la guilde</th><th>État</th></tr></thead>
             <tbody>{res.rows.map((r, i) => (
               <tr key={i}>
                 <td>{r.name}</td>

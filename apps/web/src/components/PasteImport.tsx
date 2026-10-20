@@ -158,7 +158,7 @@ export function PasteImport() {
             <button type="button" className="btn ghost sm" onClick={close}>Ignorer</button>
           </div>
           {blocks.length > 0 && <p className="hint small" style={{ margin: 0 }}>L'objectif BiS, les intitulés de spé, l'off-spec et les notes ne sont pas modifiés.</p>}
-          {retail && <p className="hint small" style={{ margin: 0 }}>Un officier du groupe (ou le créateur du raid) enregistre le bilan ; un nouveau collage remplace le précédent.</p>}
+          {retail && <p className="hint small" style={{ margin: 0 }}>Un officier de la guilde (ou le créateur du raid) enregistre le bilan ; un nouveau collage remplace le précédent.</p>}
         </>
       )}
     </aside>

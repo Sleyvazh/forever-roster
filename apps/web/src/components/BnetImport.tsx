@@ -176,8 +176,8 @@ export function BnetGroupRefresh({ groupId, onDone }: { groupId: string; onDone:
   };
   return (
     <div className="row bi-group">
-      <button type="button" className="btn sm" disabled={busy} onClick={() => void run()}>{busy ? "Lecture chez Blizzard…" : "Mettre à jour le groupe"}</button>
-      <span className="hint">Niveau, niveau d'objet et spé active de chaque perso du groupe, lus chez Blizzard.</span>
+      <button type="button" className="btn sm" disabled={busy} onClick={() => void run()}>{busy ? "Lecture chez Blizzard…" : "Mettre à jour la guilde"}</button>
+      <span className="hint">Niveau, niveau d'objet et spé active de chaque perso de la guilde, lus chez Blizzard.</span>
       {msg && <span className={`small ${msg.ok ? "muted" : "warnmsg"}`} role="status" style={{ flexBasis: "100%" }}>{msg.text}</span>}
     </div>
   );

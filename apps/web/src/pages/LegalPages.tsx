@@ -115,14 +115,14 @@ export function LegalNoticePage() {
             sur <ExternalLink href="https://github.com/Sleyvazh/forever-roster">GitHub (Sleyvazh/forever-roster)</ExternalLink>.
           </li>
           <li>
-            Ce que publient les joueurs (pseudos, noms de groupes, notes, images) reste à leurs auteurs, qui en sont responsables.
+            Ce que publient les joueurs (pseudos, noms de guildes, notes, images) reste à leurs auteurs, qui en sont responsables.
           </li>
         </ul>
       </Sec>
 
       <Sec id="signaler" title="Signaler un contenu">
         <p>
-          Un pseudo, un nom de groupe, un texte ou une image publié sur le site te semble illicite ? Écris à <Contact /> en
+          Un pseudo, un nom de guilde, un texte ou une image publié sur le site te semble illicite ? Écris à <Contact /> en
           donnant ton nom ou ton pseudo, l'adresse exacte de la page, le contenu en cause et la raison pour laquelle il te semble
           illicite. Un contenu manifestement illicite est retiré au plus vite.
         </p>
@@ -148,10 +148,10 @@ const ROWS: Row[] = [
   {
     title: "Ton compte",
     data: "Adresse e-mail, pseudo, mot de passe (haché : personne ne peut le relire), date de création, image du compte, langue des noms du jeu, dernière version de l'addon utilisée.",
-    why: "Te connecter, t'envoyer les e-mails du compte, te montrer dans tes groupes.",
+    why: "Te connecter, t'envoyer les e-mails du compte, te montrer dans tes guildes.",
     basis: "Contrat",
     keep: "Tant que le compte existe.",
-    who: "Toi. Ton pseudo et ton image : les membres de tes groupes. Ton adresse e-mail n'est jamais montrée aux autres joueurs.",
+    who: "Toi. Ton pseudo et ton image : les membres de tes guildes. Ton adresse e-mail n'est jamais montrée aux autres joueurs.",
   },
   {
     title: "Battle.net et Discord",
@@ -159,7 +159,7 @@ const ROWS: Row[] = [
     why: "Te connecter avec Battle.net ; t'inscrire et te prévenir depuis le bot Discord.",
     basis: "Contrat",
     keep: "Jusqu'à ce que tu les délies (Compte & sécurité), ou que le compte soit supprimé.",
-    who: "Toi. Ton BattleTag est aussi transmis aux membres de tes groupes.",
+    who: "Toi. Ton BattleTag est aussi transmis aux membres de tes guildes.",
   },
   {
     title: "Tes persos",
@@ -167,31 +167,31 @@ const ROWS: Row[] = [
     why: "Tenir ta fiche à jour et préparer les raids.",
     basis: "Contrat",
     keep: "Tant que le perso existe (tu peux le supprimer), et au plus tant que le compte existe.",
-    who: "Toi, et les membres des groupes que tu partages avec eux : fiche complète, notes comprises.",
+    who: "Toi, et les membres des guildes que tu partages avec eux : fiche complète, notes comprises.",
   },
   {
-    title: "Groupes",
-    data: "Nom du groupe, membres et rôles (chef, officier, membre), invitations, salons Discord liés, réglages, journal du groupe (qui a créé un raid, changé un rôle…).",
+    title: "Guildes",
+    data: "Nom de la guilde, membres et rôles (chef, officier, membre), invitations, salons Discord liés, réglages, journal de la guilde (qui a créé un raid, changé un rôle…).",
     why: "Organiser la guilde.",
     basis: "Contrat",
-    keep: "Jusqu'à ce que tu quittes le groupe ou que le chef le supprime. Le journal d'un groupe supprimé n'est plus affiché mais reste en base.",
-    who: "Les membres du groupe ; le journal : le chef et les officiers.",
+    keep: "Jusqu'à ce que tu quittes la guilde ou que le chef la supprime. Le journal d'une guilde supprimée n'est plus affiché mais reste en base.",
+    who: "Les membres de la guilde ; le journal : le chef et les officiers.",
   },
   {
     title: "Raids et inscriptions",
     data: "Inscriptions (statut, perso, spé, note), compo, réservations (soft reserve), conseil du butin, demandes des officiers (« Demander à… »), raids récurrents.",
     why: "Organiser les raids, sur le site et sur Discord.",
     basis: "Contrat",
-    keep: "Rien n'est effacé automatiquement : tant que le raid existe, jusqu'à ce qu'un officier le supprime ou que le groupe soit supprimé.",
-    who: "Les membres du groupe. Les annonces du bot montrent les pseudos, persos et spés des inscrits dans le salon Discord du groupe.",
+    keep: "Rien n'est effacé automatiquement : tant que le raid existe, jusqu'à ce qu'un officier le supprime ou que la guilde soit supprimée.",
+    who: "Les membres de la guilde. Les annonces du bot montrent les pseudos, persos et spés des inscrits dans le salon Discord de la guilde.",
   },
   {
     title: "Inscrits depuis Discord, sans compte",
     data: "Identifiant et pseudo Discord, classe, spé et statut choisis dans le bot, pour un raid ou une sortie.",
     why: "Compter les joueurs qui s'inscrivent depuis Discord sans compte sur le site.",
     basis: "Intérêt légitime",
-    keep: "Jusqu'à ta désinscription (bouton du bot), ou la suppression du raid ou du groupe. Sorties : effacées automatiquement, comme la sortie.",
-    who: "Les membres du groupe et le salon Discord de l'annonce.",
+    keep: "Jusqu'à ta désinscription (bouton du bot), ou la suppression du raid ou de la guilde. Sorties : effacées automatiquement, comme la sortie.",
+    who: "Les membres de la guilde et le salon Discord de l'annonce.",
   },
   {
     title: "Absences",
@@ -199,7 +199,7 @@ const ROWS: Row[] = [
     why: "Te marquer « Absent » aux raids de ces jours.",
     basis: "Contrat",
     keep: "Jusqu'à ce que tu la retires. Une absence passée n'est plus affichée mais reste en base tant que le compte existe.",
-    who: "Tes groupes voient « Absent ». Le motif : toi et les officiers, ou tout le groupe si tu le choisis.",
+    who: "Tes guildes voient « Absent ». Le motif : toi et les officiers, ou toute la guilde si tu le choisis.",
   },
   {
     title: "Bilans de raid : présence et butin",
@@ -207,15 +207,15 @@ const ROWS: Row[] = [
     why: "Suivre la présence et le compte des objets reçus, pour un butin équitable.",
     basis: "Intérêt légitime",
     keep: "Tant que le raid existe : rien n'est effacé automatiquement.",
-    who: "Les membres du groupe.",
+    who: "Les membres de la guilde.",
   },
   {
     title: "Commandes d'artisanat",
     data: "Demandeur, artisan, recette, quantité, note, perso qui recevra l'objet.",
-    why: "Mettre en relation le demandeur et les artisans du groupe.",
+    why: "Mettre en relation le demandeur et les artisans de la guilde.",
     basis: "Contrat",
-    keep: "Jusqu'à son annulation (demandeur ou officier). Une commande faite n'est plus affichée après 14 jours mais reste en base tant que le groupe existe.",
-    who: "Les membres du groupe et le salon Discord des commandes, s'il est lié.",
+    keep: "Jusqu'à son annulation (demandeur ou officier). Une commande faite n'est plus affichée après 14 jours mais reste en base tant que la guilde existe.",
+    who: "Les membres de la guilde et le salon Discord des commandes, s'il est lié.",
   },
   {
     title: "Sorties donjon",
@@ -223,7 +223,7 @@ const ROWS: Row[] = [
     why: "Former un groupe de 5 pour aujourd'hui ou demain.",
     basis: "Contrat",
     keep: "Effacées automatiquement 2 heures après l'heure prévue (ou à la fin du jour), avec leur message Discord. Messages privés : effacés 7 jours après leur envoi.",
-    who: "Les membres du groupe et le salon Discord de la sortie.",
+    who: "Les membres de la guilde et le salon Discord de la sortie.",
   },
   {
     title: "Signalements",
@@ -238,15 +238,15 @@ const ROWS: Row[] = [
     data: "Texte de l'avis, signé ou anonyme ; identifiant Discord de l'auteur ; pseudo pour un avis signé ; réponses échangées.",
     why: "Transmettre les réponses de l'équipe à l'auteur et suivre l'avis.",
     basis: "Intérêt légitime",
-    keep: "Avis non suivis sur le site : seul le lien entre l'avis et son auteur est gardé, 30 jours (le texte reste dans Discord). Avis suivis par un groupe : texte et réponses gardés jusqu'à ce qu'un officier les supprime ; l'identifiant de l'auteur est effacé 30 jours après la clôture de l'avis.",
-    who: "L'équipe du serveur Discord ; le chef et les officiers du groupe qui suit les avis. Un avis anonyme ne montre jamais son auteur : seul le bot connaît son identifiant, pour lui transmettre les réponses.",
+    keep: "Avis non suivis sur le site : seul le lien entre l'avis et son auteur est gardé, 30 jours (le texte reste dans Discord). Avis suivis par une guilde : texte et réponses gardés jusqu'à ce qu'un officier les supprime ; l'identifiant de l'auteur est effacé 30 jours après la clôture de l'avis.",
+    who: "L'équipe du serveur Discord ; le chef et les officiers de la guilde qui suit les avis. Un avis anonyme ne montre jamais son auteur : seul le bot connaît son identifiant, pour lui transmettre les réponses.",
   },
   {
     title: "Sécurité : journal et sessions",
     data: "Événements du compte (connexions, échecs, changements sensibles) avec la date, l'adresse IP, le navigateur et le système ; sessions ouvertes (adresse IP, navigateur, dernière activité) ; échecs de connexion avec une adresse inconnue (adresse IP et navigateur, sans l'adresse saisie).",
     why: "Protéger les comptes et te montrer qui s'est connecté.",
     basis: "Intérêt légitime",
-    keep: "Journal : effacé au bout de 12 mois ; une action faite dans un groupe reste dans le journal du groupe, sans adresse IP ni navigateur. Sessions : effacées 30 jours après leur fin (déconnexion, expiration ou 7 jours sans activité). Si tu supprimes ton compte, l'adresse IP et le navigateur sont effacés tout de suite de ton journal ; ses événements restent, détachés du compte.",
+    keep: "Journal : effacé au bout de 12 mois ; une action faite dans une guilde reste dans le journal de la guilde, sans adresse IP ni navigateur. Sessions : effacées 30 jours après leur fin (déconnexion, expiration ou 7 jours sans activité). Si tu supprimes ton compte, l'adresse IP et le navigateur sont effacés tout de suite de ton journal ; ses événements restent, détachés du compte.",
     who: "Toi (Compte & sécurité). Jamais les autres joueurs.",
   },
   {
@@ -311,9 +311,9 @@ const STORAGE: [string, string][] = [
   ["fr-theme", "Thème choisi (clair ou sombre) ; absent : celui de ton appareil."],
   ["fr-news-seen", "Dernière nouveauté lue (point doré du bouton « Nouveautés »)."],
   ["fr-steps-hidden", "Étapes de démarrage masquées."],
-  ["fr-view-…", "Affichages choisis : liste des persos du groupe, arbres de talents, bandeau « Cette semaine »."],
+  ["fr-view-…", "Affichages choisis : liste des persos de la guilde, arbres de talents, bandeau « Cette semaine »."],
   ["fr-addon-fiches", "Ancien choix des fiches à l'import de l'addon : seulement relu, plus jamais écrit."],
-  ["fr-invite", "Lien d'invitation à un groupe, le temps de te connecter ; effacé ensuite (session de l'onglet)."],
+  ["fr-invite", "Lien d'invitation à une guilde, le temps de te connecter ; effacé ensuite (session de l'onglet)."],
   ["fr-tab", "Dernier onglet ouvert d'une fiche de perso (session de l'onglet)."],
 ];
 
@@ -363,14 +363,14 @@ export function PrivacyPage() {
         <h3>Quand tu supprimes ton compte</h3>
         <p>
           Sont effacés tout de suite : ton compte, tes persos, tes inscriptions, tes absences, tes images, tes sessions, tes
-          appareils, tes commandes d'artisanat et tes liaisons Battle.net et Discord. Si tu es chef d'un groupe, transfère-le ou
-          supprime-le d'abord.
+          appareils, tes commandes d'artisanat et tes liaisons Battle.net et Discord. Si tu es chef d'une guilde, transfère-la ou
+          supprime-la d'abord.
         </p>
         <p>
           Restent, sans lien avec ton compte : tes signalements, sans ton pseudo ni ton navigateur ; ton nom recopié sur certaines
-          actions faites dans un groupe (corrections du compte des objets, demandes « Demander à… ») ; les prénoms de tes persos dans
+          actions faites dans une guilde (corrections du compte des objets, demandes « Demander à… ») ; les prénoms de tes persos dans
           les bilans de raid ; les événements de ton journal de sécurité, sans adresse IP ni navigateur, jusqu'à leur effacement au
-          bout de 12 mois (ceux du journal d'un groupe restent avec lui). Tu peux demander leur effacement (voir « Tes droits »).
+          bout de 12 mois (ceux du journal d'une guilde restent avec elle). Tu peux demander leur effacement (voir « Tes droits »).
         </p>
         <h3>Sauvegardes</h3>
         <p>
@@ -385,11 +385,11 @@ export function PrivacyPage() {
         <ul className="legal-list">
           <li>
             <span className="tag legal-basis">Contrat</span> : le service que tu demandes en créant un compte ou en utilisant le bot
-            (compte, persos, groupes, raids, absences, commandes, sorties, Roster Companion, e-mails du compte).
+            (compte, persos, guildes, raids, absences, commandes, sorties, Roster Companion, e-mails du compte).
           </li>
           <li>
             <span className="tag legal-basis li">Intérêt légitime</span> : la sécurité du site (journal, sessions, journaux du
-            serveur), l'organisation des groupes (bilans de raid, inscrits Discord sans compte) et l'amélioration du site
+            serveur), l'organisation des guildes (bilans de raid, inscrits Discord sans compte) et l'amélioration du site
             (signalements, avis). Tu peux t'y opposer (voir « Tes droits »).
           </li>
           <li>
@@ -422,9 +422,9 @@ export function PrivacyPage() {
             mot de passe, ni ton adresse, ni ton adresse IP (la demande part du serveur).
           </li>
           <li>
-            <b>Ton addon</b> : « Copier pour le jeu » et Roster Companion mettent les données de tes groupes dans l'addon, sur ton
+            <b>Ton addon</b> : « Copier pour le jeu » et Roster Companion mettent les données de tes guildes dans l'addon, sur ton
             ordinateur. L'addon peut les transmettre en jeu aux joueurs de ta guilde et de ton raid qui l'ont aussi ; chacun ne garde
-            que les groupes dont il fait partie. Tu peux couper ce partage dans les options de l'addon.
+            que les guildes dont il fait partie. Tu peux couper ce partage dans les options de l'addon.
           </li>
           <li><b>GitHub</b> : Roster Companion y cherche ses mises à jour, sans y envoyer de données du site.</li>
         </ul>
@@ -467,7 +467,7 @@ export function PrivacyPage() {
         <p>
           Le site n'est servi qu'en HTTPS. Les mots de passe sont hachés avec Argon2id et les jetons de connexion sont gardés hachés :
           même une fuite de la base ne les révélerait pas. Chaque action est vérifiée par le serveur : un joueur ne voit que les
-          groupes dont il est membre. Le serveur est tenu à jour, son accès est restreint, et la base est sauvegardée chaque nuit.
+          guildes dont il est membre. Le serveur est tenu à jour, son accès est restreint, et la base est sauvegardée chaque nuit.
           Le code est public : chacun peut le relire. Si une fuite de données présentait un risque pour toi, tu en serais prévenu,
           comme le prévoit le RGPD.
         </p>
@@ -475,7 +475,7 @@ export function PrivacyPage() {
 
       <Sec id="droits" title="Tes droits">
         <ul className="legal-list">
-          <li><b>Accès</b> : <Link to="/account">Compte &amp; sécurité</Link> montre ton compte, tes sessions, tes appareils et ton journal de sécurité ; tes persos et tes groupes sont sur le site. Pour une copie complète, écris à <Contact />.</li>
+          <li><b>Accès</b> : <Link to="/account">Compte &amp; sécurité</Link> montre ton compte, tes sessions, tes appareils et ton journal de sécurité ; tes persos et tes guildes sont sur le site. Pour une copie complète, écris à <Contact />.</li>
           <li><b>Rectification</b> : modifie directement ton pseudo, tes persos ou tes absences, ou écris à l'éditeur.</li>
           <li><b>Effacement</b> : « Supprimer mon compte », dans Compte &amp; sécurité, efface ton compte tout de suite. Tu peux aussi supprimer un perso, une absence ou une inscription, et délier Battle.net, Discord ou un appareil. Pour le reste (signalements, journal, bilans de raid), écris à l'éditeur.</li>
           <li><b>Portabilité</b> : sur demande, une copie de tes données dans un fichier lisible (JSON).</li>
@@ -500,15 +500,15 @@ export function PrivacyPage() {
           </li>
           <li>
             <b>Bilans de raid</b> : l'addon d'un officier note les prénoms en jeu des joueurs présents dans le raid, leurs heures de
-            présence, les objets reçus et les consommables. Ces bilans restent dans le groupe tant que le raid existe.
+            présence, les objets reçus et les consommables. Ces bilans restent dans la guilde tant que le raid existe.
           </li>
           <li>
             <b>Avis Discord</b> : ton identifiant Discord, pour te transmettre les réponses, effacé comme le dit le tableau.
           </li>
         </ul>
         <p>
-          Pour les faire effacer, demande aux officiers du groupe, ou écris à <Contact /> en donnant ton prénom en jeu ou ton pseudo
-          Discord, et le groupe ou le serveur Discord concerné. Tu as les mêmes droits qu'un joueur avec un compte.
+          Pour les faire effacer, demande aux officiers de la guilde, ou écris à <Contact /> en donnant ton prénom en jeu ou ton pseudo
+          Discord, et la guilde ou le serveur Discord concerné. Tu as les mêmes droits qu'un joueur avec un compte.
         </p>
       </Sec>
 

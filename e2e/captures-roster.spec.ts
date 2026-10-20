@@ -153,6 +153,6 @@ test("captures d'écran de Roster (WoW Retail)", async ({ page }) => {
   // 4. Butin : conseil (distribution par l'addon Roster) et choix du conseil (page courte : fenêtre moins haute)
   await page.setViewportSize({ width: 1360, height: 740 });
   await page.goto(`${raidUrl}/butin`);
-  await expect(page.getByRole("region", { name: "Conseil du butin" })).toContainText("Par défaut : les officiers du groupe.");
+  await expect(page.getByRole("region", { name: "Conseil du butin" })).toContainText("Par défaut : les officiers de la guilde.");
   await page.screenshot({ path: `${OUT}/04-butin.png` });
 });

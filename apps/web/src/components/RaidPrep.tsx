@@ -297,7 +297,7 @@ export function CouncilPicker({ groupId, raidId, retail = false }: { groupId: st
     <section className="stack" aria-labelledby="pr-council" style={{ gap: 8 }}>
       <div className="row between"><h3 id="pr-council" style={{ margin: 0 }}>Conseil du butin</h3>
         {d.council && <button type="button" className="btn ghost sm" onClick={() => save(null)}>Revenir aux officiers</button>}</div>
-      <p className="hint" style={{ margin: 0 }}>{d.council ? "Choisi pour ce raid (repris au prochain raid du même nom)." : "Par défaut : les officiers du groupe."} {retail
+      <p className="hint" style={{ margin: 0 }}>{d.council ? "Choisi pour ce raid (repris au prochain raid du même nom)." : "Par défaut : les officiers de la guilde."} {retail
         ? "L'addon Roster le reçoit avec « Copier pour le jeu » : en jeu, réponses et votes ne vont qu'à ses membres et au chef de butin."
         : "En jeu, réponses et votes ne sont envoyés qu'à eux et au maître du butin."}</p>
       <div className="pr-council">

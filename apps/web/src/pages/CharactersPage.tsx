@@ -66,7 +66,7 @@ export function CharactersPage() {
   const { data, isLoading } = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters") });
   const groupsQ = useQuery({ queryKey: ["groups"], queryFn: () => get<{ groups: GroupSummary[] }>("/groups") });
   const myGroups = (groupsQ.data?.groups ?? []).map(g => ({ id: g.id, name: g.name }));
-  const sections = [...myGroups.map(g => ({ key: g.id, name: g.name })), { key: "", name: "Sans groupe" }];
+  const sections = [...myGroups.map(g => ({ key: g.id, name: g.name })), { key: "", name: "Sans guilde" }];
   const [local, setLocal] = useState<Character[]>([]);
   // Perso et onglet dans l'adresse : /persos/:charId/:tab (retour arrière, lien direct)
   const params = useParams();
@@ -164,7 +164,7 @@ export function CharactersPage() {
         <MyAbsences />
         <div className="split">
           <aside className="stack">
-            <p className="hint" style={{ margin: 0 }}>{myGroups.length ? "Glisse ⋮⋮ pour réordonner, ou vers un autre groupe pour l'y ranger." : "Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner."}</p>
+            <p className="hint" style={{ margin: 0 }}>{myGroups.length ? "Glisse ⋮⋮ pour réordonner, ou vers une autre guilde pour l'y ranger." : "Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner."}</p>
             <SortableList items={local} sections={myGroups.length ? sections : [{ key: "", name: "Mes persos" }]} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }}
               onReorder={ids => void saveOrder(ids)} onMove={(id, to) => { const c = local.find(x => x.id === id); if (c) void moveTo(c, to); }} />
           </aside>
@@ -221,7 +221,7 @@ export function CharacterCard({ c, current, onClick }: { c: Character; current?:
         <Portrait id={c.portraitId} size={42} className="round"
           fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
       </span>
-      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans ce groupe">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
+      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans cette guilde">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
       {race ? <FactionBadge faction={race.faction} /> : <span />}
       <span className="sub">{[t.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}{c.ilvl ? ` · ilvl ${c.ilvl}` : ""}</span>
     </button>
@@ -292,7 +292,7 @@ function SortableList({ items, sections, selected, onSelect, onReorder, onMove }
                 <CharacterCard c={c} current={c.id === selected} onClick={() => onSelect(c.id)} />
               </div>
             ))}
-            {!list.length && <p className="ch-drop">{dragging ? "Lâche ici pour ranger ce perso dans ce groupe" : "Aucun perso : glisse-en un ici, ou choisis ce groupe dans sa fiche."}</p>}
+            {!list.length && <p className="ch-drop">{dragging ? "Lâche ici pour ranger ce perso dans cette guilde" : "Aucun perso : glisse-en un ici, ou choisis cette guilde dans sa fiche."}</p>}
           </div>
         );
       })}
@@ -305,18 +305,18 @@ function GroupBar({ c, groups, onMove, onMain }: { c: Character; groups: { id: s
   if (!groups.length) return null;
   return (
     <div className="ch-gbar">
-      <label className="lbl" htmlFor="ch-group">Groupe</label>
+      <label className="lbl" htmlFor="ch-group">Guilde</label>
       <select id="ch-group" value={c.group?.id ?? ""} onChange={e => onMove(e.target.value)}>
         {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-        <option value="">Aucun groupe</option>
+        <option value="">Aucune guilde</option>
       </select>
       {c.group && (
-        <div className="seg" role="group" aria-label="Main ou alt dans ce groupe">
+        <div className="seg" role="group" aria-label="Main ou alt dans cette guilde">
           <button type="button" className={c.group.isMain ? "on" : ""} aria-pressed={c.group.isMain} onClick={() => { if (!c.group?.isMain) onMain(); }}>★ Main</button>
           <button type="button" className={c.group.isMain ? "" : "on"} aria-pressed={!c.group.isMain} disabled={c.group.isMain} title={c.group.isMain ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined}>Alt</button>
         </div>
       )}
-      <span className="hint ch-ghint">{c.group ? (c.group.isMain ? "Ton main est proposé en premier pour les inscriptions." : "Un seul main par groupe : en choisir un autre fait passer l'ancien en alt.") : "Sans groupe : il entre dans le groupe du premier raid où tu l'inscris."}</span>
+      <span className="hint ch-ghint">{c.group ? (c.group.isMain ? "Ton main est proposé en premier pour les inscriptions." : "Un seul main par guilde : en choisir un autre fait passer l'ancien en alt.") : "Sans guilde : il entre dans la guilde du premier raid où tu l'inscris."}</span>
     </div>
   );
 }

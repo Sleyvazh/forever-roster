@@ -37,8 +37,8 @@ function Face({ c, size }: { c: Character; size: number }) {
 }
 
 const Mark = ({ c }: { c: Character }) => c.isMain
-  ? <span className="gm-star" title="Perso principal (main) dans ce groupe" aria-label="Main">★</span>
-  : <span className="gm-alt" title="Autre perso joué dans ce groupe">alt</span>;
+  ? <span className="gm-star" title="Perso principal (main) dans cette guilde" aria-label="Main">★</span>
+  : <span className="gm-alt" title="Autre perso joué dans cette guilde">alt</span>;
 
 /* ---------- Mes persos dans ce groupe ---------- */
 
@@ -66,9 +66,9 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
   }
   if (!assigned.length) {
     return (
-      <section className="gm-panel gm-empty" aria-label="Mes persos dans ce groupe">
+      <section className="gm-panel gm-empty" aria-label="Mes persos dans cette guilde">
         <h3>Tu ne joues encore aucun perso dans {groupName}</h3>
-        <p className="hint">{free.length ? "Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer dans Mes persos)." : "Tes persos sont tous rangés dans un autre groupe. Change le groupe de l'un d'eux dans Mes persos."}</p>
+        <p className="hint">{free.length ? "Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer dans Mes persos)." : "Tes persos sont tous rangés dans une autre guilde. Change la guilde de l'un d'eux dans Mes persos."}</p>
         <div className="gm-chips">
           {free.map(c => (
             <button key={c.id} type="button" className="gm-chip" disabled={!!busy} onClick={() => void add(c.id)}>
@@ -240,7 +240,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
       <MyCharacters groupId={groupId} groupName={groupName} assigned={all.filter(c => c.userId === myId)} onError={setError} />
       {error && <div className="alert error" role="alert">{error}</div>}
       {!all.length ? (
-        <p className="muted" style={{ margin: 0 }}>Les membres n'ont pas encore choisi leurs persos pour ce groupe.</p>
+        <p className="muted" style={{ margin: 0 }}>Les membres n'ont pas encore choisi leurs persos pour cette guilde.</p>
       ) : (
         <>
           <div className="row gc-tools">
@@ -267,7 +267,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
               {layout(chars)}
             </div>
           ))}
-          {noMain > 0 && <p className="hint" style={{ margin: 0 }}>{noMain} membre{noMain > 1 ? "s n'ont" : " n'a"} encore choisi aucun perso pour ce groupe.</p>}
+          {noMain > 0 && <p className="hint" style={{ margin: 0 }}>{noMain} membre{noMain > 1 ? "s n'ont" : " n'a"} encore choisi aucun perso pour cette guilde.</p>}
         </>
       )}
 
@@ -277,12 +277,12 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
           {canManage(opened) && (
             <div className="gm-act">
               <span className="gm-who"><Face c={opened} size={22} /><b style={{ color: color(opened) }}>{opened.name}</b>
-                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans ce groupe</span></span>
+                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans cette guilde</span></span>
               <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
                 {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>★ En faire le main</button>}
-                <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer du groupe</button>
+                <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer de la guilde</button>
               </span>
-              {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>Tu es officier : la modification est notée au journal du groupe. Le joueur garde la main sur ses persos.</span>}
+              {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.</span>}
             </div>
           )}
           {gt.game === "retail" ? <RetailCharacterView c={opened} /> : <CharacterEditor character={opened} editable={false} onChange={() => {}} />}

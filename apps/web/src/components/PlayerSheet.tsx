@@ -66,8 +66,8 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
       </div>
       <div className="ps-cols">
         <div>
-          <h4 className="gm-sec">Persos dans le groupe</h4>
-          {characters.length === 0 ? <p className="muted small">Aucun perso choisi pour ce groupe.</p> : (
+          <h4 className="gm-sec">Persos dans la guilde</h4>
+          {characters.length === 0 ? <p className="muted small">Aucun perso choisi pour cette guilde.</p> : (
             <ul className="ps-chars">
               {characters.map(c => (
                 <li key={c.id}>

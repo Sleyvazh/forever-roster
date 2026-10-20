@@ -106,7 +106,7 @@ export function TopBar() {
           {app ? (
             <nav className="nav" aria-label="Navigation principale">
               <NavLink to="/persos">Mes persos</NavLink>
-              <NavLink to="/groups">Groupes</NavLink>
+              <NavLink to="/groups">Guildes</NavLink>
               <NavLink to="/addon">Addon</NavLink>
             </nav>
           ) : <span />}
@@ -123,7 +123,7 @@ export function TopBar() {
       {app && (
         <nav className="tabbar" aria-label="Navigation principale (mobile)">
           <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
-          <NavLink to="/groups">{TAB_ICONS.groupes}Groupes</NavLink>
+          <NavLink to="/groups">{TAB_ICONS.groupes}Guildes</NavLink>
           <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
         </nav>
       )}

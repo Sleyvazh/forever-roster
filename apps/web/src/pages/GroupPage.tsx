@@ -43,13 +43,13 @@ interface GroupEvent { id: number; type: string; actor: string | null; meta: Rec
 
 const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 const EVENT_LABEL: Record<string, string> = {
-  group_created: "a créé le groupe", group_renamed: "a renommé le groupe", group_joined: "a rejoint le groupe", group_left: "a quitté le groupe",
+  group_created: "a créé la guilde", group_renamed: "a renommé la guilde", group_joined: "a rejoint la guilde", group_left: "a quitté la guilde",
   group_member_removed: "a retiré un membre", group_role_changed: "a changé un rôle", invite_created: "a créé une invitation",
   invite_revoked: "a révoqué une invitation", raid_created: "a créé un raid", raid_deleted: "a supprimé un raid",
   raid_template_created: "a créé un raid récurrent", raid_template_updated: "a modifié un raid récurrent", raid_template_deleted: "a supprimé un raid récurrent",
   raid_roster_published: "a publié une compo sur Discord", raid_roster_unpublished: "a retiré une compo de Discord",
   group_discord_linked: "a lié un salon Discord", group_discord_unlinked: "a délié le salon Discord",
-  template_discord_linked: "a lié un salon Discord à un raid récurrent", template_discord_unlinked: "a rendu un raid récurrent au salon du groupe",
+  template_discord_linked: "a lié un salon Discord à un raid récurrent", template_discord_unlinked: "a rendu un raid récurrent au salon de la guilde",
   group_character_changed: "a modifié les persos d'un membre", group_loot_settings: "a changé les réglages du butin", loot_history_imported: "a importé un historique de butin",
   group_nudge_settings: "a changé les relances Discord", raid_nudged: "a relancé les sans-réponse", raid_ask_sent: "a demandé à un joueur de venir",
   group_feedback_linked: "a relié les avis d'un serveur Discord", group_feedback_unlinked: "a retiré les avis d'un serveur Discord",
@@ -81,13 +81,13 @@ export function GroupPage() {
   };
 
   if (detail.isLoading) return <p className="muted">Chargement…</p>;
-  if (detail.error || !detail.data) return <div className="panel empty"><h2>Groupe introuvable</h2><Link to="/groups">Retour aux groupes</Link></div>;
+  if (detail.error || !detail.data) return <div className="panel empty"><h2>Guilde introuvable</h2><Link to="/groups">Retour aux guildes</Link></div>;
   const { group, role, members } = detail.data;
   // Un site, deux adresses : un groupe de l'autre jeu s'ouvre sur son site
   if (group.game !== site.game) return (
     <div className="panel lift pad stack" style={{ maxWidth: 620 }}>
       <h2 style={{ margin: 0 }}>{group.name}</h2>
-      <p style={{ margin: 0 }}>Ce groupe est sur <b>{group.site.name}</b>. Ton compte y est le même.</p>
+      <p style={{ margin: 0 }}>Cette guilde est sur <b>{group.site.name}</b>. Ton compte y est le même.</p>
       <p style={{ margin: 0 }}><a className="btn primary" href={`${group.site.origin}/groups/${group.id}`}>Ouvrir sur {group.site.name}</a></p>
     </div>
   );
@@ -106,7 +106,7 @@ export function GroupPage() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
         <div style={{ flex: "1 1 280px", minWidth: 0 }}>
-          <div className="eyebrow"><Link to="/groups">Groupes</Link> · {ROLE_LABEL[role]}</div>
+          <div className="eyebrow"><Link to="/groups">Guildes</Link> · {ROLE_LABEL[role]}</div>
           {isOfficer
             ? <GroupName key={group.name} name={group.name} onSave={name => guard(async () => {
                 await patch(`/groups/${groupId}`, { name });
@@ -115,7 +115,7 @@ export function GroupPage() {
             : <h1>{group.name}</h1>}
         </div>
         <div className="row">
-          {role !== "owner" && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })}>Quitter le groupe</button>}
+          {role !== "owner" && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })}>Quitter la guilde</button>}
         </div>
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
@@ -142,11 +142,11 @@ export function GroupPage() {
                 <CreatorsSettings groupId={groupId} creators={group.creators} guard={guard} /></>,
               feedback: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,
               addon: <GroupAddonExport groupId={groupId} />,
-              journal: <section className="stack admin-sec"><h3>Journal du groupe</h3><Journal groupId={groupId} /></section>,
+              journal: <section className="stack admin-sec"><h3>Journal de la guilde</h3><Journal groupId={groupId} /></section>,
               danger: (
                 <section className="stack admin-sec danger-zone">
                   <h3>Zone sensible</h3>
-                  <p className="hint" style={{ margin: 0 }}>Supprime définitivement le groupe, ses raids, ses invitations et la liaison Discord. Les persos des membres ne sont pas touchés.</p>
+                  <p className="hint" style={{ margin: 0 }}>Supprime définitivement la guilde du site, ses raids, ses invitations et la liaison Discord. Les persos des membres ne sont pas touchés.</p>
                   <div><DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/groups"); })} /></div>
                 </section>
               ),
@@ -200,7 +200,7 @@ function GroupName({ name, onSave }: { name: string; onSave: (name: string) => P
   return (
     <form className="row" onSubmit={e => void submit(e)} style={{ alignItems: "flex-end", marginTop: 6 }}>
       <div className="fld" style={{ flex: "1 1 240px" }}>
-        <label htmlFor="g-name">Nom du groupe</label>
+        <label htmlFor="g-name">Nom de la guilde</label>
         <input id="g-name" type="text" required minLength={2} maxLength={48} autoFocus value={value}
           onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === "Escape") cancel(); }} />
       </div>
@@ -213,8 +213,8 @@ function GroupName({ name, onSave }: { name: string; onSave: (name: string) => P
 function DeleteGroup({ onDelete }: { onDelete: () => void }) {
   const [confirm, setConfirm] = useState(false);
   return confirm
-    ? <span className="row small">Supprimer le groupe, ses raids et ses invitations ? <button className="btn danger sm" type="button" onClick={onDelete}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirm(false)}>Annuler</button></span>
-    : <button className="btn ghost sm" type="button" onClick={() => setConfirm(true)}>Supprimer le groupe</button>;
+    ? <span className="row small">Supprimer la guilde, ses raids et ses invitations ? <button className="btn danger sm" type="button" onClick={onDelete}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirm(false)}>Annuler</button></span>
+    : <button className="btn ghost sm" type="button" onClick={() => setConfirm(true)}>Supprimer la guilde</button>;
 }
 
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
@@ -239,7 +239,7 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
   const remove = (m: Member) => guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); setConfirm(null); await refresh(); });
   return (
     <div className="stack">
-    <p className="hint" style={{ margin: 0 }}>Clique un nom pour voir sa fiche dans le groupe : persos, présence, butin.</p>
+    <p className="hint" style={{ margin: 0 }}>Clique un nom pour voir sa fiche dans la guilde : persos, présence, butin.</p>
     <div className="tscroll"><table className="data mb-table">
       <thead><tr><th>Joueur</th><th>Main</th><th>Rôle</th><th title={nRaids ? `Sur les ${nRaids} derniers raids relevés par l'addon` : undefined}>Présence</th><th>Depuis</th><th /></tr></thead>
       <tbody>{members.map(m => {
@@ -256,14 +256,14 @@ function Members({ groupId, members, myRole, myId, guard }: { groupId: string; m
           <td className="nowrap">{nRaids ? (() => { const n = presence(m.userId), pct = Math.round(n / nRaids * 100); return <><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{n}/{nRaids}</span></>; })() : <span className="muted">—</span>}</td>
           <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>
           <td className="mb-act">
-            {asking === "owner" && <span className="row small">Lui donner le groupe ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
+            {asking === "owner" && <span className="row small">Lui donner la guilde ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
             {asking === "remove" && <span className="row small">Retirer {m.displayName} ? <button type="button" className="btn danger sm" onClick={() => void remove(m)}>Retirer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
             {!asking && (canRole || canRemove) && (
               <RowMenu label={`Actions pour ${m.displayName}`}>{close => <>
                 {canRole && m.role === "member" && <button type="button" role="menuitem" onClick={() => { close(); void setRole(m, "officer"); }}>Nommer officier</button>}
                 {canRole && m.role === "officer" && <button type="button" role="menuitem" onClick={() => { close(); void setRole(m, "member"); }}>Repasser membre</button>}
                 {canRole && <button type="button" role="menuitem" onClick={() => { close(); setConfirm({ userId: m.userId, action: "owner" }); }}>Transférer la propriété…</button>}
-                {canRemove && <button type="button" role="menuitem" className="bad" onClick={() => { close(); setConfirm({ userId: m.userId, action: "remove" }); }}>Retirer du groupe…</button>}
+                {canRemove && <button type="button" role="menuitem" className="bad" onClick={() => { close(); setConfirm({ userId: m.userId, action: "remove" }); }}>Retirer de la guilde…</button>}
               </>}</RowMenu>
             )}
           </td>
@@ -483,7 +483,7 @@ function OutingsChannel({ groupId, linked, name, hasDiscord, guard }: { groupId:
       </div>
       <p className="hint" style={{ margin: 0 }}>{linked
         ? "Une annonce par sortie donjon, avec des boutons pour s'inscrire ; elle est effacée 2 h après l'heure de la sortie."
-        : "Facultatif. Sans lui, les sorties vont dans le salon du groupe."}</p>
+        : "Facultatif. Sans lui, les sorties vont dans le salon de la guilde."}</p>
       {!hasDiscord && wantCode && <div className="alert info">Lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
       <div className="row">
         <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {

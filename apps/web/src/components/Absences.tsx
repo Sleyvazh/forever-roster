@@ -60,7 +60,7 @@ export function MyAbsences() {
         {list.map(a => (
           <span key={a.id} className="ab-chip">
             {absenceLabel(a)}
-            {a.reason && <span className="muted" title={a.reasonVisibility === "group" ? "Motif visible de tout le groupe" : "Motif visible des officiers"}> · {a.reason}</span>}
+            {a.reason && <span className="muted" title={a.reasonVisibility === "group" ? "Motif visible de toute la guilde" : "Motif visible des officiers"}> · {a.reason}</span>}
             <button type="button" aria-label={`Retirer l'absence ${absenceLabel(a)}`} title="Retirer" onClick={() => void remove(a)}>✕</button>
           </span>
         ))}
@@ -88,9 +88,9 @@ export function MyAbsences() {
           <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="ab-why">Motif (facultatif)</label>
             <input id="ab-why" type="text" maxLength={120} placeholder="Vacances, travail…" value={reason} onChange={e => setReason(e.target.value)} /></div>
           <div className="fld" style={{ flex: "1 1 170px" }}><label htmlFor="ab-vis">Motif visible par</label>
-            <select id="ab-vis" value={vis} onChange={e => setVis(e.target.value as "officers" | "group")}><option value="officers">les officiers</option><option value="group">tout le groupe</option></select></div>
+            <select id="ab-vis" value={vis} onChange={e => setVis(e.target.value as "officers" | "group")}><option value="officers">les officiers</option><option value="group">toute la guilde</option></select></div>
           <div className="row"><button type="submit" className="btn primary sm" disabled={kind === "weekly" && !days.length}>Enregistrer</button><button type="button" className="btn ghost sm" onClick={() => setForm(false)}>Annuler</button></div>
-          <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>Les raids de ces jours où tu n'as pas encore répondu passent en « Absent », dans tous tes groupes, même ceux créés plus tard. Une réponse déjà donnée ne change pas.</p>
+          <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>Les raids de ces jours où tu n'as pas encore répondu passent en « Absent », dans toutes tes guildes, même celles créées plus tard. Une réponse déjà donnée ne change pas.</p>
         </form>
       )}
       {msg && <div className={msg.ok ? "small muted" : "alert error"} role="status">{msg.text}</div>}

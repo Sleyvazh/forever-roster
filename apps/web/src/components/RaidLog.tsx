@@ -128,7 +128,7 @@ export function RaidLogPanel({ log, groupId, raidId, officer }: { log: RaidLogVi
             <tbody>
               {log.attendance.map(a => (
                 <tr key={`${a.name}-${a.characterId}`}>
-                  <td style={{ color: clsColor(a.cls) }}>{a.name}{!a.characterId && <span className="muted small" title="Aucune fiche de ce nom dans le groupe"> · sans fiche</span>}</td>
+                  <td style={{ color: clsColor(a.cls) }}>{a.name}{!a.characterId && <span className="muted small" title="Aucune fiche de ce nom dans la guilde"> · sans fiche</span>}</td>
                   <td className="muted">{a.first ? `${hm(a.first)} → ${hm(a.last)}` : "—"}</td>
                   <td className="r"><AttendanceChip s={a.status} /></td>
                 </tr>

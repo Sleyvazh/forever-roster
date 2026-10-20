@@ -44,7 +44,7 @@ export function CraftOrders({ groupId, myId, prefill }: { groupId: string; myId?
       </div>
       {form && <NewOrder key={prefill?.key ?? 0} groupId={groupId} prefill={prefill ?? null} onDone={() => { setForm(false); void refresh(); }} onCancel={() => setForm(false)} />}
       {error && <div className="alert error" role="alert">{error}</div>}
-      {orders.length === 0 ? <p className="hint" style={{ margin: 0 }}>Aucune commande. Demande une fabrication : les artisans du groupe qui connaissent le patron la verront ici.</p> : (
+      {orders.length === 0 ? <p className="hint" style={{ margin: 0 }}>Aucune commande. Demande une fabrication : les artisans de la guilde qui connaissent le patron la verront ici.</p> : (
         <div className="tscroll"><table className="data co-table">
           <thead><tr><th>Objet</th><th>Demandé par</th><th>Artisans</th><th>Statut</th><th /></tr></thead>
           <tbody>{orders.map(o => (
@@ -138,7 +138,7 @@ function NewOrder({ groupId, prefill, onDone, onCancel }: { groupId: string; pre
       ) : (
         <div className="co-pick">
           <span><b className={pick.quality != null ? `q${pick.quality}` : ""}>[{pick.itemName ?? pick.name}]</b> <span className="muted small">{SKILL_LINE_NAMES[pick.skillLine] ?? "?"} {pick.reqSkill}</span><br />
-            <span className="small">{pick.crafters.length ? <>Peuvent le faire : <b>{names(pick.crafters, 5)}</b></> : <span className="warnmsg">Personne dans le groupe ne connaît ce patron pour l'instant.</span>}</span></span>
+            <span className="small">{pick.crafters.length ? <>Peuvent le faire : <b>{names(pick.crafters, 5)}</b></> : <span className="warnmsg">Personne dans la guilde ne connaît ce patron pour l'instant.</span>}</span></span>
           <button type="button" className="btn ghost sm" onClick={() => setPick(null)}>Changer</button>
         </div>
       )}

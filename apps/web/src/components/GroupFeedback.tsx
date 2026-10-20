@@ -54,8 +54,8 @@ export function GroupFeedback({ groupId, groupName, focus }: { groupId: string; 
       {q.data && (sources.length ? <Sources groupId={groupId} sources={sources} /> : (
         <div className="alert info av-how">
           <b>Pas de serveur Discord relié.</b> Sur votre serveur, un membre qui peut le gérer lance
-          {" "}<code>/feedback-config regler</code> avec <code>site: {site.name}</code> et <code>groupe: {groupName}</code>.
-          {" "}La liste ne propose que les groupes liés à ce serveur (salon des raids ou des commandes, onglet « Discord et relances »).
+          {" "}<code>/feedback-config regler</code> avec <code>site: {site.name}</code> et <code>guilde: {groupName}</code>.
+          {" "}La liste ne propose que les guildes liées à ce serveur (salon des raids ou des commandes, onglet « Discord et relances »).
         </div>
       ))}
       {q.isLoading && <p className="muted">Chargement…</p>}

@@ -10,7 +10,7 @@ export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member:
 
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
 
-/** Formulaire de création (dans la page vide, ou sous le bouton « Créer un groupe »). */
+/** Formulaire de création (dans la page vide, ou sous le bouton « Créer une guilde »). */
 function CreateForm({ autoFocus, onCancel }: { autoFocus?: boolean; onCancel?: () => void }) {
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -26,7 +26,7 @@ function CreateForm({ autoFocus, onCancel }: { autoFocus?: boolean; onCancel?: (
   };
   return (
     <form className="g-create" onSubmit={create}>
-      <div className="fld"><label htmlFor="g-name">Nom du groupe</label>
+      <div className="fld"><label htmlFor="g-name">Nom de la guilde</label>
         <input id="g-name" type="text" required minLength={2} maxLength={48} autoFocus={autoFocus} value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Les Tournicotis" /></div>
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="row">
@@ -83,11 +83,11 @@ export function GroupsPage() {
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
-        <div><div className="eyebrow">Guildes et groupes</div><h1>Groupes</h1></div>
+        <div><div className="eyebrow">Guildes et groupes de raid</div><h1>Guildes</h1></div>
         {groups.length > 0 && (
           <div className="g-actions" ref={pop}>
-            <span className="g-join hint">Pour rejoindre un groupe : ouvre le lien d'invitation de ton officier.</span>
-            <button type="button" className="btn primary" aria-expanded={creating} aria-controls="g-create-pop" onClick={() => setCreating(c => !c)}>+ Créer un groupe</button>
+            <span className="g-join hint">Pour rejoindre une guilde : ouvre le lien d'invitation de ton officier.</span>
+            <button type="button" className="btn primary" aria-expanded={creating} aria-controls="g-create-pop" onClick={() => setCreating(c => !c)}>+ Créer une guilde</button>
             {creating && <div className="g-pop" id="g-create-pop"><CreateForm autoFocus onCancel={() => setCreating(false)} /></div>}
           </div>
         )}
@@ -95,12 +95,12 @@ export function GroupsPage() {
       {isLoading ? <p className="muted">Chargement…</p> : groups.length === 0 ? (
         <div className="g-empty">
           <section className="panel pad stack">
-            <h2>Rejoindre un groupe</h2>
-            <p className="muted" style={{ margin: 0 }}>Demande le lien d'invitation à un officier de ta guilde, puis ouvre-le : tu arrives directement dans le groupe.</p>
+            <h2>Rejoindre une guilde</h2>
+            <p className="muted" style={{ margin: 0 }}>Demande le lien d'invitation à un officier de ta guilde, puis ouvre-le : tu arrives directement dans la guilde du site.</p>
           </section>
           <section className="panel pad stack">
-            <h2>Créer ton groupe</h2>
-            <p className="muted" style={{ margin: 0 }}>Pour ta guilde ou ton groupe de raid : raids, compos, inscriptions, artisans, annonces Discord.</p>
+            <h2>Créer ta guilde</h2>
+            <p className="muted" style={{ margin: 0 }}>Pour ta guilde du jeu ou ton groupe de raid : raids, compos, inscriptions, artisans, annonces Discord.</p>
             <CreateForm />
           </section>
         </div>

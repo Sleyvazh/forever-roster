@@ -83,7 +83,7 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
       </div>
       {canPortrait && portraitOpen && (
         <div className="portrait-panel" id="portrait-panel">
-          <ImageUpload title="Portrait du perso" hint="Une capture de la tête de ton perso en jeu (PNG, JPEG ou WebP), recadrée en 200 × 200. Visible par les membres de tes groupes."
+          <ImageUpload title="Portrait du perso" hint="Une capture de la tête de ton perso en jeu (PNG, JPEG ou WebP), recadrée en 200 × 200. Visible par les membres de tes guildes."
             currentId={c.portraitId} round
             onUpload={async blob => { const r = await uploadImage<{ portraitId: string }>(`/characters/${c.id}/portrait`, blob); onPortrait!(r.portraitId); setPortraitOpen(false); }}
             onRemove={async () => { await del(`/characters/${c.id}/portrait`); onPortrait!(null); }} />

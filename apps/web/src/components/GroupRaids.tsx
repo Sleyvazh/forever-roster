@@ -154,7 +154,7 @@ function NewRaid({ groupId, raids, guard, onClose, weeklyAllowed = true }: { gro
       </div>
       <div className="gr-line"><span className="lbl">Jour</span>
         <div><DayStrip value={parts} onChange={setDay} habitDays={h.days} />
-          {h.days.length > 0 && <p className="hint gr-hint">Soulignés : les jours où le groupe raide d'habitude.</p>}</div>
+          {h.days.length > 0 && <p className="hint gr-hint">Soulignés : les jours où la guilde raide d'habitude.</p>}</div>
       </div>
       <div className="gr-line"><span className="lbl">Heure</span><TimeChips value={time} onChange={setTime} fav={h.times} /></div>
       <div className="gr-line"><span className="lbl">{retail ? "Difficulté" : "Format"}</span>

@@ -119,7 +119,7 @@ const Counts = ({ r }: { r: WeekRaid }) => (
 
 function TodoItem({ t }: { t: Exclude<WeekTodo, { kind: "signup" }> }) {
   if (t.kind === "assign") return (
-    <li className="wk-item assign"><span>Range un perso dans <b>{t.groupName}</b><span className="sub">Tu n'y joues encore aucun perso : dans Mes persos, choisis son groupe en haut de sa fiche (le premier devient ton main).</span></span>
+    <li className="wk-item assign"><span>Range un perso dans <b>{t.groupName}</b><span className="sub">Tu n'y joues encore aucun perso : dans Mes persos, choisis sa guilde en haut de sa fiche (le premier devient ton main).</span></span>
       <Link className="btn sm" to="/persos">Choisir</Link></li>
   );
   if (t.kind === "sync") return (
@@ -225,8 +225,8 @@ export function StartSteps({ onCreate, compact }: { onCreate: () => void; compac
   const steps = [
     { done: s.character, title: "Crée ton perso", text: "Nom, race, classe et spé. Le reste peut attendre, ou venir de l'addon.",
       action: <button type="button" className="btn primary" onClick={onCreate}>+ Créer mon perso</button> },
-    { done: s.group, title: "Rejoins ton groupe", text: "Ouvre le lien d'invitation donné par ton officier, ou crée ton propre groupe.",
-      action: <Link className="btn" to="/groups">Créer un groupe</Link> },
+    { done: s.group, title: "Rejoins ta guilde", text: "Ouvre le lien d'invitation donné par ton officier, ou crée ta propre guilde.",
+      action: <Link className="btn" to="/groups">Créer une guilde</Link> },
     { done: s.addon, title: "Installe l'addon", optional: true, text: "Il remplit ta fiche depuis le jeu : équipement, métiers, talents.",
       action: <Link className="btn" to="/addon">Page Addon</Link> },
   ];
@@ -250,7 +250,7 @@ export function StartSteps({ onCreate, compact }: { onCreate: () => void; compac
   return (
     <div className="start">
       <h2>Trois étapes pour commencer</h2>
-      <p className="muted">Ta fiche sert à ton groupe pour monter les raids : classe, spés, talents, métiers et objectifs BiS. Les étapes se cochent toutes seules.</p>
+      <p className="muted">Ta fiche sert à ta guilde pour monter les raids : classe, spés, talents, métiers et objectifs BiS. Les étapes se cochent toutes seules.</p>
       <ol className="start-steps">
         {steps.map((x, i) => (
           <li key={x.title} className={x.done ? "done" : i === current ? "current" : ""}>

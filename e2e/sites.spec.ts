@@ -175,7 +175,7 @@ test.describe("Roster (WoW Retail)", () => {
     });
 
     await test.step("groupe et raid Héroïque : effectif, inscription, buffs de Midnight", async () => {
-      await page.getByRole("link", { name: "Groupes" }).first().click();
+      await page.getByRole("link", { name: "Guildes" }).first().click();
       await page.fill("#g-name", "Pasta e Basta");
       await page.getByRole("button", { name: "Créer" }).click();
       await expect(page.getByRole("tab", { name: "Personnages" })).toBeVisible();
@@ -224,7 +224,7 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(mode.getByRole("radio", { name: "Conseil (distribution par Roster)" })).toHaveAttribute("aria-checked", "true");
       await expect(mode.getByRole("radio", { name: "Soft reserve" })).toHaveCount(0);
       const council = page.getByRole("region", { name: "Conseil du butin" });
-      await expect(council).toContainText("Par défaut : les officiers du groupe.");
+      await expect(council).toContainText("Par défaut : les officiers de la guilde.");
       const me = council.getByRole("checkbox", { name: /Officière/ });
       await expect(me).toBeChecked();
       // Choisi pour ce raid : la ligne L du texte pour l'addon
@@ -321,7 +321,7 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(lame.getByRole("button", { name: "Compter" })).toBeVisible();
       await expect(lame).toContainText("ne compte pas");
       if (process.env.SHOTS) await bilan.screenshot({ path: "test-results/shots/roster-bilan.png" });
-      await page.getByRole("link", { name: "Retour au groupe" }).click();
+      await page.getByRole("link", { name: "Retour à la guilde" }).click();
       await expect(page.getByRole("tab", { name: "Artisans" })).toHaveCount(0);
       await page.getByRole("tab", { name: "Présence & butin" }).click();
       await expect(page).toHaveURL(/\/presence$/);
@@ -346,7 +346,7 @@ test.describe("Roster (WoW Retail)", () => {
       await page.getByRole("button", { name: "Vérifier" }).click();
       const hist = page.locator("table.data").filter({ hasText: "Dans la liste" });
       await expect(hist.getByRole("row", { name: /Brumelune.*2.*Brumelune-Hyjal.*à ajouter/ })).toBeVisible();
-      await expect(hist.getByRole("row", { name: /Quinlan.*7.*pas dans le groupe/ })).toBeVisible();
+      await expect(hist.getByRole("row", { name: /Quinlan.*7.*pas dans la guilde/ })).toBeVisible();
       if (process.env.SHOTS) await page.locator(".lt-add").screenshot({ path: "test-results/shots/roster-historique.png" });
       await page.getByRole("button", { name: "Ajouter 1 joueur" }).click();
       await expect(page.getByRole("status").filter({ hasText: "1 joueur ajouté au compte (Historique Season 2)." })).toBeVisible();

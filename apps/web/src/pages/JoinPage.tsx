@@ -63,10 +63,10 @@ export function JoinPage() {
       {group && !error && !(inviteSite && inviteSite.game !== site.game) && (
         <>
           <p>Tu es invité à rejoindre <strong>{group.name}</strong>. Les membres verront tes personnages en lecture seule, et les officiers pourront les placer dans les raids.</p>
-          <button className="btn primary" type="button" disabled={busy} onClick={() => void accept()}>Rejoindre le groupe</button>
+          <button className="btn primary" type="button" disabled={busy} onClick={() => void accept()}>Rejoindre la guilde</button>
         </>
       )}
-      <Link to="/groups">Mes groupes</Link>
+      <Link to="/groups">Mes guildes</Link>
     </div>
   );
 }

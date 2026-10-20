@@ -34,8 +34,8 @@ export function CopyForGame() {
   const label = state === "ok" ? "Copié : colle en jeu" : state === "err" ? "Copie impossible" : state === "busy" ? "Copie…" : "Copier pour le jeu";
   return (
     <button type="button" className={`btn sm copy-game${state === "ok" ? " done" : ""}`} onClick={() => void click()} disabled={state === "busy"}
-      title={retail ? "Raids à venir de tes groupes et tes inscriptions : à coller dans l'onglet Synchro de l'addon Roster (ou sa synchro rapide)"
-        : "Raids à venir, patrons et BiS recherchés de tes groupes : à coller dans l'onglet Synchro de l'addon"} aria-live="polite">
+      title={retail ? "Raids à venir de tes guildes et tes inscriptions : à coller dans l'onglet Synchro de l'addon Roster (ou sa synchro rapide)"
+        : "Raids à venir, patrons et BiS recherchés de tes guildes : à coller dans l'onglet Synchro de l'addon"} aria-live="polite">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" /></svg>
       <span>{label}</span>
     </button>

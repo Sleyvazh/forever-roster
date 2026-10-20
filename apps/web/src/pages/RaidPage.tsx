@@ -228,7 +228,7 @@ export function RaidPage() {
   const removeFrom = (g: number, p: number) => { setPick(null); persist(slots.filter(s => !(s.group === g && s.pos === p))); };
 
   if (raidQ.isLoading || charsQ.isLoading) return <p className="muted">Chargement…</p>;
-  if (!raidQ.data) return <div className="panel empty"><h2>Raid introuvable</h2><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div>;
+  if (!raidQ.data) return <div className="panel empty"><h2>Raid introuvable</h2><Link to={`/groups/${groupId}`}>Retour à la guilde</Link></div>;
 
   const byKind = (k: EffectKind) => coverage.filter(c => c.effect.kind === k);
   const r = raidQ.data.raid;
@@ -258,7 +258,7 @@ export function RaidPage() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="page-head rp-head">
         <div style={{ minWidth: 0 }}>
-          <div className="eyebrow"><Link to={`/groups/${groupId}`}>Retour au groupe</Link></div>
+          <div className="eyebrow"><Link to={`/groups/${groupId}/raids`}>Retour à la guilde</Link></div>
           <h1>{name || "Raid"}</h1>
           <div className="rp-meta">
             <span>{longDate(partsOf(when))}</span>
@@ -345,14 +345,14 @@ export function RaidPage() {
               <h3>Banc <span className="muted small">({bench.length})</span></h3>
               <input type="text" aria-label="Filtrer le banc" placeholder="Filtrer (nom, joueur, classe, Discord)…" value={filter} onChange={e => setFilter(e.target.value)} />
               <div className="bench">
-                {bench.length === 0 ? <p className="muted small">Tous les persos du groupe sont placés.</p> : bench.map((c, i) => {
+                {bench.length === 0 ? <p className="muted small">Tous les persos de la guilde sont placés.</p> : bench.map((c, i) => {
                   const cl = { color: gt.color(c.cls) };
                   const on = pick?.kind === "bench" && pick.key === c.key;
                   const su = c.signup;
                   return (
                     <div key={c.key} className="stack" style={{ gap: 4 }}>
                     {i === 0 && benchSigned.length > 0 && <div className="lbl">Inscrits</div>}
-                    {i === benchSigned.length && benchOthers.length > 0 && <div className="lbl">Autres persos du groupe (non inscrits)</div>}
+                    {i === benchSigned.length && benchOthers.length > 0 && <div className="lbl">Autres persos de la guilde (non inscrits)</div>}
                     <div className="row" style={{ gap: 4, flexWrap: "nowrap" }}>
                       <button type="button" className={`slot filled${on ? " selected" : ""}`} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={() => setPick(on ? null : { kind: "bench", key: c.key })} {...hoverProps(c)}>
                         <span className="who"><ClassIcon cls={c.cls} size={14} className="inline" />{c.name}{c.guest && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site"> ✱</span>}<small>{[c.level ? `Niv. ${c.level}` : null, (c.cls && gt.specOrClass(c.cls, c.spec)) || "?", c.guest ? "Discord, sans compte" : c.owner].filter(Boolean).join(" · ")}</small></span>
@@ -442,7 +442,7 @@ export function RaidPage() {
               <div className="fld"><label htmlFor="rn">Nom</label><input id="rn" type="text" maxLength={60} value={name} onChange={e => { setName(e.target.value); persist(slots, { name: e.target.value, when, desc }); }} /></div>
               <div className="fld"><label htmlFor="rw">Date et heure (Paris)</label>
                 <DateTimeField id="rw" value={when} onChange={iso => { setWhen(iso); persist(slots, { name, when: iso, desc }); }} /></div>
-              <div className="fld rp-wide"><label htmlFor="rd">Description (visible par le groupe et sur Discord)</label>
+              <div className="fld rp-wide"><label htmlFor="rd">Description (visible par la guilde et sur Discord)</label>
                 <textarea id="rd" maxLength={1000} style={{ minHeight: 70 }} placeholder="Ex. Pull à 21 h, flasques obligatoires, loot council." value={desc} onChange={e => { setDesc(e.target.value); persist(slots, { name, when, desc: e.target.value }); }} />
               </div>
               <div className="rp-wide">
