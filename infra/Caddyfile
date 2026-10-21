@@ -71,3 +71,22 @@
 	rewrite / /landing/retail.html
 	import site
 }
+
+# World Survivors : serveur de mises à jour (conteneur ws-update, dépôt world-survivors, réseau frontend).
+# Tant que le sous-domaine n'existe pas chez OVH, laisser WS_DOMAIN vide (adresse locale sans effet).
+{$WS_DOMAIN:ws.localhost} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+		-Server
+	}
+	# Envoi de l'application complète par « npm run publier -- --complet » (≈150 Mo).
+	request_body {
+		max_size 600MB
+	}
+	reverse_proxy ws-update:8787
+}

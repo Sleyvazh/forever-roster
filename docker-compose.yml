@@ -91,6 +91,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN:-localhost}
       RETAIL_DOMAIN: ${RETAIL_DOMAIN:-roster.localhost}
+      WS_DOMAIN: ${WS_DOMAIN:-ws.localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     ports:
       - "80:80"
