@@ -18,7 +18,7 @@ const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
 
 /** Sauvegarde automatique : regroupe les modifications et n'envoie que les champs valides. */
-function useAutosave(id: string | null, onSaved: (c: Character) => void) {
+export function useAutosave(id: string | null, onSaved: (c: Character) => void) {
   const pending = useRef<Partial<Character>>({});
   const timer = useRef<number | undefined>(undefined);
   const [status, setStatus] = useState<{ kind: "idle" | "saving" | "saved" | "error" | "held"; msg?: string }>({ kind: "idle" });

@@ -76,6 +76,8 @@ export interface Character {
   addonSyncedAt?: string | null;
   /** Lot K1 : perso du jeu lié à la fiche (« Prénom-Royaume »), retenu par l'import de l'addon. */
   addonKey?: string | null;
+  /** Lot « Guilde » : GUID du perso en jeu (addon 1.6.2), clé de la liste de guilde. */
+  guid?: string | null;
   /** R2b (Roster) : lu chez Blizzard (import Battle.net ou « Mettre à jour »). */
   realmSlug?: string; ilvl?: number | null; activeSpec?: string; bnet?: boolean; bnetSyncedAt?: string | null;
   /** Dans la liste des persos d'un groupe : perso principal (main) de son joueur dans ce groupe. */
@@ -120,6 +122,22 @@ export interface GroupSummary {
   roles: { tank: number; heal: number; dps: number };
 }
 export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
+/** Qui crée les raids et les sorties (réglage des officiers). */
+export type Creators = "officers" | "members";
+/** Une guilde du site (GET /groups/:id). */
+export interface GroupDetail {
+  group: {
+    id: string; name: string; game: import("@forever/game-data").Game; site: { name: string; origin: string };
+    /** Salons liés et leur nom (null : inconnu, rapporté par le bot sous peu). */
+    discordLinked: boolean; discordChannelName: string | null; ordersLinked: boolean; ordersChannelName: string | null;
+    outingsLinked: boolean; outingsChannelName: string | null;
+    /** Qui crée les raids et les sorties, et si je le peux. */
+    creators: { raids: Creators; outings: Creators; canCreateRaid: boolean; canCreateOuting: boolean };
+  };
+  role: GroupRole; members: Member[];
+  /** Chef et officiers : avis Discord suivis par la guilde (null pour un membre). */
+  feedback: { linked: boolean; unseen: number } | null;
+}
 
 export interface RaidSignup {
   id: string; userId: string | null; discordUserId: string | null; displayName: string; characterId: string | null; characterName: string | null;

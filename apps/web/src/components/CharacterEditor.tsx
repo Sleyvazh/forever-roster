@@ -107,20 +107,12 @@ export function CharacterEditor({ character: c, editable, onChange, footer, onPo
   );
 }
 
-type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean; onPortrait?: EditorProps["onPortrait"] };
+export type SubProps = { c: Character; onChange: EditorProps["onChange"]; editable?: boolean; onPortrait?: EditorProps["onPortrait"] };
 
 function Profil({ c, onChange, editable }: SubProps) {
-  const cl = CLASSES[c.cls as ClassName];
   const race = RACES[c.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
   const bad = !!(c.race && c.cls && !isValidCombo(c.race, c.cls));
-  const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
-  const avail = talentPointsAt(c.level);
-  const slug = cl?.slug ?? "warrior";
-  const [view, setView] = useViewPref<TreeView>("trees", "gauges", ["gauges", "grid"]);
-  const tdata = useTalentData(c.cls, !!cl);
-  const talents = tdata.data?.talents ?? [];
-
   const setClass = (cls: string) => {
     const sp: readonly string[] = CLASSES[cls as ClassName]?.specs ?? [];
     onChange({ cls, spec1: sp.includes(c.spec1) ? c.spec1 : "", spec2: sp.includes(c.spec2) ? c.spec2 : "" });
@@ -154,9 +146,29 @@ function Profil({ c, onChange, editable }: SubProps) {
         {race && <div className="bonus"><span className="lbl">Raciaux {c.race}</span><br />{race.racials}</div>}
       </div>
 
+      <TalentsSection c={c} onChange={onChange} editable={editable} />
+    </>
+  );
+}
+
+/**
+ * Talents : répartition, lien du calculateur et arbres, pour la spé principale et l'off-spec. `folded` (Mes persos de Forever) :
+ * sans titre ni choix de la spé (ils sont dans l'en-tête de la fiche).
+ */
+export function TalentsSection({ c, onChange, editable, folded }: SubProps & { folded?: boolean }) {
+  const cl = CLASSES[c.cls as ClassName];
+  const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
+  const avail = talentPointsAt(c.level);
+  const slug = cl?.slug ?? "warrior";
+  const [view, setView] = useViewPref<TreeView>("trees", "gauges", ["gauges", "grid"]);
+  const tdata = useTalentData(c.cls, !!cl);
+  const talents = tdata.data?.talents ?? [];
+  return (
+    <>
       <div className="sec" style={{ ["--cc" as string]: cl?.color ?? "var(--gold)" }}>
         <div className="row between" style={{ alignItems: "baseline" }}>
-          <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>
+          {folded ? <span className="muted small"><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</span>
+            : <h3>Talents <small><span className="num">{avail}</span> point{avail > 1 ? "s" : ""} disponible{avail > 1 ? "s" : ""} au niv. {c.level} · 51 au niv. 60</small></h3>}
           {cl && talents.length > 0 && (
             <div className="seg" role="group" aria-label="Affichage des arbres">
               {([["gauges", "Jauges"], ["grid", "Arbres"]] as const).map(([k, l]) => (
@@ -172,9 +184,9 @@ function Profil({ c, onChange, editable }: SubProps) {
         )}
         {cl && (
           <div className={`builds${view === "gauges" ? " two" : ""}`}>
-            <Build id="main" title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
+            <Build id="main" hideSpec={folded} title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
+            <Build id="off" hideSpec={folded} title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -190,8 +202,8 @@ function Profil({ c, onChange, editable }: SubProps) {
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange }: {
-  id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"];
+function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange, hideSpec }: {
+  id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"]; hideSpec?: boolean;
   cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
@@ -217,7 +229,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
         {def && <RoleIcon role={def.role} />}
       </div>
       <div className="grid">
-        <div className="fld"><label htmlFor={`f-spec-${id}`}>Intitulé de la spé</label>
+        {!hideSpec && <div className="fld"><label htmlFor={`f-spec-${id}`}>Intitulé de la spé</label>
           <select id={`f-spec-${id}`} value={spec} onChange={e => onChange({ spec: e.target.value })}>
             <option value="">—</option>
             {ROLES.map(r => {
@@ -225,7 +237,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
               return list.length ? <optgroup key={r} label={r}>{list.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}</optgroup> : null;
             })}
           </select>
-        </div>
+        </div>}
         <div className="fld"><label htmlFor={`f-tal-${id}`}>Répartition</label>
           <input id={`f-tal-${id}`} className="num" type="text" placeholder="ex. 9/37/5" pattern="\d{1,2}/\d{1,2}/\d{1,2}" value={talents} onChange={e => onChange({ talents: e.target.value })} />
         </div>
@@ -319,7 +331,7 @@ function ProfCard({ k, p, other, onSet, characterId, editable }: { k: string; p:
   );
 }
 
-function Metiers({ c, onChange, editable = false }: SubProps) {
+export function Metiers({ c, onChange, editable = false }: SubProps) {
   const pr = c.professions;
   const set = (patch: Partial<Character["professions"]>) => onChange({ professions: { ...pr, ...patch } });
   return (
@@ -354,7 +366,7 @@ function Metiers({ c, onChange, editable = false }: SubProps) {
   );
 }
 
-function LegacyTab({ c, onChange }: SubProps) {
+export function LegacyTab({ c, onChange }: SubProps) {
   const setTree = (k: string, list: { name: string; rank: number; max: number }[]) => onChange({ legacy: { ...c.legacy, [k]: list } });
   return (
     <>

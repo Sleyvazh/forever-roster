@@ -11,7 +11,7 @@ import { ApiError, del, get, patch, post, put, slotKey, type Character, type Rai
 import { RaidExport } from "../components/RaidExport";
 import { useLiveListener, type LiveEvent } from "../live";
 import { useMe } from "../auth";
-import { RaidSignups } from "../components/RaidSignups";
+import { MyAnswer, RaidSignups } from "../components/RaidSignups";
 import { LootModePicker, LootModeTag, SoftReservePanel } from "../components/Loot";
 import { DEFAULT_TARGETS, groupsFor, lootModeHint, lootModeLabel, RAID_SIZES, type LootMode, type RaidSize, type RoleTargets } from "@forever/game-data";
 import { RaidAssist, type BenchHistory } from "../components/RaidAssist";
@@ -258,7 +258,7 @@ export function RaidPage() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="page-head rp-head">
         <div style={{ minWidth: 0 }}>
-          <div className="eyebrow"><Link to={`/groups/${groupId}/raids`}>Retour à la guilde</Link></div>
+          <div className="eyebrow"><Link to={`/groups/${groupId}/raids`}>{gt.game === "forever" ? "← Raids" : "Retour à la guilde"}</Link></div>
           <h1>{name || "Raid"}</h1>
           <div className="rp-meta">
             <span>{longDate(partsOf(when))}</span>
@@ -276,6 +276,7 @@ export function RaidPage() {
         </div>
       </div>
       {desc && <p className="rp-desc">{desc}</p>}
+      {gt.game === "forever" && <MyAnswer groupId={groupId} raidId={raidId} raidName={name || r.name} signups={raidQ.data.signups} groupChars={allChars} />}
       {error && <div className="alert error" role="alert">{error}</div>}
       {notice && <div className="alert info" role="status">{notice}</div>}
       {hover && hovered && (

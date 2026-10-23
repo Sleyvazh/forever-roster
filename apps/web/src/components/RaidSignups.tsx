@@ -6,11 +6,94 @@ import { useMe } from "../auth";
 import { useGameText } from "../gameText";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { RoleIcon, RoleTag } from "./RoleIcon";
+import { SignupButtons } from "./SignupButtons";
+import { ClassDot } from "./Outings";
+import { Link } from "react-router-dom";
 
 const ROLES = ["Tank", "Heal", "DPS"] as const;
 const COMING: SignupStatus[] = ["present", "late"];
 
-/** Bloc « Inscriptions » d'un raid : mon inscription en un clic, puis la liste des inscrits par rôle. */
+/** Mes persos inscriptibles à un raid : rangés dans la guilde (main en tête), puis sans guilde (s'inscrire les y range). */
+function useRaidChars(groupChars: Character[]) {
+  const me = useMe();
+  const myId = me.data?.user?.id;
+  const allMine = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 });
+  const here = groupChars.filter(c => c.userId === myId && c.cls).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
+  return { chars: [...here, ...(allMine.data?.characters ?? []).filter(c => c.cls && !c.group && !here.some(h => h.id === c.id))], all: allMine.data?.characters };
+}
+
+/**
+ * « Ta réponse » en haut de la page d'un raid (Forever, refonte du 23/10) : trois statuts, les autres sous « Autre » ; le perso
+ * et la spé se changent d'un clic sur la pastille, la note est facultative.
+ */
+export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { groupId: string; raidId: string; raidName: string; signups: RaidSignup[]; groupChars: Character[] }) {
+  const qc = useQueryClient();
+  const gt = useGameText();
+  const mine = signups.find(s => s.mine);
+  const { chars: myChars, all } = useRaidChars(groupChars);
+  const [charId, setCharId] = useState("");
+  const [spec, setSpec] = useState("");
+  const [note, setNote] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const c = (mine?.characterId && myChars.find(x => x.id === mine.characterId)) || myChars[0];
+    setCharId(c?.id ?? "");
+    setSpec(mine?.characterId === c?.id && mine?.spec ? mine.spec : c?.spec1 ?? "");
+    setNote(mine?.note ?? "");
+  }, [mine?.id, myChars.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const char = myChars.find(c => c.id === charId);
+  const specs = char ? specsOf(gt.game, char.cls).map(name => ({ name, role: roleOf(name) })) : [];
+  const run = async (fn: () => Promise<unknown>) => {
+    setBusy(true); setError(null);
+    try { await fn(); await Promise.all([qc.invalidateQueries({ queryKey: ["raid", raidId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["guild-home", groupId] })]); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); } finally { setBusy(false); }
+  };
+  const signUp = (status: SignupStatus) => run(() => put(`/groups/${groupId}/raids/${raidId}/signup`, {
+    status, characterId: status === "absent" && !charId ? null : charId || null, spec: spec || undefined, note,
+  }));
+  const role = roleOf(spec);
+  return (
+    <section className="ans" aria-labelledby="ans-t">
+      <div className="ans-top">
+        <h3 id="ans-t">Ta réponse</h3>
+        {char ? (
+          <button type="button" className="ans-with" aria-expanded={editing} aria-label="Changer de perso ou de spé" onClick={() => setEditing(e => !e)}>
+            <ClassDot cls={char.cls} /><span>{char.isMain ? "★ " : ""}{char.name}{spec ? ` · ${gt.spec(char.cls, spec)}` : ""}</span>{role && <span className={`role xs ${role}`}>{role}</span>}<span className="chev" aria-hidden="true" />
+          </button>
+        ) : all && (all.length
+          ? <span className="ans-note">Ton perso n'a pas de classe : <Link className="link" to={`/persos/${all[0]!.id}`}>complète sa fiche</Link>.</span>
+          : <span className="ans-note">Pas encore de perso : <Link className="link" to="/persos/nouveau">ajoute-le</Link>.</span>)}
+      </div>
+      {editing && char && (
+        <div className="row" style={{ alignItems: "flex-end" }}>
+          {myChars.length > 1 && <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="ans-char">Perso</label>
+            <select id="ans-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
+              {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({gt.cls(c.cls)})</option>)}
+            </select></div>}
+          <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="ans-spec">Spé</label>
+            <select id="ans-spec" value={spec} onChange={e => setSpec(e.target.value)}>
+              <option value="">—</option>
+              {specs.map(d => <option key={d.name} value={d.name}>{gt.spec(char.cls, d.name)} ({d.role})</option>)}
+            </select></div>
+          <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="ans-note">Note</label>
+            <input id="ans-note" type="text" maxLength={100} placeholder="Ex. j'arrive vers 21 h 15" value={note} onChange={e => setNote(e.target.value)} /></div>
+          {mine && <button type="button" className="btn sm" disabled={busy} onClick={() => void signUp(mine.status).then(() => setEditing(false))}>Enregistrer</button>}
+        </div>
+      )}
+      <SignupButtons lg value={mine?.status} onPick={s => void signUp(s)} busy={busy} canCome={!!char} label={`Ma réponse pour ${raidName}`}
+        onClear={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))} />
+      <div className="row">
+        <span className="ans-state">{mine ? <>{SIGNUP_LABEL[mine.status]}{mine.characterName ? ` avec ${mine.characterName}` : ""}{mine.note ? ` · « ${mine.note} »` : ""}</> : "Pas encore de réponse."}</span>
+        {char && !editing && !mine?.note && <button type="button" className="link ans-note" onClick={() => setEditing(true)}>+ Ajouter une note</button>}
+      </div>
+      {error && <div className="alert error" role="alert">{error}</div>}
+    </section>
+  );
+}
+
+/** Bloc « Inscriptions » d'un raid : mon inscription en un clic (Roster ; Forever : « Ta réponse » en haut de la page), puis la liste des inscrits par rôle. */
 export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   groupId: string; raidId: string; signups: RaidSignup[]; groupChars: Character[]; canEdit: boolean;
 }) {
@@ -66,7 +149,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
         </div>
       </div>
 
-      <div className="su-me">
+      {gt.game !== "forever" && <div className="su-me">
         {myChars.length === 0 ? (
           <p className="hint" style={{ margin: 0 }}>Ajoute un perso (avec sa classe) dans « Mes persos » pour t'inscrire. Tu peux quand même te déclarer absent.</p>
         ) : (
@@ -98,7 +181,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
         </div>
         {mine && <p className="small muted" style={{ margin: 0 }}>Tu es inscrit : <b>{SIGNUP_LABEL[mine.status]}</b>{mine.characterName ? ` avec ${mine.characterName}${mine.spec ? ` (${gt.spec(mine.cls, mine.spec)})` : ""}` : ""}. Clique un autre statut pour changer.</p>}
         {error && <div className="alert error" role="alert">{error}</div>}
-      </div>
+      </div>}
 
       <div className="su-roles">
         {ROLES.map(r => (

@@ -25,23 +25,31 @@ function legacyChoice(key: string): string | undefined {
   try { return (JSON.parse(localStorage.getItem("fr-addon-fiches") ?? "{}") as Record<string, string>)[key]; } catch { return undefined; }
 }
 
-/** Fiche proposée : celle déjà liée à ce perso du jeu, sinon même prénom et même classe, sinon une nouvelle fiche. */
+/**
+ * Fiche proposée : celle qui porte le GUID du perso (addon 1.6.2, le prénom peut exister deux fois), sinon celle déjà liée
+ * à ce perso du jeu, sinon même prénom et même classe, sinon une nouvelle fiche.
+ */
 export function guessTarget(d: CharacterExport, mine: Character[]): Target {
+  if (d.guid) { const same = mine.find(c => c.guid === d.guid); if (same) return same.id; }
   const key = blockKey(d);
   const fits = (c: Character) => !c.cls || !d.cls || c.cls === d.cls;
-  const linked = mine.find(c => c.addonKey === key);
+  const linked = mine.find(c => c.addonKey === key && (!d.guid || !c.guid));
   if (linked) return linked.id;
   const saved = legacyChoice(key);
   if (saved && mine.some(c => c.id === saved && fits(c))) return saved;
-  return mine.find(c => !c.addonKey && sameCharacter(d.name, c.name) && fits(c))?.id ?? "new";
+  return mine.find(c => !c.addonKey && !c.guid && sameCharacter(d.name, c.name) && fits(c))?.id ?? "new";
 }
 
-export interface ApplyResult { name: string; ok: boolean; msg: string }
+/** Résultat montré : réussi, refusé, ou seulement une information (relevé de guilde à lier, d'une autre guilde). */
+export interface ApplyResult { name: string; ok: boolean | null; msg: string; groups?: { id: string; name: string }[] }
 
-/** Persos sur leur fiche, puis bilans de raid : tout part en une requête, le serveur applique. */
-export async function importOnServer(text: string, targets: Record<string, Target>, parts: Set<Part>, skipLogs: string[]): Promise<ApplyResult[]> {
-  const r = await post<{ results: ImportResult[]; errors: string[] }>("/addon/import", { text, targets, parts: [...parts], skipLogs });
-  return r.results.filter(x => x.status !== "skipped").map(x => ({ name: x.name, ok: x.status === "created" || x.status === "updated", msg: x.message }));
+/** Persos sur leur fiche, bilans de raid, puis relevé de la guilde du jeu : tout part en une requête, le serveur applique. */
+export async function importOnServer(text: string, targets: Record<string, Target>, parts: Set<Part>, skipLogs: string[], skipGuild = false): Promise<ApplyResult[]> {
+  const r = await post<{ results: ImportResult[]; errors: string[] }>("/addon/import", { text, targets, parts: [...parts], skipLogs, ...(skipGuild && { skipGuild }) });
+  return r.results.filter(x => x.status !== "skipped").map(x => ({
+    name: x.name, msg: x.message, groups: x.groups,
+    ok: x.status === "created" || x.status === "updated" ? true : x.kind === "guild" && x.status === "ignored" ? null : false,
+  }));
 }
 
 /** Résumé court d'un bloc (ce que l'export apporte). */

@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
+import { navKeyOf, navLinks, useCurrentGuild, type NavKey } from "../nav";
+import { SyncMenu } from "./SyncMenu";
 import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
-import { LaunchPill } from "./Countdown";
 import { ClassIcon } from "./Icons";
 import { Logo, RosterLogo } from "./Logo";
 import { Portrait } from "./ImageUpload";
@@ -40,6 +41,7 @@ function Avatar({ size = 30 }: { size?: number }) {
 
 function AccountMenu() {
   const me = useMe();
+  const site = useSite();
   const logout = useLogout();
   const loc = useLocation();
   const [open, setOpen] = useState(false);
@@ -58,6 +60,7 @@ function AccountMenu() {
   }, [open]);
   if (!user) return null;
   const main = chars.data?.characters[0];
+  const forever = site.game === "forever";
   return (
     <div className="acct" ref={ref}>
       <button type="button" className="acct-btn" aria-haspopup="true" aria-expanded={open} aria-controls="acct-menu" onClick={() => setOpen(o => !o)}
@@ -69,6 +72,8 @@ function AccountMenu() {
         <div className="acct-menu" id="acct-menu" aria-label="Compte">
           <div className="head"><b>{user.displayName}</b>{main && <span>Perso principal : {main.name}</span>}</div>
           <Link className="item" to="/account">Compte &amp; sécurité</Link>
+          {forever && <Link className="item" to="/addon">Addon</Link>}
+          {forever && <Link className="item" to="/bienvenue">Rejoindre ou créer une guilde</Link>}
           <div className="mrow"><span>Thème</span><ThemeToggle /></div>
           <hr />
           <button type="button" className="item" onClick={() => { setOpen(false); setReporting(true); }}>Signaler un bug ou une idée</button>
@@ -87,7 +92,27 @@ const TAB_ICONS = {
   persos: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21c1-4.5 4-6.5 8-6.5s7 2 8 6.5" /></svg>,
   groupes: <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3" /><circle cx="16.5" cy="9" r="3" /><path d="M2.5 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5M11 20c.8-3.5 3-5 5.5-5s4.7 1.5 5.5 5" /></svg>,
   addon: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5z" /><path d="M9 4v5h6V4M8 14h8M8 17h5" /></svg>,
+  accueil: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5" /><path d="M6 10v10h4.5v-5.5h3V20H18V10" /></svg>,
+  sorties: <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4" /><path d="M6 4h11l-2.5 4L17 12H6" /></svg>,
+  raids: <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5.5" width="16" height="14.5" rx="2" /><path d="M4 10h16M9 3.5v4M15 3.5v4" /></svg>,
 };
+
+/** Forever Roster (refonte du 23/10) : les mêmes cinq entrées au bureau et sur téléphone. */
+const FOREVER_NAV: [Exclude<NavKey, null>, string, string, keyof typeof TAB_ICONS][] = [
+  ["home", "Accueil", "Accueil", "accueil"], ["outings", "Sorties", "Sorties", "sorties"], ["raids", "Raids", "Raids", "raids"],
+  ["guild", "Guilde", "Guilde", "groupes"], ["chars", "Mes persos", "Persos", "persos"],
+];
+function ForeverLinks({ bar }: { bar: boolean }) {
+  const loc = useLocation();
+  const g = useCurrentGuild();
+  const links = navLinks(g.id);
+  const on = navKeyOf(loc.pathname);
+  return <>{FOREVER_NAV.map(([k, label, short, icon]) => (
+    <Link key={k} to={links[k]} className={on === k ? "active" : undefined} aria-current={on === k ? "page" : undefined}>{bar && TAB_ICONS[icon]}{bar ? short : label}</Link>
+  ))}</>;
+}
+/** Première visite (invitation, Bienvenue) : la barre ne garde que le logo et le compte. */
+const BARE = ["/bienvenue", "/join"];
 
 /** Bandeau du haut : logo, onglets, compte à rebours, menu du compte. Sur téléphone, onglets en bas de l'écran. */
 export function TopBar() {
@@ -97,34 +122,40 @@ export function TopBar() {
   // Site pas encore ouvert (Roster avant les données Retail) : comptes seulement, pas d'onglets
   const user = me.data?.user;
   const app = !!user && site.open;
+  const loc = useLocation();
+  const forever = site.game === "forever";
+  const bare = forever && BARE.includes(loc.pathname);
   useLiveEvents(app);
   return (
     <>
       <header className="topnav">
         <div className="bar-in">
           <Brand />
-          {app ? (
+          {app && !bare ? (
             <nav className="nav" aria-label="Navigation principale">
-              <NavLink to="/persos">Mes persos</NavLink>
-              <NavLink to="/groups">Guildes</NavLink>
-              <NavLink to="/addon">Addon</NavLink>
+              {forever ? <ForeverLinks bar={false} /> : <>
+                <NavLink to="/persos">Mes persos</NavLink>
+                <NavLink to="/groups">Guildes</NavLink>
+                <NavLink to="/addon">Addon</NavLink>
+              </>}
             </nav>
           ) : <span />}
           <div className="bar-right">
             {site.preview && <span className="tag warn" title="Roster n'est pas encore ouvert : ton compte y a accès en avance, pour tester.">Accès anticipé</span>}
-            {app && <CopyForGame />}
-            {site.game === "forever" && <LaunchPill />}
-            {app && site.game === "forever" && <News />}
+            {app && !bare && (forever ? <SyncMenu /> : <CopyForGame />)}
+            {app && forever && !bare && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>
       </header>
       {app && <PasteImport />}
-      {app && (
-        <nav className="tabbar" aria-label="Navigation principale (mobile)">
-          <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
-          <NavLink to="/groups">{TAB_ICONS.groupes}Guildes</NavLink>
-          <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
+      {app && !bare && (
+        <nav className={`tabbar${forever ? " five" : ""}`} aria-label="Navigation principale (mobile)">
+          {forever ? <ForeverLinks bar /> : <>
+            <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
+            <NavLink to="/groups">{TAB_ICONS.groupes}Guildes</NavLink>
+            <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
+          </>}
         </nav>
       )}
     </>

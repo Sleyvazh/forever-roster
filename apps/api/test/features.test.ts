@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
+import { Client, setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
 
 let env: TestEnv;
 beforeAll(async () => { env = await setup(); });
@@ -78,6 +78,11 @@ describe("groupes, invitations et raids", () => {
     expect(inv.url).toMatch(/\/join#/);
     const token = tokenFrom(inv.url);
     expect((await p1.c.post("/api/groups/invites/preview", { token })).json().group.name).toBe("Les Tournicotis");
+    // Page Bienvenue : l'aperçu se lit sans compte (le jeton suffit), avec le nombre de membres et qui invite
+    const visitor = new Client(env);
+    expect((await visitor.post("/api/groups/invites/preview", { token })).json()).toMatchObject({ group: { name: "Les Tournicotis", members: 1, faction: null }, by: "Chef" });
+    expect((await visitor.post("/api/groups/invites/preview", { token: "x".repeat(32) })).statusCode).toBe(404);
+    expect((await visitor.post("/api/groups/invites/accept", { token })).statusCode).toBe(401);
     expect((await p1.c.post("/api/groups/invites/accept", { token })).json().groupId).toBe(g.id);
     // maxUses = 1 : un second joueur ne peut plus l'utiliser
     expect((await outsider.c.post("/api/groups/invites/accept", { token })).statusCode).toBe(404);

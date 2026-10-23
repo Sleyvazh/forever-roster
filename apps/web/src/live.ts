@@ -1,5 +1,6 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { GUILD_QUERY_ROOTS } from "./guild";
 
 /** Événement envoyé par le serveur quand quelque chose change (voir apps/api/src/lib/events.ts). */
 export type LiveEvent =
@@ -9,6 +10,7 @@ export type LiveEvent =
   | { t: "chars"; g: string }
   | { t: "feedback"; g: string }
   | { t: "outings"; g: string }
+  | { t: "guild"; g: string }
   | { t: "membership" };
 
 const LIVE = "fr-live";
@@ -17,12 +19,14 @@ const LIVE = "fr-live";
 function refresh(qc: QueryClient, e: LiveEvent) {
   const inv = (queryKey: unknown[]) => void qc.invalidateQueries({ queryKey });
   switch (e.t) {
-    case "raid": inv(["raids", e.g]); inv(["raid", e.r]); inv(["softres", e.r]); inv(["reach", e.r]); inv(["prep", e.r]); inv(["council", e.r]); inv(["week"]); inv(["attendance", e.g]); break;
-    case "raids": inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
-    case "group": inv(["group", e.g]); inv(["orders", e.g]); inv(["outings", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
-    case "chars": inv(["group-chars", e.g]); inv(["outings", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
+    case "raid": inv(["guild-home", e.g]); inv(["raids", e.g]); inv(["raid", e.r]); inv(["softres", e.r]); inv(["reach", e.r]); inv(["prep", e.r]); inv(["council", e.r]); inv(["week"]); inv(["attendance", e.g]); break;
+    case "raids": inv(["guild-home", e.g]); inv(["raids", e.g]); inv(["raid-templates", e.g]); inv(["raid"]); inv(["week"]); break;
+    case "group": inv(["guild", e.g]); inv(["group", e.g]); inv(["orders", e.g]); inv(["outings", e.g]); inv(["groups"]); inv(["invites", e.g]); inv(["group-audit", e.g]); inv(["week"]); break;
+    case "chars": inv(["guild", e.g]); inv(["guild-race", e.g]); inv(["guild-home", e.g]); inv(["group-chars", e.g]); inv(["outings", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
     case "feedback": inv(["feedback", e.g]); inv(["group", e.g]); inv(["group-audit", e.g]); break;
-    case "outings": inv(["outings", e.g]); break;
+    case "outings": inv(["outings", e.g]); inv(["guild-home", e.g]); break;
+    // Guilde du jeu (Forever) : relevé reçu, rattachements, lien, annonces → Membres, Course, Historique, Accueil, Administration
+    case "guild": for (const k of GUILD_QUERY_ROOTS) inv([k, e.g]); inv(["group-audit", e.g]); break;
     case "membership": inv(["groups"]); inv(["week"]); break;
   }
 }

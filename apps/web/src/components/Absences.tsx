@@ -23,10 +23,12 @@ export function absenceLabel(a: Pick<Absence, "startDate" | "endDate" | "weekday
   return a.startDate === a.endDate ? `le ${dayLabel(a.startDate)}` : `du ${dayLabel(a.startDate)} au ${dayLabel(a.endDate)}`;
 }
 
-export function MyAbsences() {
+/** `startOpen` : le formulaire d'emblée (Accueil, « Déclarer une absence ») ; `onDone` à l'enregistrement ou à l'annulation. */
+export function MyAbsences({ startOpen = false, onDone }: { startOpen?: boolean; onDone?: () => void } = {}) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["absences"], queryFn: () => get<{ absences: Absence[] }>("/absences") });
-  const [form, setForm] = useState(false);
+  const [form, setFormState] = useState(startOpen);
+  const setForm = (v: boolean) => { setFormState(v); if (!v && startOpen) onDone?.(); };
   const [kind, setKind] = useState<"period" | "weekly">("period");
   const [start, setStart] = useState(todayIso()), [end, setEnd] = useState(todayIso());
   const [days, setDays] = useState<number[]>([]);
@@ -54,7 +56,7 @@ export function MyAbsences() {
 
   return (
     <section className="ab" aria-label="Mes absences">
-      <div className="ab-line">
+      {!startOpen && <div className="ab-line">
         <b>Absences</b>
         {list.length === 0 && !form && <span className="muted small">aucune de prévue</span>}
         {list.map(a => (
@@ -65,7 +67,7 @@ export function MyAbsences() {
           </span>
         ))}
         {!form && <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} onClick={() => setForm(true)}>+ Déclarer une absence</button>}
-      </div>
+      </div>}
       {form && (
         <form className="ab-form" onSubmit={e => void submit(e)}>
           <div style={{ flexBasis: "100%" }}><div className="seg" role="group" aria-label="Type d'absence">

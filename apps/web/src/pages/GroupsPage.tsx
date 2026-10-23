@@ -11,7 +11,7 @@ export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member:
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
 
 /** Formulaire de création (dans la page vide, ou sous le bouton « Créer une guilde »). */
-function CreateForm({ autoFocus, onCancel }: { autoFocus?: boolean; onCancel?: () => void }) {
+export function CreateForm({ autoFocus, onCancel }: { autoFocus?: boolean; onCancel?: () => void }) {
   const qc = useQueryClient();
   const nav = useNavigate();
   const [name, setName] = useState("");

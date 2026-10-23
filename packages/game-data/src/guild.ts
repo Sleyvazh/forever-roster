@@ -392,7 +392,8 @@ export type HomeAgendaItem =
   | {
     kind: "raid"; id: string; name: string; at: string; size: number;
     counts: { coming: number; tank: number; heal: number; dps: number; tentative: number };
-    mine: { status: string; characterName: string | null } | null;
+    /** Mon inscription : statut, perso et spé (gardés quand je change seulement de statut). */
+    mine: { status: string; characterName: string | null; characterId: string | null; spec: string } | null;
     /** Mon main dans la guilde (inscription en un clic). */
     mainId: string | null;
   }
@@ -408,7 +409,7 @@ export type HomeAgendaItem =
 export interface HomeRace {
   startsAt: string; started: boolean; day: number | null; linked: boolean;
   podium: RacePodiumPlace[];
-  me: { rank: number; tie: boolean; name: string; level: number; xpPct: number | null; weekGain: number } | null;
+  me: { rank: number; tie: boolean; name: string; cls: ClassName | null; level: number; xpPct: number | null; weekGain: number } | null;
 }
 export interface GuildHomeResponse {
   today: string; tomorrow: string;

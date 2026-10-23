@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
-import { auditEvents, characterRecipes, characters, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
+import { auditEvents, characterRecipes, characters, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
 import { linkCode, randomToken, sha256 } from "../lib/crypto";
@@ -22,6 +22,35 @@ import { feedbackSummary } from "./group-feedback";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
+
+/** Invitation encore valable : non révoquée, pas expirée, pas épuisée. */
+const liveInviteOf = (raw: string) => and(
+  eq(groupInvites.tokenHash, sha256(raw)), isNull(groupInvites.revokedAt),
+  gt(groupInvites.expiresAt, new Date()), lt(groupInvites.uses, groupInvites.maxUses),
+);
+const inviteToken = z.object({ token: z.string().min(20).max(100) });
+
+/**
+ * Aperçu d'une invitation, sans connexion (page Bienvenue) : le lien nomme la guilde avant la création du compte.
+ * Le jeton (secret, dans le fragment du lien) suffit : nom de la guilde, nombre de membres, qui invite, guilde du jeu liée.
+ */
+export async function groupPublicRoutes(app: FastifyInstance) {
+  const { db, cfg } = app.ctx;
+  app.post("/invites/preview", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
+    const { token } = parse(inviteToken, req.body);
+    const [row] = await db.select({ groupId: groups.id, name: groups.name, game: groups.game, by: users.displayName,
+      members: sql<number>`(select count(*)::int from group_members gm where gm.group_id = ${groups.id})` })
+      .from(groupInvites).innerJoin(groups, eq(groups.id, groupInvites.groupId)).leftJoin(users, eq(users.id, groupInvites.createdBy))
+      .where(liveInviteOf(token));
+    if (!row) throw notFound("Cette invitation n'est plus valable.");
+    const [gg] = await db.select({ faction: gameGuilds.faction, realm: gameGuilds.realm }).from(gameGuilds).where(eq(gameGuilds.groupId, row.groupId));
+    const site = siteForGame(cfg, row.game);
+    return {
+      group: { id: row.groupId, name: row.name, members: row.members, faction: gg?.faction || null, realm: gg?.realm || null },
+      by: row.by ?? null, site: { game: site.game, name: site.name, origin: site.origin },
+    };
+  });
+}
 
 export async function groupRoutes(app: FastifyInstance) {
   const { db, cfg } = app.ctx;
@@ -411,20 +440,8 @@ export async function groupRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  const inviteBody = z.object({ token: z.string().min(20).max(100) });
-  const liveInvite = (raw: string) => and(
-    eq(groupInvites.tokenHash, sha256(raw)), isNull(groupInvites.revokedAt),
-    gt(groupInvites.expiresAt, new Date()), lt(groupInvites.uses, groupInvites.maxUses),
-  );
-
-  app.post("/invites/preview", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
-    const { token } = parse(inviteBody, req.body);
-    const [row] = await db.select({ groupId: groups.id, name: groups.name, game: groups.game }).from(groupInvites)
-      .innerJoin(groups, eq(groups.id, groupInvites.groupId)).where(liveInvite(token));
-    if (!row) throw notFound("Cette invitation n'est plus valable.");
-    const site = siteForGame(cfg, row.game);
-    return { group: { id: row.groupId, name: row.name }, site: { game: site.game, name: site.name, origin: site.origin } };
-  });
+  const inviteBody = inviteToken;
+  const liveInvite = liveInviteOf;
 
   app.post("/invites/accept", { config: { rateLimit: { max: 30, timeWindow: "15 minutes" } } }, async (req) => {
     const u = currentUser(req);

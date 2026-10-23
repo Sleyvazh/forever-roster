@@ -264,7 +264,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
   const raidRows = await db.select({ id: raids.id, name: raids.name, at: raids.scheduledAt, size: raids.size }).from(raids)
     .where(and(eq(raids.groupId, id), isNotNull(raids.scheduledAt), gt(raids.scheduledAt, new Date(t.getTime() - RECENT_MS)), lt(raids.scheduledAt, endOfDay(tomorrow))))
     .orderBy(asc(raids.scheduledAt));
-  const signups = raidRows.length ? await db.select({ raidId: raidSignups.raidId, userId: raidSignups.userId, status: raidSignups.status, spec: raidSignups.spec, characterName: characters.name })
+  const signups = raidRows.length ? await db.select({ raidId: raidSignups.raidId, userId: raidSignups.userId, status: raidSignups.status, spec: raidSignups.spec, characterId: raidSignups.characterId, characterName: characters.name })
     .from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId)).where(inArray(raidSignups.raidId, raidRows.map(r => r.id))) : [];
   const [main] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
     .where(and(eq(groupCharacters.groupId, id), eq(groupCharacters.userId, me), eq(groupCharacters.isMain, true)));
@@ -276,7 +276,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
     agenda.push({
       kind: "raid", id: r.id, name: r.name, at: r.at!.toISOString(), size: r.size,
       counts: { coming: coming.length, tank: role("Tank"), heal: role("Heal"), dps: coming.filter(s => !s.spec || roleOf(s.spec) === "DPS").length, tentative: rows.filter(s => s.status === "tentative").length },
-      mine: mine ? { status: mine.status, characterName: mine.characterName } : null, mainId: main?.id ?? null, sort: r.at!.getTime(),
+      mine: mine ? { status: mine.status, characterName: mine.characterName, characterId: mine.characterId, spec: mine.spec } : null, mainId: main?.id ?? null, sort: r.at!.getTime(),
     });
   }
 
@@ -325,7 +325,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
     outings: { total: outs.length, hidden },
     race: {
       startsAt: new Date(RACE_START).toISOString(), started: race.started, day: race.day, linked: !!data.gg, podium: race.podium.places,
-      me: meRow ? { rank: meRow.rank, tie: meRow.tie, name: meRow.best.name, level: meRow.best.level, xpPct: meRow.best.xpPct, weekGain: meRow.best.weekGain } : null,
+      me: meRow ? { rank: meRow.rank, tie: meRow.tie, name: meRow.best.name, cls: meRow.best.cls, level: meRow.best.level, xpPct: meRow.best.xpPct, weekGain: meRow.best.weekGain } : null,
     },
     moves,
     guild: { linked: !!data.gg, name: data.gg?.name ?? null, rosterAt: data.gg?.rosterAt?.toISOString() ?? null },

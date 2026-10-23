@@ -351,7 +351,7 @@ describe("Course au 60", () => {
     expect(race.rows.map(r => r.best.name)).not.toContain(Y.name);
     // Accueil : mini-course et ma place
     const home = await s.get<GuildHomeResponse>(s.p.Vexou!, "/home");
-    expect(home.race).toMatchObject({ started: true, linked: true, me: { rank: 2, tie: true, name: V.name, level: 60 } });
+    expect(home.race).toMatchObject({ started: true, linked: true, me: { rank: 2, tie: true, name: V.name, cls: "Rogue", level: 60 } });
     expect(home.race.podium).toHaveLength(4);
   });
 });
@@ -376,7 +376,7 @@ describe("accueil de la guilde", () => {
     expect(home.today).toBe(outingDays().today);
     expect(home.agenda.map(a => (a.kind === "raid" ? `raid ${a.name}` : `sortie ${a.title}`))).toEqual(["raid Upper Blackrock Spire", "sortie Gnomeregan"]);
     const [r, o] = home.agenda as [Extract<GuildHomeResponse["agenda"][number], { kind: "raid" }>, Extract<GuildHomeResponse["agenda"][number], { kind: "outing" }>];
-    expect(r).toMatchObject({ counts: { coming: 1, heal: 1, tank: 0 }, mine: { status: "present", characterName: "Vexou" } });
+    expect(r).toMatchObject({ counts: { coming: 1, heal: 1, tank: 0 }, mine: { status: "present", characterName: "Vexou", characterId: vex.id, spec: "Holy" } });
     expect(o).toMatchObject({ levels: "29-38", creator: "Torvin", missing: { tank: 0, heal: 1, dps: 3 }, mine: null, full: false });
     expect(o.suggest).toEqual([{ role: "Heal", characterId: vex.id, characterName: "Vexou" }, { role: "DPS", characterId: vex.id, characterName: "Vexou" }]);
     // Maraudon n'est pour aucun perso de Vexou : comptée, pas listée

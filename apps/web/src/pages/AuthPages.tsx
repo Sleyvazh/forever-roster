@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, get, post } from "../api";
 import { safeNext, useMe } from "../auth";
+import { readInvite } from "../invite";
+import { useSite } from "../site";
 
 const BNET_ERRORS: Record<string, string> = {
   bnet_cancelled: "Connexion Battle.net annulée.",
@@ -42,7 +44,9 @@ export function LoginPage() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
-  const [email, setEmail] = useState("");
+  // Invitation en attente (compte créé depuis la page Bienvenue) : e-mail prérempli
+  const [email, setEmail] = useState(() => readInvite()?.email ?? "");
+  const forever = useSite().game === "forever";
   const [password, setPassword] = useState("");
   const [unverified, setUnverified] = useState(false);
   const s = useSubmit(async () => {
@@ -82,7 +86,7 @@ export function LoginPage() {
       </form>
       <div className="row between small">
         <Link to="/forgot-password">Mot de passe oublié ?</Link>
-        <Link to="/register">Créer un compte</Link>
+        <Link to={forever && readInvite() ? "/bienvenue" : next !== "/" ? `/register?next=${encodeURIComponent(next)}` : "/register"}>Créer un compte</Link>
       </div>
     </AuthCard>
   );
@@ -90,6 +94,10 @@ export function LoginPage() {
 
 export function RegisterPage() {
   const me = useMe();
+  // Destination gardée jusqu'à la connexion (lien « Créer un compte » de /login?next=…)
+  const [params] = useSearchParams();
+  const next = safeNext(params.get("next"));
+  const loginUrl = next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
   const [form, setForm] = useState({ displayName: "", email: "", password: "", confirm: "" });
   const [done, setDone] = useState<string | null>(null);
   const s = useSubmit(async () => {
@@ -100,7 +108,7 @@ export function RegisterPage() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   if (me.data?.user) return <Navigate to="/" replace />;
-  if (done) return <AuthCard title="Vérifie tes e-mails"><p>{done}</p><p className="hint">Le lien est valable 24 heures. Pense à regarder dans les spams.</p><Link to="/login">Retour à la connexion</Link></AuthCard>;
+  if (done) return <AuthCard title="Vérifie tes e-mails"><p>{done}</p><p className="hint">Le lien est valable 24 heures. Pense à regarder dans les spams.</p><Link to={loginUrl}>Retour à la connexion</Link></AuthCard>;
   return (
     <AuthCard title="Créer un compte">
       {me.data?.battlenetEnabled && (<><a className="btn bnet" href="/api/auth/battlenet/start">S'inscrire avec Battle.net</a><div className="divider">ou avec ton e-mail</div></>)}
@@ -117,7 +125,7 @@ export function RegisterPage() {
         <button className="btn primary" type="submit" disabled={s.busy}>{s.busy ? "Création…" : "Créer mon compte"}</button>
         <p className="hint" style={{ margin: 0 }}>Ton e-mail et ton pseudo servent seulement à faire marcher le site : voir la <Link to="/confidentialite">politique de confidentialité</Link>.</p>
       </form>
-      <p className="small">Déjà un compte ? <Link to="/login">Se connecter</Link></p>
+      <p className="small">Déjà un compte ? <Link to={loginUrl}>Se connecter</Link></p>
     </AuthCard>
   );
 }
@@ -141,7 +149,9 @@ export function VerifyEmailPage() {
     <AuthCard title="Confirmation de l'adresse">
       {!state ? <p className="muted">Vérification…</p> : <div className={`alert ${state.ok ? "ok" : "error"}`} role="status">{state.msg}</div>}
       {/* Déjà connecté (compte Battle.net qui ajoute son adresse) : retour à son compte plutôt qu'à la connexion */}
-      {signedIn ? <Link to="/account">Retour à mon compte</Link> : <Link to="/login">Aller à la connexion</Link>}
+      {signedIn ? <Link to="/account">Retour à mon compte</Link>
+        : state?.ok && readInvite() ? <Link className="btn primary" to="/login?next=/bienvenue">Se connecter</Link>
+        : <Link to="/login">Aller à la connexion</Link>}
     </AuthCard>
   );
 }

@@ -6,13 +6,38 @@ import { AccountPage } from "./pages/AccountPage";
 import { AddonPage } from "./pages/AddonPage";
 import { ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage, VerifyEmailPage } from "./pages/AuthPages";
 import { CharactersPage } from "./pages/CharactersPage";
-import { GroupPage } from "./pages/GroupPage";
 import { GroupsPage } from "./pages/GroupsPage";
+import { GroupRoute } from "./pages/GuildPages";
 import { JoinPage } from "./pages/JoinPage";
+import { WelcomePage } from "./pages/WelcomePage";
+import { MyCharsPage } from "./pages/MyCharsPage";
+import { useSite } from "./site";
+import { useCurrentGuild } from "./nav";
 import { LegalNoticePage, PrivacyPage } from "./pages/LegalPages";
 import { PairPage } from "./pages/PairPage";
 import { RaidPage } from "./pages/RaidPage";
 import { AdminReportsPage, MyReportsPage } from "./pages/ReportsPage";
+
+/** Forever : « / » mène à l'Accueil de la dernière guilde ouverte (sans guilde : Bienvenue) ; Roster : Mes persos. */
+function Home() {
+  const site = useSite();
+  const g = useCurrentGuild();
+  if (site.game === "retail") return <Navigate to="/persos" replace />;
+  if (g.loading) return <p className="muted">Chargement…</p>;
+  return <Navigate to={g.id ? `/groups/${g.id}` : "/bienvenue"} replace />;
+}
+/** Mes persos : liste puis fiche sur Forever ; Roster garde sa page. */
+function Chars() {
+  return useSite().game === "retail" ? <CharactersPage /> : <MyCharsPage />;
+}
+/** Invitation : Forever passe par la page Bienvenue (compte, perso, rejoindre) ; Roster garde la page Invitation. */
+function Join() {
+  return useSite().game === "retail" ? <JoinPage /> : <WelcomePage />;
+}
+/** Forever n'a plus de page Guildes : la liste passe dans le sélecteur de guilde. */
+function Groups() {
+  return useSite().game === "retail" ? <GroupsPage /> : <Navigate to="/" replace />;
+}
 
 export function App() {
   return (
@@ -27,17 +52,21 @@ export function App() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/join" element={<JoinPage />} />
+            <Route path="/join" element={<Join />} />
+            <Route path="/bienvenue" element={<WelcomePage />} />
             {/* Pages publiques, sans connexion, sur les deux adresses */}
             <Route path="/mentions-legales" element={<LegalNoticePage />} />
             <Route path="/confidentialite" element={<PrivacyPage />} />
-            <Route path="/" element={<RequireAuth><Navigate to="/persos" replace /></RequireAuth>} />
-            <Route path="/persos/:charId?/:tab?" element={<RequireAuth><CharactersPage /></RequireAuth>} />
-            <Route path="/groups" element={<RequireAuth><GroupsPage /></RequireAuth>} />
-            <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupPage /></RequireAuth>} />
+            <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+            <Route path="/persos/:charId?/:tab?" element={<RequireAuth><Chars /></RequireAuth>} />
+            <Route path="/groups" element={<RequireAuth><Groups /></RequireAuth>} />
+            <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupRoute /></RequireAuth>} />
+            {/* Forever : Raids › Passés et Présence (avant l'adresse d'un raid) */}
+            <Route path="/groups/:groupId/raids/passes" element={<RequireAuth><GroupRoute tab="raids" sub="passes" /></RequireAuth>} />
+            <Route path="/groups/:groupId/raids/presence" element={<RequireAuth><GroupRoute tab="raids" sub="presence" /></RequireAuth>} />
             <Route path="/groups/:groupId/raids/:raidId/:tab?" element={<RequireAuth><RaidPage /></RequireAuth>} />
-            {/* « + Sortie » : /groups/:id/sorties/nouvelle */}
-            <Route path="/groups/:groupId/:tab/:sub" element={<RequireAuth><GroupPage /></RequireAuth>} />
+            {/* « + Sortie » : /groups/:id/sorties/nouvelle ; Guilde : /groups/:id/membres/course… */}
+            <Route path="/groups/:groupId/:tab/:sub" element={<RequireAuth><GroupRoute /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><AccountPage /></RequireAuth>} />
             <Route path="/addon" element={<RequireAuth><AddonPage /></RequireAuth>} />
             <Route path="/appairer" element={<RequireAuth><PairPage /></RequireAuth>} />

@@ -31,13 +31,19 @@ type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 const PAST_AFTER_MS = 6 * 3600e3;
 const MONTH_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
-export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, discordLinked = true }: {
+export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, discordLinked = true, when: whenProp, creating, onCloseForm }: {
   groupId: string; canEdit: boolean; /** Créer un raid : selon le réglage du groupe (officiers, ou tous les membres) */ canCreate?: boolean; guard: Guard; /** Salon Discord du groupe lié */ discordLinked?: boolean;
+  /** Forever : À venir / Passés choisis par les onglets de la page Raids, et « + Raid » dans son en-tête. */
+  when?: "next" | "past"; creating?: boolean; onCloseForm?: () => void;
 }) {
   const { data } = useQuery({ queryKey: ["raids", groupId], queryFn: () => get<{ raids: RaidSummary[] }>(`/groups/${groupId}/raids`) });
   const tpl = useRaidTemplates(groupId);
-  const [when, setWhen] = useState<"next" | "past">("next");
-  const [form, setForm] = useState(false);
+  const [whenState, setWhen] = useState<"next" | "past">("next");
+  const when = whenProp ?? whenState;
+  const controlled = whenProp !== undefined;
+  const [formState, setFormState] = useState(false);
+  const form = creating ?? formState;
+  const setForm = (v: boolean) => { if (!v) onCloseForm?.(); setFormState(v); };
   const [showRec, setShowRec] = useState(false);
   const raids = data?.raids ?? [];
   const now = Date.now();
@@ -49,21 +55,21 @@ export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, disco
 
   return (
     <div className="stack">
-      <div className="gr-bar">
-        <div className="seg" role="group" aria-label="Raids affichés">
+      {(!controlled || canEdit || templates.length > 0) && <div className="gr-bar">
+        {!controlled && <div className="seg" role="group" aria-label="Raids affichés">
           <button type="button" className={when === "next" ? "on" : ""} aria-pressed={when === "next"} onClick={() => setWhen("next")}>À venir ({next.length})</button>
           <button type="button" className={when === "past" ? "on" : ""} aria-pressed={when === "past"} onClick={() => setWhen("past")}>Passés ({past.length})</button>
-        </div>
+        </div>}
         <span style={{ flex: 1 }} />
         {(canEdit || templates.length > 0) && (
           <button type="button" className="btn ghost sm" aria-expanded={showRec} onClick={() => setShowRec(s => !s)}>↻ Récurrents ({templates.length})</button>
         )}
-        {canCreate && !form && <button type="button" className="btn primary" onClick={() => setForm(true)}>+ Nouveau raid</button>}
-      </div>
+        {!controlled && canCreate && !form && <button type="button" className="btn primary" onClick={() => setForm(true)}>+ Nouveau raid</button>}
+      </div>}
       {form && <NewRaid groupId={groupId} raids={raids} guard={guard} weeklyAllowed={canEdit} onClose={() => setForm(false)} />}
       {showRec && <RecurringList groupId={groupId} templates={templates} canEdit={canEdit} guard={guard} groupLinked={discordLinked} />}
       {list.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>{when === "next" ? (canCreate ? "Aucun raid prévu. Crée le premier avec « + Nouveau raid »." : "Aucun raid prévu.") : "Aucun raid passé."}</p>
+        <p className="muted" style={{ margin: 0 }}>{when === "next" ? (canCreate && !controlled ? "Aucun raid prévu. Crée le premier avec « + Nouveau raid »." : "Aucun raid prévu.") : "Aucun raid passé."}</p>
       ) : (
         <div className="gr-list">{list.map(r => <RaidCard key={r.id} groupId={groupId} r={r} past={when === "past"} />)}</div>
       )}

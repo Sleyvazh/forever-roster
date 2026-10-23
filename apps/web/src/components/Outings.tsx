@@ -46,12 +46,14 @@ const dayTitle = (day: string) => dayLong.format(new Date(`${day}T12:00:00Z`));
 const rank = (n: number) => <>{n}<sup>{n === 1 ? "er" : "e"}</sup></>;
 const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : "Action impossible.");
 
-/** Pastille de classe : icône de la spé dans un disque, ou disque de la couleur de classe et initiale (maquette). */
-export function ClassDot({ cls, spec }: { cls: string; spec?: string }) {
-  if (!cls) return <span className="cp" aria-hidden="true">?</span>;
+/** Pastille de classe : icône de la spé dans un disque, ou disque de la couleur de classe et initiale (maquette). md, lg : guilde, course. */
+export function ClassDot({ cls, spec, size }: { cls: string | null | undefined; spec?: string; size?: "md" | "lg" }) {
+  const k = `cp${size ? ` ${size}` : ""}`;
+  if (!cls) return <span className={k} aria-hidden="true">?</span>;
+  const px = size === "lg" ? 44 : size === "md" ? 28 : 22;
   return (
-    <span className={`cp${cls === "Shaman" ? " sha" : ""}`} style={{ "--cc": classColor(cls) } as CSSProperties} title={cls} aria-hidden="true">
-      {spec ? <SpecIcon cls={cls} spec={spec} size={22} /> : <ClassIcon cls={cls} size={22} />}
+    <span className={`${k}${cls === "Shaman" ? " sha" : ""}`} style={{ "--cc": classColor(cls) } as CSSProperties} title={cls} aria-hidden="true">
+      {spec ? <SpecIcon cls={cls} spec={spec} size={px} /> : <ClassIcon cls={cls} size={px} />}
     </span>
   );
 }
@@ -75,11 +77,13 @@ function useMine(o: Outing, chars: MyChar[]) {
 
 /* ---------- Liste ---------- */
 
-export function GroupOutings({ groupId, guard, channelName, discordLinked, creating, onCreate, onClose }: {
+export function GroupOutings({ groupId, guard, channelName, discordLinked, creating, onCreate, onClose, headPlus }: {
   groupId: string; guard: Guard; channelName: string | null; discordLinked: boolean; creating: boolean; onCreate: () => void; onClose: () => void;
+  /** Page Sorties (Forever) : « + Sortie » est dans l'en-tête de la page, « Pour moi » par défaut. */
+  headPlus?: boolean;
 }) {
   const { data, isLoading } = useQuery({ queryKey: ["outings", groupId], queryFn: () => get<OutingsData>(`/groups/${groupId}/outings`) });
-  const [filter, setFilter] = useState<"all" | "me" | "mine">("all");
+  const [filter, setFilter] = useState<"all" | "me" | "mine">(headPlus ? "me" : "all");
   if (isLoading || !data) return <p className="muted">Chargement…</p>;
   if (creating && data.canCreate) return <div className="stack"><NewOuting groupId={groupId} data={data} channelName={channelName} discordLinked={discordLinked} onClose={onClose} /></div>;
 
@@ -91,7 +95,7 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
   const counts = { all: data.outings.length, me: data.outings.filter(forMe).length, mine: data.outings.filter(o => o.creator.me).length };
   const shown = data.outings.filter(o => (filter === "me" ? forMe(o) : filter === "mine" ? o.creator.me : true));
   const days = [...new Set(shown.map(o => (o.day < data.today ? data.today : o.day)))].sort();
-  const plus = data.canCreate && <button type="button" className="btn primary" onClick={onCreate}>+ Sortie</button>;
+  const plus = data.canCreate && !headPlus && <button type="button" className="btn primary" onClick={onCreate}>+ Sortie</button>;
   const bar = (withPlus: boolean) => (
     <div className="so-bar">
       <div className="seg" role="group" aria-label="Sorties affichées">
@@ -110,9 +114,9 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
       <div className="so-empty">
         <h3>Aucune sortie aujourd'hui ni demain</h3>
         {data.canCreate
-          ? <><p>Propose la tienne : le donjon est trié pour ton perso, et la guilde la voit ici, sur Discord et en jeu.</p>
-            <button type="button" className="btn primary" onClick={onCreate}>+ Proposer une sortie</button></>
-          : <p>Dans cette guilde, les officiers proposent les sorties : elles apparaîtront ici, sur Discord et en jeu.</p>}
+          ? <><p>Propose la tienne : la guilde la voit ici, sur Discord et en jeu.</p>
+            {!headPlus && <button type="button" className="btn primary" onClick={onCreate}>+ Proposer une sortie</button>}</>
+          : <p>Dans cette guilde, les officiers proposent les sorties.</p>}
       </div>
     </div>
   );
@@ -131,6 +135,9 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
           </div>
         </section>
       ))}
+      {filter === "me" && counts.all > counts.me && (
+        <p className="small muted" style={{ margin: 0 }}>{counts.all - counts.me} autre{counts.all - counts.me > 1 ? "s sorties ne sont" : " sortie n'est"} pas pour tes persos · <button type="button" className="link" onClick={() => setFilter("all")}>Toutes ({counts.all})</button></p>
+      )}
     </div>
   );
 }

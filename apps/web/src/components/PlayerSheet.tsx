@@ -38,10 +38,10 @@ const day = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit" 
 const color = (cls: string) => classColor(cls) ?? "var(--line-2)";
 
 export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: string; userId: string; officer: boolean; onClose: () => void }) {
-  // Ses persos s'ouvrent dans Mes persos ; ceux d'un autre joueur, en lecture dans l'onglet Personnages du groupe
+  // Ses persos s'ouvrent dans Mes persos ; ceux d'un autre joueur, en lecture dans les fiches de la guilde (Forever : Membres › Persos)
   const myId = useMe().data?.user?.id;
   const gt = useGameText();
-  const charUrl = (id: string) => (userId === myId ? `/persos/${id}` : `/groups/${groupId}/persos?perso=${id}`);
+  const charUrl = (id: string) => (userId === myId ? `/persos/${id}` : gt.game === "forever" ? `/groups/${groupId}/membres/persos?vue=fiches&perso=${id}` : `/groups/${groupId}/persos?perso=${id}`);
   const { data, isLoading } = useQuery({ queryKey: ["player-sheet", groupId, userId], queryFn: () => get<Sheet>(`/groups/${groupId}/members/${userId}/sheet`) });
   if (isLoading || !data) return <p className="muted">Chargement…</p>;
   const { member: m, characters, attendance: a, loot } = data;

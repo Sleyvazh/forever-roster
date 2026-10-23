@@ -15,7 +15,7 @@ import { reportRoutes } from "./routes/reports";
 import { discordRoutes } from "./routes/discord";
 import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
-import { groupRoutes } from "./routes/groups";
+import { groupPublicRoutes, groupRoutes } from "./routes/groups";
 import { templateRoutes } from "./routes/templates";
 import { lootRoutes } from "./routes/loot";
 import { reachRoutes } from "./routes/reach";
@@ -101,6 +101,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(accountRoutes, { prefix: "/api/account" });
   await app.register(characterRoutes, { prefix: "/api/characters" });
   await app.register(gameDataRoutes, { prefix: "/api/gamedata" });
+  await app.register(groupPublicRoutes, { prefix: "/api/groups" });
   await app.register(groupRoutes, { prefix: "/api/groups" });
   await app.register(raidRoutes, { prefix: "/api/groups" });
   await app.register(addonRoutes, { prefix: "/api" });
