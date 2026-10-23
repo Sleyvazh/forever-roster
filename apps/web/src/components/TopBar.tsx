@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { navKeyOf, navLinks, useCurrentGuild, type NavKey } from "../nav";
 import { SyncMenu } from "./SyncMenu";
+import { readInvite } from "../invite";
 import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
 import { ClassIcon } from "./Icons";
@@ -111,8 +112,11 @@ function ForeverLinks({ bar }: { bar: boolean }) {
     <Link key={k} to={links[k]} className={on === k ? "active" : undefined} aria-current={on === k ? "page" : undefined}>{bar && TAB_ICONS[icon]}{bar ? short : label}</Link>
   ))}</>;
 }
-/** Première visite (invitation, Bienvenue) : la barre ne garde que le logo et le compte. */
-const BARE = ["/bienvenue", "/join"];
+/**
+ * Première visite (lien d'invitation, Bienvenue avec une invitation en attente) : la barre ne garde que le logo et le compte.
+ * Sans invitation, la page Bienvenue garde la navigation (Mes persos reste à portée).
+ */
+const bareFor = (path: string) => path === "/join" || (path === "/bienvenue" && !!readInvite());
 
 /** Bandeau du haut : logo, onglets, compte à rebours, menu du compte. Sur téléphone, onglets en bas de l'écran. */
 export function TopBar() {
@@ -124,7 +128,7 @@ export function TopBar() {
   const app = !!user && site.open;
   const loc = useLocation();
   const forever = site.game === "forever";
-  const bare = forever && BARE.includes(loc.pathname);
+  const bare = forever && bareFor(loc.pathname);
   useLiveEvents(app);
   return (
     <>

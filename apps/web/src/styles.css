@@ -2159,3 +2159,5 @@ select.need { border-color: var(--warn); }
 .rl-legend summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
 .mp-list .ab-line .btn { border: 0; background: none; padding: 0; min-height: 0; color: var(--gold); font-size: 13.5px; font-weight: 500; }
 .mp-list .ab-line .btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Un texte pour lecteur d'écran (position absolue) dans un tableau qui défile ne doit pas élargir la page */
+.tscroll { position: relative; }

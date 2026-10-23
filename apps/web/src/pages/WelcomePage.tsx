@@ -96,7 +96,15 @@ export function WelcomePage() {
   );
   else if (preview && !user) body = <><GuildTop p={preview} step={1} /><AccountForm token={token} /></>;
   else if (preview && user) body = <><GuildTop p={preview} step={2} /><PersoForm p={preview} token={token} defaultName={user.displayName} /></>;
-  else body = <NoInvite name={user?.displayName ?? ""} error={error} onToken={t => { setError(null); setToken(t); }} />;
+  else if (!user) body = (
+    <>
+      <div className="wl-top"><span className="eyebrow">Invitation</span><h1>Lien expiré</h1></div>
+      <div className="alert error" role="alert">{error ?? "Cette invitation n'est plus valable."}</div>
+      <p style={{ margin: 0 }}>Demande un nouveau lien à un officier de ta guilde.</p>
+      <p className="small wl-alt"><Link to="/login">Se connecter</Link> · <Link to="/register">Créer un compte</Link></p>
+    </>
+  );
+  else body = <NoInvite name={user.displayName} error={error} onToken={t => { setError(null); setToken(t); }} />;
   return <div className="wl"><section className="wl-card panel lift" aria-label="Bienvenue">{body}</section></div>;
 }
 

@@ -54,7 +54,7 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
   await page.fill("#email", email);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
 
   // Groupe de Forever : Thalion officier (Brindille, druide 55 tank/heal, et Pikou, mage 33), d'autres joueurs et deux sorties
   const db = new pg.Client({ connectionString: DB });
@@ -96,8 +96,10 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
   await db.end();
 
   await page.goto(`/groups/${group}`);
-  await page.getByRole("tab", { name: "Sorties" }).click();
+  await page.locator(".topnav").getByRole("link", { name: "Sorties" }).click();
   await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties$`));
+  // « Pour moi » par défaut (Brindille 55 a le niveau des deux)
+  await expect(page.getByRole("button", { name: "Pour moi (2)" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Toutes (2)" })).toBeVisible();
 
   await test.step("s'inscrire d'un clic avec le perso qui a le niveau", async () => {
@@ -125,7 +127,7 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
   });
 
   await test.step("« + Sortie » : perso pré-choisi, donjon trié pour lui, demain 21:00, publier", async () => {
-    await page.getByRole("button", { name: "+ Sortie" }).click();
+    await page.getByRole("link", { name: "+ Sortie" }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties/nouvelle$`));
     const form = page.locator("form.gr-form");
     await expect(form.getByRole("button", { name: /Brindille/ })).toHaveAttribute("aria-pressed", "true");

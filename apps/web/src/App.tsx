@@ -58,6 +58,8 @@ export function App() {
             <Route path="/mentions-legales" element={<LegalNoticePage />} />
             <Route path="/confidentialite" element={<PrivacyPage />} />
             <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
+            {/* Accueil public (/) d'un visiteur déjà connecté : Forever le renvoie ici, vers l'Accueil de sa guilde */}
+            <Route path="/accueil" element={<RequireAuth><Home /></RequireAuth>} />
             <Route path="/persos/:charId?/:tab?" element={<RequireAuth><Chars /></RequireAuth>} />
             <Route path="/groups" element={<RequireAuth><Groups /></RequireAuth>} />
             <Route path="/groups/:groupId/:tab?" element={<RequireAuth><GroupRoute /></RequireAuth>} />

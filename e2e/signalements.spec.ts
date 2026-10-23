@@ -41,7 +41,7 @@ async function login(page: Page, email: string) {
   await page.fill("#email", email);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
 }
 const openMenu = (page: Page) => page.locator(".acct-btn").click();
 const newPage = async (browser: Browser) => (await browser.newContext({ locale: "fr-FR", timezoneId: "Europe/Paris" })).newPage();
@@ -52,12 +52,12 @@ test("signaler un bug avec une capture, réponse de l'admin, pastille", async ({
   await login(page, player);
 
   await test.step("le joueur signale depuis le menu de son compte", async () => {
-    await page.goto("/groups");
+    await page.goto("/persos");
     await openMenu(page);
     await page.getByRole("button", { name: "Signaler un bug ou une idée" }).click();
     const dlg = page.getByRole("dialog");
     await expect(dlg).toHaveAccessibleName("Signaler un bug ou une idée");
-    await expect(dlg.getByText("Joint automatiquement")).toContainText("/groups");
+    await expect(dlg.getByText("Joint automatiquement")).toContainText("/persos");
     await expect(dlg.getByText("Joint automatiquement")).toContainText("Forever Roster");
     await dlg.getByRole("button", { name: "Addon", exact: true }).click();
     await dlg.getByLabel("Titre").fill("La fenêtre du conseil se ferme");
@@ -92,7 +92,7 @@ test("signaler un bug avec une capture, réponse de l'admin, pastille", async ({
     await expect(adminPage.getByText("/signalements-lier")).toBeVisible();
     const item = adminPage.locator(".sg-item", { hasText: "La fenêtre du conseil se ferme" });
     await expect(item).toContainText("Signaleuse");
-    await expect(item).toContainText("/groups");
+    await expect(item).toContainText("/persos");
     await expect(item.getByRole("img", { name: "Capture jointe" })).toBeVisible();
     await item.getByLabel(/Réponse au joueur/).fill("Merci ! Corrigé dans la prochaine version de l'addon.");
     await item.getByRole("button", { name: "Répondre" }).click();

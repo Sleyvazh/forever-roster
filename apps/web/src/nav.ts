@@ -34,7 +34,7 @@ export function useCurrentGuild() {
   const guilds = q.data?.groups ?? [];
   const last = readLastGuild();
   const id = fromUrl ?? (last && guilds.some(g => g.id === last) ? last : guilds[0]?.id ?? null);
-  return { id, guilds, current: guilds.find(g => g.id === id) ?? null, loading: q.isLoading };
+  return { id, guilds, current: guilds.find(g => g.id === id) ?? null, loading: q.isPending };
 }
 
 export type NavKey = "home" | "outings" | "raids" | "guild" | "chars" | null;

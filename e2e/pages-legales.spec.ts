@@ -102,7 +102,7 @@ test("Compte & sécurité mène à la confidentialité", async ({ page }) => {
   await page.fill("#email", email);
   await page.fill("#password", password);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
   await page.goto("/account");
   await page.locator(".page-head").getByRole("link", { name: "confidentialité" }).click();
   await expect(page).toHaveURL(/\/confidentialite$/);

@@ -152,7 +152,7 @@ export function PasteImport() {
         <ul className="addon-results">
           {results.map(x => (
             <li key={x.name} className={x.ok === null ? "info" : x.ok ? "ok" : "bad"}><strong>{x.name}</strong> : {x.msg}
-              {x.groups?.map(g => <span key={g.id}> · <Link to={`/groups/${g.id}/membres`} onClick={close}>Membres de {g.name}</Link></span>)}</li>
+              {x.groups?.map(g => <span key={g.id}> · <Link to={`/groups/${g.id}/membres`} onClick={close}>{g.name} › Joueurs</Link></span>)}</li>
           ))}
           {results.length === 0 && <li>Rien de mis à jour.</li>}
         </ul>

@@ -71,7 +71,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
 
   const db = new pg.Client({ connectionString: DB });
   await db.connect();
@@ -145,20 +145,20 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await expect(page.locator(".rr")).toContainText("Pas encore répondu");
   await page.locator(".rr").screenshot({ path: `${OUT}/apercu-sans-reponse.png` });
   await page.goto(`/groups/${group}/admin`);
-  await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
+  await page.locator(".adm-nav").getByRole("button", { name: /^Discord/ }).click();
   const dc = page.locator("section[aria-labelledby=dc-title]");
   await expect(dc).toContainText("Relances");
   await dc.screenshot({ path: `${OUT}/apercu-reglage-relances.png` });
 
   // 2. Fiche joueur
   await page.goto(`/groups/${group}/membres`);
-  await page.getByRole("button", { name: "Gorrak" }).click();
+  await page.getByRole("button", { name: "Gorrak", exact: true }).click();
   await expect(page.locator(".ps")).toContainText("raids venus");
   await page.locator(".ps").scrollIntoViewIfNeeded();
   await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-joueur.png` });
-  // Un perso d'un autre joueur s'ouvre en lecture dans l'onglet Personnages du groupe (pas dans Mes persos)
+  // Un perso d'un autre joueur s'ouvre en lecture dans Guilde › par perso, fiches du site (pas dans Mes persos)
   await page.locator(".ps .ps-char").first().click();
-  await expect(page).toHaveURL(new RegExp(`/groups/${group}/persos$`));
+  await expect(page).toHaveURL(new RegExp(`/groups/${group}/membres/persos\\?vue=fiches$`));
   await expect(page.locator(".gm-who")).toContainText("de Gorrak");
 });
 
@@ -224,7 +224,7 @@ test("aperçus du lot F", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await page.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/); // Forever : l'Accueil de la guilde
 
   // 1. Onglet Artisans : commandes en cours, composants dépliés
   await page.goto(`/groups/${group}/artisans`);
@@ -265,13 +265,13 @@ test("aperçus du lot F", async ({ page }) => {
   await page.goto(`/groups/${group}/membres`);
   await expect(page.locator("table.data")).toContainText("Présence");
   await page.locator("table.data").screenshot({ path: `${OUT}/apercu-membres-presence.png` });
-  await page.getByRole("button", { name: "Gorrak" }).click();
+  await page.getByRole("button", { name: "Gorrak", exact: true }).click();
   await expect(page.locator(".ps")).toContainText("Déménagement");
   await page.locator(".ps").screenshot({ path: `${OUT}/apercu-fiche-absence.png` });
 
   // 5. Administration : salon des commandes
   await page.goto(`/groups/${group}/admin`);
-  await page.locator(".adm-nav").getByRole("button", { name: "Discord et relances" }).click();
+  await page.locator(".adm-nav").getByRole("button", { name: /^Discord/ }).click();
   const oc = page.locator("section[aria-labelledby=oc-title]");
   await oc.getByRole("button", { name: "Générer un code de liaison" }).click();
   await expect(oc.getByRole("textbox")).toHaveValue(/forever-lier code:/);
@@ -279,8 +279,8 @@ test("aperçus du lot F", async ({ page }) => {
 
   // 6. Fiche perso : ligne de synchro, puis Ctrl+V avec le choix des parties
   await page.goto(`/persos/${thalwen}`);
-  await expect(page.locator(".ce-sync")).toBeVisible();
-  await page.locator(".ce-sync").scrollIntoViewIfNeeded();
+  await expect(page.locator(".fi-state")).toBeVisible();
+  await page.locator(".fi-state").scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${OUT}/apercu-ligne-synchro.png` });
   await page.evaluate(text => {
     const dt = new DataTransfer();
@@ -346,7 +346,7 @@ test("aperçus du lot G", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await page.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/); // Forever : l'Accueil de la guilde
 
   await page.goto(`/groups/${group}/raids/${raid}/preparation`);
   const cons = page.locator("section[aria-labelledby=pr-cons]");
@@ -393,7 +393,7 @@ test("aperçus du lot I", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await page.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/); // Forever : l'Accueil de la guilde
 
   // 1. Administration → Butin : période du compte
   await page.goto(`/groups/${group}/admin`);
@@ -412,7 +412,7 @@ test("aperçus du lot I", async ({ page }) => {
 
   // 3. Fiche du joueur : compte et correction avec motif
   await page.goto(`/groups/${group}/membres`);
-  await page.getByRole("button", { name: "Gorrak" }).click();
+  await page.getByRole("button", { name: "Gorrak", exact: true }).click();
   await page.selectOption("#lc-delta", "1");
   await page.fill("#lc-note", "Objet donné hors addon (échange)");
   await page.getByRole("button", { name: "Corriger le compte" }).click();
@@ -434,7 +434,7 @@ test("aperçus du lot K1", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await page.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/); // Forever : l'Accueil de la guilde
 
   // 1. Page /appairer : ce que Roster Companion a déclaré, le code à comparer, Autoriser / Refuser
   const start = await (await page.request.post("/api/devices/pair", { data: { name: "PC-FLO", platform: "Windows 11", appVersion: "0.1.0" } })).json();
@@ -485,7 +485,7 @@ test("aperçus des signalements", async ({ page, browser }) => {
     await p.goto("/login");
     await p.fill("#email", email); await p.fill("#password", pass);
     await p.getByRole("button", { name: /se connecter/i }).click();
-    await expect(p.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+    await p.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/);
     return email;
   };
   await page.emulateMedia({ colorScheme: "dark" });
@@ -573,7 +573,7 @@ test("tour des pages", async ({ page }) => {
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await page.waitForURL(/\/(groups\/[0-9a-f-]{36}|bienvenue)$/); // Forever : l'Accueil de la guilde
   const db = new pg.Client({ connectionString: DB });
   await db.connect();
   const me = (await db.query("SELECT id FROM users WHERE email = $1", [EMAIL])).rows[0].id as string;
@@ -597,15 +597,16 @@ test("tour des pages", async ({ page }) => {
   const OUT_T = path.resolve("test-results/tour");
   const pages: [string, string][] = [
     ["persos", "/persos"], ["perso-profil", `/persos/${thalwen}`], ["perso-metiers", `/persos/${thalwen}/metiers`], ["perso-equipement", `/persos/${thalwen}/equipement`],
-    ["perso-notes", `/persos/${thalwen}/notes`], ["groupes", "/groups"], ["groupe-raids", `/groups/${group}`], ["groupe-membres", `/groups/${group}/membres`],
-    ["groupe-persos", `/groups/${group}/persos`], ["groupe-artisans", `/groups/${group}/artisans`], ["groupe-presence", `/groups/${group}/presence`],
+    ["perso-notes", `/persos/${thalwen}/notes`], ["groupe-accueil", `/groups/${group}`], ["groupe-sorties", `/groups/${group}/sorties`], ["groupe-raids", `/groups/${group}/raids`],
+    ["groupe-membres", `/groups/${group}/membres`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
+    ["groupe-presence", `/groups/${group}/raids/presence`],
     ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
     ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account"], ["addon", "/addon"],
   ];
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
     for (const [name, url] of pages) {
-      if (suffix && !["persos", "groupe-raids", "raid", "groupes"].includes(name)) continue;
+      if (suffix && !["persos", "groupe-accueil", "groupe-raids", "groupe-membres", "raid"].includes(name)) continue;
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       await page.screenshot({ path: `${OUT_T}/${name}${suffix}.png`, fullPage: true });
@@ -613,8 +614,8 @@ test("tour des pages", async ({ page }) => {
   }
   // Formulaire « Nouveau raid » et sélecteur de date
   await page.setViewportSize({ width: 1360, height: 900 });
-  await page.goto(`/groups/${group}`);
-  await page.getByRole("button", { name: "+ Nouveau raid" }).click();
+  await page.goto(`/groups/${group}/raids`);
+  await page.getByRole("button", { name: "+ Raid" }).click();
   await page.fill("#gr-name", "Molten Core");
   await page.locator(".dt-day").nth(2).click();
   await page.locator(".gr-tog").click();

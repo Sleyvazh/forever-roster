@@ -102,8 +102,10 @@ test("même compte sur les deux adresses", async ({ page }) => {
     await page.fill("#email", email);
     await page.fill("#password", password);
     await page.getByRole("button", { name: /se connecter/i }).click();
-    await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mes persos" })).toBeVisible();
     await expect(page.locator(".brand")).toHaveAccessibleName(/^Forever Roster/);
+    // Forever : cinq entrées (refonte du 23/10) ; Roster garde Mes persos · Guildes · Addon
+    await expect(page.locator(".topnav .nav a")).toHaveText(["Accueil", "Sorties", "Raids", "Guilde", "Mes persos"]);
   });
 });
 

@@ -36,7 +36,7 @@ async function account(page: Page, name: string) {
   await page.goto("/login");
   await page.fill("#email", email); await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
-  await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
 }
 
 test("avis du Discord : pastilles, fil, réponse depuis le site, statut", async ({ page }) => {
@@ -66,17 +66,20 @@ test("avis du Discord : pastilles, fil, réponse depuis le site, statut", async 
     await db.query("insert into feedback_messages (feedback_id, \"from\", name, text, source, delivered, created_at) values ($1, 'team', 'Brakka', 'Bonne idée, on en parle jeudi entre officiers. Tu viens d''habitude le mercredi ?', 'discord', true, now() - interval '90 minutes'), ($1, 'author', null, 'Oui, chaque semaine, mais je décroche vers minuit.', 'discord', null, now() - interval '20 minutes')", [anon]);
   } finally { await db.end(); }
 
-  await test.step("pastilles sur l'onglet Administration et sur « Avis »", async () => {
+  await test.step("« À traiter » sur l'Accueil des officiers, pastille sur « Avis »", async () => {
     await page.goto(`/groups/${groupId}`);
-    await expect(page.getByRole("tab", { name: /Administration/ }).locator(".av-badge")).toHaveText("2");
-    await page.getByRole("tab", { name: /Administration/ }).click();
+    const todo = page.getByRole("region", { name: /À traiter/ });
+    await expect(todo.locator("li").filter({ hasText: "avis Discord à lire" }).locator(".tt-n")).toHaveText("2");
+    await expect(todo.getByRole("link", { name: "Lire" })).toHaveAttribute("href", `/groups/${groupId}/admin?section=avis`);
+    await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
+    await page.getByRole("link", { name: "Administration" }).click();
     const nav = page.getByRole("navigation", { name: "Sections de l'administration" });
     await expect(nav.getByRole("button", { name: /Avis/ }).locator(".av-badge")).toHaveText("2");
     await nav.getByRole("button", { name: /Avis/ }).click();
     await expect(page.getByRole("heading", { name: "Avis du Discord" })).toBeVisible();
     await expect(page.getByText("Amis Forever")).toBeVisible();
     // Vus : les pastilles s'en vont, les « Nouveau » restent pendant la lecture
-    await expect(page.getByRole("tab", { name: /Administration/ }).locator(".av-badge")).toHaveCount(0);
+    await expect(nav.getByRole("button", { name: /Avis/ }).locator(".av-badge")).toHaveCount(0);
     await expect(page.locator(".av-item").first().locator(".sg-new").first()).toBeVisible();
     await page.screenshot({ path: `${OUT}/apercu-avis.png`, fullPage: true });
   });
