@@ -92,6 +92,8 @@ services:
       DOMAIN: ${DOMAIN:-localhost}
       RETAIL_DOMAIN: ${RETAIL_DOMAIN:-roster.localhost}
       WS_DOMAIN: ${WS_DOMAIN:-ws.localhost}
+      # Sondage en nuage de mots (dépôt sondage), ex. sondage.sleyvazh.fr
+      SONDAGE_DOMAIN: ${SONDAGE_DOMAIN:-sondage.localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     ports:
       - "80:80"

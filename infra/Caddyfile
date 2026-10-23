@@ -90,3 +90,12 @@
 	}
 	reverse_proxy ws-update:8787
 }
+
+# Sondage en nuage de mots (dépôt sondage, conteneur « sondage » sur le réseau frontend).
+# L'application pose elle-même ses en-têtes de sécurité (CSP comprise) ; Caddy fait le HTTPS et relaie le WebSocket.
+# Tant que le sous-domaine n'existe pas chez OVH, laisser SONDAGE_DOMAIN vide (adresse locale sans effet).
+{$SONDAGE_DOMAIN:sondage.localhost} {
+	encode zstd gzip
+	header -Server
+	reverse_proxy sondage:3000
+}
