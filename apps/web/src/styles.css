@@ -2061,7 +2061,7 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .g-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 .ph-acts { align-items: center; }
 .inv-wrap { position: relative; }
-.ph-t .g-meta { display: flex; }
+.ph-t .g-meta, .wl-top .g-meta { display: flex; }
 .ph-t .g-meta .fac-img { border-radius: 3px; }
 
 /* Inscription : trois statuts et « Autre » */
