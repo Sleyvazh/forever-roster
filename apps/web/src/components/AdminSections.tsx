@@ -107,7 +107,6 @@ export function Crafters({ groupId, myId }: { groupId: string; myId?: string }) 
     <div className="sec">
       <CraftOrders groupId={groupId} myId={myId} prefill={prefill} />
       <h3 style={{ margin: "8px 0 0" }}>Qui crafte quoi ?</h3>
-      <p className="hint" style={{ margin: 0 }}>Retrouve qui sait fabriquer un objet pour lui envoyer les composants, et quels patrons les membres recherchent.</p>
       <div className="row" style={{ alignItems: "flex-end" }}>
         <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="cr-q">Recette ou objet</label>
           <input id="cr-q" type="search" placeholder="Warbear Woolies, Flask…" value={input} onChange={e => setInput(e.target.value)} />

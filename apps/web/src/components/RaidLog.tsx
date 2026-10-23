@@ -182,7 +182,10 @@ export function AttendanceTab({ groupId }: { groupId: string }) {
   const n = data.raids.length;
   return (
     <div className="stack">
-      <p className="hint" style={{ margin: 0 }}>{n > 1 ? `Sur les ${n} derniers raids relevés.` : "Sur le dernier raid relevé."} ✓ présent · R en retard · P parti tôt · B banc · ✗ inscrit, absent · vide : ni inscrit ni vu.</p>
+      {retail
+        ? <p className="hint" style={{ margin: 0 }}>{n > 1 ? `Sur les ${n} derniers raids relevés.` : "Sur le dernier raid relevé."} ✓ présent · R en retard · P parti tôt · B banc · ✗ inscrit, absent · vide : ni inscrit ni vu.</p>
+        : <details className="rl-legend"><summary>{n > 1 ? `Les ${n} derniers raids relevés` : "Le dernier raid relevé"} · légende</summary>
+            <p className="hint" style={{ margin: "6px 0 0" }}>✓ présent · R en retard · P parti tôt · B banc · ✗ inscrit, absent · vide : ni inscrit ni vu.</p></details>}
       <div className="tscroll"><table className="data rl-att">
         <thead><tr>
           <th>Perso</th><th>Présence</th>

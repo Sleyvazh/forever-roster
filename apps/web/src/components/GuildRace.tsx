@@ -125,8 +125,7 @@ export function RaceNotStarted({ startsAt }: { startsAt: string }) {
   return (
     <div className="so-empty">
       <h3>{d > 1 ? `La course part dans ${d} jours` : d === 1 ? "La course part demain" : "La course part cette nuit"}</h3>
-      <p>Départ à la sortie, <b>{longDayTime(startsAt)}</b>. Rien à faire : les niveaux viennent de la liste de guilde, relevée par l'addon de n'importe quel membre.</p>
-      <p className="small muted">Avec l'addon, en plus : % d'XP et l'heure exacte de chaque niveau.</p>
+      <p>Départ à la sortie, <b>{longDayTime(startsAt)}</b>. Rien à faire : les niveaux viennent de la liste de guilde, relevée par l'addon.</p>
     </div>
   );
 }

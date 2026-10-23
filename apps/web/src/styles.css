@@ -2146,3 +2146,16 @@ select.need { border-color: var(--warn); }
 .toast.bad { border-color: var(--bad); }
 .toast.bad .ic { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--panel)); }
 @media (max-width: 760px) { .toast.paste-toast { left: 16px; right: 16px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
+.mp-list .ab-line { border: 0; border-top: 1px dashed var(--line-2); border-radius: 0; background: none; padding: 10px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.mp-list .ab-line > b { font: 500 13.5px var(--f-body); color: var(--ink-2); margin: 0; }
+.mp-list .ab-line > b::after { content: " :"; }
+
+/* Page Addon (Forever) : trois étapes, le reste replié ; sur téléphone, une phrase renvoie vers le PC */
+.ad-step h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; color: var(--ink); }
+.ad-step h2 .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--frame); font: 600 13px var(--f-mono); color: var(--gold); }
+.ad-pc { display: none; }
+@media (max-width: 720px) { .ad-pc { display: block; } }
+.ad-more .addon-list { display: grid; gap: 6px; }
+.rl-legend summary { cursor: pointer; color: var(--ink-2); font-size: 13.5px; }
+.mp-list .ab-line .btn { border: 0; background: none; padding: 0; min-height: 0; color: var(--gold); font-size: 13.5px; font-weight: 500; }
+.mp-list .ab-line .btn:hover { text-decoration: underline; text-underline-offset: 3px; }

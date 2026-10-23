@@ -137,7 +137,7 @@ function AccountForm({ token }: { token: string }) {
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="wl-go"><button type="submit" className="btn primary wl-btn" disabled={busy}>{busy ? "Création…" : "Créer mon compte"}</button>
         <span className="hint">Un e-mail de confirmation arrive : l'invitation t'attend.</span></div>
-      <p className="small wl-alt">Déjà un compte ? <Link to="/login?next=/bienvenue">Se connecter</Link> · <Link to="/confidentialite">Confidentialité</Link></p>
+      <p className="small wl-alt">Déjà un compte ? <Link to="/login?next=/bienvenue">Se connecter</Link></p>
     </form>
   );
 }

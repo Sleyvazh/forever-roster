@@ -360,7 +360,6 @@ export function Metiers({ c, onChange, editable = false }: SubProps) {
             </div>
           ))}
         </div>
-        <p className="hint" style={{ margin: 0 }}>Nouveau dans Forever : chaque métier a 3 objets de camp qui donnent un buff horaire. Le premier se débloque à 20 de compétence.</p>
       </div>
     </>
   );

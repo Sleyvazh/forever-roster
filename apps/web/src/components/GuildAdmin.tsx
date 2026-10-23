@@ -40,10 +40,7 @@ export function GuildLinkSection({ groupId, guard }: { groupId: string; guard: G
           <dt>Journal</dt>
           <dd>{d.link.journalAt ? `relevé ${agoText(d.link.journalAt)}` : <span className="muted">pas encore relevé</span>}</dd>
         </dl>
-        <p className="hint" style={{ margin: 0 }}>
-          Chaque membre qui a l'addon à jour envoie la liste à sa synchro ; la plus récente l'emporte. Les notes d'officier ne sont gardées que si
-          l'envoyeur est officier ici et peut les lire en jeu. Un relevé d'une autre guilde du jeu est ignoré.
-        </p>
+        <p className="hint" style={{ margin: 0 }}>La liste la plus récente, envoyée par n'importe quel membre qui a l'addon, l'emporte.</p>
         <div className="row">
           {confirm
             ? <span className="row small">Délier efface la liste, le journal et les niveaux (la course repart de zéro) ; les rattachements des persos restent.
@@ -52,9 +49,7 @@ export function GuildLinkSection({ groupId, guard }: { groupId: string; guard: G
             : <button type="button" className="btn ghost sm" onClick={() => setConfirm(true)}>Délier la guilde du jeu</button>}
         </div>
       </> : <>
-        <p className="hint" style={{ margin: 0 }}>
-          Le premier relevé d'un officier qui a l'addon à jour lie la guilde toute seule. S'il est officier de plusieurs guildes sur le site, la guilde du jeu est proposée ici.
-        </p>
+        <p className="hint" style={{ margin: 0 }}>La synchro d'un officier qui a l'addon à jour lie la guilde toute seule ; sinon, elle est proposée ici.</p>
         {d.proposals.length > 0 && (
           <ul className="gd-list" aria-label="Guildes du jeu proposées">{d.proposals.map(p => (
             <li key={p.key} className="gl-card">

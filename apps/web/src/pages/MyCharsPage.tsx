@@ -8,7 +8,7 @@ import { ClassIcon, SpecIcon } from "../components/Icons";
 import { ImageUpload, Portrait } from "../components/ImageUpload";
 import { NumberField } from "../components/NumberField";
 import { Paperdoll } from "../components/Paperdoll";
-import { absenceLabel, MyAbsences, type Absence } from "../components/Absences";
+import { MyAbsences } from "../components/Absences";
 import { ClassSpecPicker } from "../components/ClassSpecPicker";
 import { useGameText } from "../gameText";
 import { syncAge } from "../addonImport";
@@ -68,7 +68,7 @@ export function MyCharsPage() {
       <div className={`mp${picked ? " has-sel" : ""}`}>
         <div className="mp-list">
           {local.map(c => <CharCard key={c.id} c={c} current={c.id === sel} onClick={() => nav(urlFor(c.id, picked ? tab : "profil"))} />)}
-          <AbsencesLine />
+          <MyAbsences />
         </div>
         {current && (
           <div className="stack mp-sheet" style={{ gap: 12 }}>
@@ -100,20 +100,6 @@ function CharCard({ c, current, onClick }: { c: Character; current: boolean; onC
       {!c.cls || !c.spec1 ? <span className="tag warn">À compléter</span> : <span />}
       <span className="sub">{[t.cls(c.cls) || "Classe ?", specs || "pas de spé"].join(" · ")}</span>
     </button>
-  );
-}
-
-function AbsencesLine() {
-  const abs = useQuery({ queryKey: ["absences"], queryFn: () => get<{ absences: Absence[] }>("/absences") }).data?.absences ?? [];
-  const [declaring, setDeclaring] = useState(false);
-  return (
-    <>
-      <div className="mc-foot">
-        <span>Absences : {abs.length ? abs.slice(0, 2).map(a => `${absenceLabel(a)}${a.reason ? ` · ${a.reason}` : ""}`).join(" ; ") : "aucune"}</span>
-        {!declaring && <button type="button" className="link" onClick={() => setDeclaring(true)}>Déclarer une absence</button>}
-      </div>
-      {declaring && <MyAbsences startOpen onDone={() => setDeclaring(false)} />}
-    </>
   );
 }
 
