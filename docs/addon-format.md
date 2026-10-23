@@ -250,6 +250,17 @@ END;<nombre de lignes entre l'en-tête et END>
 - Sauvegarde : `ForeverRosterDB.guilds["<guilde>-<royaume>-<faction>"]` (`roster`, `events`, `bank` ; envoi : `sentSig`, `sentAt`, `ackSig`) et, pour chaque perso, `ForeverRosterDB.chars[…].guild`, `.xp`, `.levels` (GUID : `.snapshot.header.guid`, relevé avec le perso). Une fiche de guilde qu'aucun perso du compte n'a plus est retirée à la connexion.
 - Générateur : `F.BuildFRL` (`addon/ForeverRoster/Format.lua`), testé dans `addon/tests/format_test.lua` ; relève, en-tête FRC et envoi simulés dans `addon/tests/wow_sim.lua` (section 8 quinquies), dont la sauvegarde est relue par Roster Companion (test `roundtrip.rs`, qui vérifie le bloc `frl`).
 
+## Ce qu'en fait le site (lot « Guilde »)
+
+- **Import** : `POST /api/addon/import` (Ctrl+V sur n'importe quelle page) et `POST /api/sync/upload` (Roster Companion) lisent chaque bloc FRL (`parseGuildBlocks`, `packages/game-data/src/guild.ts` ; `apps/api/src/lib/guild-import.ts`). Le Ctrl+V reconnaît un texte qui commence par `FRL;`, ou un bloc FRL placé après des blocs FRC et FRB ; quand il n'y a rien à choisir (chaque perso a sa fiche, pas de bilan), le site applique tout de suite et affiche le résultat.
+- **Lien de guilde** : un relevé ne s'applique qu'aux guildes du site liées à cette guilde du jeu (clé `<guilde>-<royaume>-<faction>`). Le premier relevé d'un officier (ou du propriétaire) du site lie la guilde toute seule s'il n'a qu'une guilde Forever sans lien ; sinon la guilde du jeu est proposée dans l'Administration de chacune (gardée 30 jours), où un officier la lie ou la délie (« Délier » efface la liste, le journal et les niveaux). Un relevé d'une autre guilde du jeu est ignoré.
+- **Liste** : tout membre de la guilde du site peut l'envoyer ; la plus récente (heure `liste relevée le` de l'en-tête) l'emporte. Les membres sont rangés par GUID (champ 11) ; un membre absent d'une liste complète est noté parti, et effacé 90 jours après son départ avec ses niveaux et son rattachement.
+- **Notes d'officier** : gardées seulement si l'en-tête dit `1` **et** que l'envoyeur est officier ou propriétaire de la guilde sur le site ; montrées aux officiers seulement. Les notes de guilde suggèrent le main d'un perso (« Alt de X »…), à accepter par un officier.
+- **Journal** : arrivées, départs, renvois, promotions et rétrogradations de l'Historique et de l'Accueil (date à l'heure près), effacés au bout de 12 mois.
+- **Niveaux** : lignes `P` et `U` (heure exacte, % d'XP) pour les persos rattachés par leur GUID ; sinon le niveau de la liste, daté du jour du relevé (« vers le »). Ils font la Course au 60 et ses annonces Discord.
+- **Banque** (`B`, `T`, `I`, `X`, `O`) : relevée par l'addon, pas encore lue par le site (lot Banque).
+- **Réponse** : un résultat par bloc, de clé `frl:<guilde>-<royaume>-<faction>` (champs 3, 10 et 4 de l'en-tête), `kind: "guild"`, avec les guildes du site mises à jour (`groups`).
+
 ## Envoi au site (addon 1.6.2, Roster Companion 0.3.1)
 
 Une guilde relevée (fiche de la sauvegarde) part au site quand l'empreinte de sa forme stable a changé depuis son dernier envoi (« Tout renvoyer » : toujours) :
@@ -292,6 +303,7 @@ L'appli (en option, `apps/companion`) fait la synchro sans copier-coller, avec l
 ForeverRosterDB.outbox = { v = 1, at = <unix>, addon = "1.3.0", blocks = {
   { kind = "frc", key = "Tournicoti-Forever EU", sig = "<empreinte>", text = "FRC;2;…\nEND;7" },
   { kind = "frb", key = "frb:<id du raid>", sig = "<log.updated>", lead = true, text = "FRB;2;…;1\n…\nEND;12" },
+  { kind = "frl", key = "frl:Les Lanternes-Forever EU-Horde", sig = "<empreinte de la forme stable>", text = "FRL;1;…\nEND;42" },
 } }
 ```
 

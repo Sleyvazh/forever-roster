@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 51, date: "2026-10-23", kind: "site", title: "Le site fait peau neuve",
+    text: "Cinq entrées, sur ordinateur comme sur téléphone : Accueil, Sorties, Raids, Guilde et Mes persos. L'Accueil dit quoi faire ce soir et demain : t'inscrire d'un clic (Présent, Peut-être, Absent ; les autres réponses sous « Autre »), rejoindre une sortie, corriger ce qui bloque, voir ta place dans la Course au 60. La page Guilde réunit les joueurs, la course, les artisans et l'historique ; un lien d'invitation mène droit à la guilde." },
   { n: 50, date: "2026-10-17", kind: "site", title: "Mentions légales et confidentialité",
     text: "Deux nouvelles pages, en bas de chaque page du site : les mentions légales (qui édite le site, qui l'héberge) et la politique de confidentialité, qui dit tout ce que le site garde sur toi, pourquoi, combien de temps, qui le voit, et comment le faire effacer." },
   { n: 49, date: "2026-10-16", kind: "site", title: "Sorties donjon : un groupe de 5 pour ce soir ou demain",

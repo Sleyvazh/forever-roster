@@ -8,7 +8,7 @@ import { useSite, type SiteData } from "../site";
  * nom du site de l'adresse. L'adresse de contact vient du serveur (CONTACT_EMAIL, servie par /api/site).
  * Les durées de conservation décrivent ce que fait le code (purges : apps/api/src/lib/purges.ts) : à mettre à jour avec lui.
  */
-const UPDATED = "17 octobre 2026";
+const UPDATED = "23 octobre 2026";
 
 const host = (origin: string) => origin.replace(/^https?:\/\//, "");
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
@@ -163,7 +163,7 @@ const ROWS: Row[] = [
   },
   {
     title: "Tes persos",
-    data: "Nom, royaume, race, classe, spés, niveau, talents, équipement et objectifs, métiers et patrons, consommables comptés par l'addon, notes, portrait. Ce qu'envoient l'addon et Roster Companion : ces informations, tes inscriptions faites en jeu et la version de l'addon. Sur Roster : identifiant Battle.net du perso, niveau d'objet et spé active lus chez Blizzard.",
+    data: "Nom, royaume, race, classe, spés, niveau, talents, équipement et objectifs, métiers et patrons, consommables comptés par l'addon, notes, portrait. Ce qu'envoient l'addon et Roster Companion : ces informations, tes inscriptions faites en jeu et la version de l'addon ; GUID du perso en jeu et nom complet (envoyés par l'addon). Sur Roster : identifiant Battle.net du perso, niveau d'objet et spé active lus chez Blizzard.",
     why: "Tenir ta fiche à jour et préparer les raids.",
     basis: "Contrat",
     keep: "Tant que le perso existe (tu peux le supprimer), et au plus tant que le compte existe.",
@@ -224,6 +224,14 @@ const ROWS: Row[] = [
     basis: "Contrat",
     keep: "Effacées automatiquement 2 heures après l'heure prévue (ou à la fin du jour), avec leur message Discord. Messages privés : effacés 7 jours après leur envoi.",
     who: "Les membres de la guilde et le salon Discord de la sortie.",
+  },
+  {
+    title: "Guilde du jeu (Forever)",
+    data: "Liste de la guilde du jeu relevée par l'addon d'un membre : nom complet, classe, niveau, rang, notes de guilde (notes d'officier relevées par un officier, montrées aux officiers seulement), en ligne et dernière connexion, arrivée et départ ; journal de guilde (arrivées, départs, promotions, avec les noms) ; niveaux atteints et XP (heure exacte avec l'addon) ; rattachement des persos à leurs joueurs.",
+    why: "Montrer qui joue quoi dans la guilde (mains et alts), la Course au 60 et l'historique de la guilde.",
+    basis: "Intérêt légitime",
+    keep: "Tant que la guilde du site est liée à la guilde du jeu (« Délier » efface la liste, le journal et les niveaux). Un membre parti est effacé 90 jours après son départ, avec ses niveaux et son rattachement ; le journal de guilde au bout de 12 mois ; une guilde du jeu proposée (et son relevé) au bout de 30 jours. Le podium « Premiers 60 » reste.",
+    who: "Les membres de la guilde ; notes d'officier : les officiers ; annonces de niveaux : le salon Discord de la guilde.",
   },
   {
     title: "Signalements",
@@ -310,10 +318,11 @@ const COOKIES: [string, string, string][] = [
 const STORAGE: [string, string][] = [
   ["fr-theme", "Thème choisi (clair ou sombre) ; absent : celui de ton appareil."],
   ["fr-news-seen", "Dernière nouveauté lue (point doré du bouton « Nouveautés »)."],
-  ["fr-steps-hidden", "Étapes de démarrage masquées."],
+  ["fr-steps-hidden", "Étapes de démarrage masquées (Roster)."],
   ["fr-view-…", "Affichages choisis : liste des persos de la guilde, arbres de talents, bandeau « Cette semaine »."],
   ["fr-addon-fiches", "Ancien choix des fiches à l'import de l'addon : seulement relu, plus jamais écrit."],
-  ["fr-invite", "Lien d'invitation à une guilde, le temps de te connecter ; effacé ensuite (session de l'onglet)."],
+  ["fr-invite", "Jeton du lien d'invitation à une guilde, avec l'e-mail saisi en créant ton compte (pour le préremplir à la connexion) : gardés 24 h au plus, pour que l'invitation survive à la confirmation de l'e-mail, et effacés dès que tu rejoins la guilde. Sur Roster : le temps de te connecter (session de l'onglet)."],
+  ["fr-guild", "Dernière guilde ouverte, pour arriver sur son Accueil."],
   ["fr-tab", "Dernier onglet ouvert d'une fiche de perso (session de l'onglet)."],
 ];
 
@@ -389,7 +398,7 @@ export function PrivacyPage() {
           </li>
           <li>
             <span className="tag legal-basis li">Intérêt légitime</span> : la sécurité du site (journal, sessions, journaux du
-            serveur), l'organisation des guildes (bilans de raid, inscrits Discord sans compte) et l'amélioration du site
+            serveur), l'organisation des guildes (bilans de raid, liste de la guilde du jeu, inscrits Discord sans compte) et l'amélioration du site
             (signalements, avis). Tu peux t'y opposer (voir « Tes droits »).
           </li>
           <li>
@@ -407,7 +416,7 @@ export function PrivacyPage() {
           </li>
           <li>
             <b>Discord</b> (Discord Inc., États-Unis), seulement si tu lies ton compte Discord ou utilises le bot. Discord reçoit ce
-            que le bot publie : annonces (pseudos, persos et spés des inscrits), messages privés, avis, et les signalements dans le
+            que le bot publie : annonces (pseudos, persos et spés des inscrits, montées de niveau de la Course au 60), messages privés, avis, et les signalements dans le
             salon privé des admins. Le site reçoit de Discord ton identifiant et ton pseudo, rien d'autre (ni ton e-mail, ni tes
             serveurs). Ces données sont traitées par Discord, y compris aux États-Unis, selon sa propre politique de confidentialité.
           </li>
@@ -501,6 +510,10 @@ export function PrivacyPage() {
           <li>
             <b>Bilans de raid</b> : l'addon d'un officier note les prénoms en jeu des joueurs présents dans le raid, leurs heures de
             présence, les objets reçus et les consommables. Ces bilans restent dans la guilde tant que le raid existe.
+          </li>
+          <li>
+            <b>Liste de guilde</b> : l'addon d'un membre relève la liste de la guilde du jeu (nom complet, classe, niveau, rang, notes,
+            dernière connexion) et son journal ; un membre parti est effacé 90 jours après son départ, le journal au bout de 12 mois.
           </li>
           <li>
             <b>Avis Discord</b> : ton identifiant Discord, pour te transmettre les réponses, effacé comme le dit le tableau.
