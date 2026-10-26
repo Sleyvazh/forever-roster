@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 52, date: "2026-10-26", kind: "site", title: "Range tes persos en les glissant",
+    text: "Dans Mes persos, la poignée ⋮⋮ à gauche de chaque perso revient : glisse-le pour changer l'ordre (ou flèches haut et bas au clavier), il est repris sur l'Accueil, ton main en tête. Et sur l'Accueil, chaque perso montre son portrait s'il en a un, sinon l'icône de sa spé, cerclée de la couleur de sa classe." },
   { n: 51, date: "2026-10-23", kind: "site", title: "Le site fait peau neuve",
     text: "Cinq entrées, sur ordinateur comme sur téléphone : Accueil, Sorties, Raids, Guilde et Mes persos. L'Accueil dit quoi faire ce soir et demain : t'inscrire d'un clic (Présent, Peut-être, Absent ; les autres réponses sous « Autre »), rejoindre une sortie, corriger ce qui bloque, voir ta place dans la Course au 60. La page Guilde réunit les joueurs, la course, les artisans et l'historique ; un lien d'invitation mène droit à la guilde." },
   { n: 50, date: "2026-10-17", kind: "site", title: "Mentions légales et confidentialité",

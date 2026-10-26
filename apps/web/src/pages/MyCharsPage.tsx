@@ -1,6 +1,6 @@
 import { CLASS_SPECS, CLASSES, isValidCombo, RACE_NAMES, RACES, roleOf, type ClassName, type SpecDef } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, post, put, uploadImage, type Character, type GroupSummary } from "../api";
 import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, Metiers, TalentsSection, type EditorTab } from "../components/CharacterEditor";
@@ -19,6 +19,7 @@ import { useAutosave } from "./CharactersPage";
  * sur téléphone, deux écrans (/persos, puis /persos/:id avec « ← Mes persos »). L'essentiel tient en deux lignes (nom,
  * niveau, race, classe ; spé, off-spec, guilde, main ou alt) ; les talents, que l'addon remplit, sont repliés.
  * « + Ajouter un perso » : /persos/nouveau, nom, classe et spé. Roster (WoW Retail) garde CharactersPage.
+ * L'ordre de la liste se change en glissant la poignée ⋮⋮ (ou flèches haut/bas) : il sert aussi sur l'Accueil.
  */
 
 const TABS: [EditorTab, string][] = [["profil", "Profil"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Notes"]];
@@ -48,6 +49,13 @@ export function MyCharsPage() {
     setLocal(list => list.map(c => (c.id === current.id ? { ...c, ...p } : c)));
     saver.queue(p);
   };
+  /** Nouvel ordre de la liste : gardé sur le compte (et repris sur l'Accueil). */
+  const saveOrder = async (ids: string[]) => {
+    const sorted = <T extends { id: string }>(list: T[]) => ids.map(id => list.find(c => c.id === id)).filter((c): c is T => !!c);
+    setLocal(sorted);
+    qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: sorted(d.characters) });
+    try { await put("/characters/order", { ids }); } catch { await qc.invalidateQueries({ queryKey: ["characters"] }); }
+  };
 
   if (isLoading) return <p className="muted">Chargement…</p>;
   const head = (
@@ -67,7 +75,8 @@ export function MyCharsPage() {
       {head}
       <div className={`mp${picked ? " has-sel" : ""}`}>
         <div className="mp-list">
-          {local.map(c => <CharCard key={c.id} c={c} current={c.id === sel} onClick={() => nav(urlFor(c.id, picked ? tab : "profil"))} />)}
+          <SortableChars items={local} onReorder={ids => void saveOrder(ids)}
+            render={c => <CharCard c={c} current={c.id === sel} onClick={() => nav(urlFor(c.id, picked ? tab : "profil"))} />} />
           <MyAbsences />
         </div>
         {current && (
@@ -82,6 +91,52 @@ export function MyCharsPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Liste réordonnable à la souris, au doigt (pointer events) et au clavier : poignée ⋮⋮ à gauche de chaque carte,
+ * flèches haut/bas quand elle a le focus. L'ordre n'est envoyé qu'au lâcher.
+ */
+function SortableChars({ items, render, onReorder }: { items: Character[]; render: (c: Character) => ReactNode; onReorder: (ids: string[]) => void }) {
+  const [order, setOrder] = useState<string[]>(items.map(c => c.id));
+  const [dragging, setDragging] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const ids = items.map(c => c.id).join();
+  useEffect(() => { if (!dragging) setOrder(ids ? ids.split(",") : []); }, [ids, dragging]);
+  const byId = new Map(items.map(c => [c.id, c]));
+  const move = (id: string, delta: number) => {
+    const i = order.indexOf(id), j = i + delta;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    setOrder(next); onReorder(next);
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!dragging || !listRef.current) return;
+    const rows = [...listRef.current.querySelectorAll<HTMLElement>("[data-id]")].filter(n => n.dataset.id !== dragging);
+    const before = rows.find(n => { const r = n.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+    const rest = order.filter(id => id !== dragging);
+    rest.splice(before ? rest.indexOf(before.dataset.id!) : rest.length, 0, dragging);
+    if (rest.join() !== order.join()) setOrder(rest);
+  };
+  const end = () => {
+    if (!dragging) return;
+    setDragging(null);
+    if (order.join() !== ids) onReorder(order);
+  };
+  if (items.length < 2) return <>{items.map(c => <div key={c.id}>{render(c)}</div>)}</>;
+  return (
+    <div className="roster" ref={listRef} onPointerMove={onPointerMove} onPointerUp={end} onPointerCancel={end}>
+      {order.map(id => byId.get(id)).filter((c): c is Character => !!c).map(c => (
+        <div key={c.id} data-id={c.id} className={`item${dragging === c.id ? " dragging" : ""}`}>
+          <button type="button" className="grip" aria-label={`Déplacer ${c.name} (flèches haut/bas)`} title="Glisser pour changer l'ordre (ou flèches haut/bas)"
+            onPointerDown={e => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDragging(c.id); }}
+            onKeyDown={e => { if (e.key === "ArrowUp") { e.preventDefault(); move(c.id, -1); } if (e.key === "ArrowDown") { e.preventDefault(); move(c.id, 1); } }}>⋮⋮</button>
+          {render(c)}
+        </div>
+      ))}
     </div>
   );
 }

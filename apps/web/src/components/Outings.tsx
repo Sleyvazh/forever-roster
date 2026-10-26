@@ -8,6 +8,7 @@ import { ApiError, del, get, patch, post, put } from "../api";
 import { useGameText } from "../gameText";
 import { QUARTERS } from "./DateTime";
 import { ClassIcon, SpecIcon } from "./Icons";
+import { Portrait } from "./ImageUpload";
 import { NumberField } from "./NumberField";
 import { RoleIcon } from "./RoleIcon";
 
@@ -46,14 +47,18 @@ const dayTitle = (day: string) => dayLong.format(new Date(`${day}T12:00:00Z`));
 const rank = (n: number) => <>{n}<sup>{n === 1 ? "er" : "e"}</sup></>;
 const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : "Action impossible.");
 
-/** Pastille de classe : icône de la spé dans un disque, ou disque de la couleur de classe et initiale (maquette). md, lg : guilde, course. */
-export function ClassDot({ cls, spec, size }: { cls: string | null | undefined; spec?: string; size?: "md" | "lg" }) {
+/**
+ * Pastille de classe : le portrait choisi par le joueur s'il y en a un, sinon l'icône de la spé (ou de la classe), dans un
+ * disque neutre cerclé de la couleur de classe ; sans image, disque de la couleur de classe et initiale. md, lg : guilde, course.
+ */
+export function ClassDot({ cls, spec, size, portraitId }: { cls: string | null | undefined; spec?: string; size?: "md" | "lg"; portraitId?: string | null }) {
   const k = `cp${size ? ` ${size}` : ""}`;
   if (!cls) return <span className={k} aria-hidden="true">?</span>;
   const px = size === "lg" ? 44 : size === "md" ? 28 : 22;
+  const icon = spec ? <SpecIcon cls={cls} spec={spec} size={px} /> : <ClassIcon cls={cls} size={px} />;
   return (
     <span className={`${k}${cls === "Shaman" ? " sha" : ""}`} style={{ "--cc": classColor(cls) } as CSSProperties} title={cls} aria-hidden="true">
-      {spec ? <SpecIcon cls={cls} spec={spec} size={px} /> : <ClassIcon cls={cls} size={px} />}
+      {portraitId ? <Portrait id={portraitId} size={px} fallback={icon} /> : icon}
     </span>
   );
 }

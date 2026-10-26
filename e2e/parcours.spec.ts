@@ -331,6 +331,22 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.selectOption("#f-guild", { label: "Les Testeurs" });
     await expect(page.locator(".fi-head .sub")).toContainText("Les Testeurs");
     await expect(page.getByRole("group", { name: "Main ou alt dans la guilde" }).getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
+    // Ordre de la liste : flèche haut sur la poignée ⋮⋮ de Greta, gardé sur le compte ; puis glisser à la souris
+    const cards = page.locator(".mp-list .card");
+    const order = async () => (await (await page.request.get("/api/characters")).json()).characters.map((c: { name: string }) => c.name.split(" ")[0]);
+    await page.getByRole("button", { name: "Déplacer Greta (flèches haut/bas)" }).press("ArrowUp");
+    await expect(cards.first()).toContainText("Greta");
+    await expect.poll(order).toEqual(["Greta", "Tournicoti"]);
+    await page.reload();
+    await expect(cards.first()).toContainText("Greta");
+    const grip = (await page.getByRole("button", { name: "Déplacer Greta (flèches haut/bas)" }).boundingBox())!;
+    const below = (await cards.last().boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + grip.width / 2, below.y + below.height - 4, { steps: 8 });
+    await page.mouse.up();
+    await expect(cards.last()).toContainText("Greta");
+    await expect.poll(order).toEqual(["Tournicoti", "Greta"]);
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/persos-par-groupe.png", fullPage: true });
     // Ancienne adresse de l'onglet Personnages : Guilde › Joueurs, par perso
     const gid = (await page.evaluate(() => localStorage.getItem("fr-guild")))!;

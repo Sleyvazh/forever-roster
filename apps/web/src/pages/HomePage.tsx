@@ -261,7 +261,7 @@ function MyCharsCard({ groupId, chars }: { groupId: string; chars: Character[] }
           const specs = [c.spec1, c.spec2].filter(Boolean).map(x => gt.spec(c.cls, x)).join(" · ");
           return (
             <li key={c.id}>
-              <ClassDot cls={c.cls} size="md" />
+              <ClassDot cls={c.cls} spec={c.spec1 || undefined} size="md" portraitId={c.portraitId} />
               <Link className="t" to={`/persos/${c.id}`}>
                 <span><CharName name={c.name} cls={c.cls} />{c.group?.id === groupId && c.group.isMain && <span className="gm-star" title="Main"> ★</span>} <span className="lvn">{c.level}</span></span>
                 <small>{specs || (c.cls ? "pas de spé" : "à compléter")}</small>
