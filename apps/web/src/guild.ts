@@ -57,17 +57,21 @@ export function whenShort(iso: string, now = new Date()) {
   const d = dayNum(now) - dayNum(new Date(iso));
   return d === 0 ? `auj. ${hourMin(iso)}` : d === 1 ? `hier ${hourMin(iso)}` : `${dayMonth(iso)} ${hourMin(iso)}`;
 }
-/** Date d'un niveau de la course : exacte, ou approximative (« vers le 18/11 », jour du relevé). */
+/**
+ * Date d'un niveau de la course : exacte, approximative (« vers le 18/11 », jour du relevé), ou seulement « avant le 18/11 »
+ * (déjà atteint au premier relevé du perso).
+ */
 export function raceDateText(d: RaceDate | null | undefined, now = new Date()): { text: string; est: boolean } {
   if (!d) return { text: "—", est: false };
   if (!d.at) return { text: "✓", est: true };
+  if (d.seen) return { text: `avant le ${dayMonth(d.at)}`, est: true };
   return d.exact ? { text: whenShort(d.at, now), est: false } : { text: `vers le ${dayMonth(d.at)}`, est: true };
 }
-/** Jalon (colonnes 20 / 40 / 60) : « 6/11 », ou « ≈ 8/11 » (approximatif). */
+/** Jalon (colonnes 20 / 40 / 60) : « 6/11 », « ≈ 8/11 » (approximatif) ou « ≤ 8/11 » (déjà atteint au premier relevé). */
 export function milestoneText(d: RaceDate | undefined): { text: string; est: boolean; none: boolean } {
   if (!d) return { text: "—", est: false, none: true };
   if (!d.at) return { text: "✓", est: true, none: false };
-  return { text: d.exact ? dayMonth(d.at) : `≈ ${dayMonth(d.at)}`, est: !d.exact, none: false };
+  return { text: d.exact ? dayMonth(d.at) : `${d.seen ? "≤" : "≈"} ${dayMonth(d.at)}`, est: !d.exact, none: false };
 }
 
 /** Dernière connexion : « en ligne », « il y a 40 min », « il y a 5 h », « hier », « il y a 9 jours » ; old : plus de 7 jours. */

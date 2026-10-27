@@ -263,7 +263,7 @@ export async function freezePodium(db: Tx, groupId: string) {
     const prev = podium[i - 1];
     const tie = !!prev && prev.at === r.at.toISOString();
     if (i >= 3 && !tie) break;
-    podium.push({ guid: r.guid, name: r.name, cls: r.cls, at: r.at.toISOString(), exact: r.source === "exact", place: tie ? prev.place : i + 1, tie });
+    podium.push({ guid: r.guid, name: r.name, cls: r.cls, at: r.at.toISOString(), exact: r.source === "exact", place: tie ? prev.place : i + 1, tie, ...(r.source === "seen" && { seen: true }) });
     if (tie) prev.tie = true;
   }
   await db.update(gameGuilds).set({ podium }).where(and(eq(gameGuilds.groupId, groupId), isNull(gameGuilds.podium)));

@@ -243,8 +243,11 @@ export function raceDateText(at: number, exact: boolean, timeZone = GAME_TIMEZON
 
 /* ---------- Réponses de l'API (site) ---------- */
 
-/** Date d'un niveau : exacte (notée par l'addon à la montée) ou approximative (jour du relevé de la liste de guilde, « vers le »). */
-export interface RaceDate { at: string | null; exact: boolean }
+/**
+ * Date d'un niveau : exacte (notée par l'addon à la montée) ou approximative (jour du relevé de la liste de guilde, « vers le »).
+ * seen : niveau déjà atteint au premier relevé du perso (guilde liée en cours de course) : seulement « avant le », ordre inconnu.
+ */
+export interface RaceDate { at: string | null; exact: boolean; seen?: boolean }
 /** Rattachement d'un perso à un joueur. account : persos du même compte du site (GUID envoyé par l'addon). */
 export type GuildLinkSource = "account" | "note" | "officer" | "declared";
 

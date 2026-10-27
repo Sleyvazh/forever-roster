@@ -709,8 +709,11 @@ export const outingNotices = pgTable("outing_notices", {
 
 /* ---------- Guilde du jeu (Forever, lot « Guilde ») ---------- */
 
-/** Premiers 60 figés (dès le troisième) : gardés tels quels, même si un perso quitte la guilde ensuite. */
-export interface FrozenPodiumPlace { guid: string; name: string; cls: string; at: string; exact: boolean; place: number; tie: boolean }
+/**
+ * Premiers 60 figés (dès le troisième) : gardés tels quels, même si un perso quitte la guilde ensuite.
+ * seen : déjà 60 au premier relevé du perso (guilde liée en cours de course) : date et ordre inconnus.
+ */
+export interface FrozenPodiumPlace { guid: string; name: string; cls: string; at: string; exact: boolean; place: number; tie: boolean; seen?: boolean }
 
 /**
  * Guilde du jeu liée à une guilde du site (Forever) : une au plus. Le lien se fait au premier relevé (FRL) envoyé par un

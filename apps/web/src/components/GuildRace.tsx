@@ -102,16 +102,18 @@ export function Podium({ places, mini }: { places: RacePodiumPlace[]; mini?: boo
           </div>
         );
         const done = !p.racing;
+        // Déjà 60 au premier relevé (guilde liée en cours de course) : ni rang ni date, l'ordre n'est pas connu
+        const seen = !!p.reached?.seen;
         return (
-          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={`${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
+          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? `déjà 60 au premier relevé : ${p.char.name}` : `${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
             <ClassDot cls={p.char.cls} size={mini ? "md" : "lg"} />
             <CharName name={p.char.name} cls={p.char.cls} as="span" />
             <span className={`pod-lv${done ? " done" : ""}`}>{done ? `${MAX_LEVEL} ✓` : p.char.xpPct !== null ? `${p.char.level} · ${p.char.xpPct} %` : p.char.level}</span>
-            {!mini && <span className="pod-when">{p.racing ? "encore en course" : <>
+            {!mini && <span className="pod-when">{p.racing ? "encore en course" : seen ? <i>déjà 60 au<br />premier relevé</i> : <>
               {p.reached?.at ? (p.reached.exact ? `${dayMonth(p.reached.at)} à ${hourMin(p.reached.at)}` : <i>vers le {dayMonth(p.reached.at)}</i>) : "date inconnue"}
               {p.days !== null && <><br />en {p.days} jour{p.days > 1 ? "s" : ""}</>}{p.char.left && <><br />parti de la guilde</>}
             </>}</span>}
-            <span className="pod-base" aria-hidden="true">{p.place}</span>
+            <span className="pod-base" aria-hidden="true">{seen ? "" : p.place}</span>
           </div>
         );
       })}
@@ -167,7 +169,9 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
   const count = flat
     ? `${total} perso${total > 1 ? "s" : ""}${filter === "mains" ? " · les mains" : " · mains et alts mélangés"}`
     : `${total} joueur${total > 1 ? "s" : ""} · une ligne chacun, avec ${filter === "mains" ? "son main" : "son perso le plus avancé"}`;
-  const noAddon = (flat ? chars.map(c => c.char) : players.map(p => p.line)).some(c => !c.addon);
+  const shown = flat ? chars.map(c => c.char) : players.map(p => p.line);
+  const noAddon = shown.some(c => !c.addon);
+  const seenDates = shown.some(c => Object.values(c.milestones).some(d => d?.seen));
   const cut = all ? Number.POSITIVE_INFINITY : PAGE;
   const mineHidden = (list: { me: boolean }[]) => !all && list.findIndex(x => x.me) >= PAGE;
 
@@ -197,7 +201,8 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
         <section className="hm-card" aria-labelledby="pod-t">
           <div className="hm-h"><h3 id="pod-t">Premiers 60</h3><span className="muted small">{r.podium.frozen ? "figé" : `${Math.min(3, r.podium.sixties)} sur 3`}</span></div>
           <Podium places={r.podium.places} />
-          <p className="pod-cap">{r.podium.frozen ? "Figé au troisième 60 : il reste en place après la course." : "Le podium se fige au troisième 60, puis reste en place après la course."}</p>
+          <p className="pod-cap">{r.podium.frozen ? "Figé au troisième 60 : il reste en place après la course." : "Le podium se fige au troisième 60, puis reste en place après la course."}
+            {r.podium.places.some(p => p.reached?.seen) && " Ordre inconnu pour qui était déjà 60 au premier relevé de la liste de guilde."}</p>
         </section>
         <section className="hm-card" aria-labelledby="pcls-t">
           <div className="hm-h"><h3 id="pcls-t">Premiers par classe</h3></div>
@@ -233,7 +238,8 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
           {total > PAGE && !all && <button type="button" className="rk-more" onClick={() => setAll(true)}>Voir les {total - PAGE} suivants</button>}
         </div>
       )}
-      {noAddon && <p className="rk-legend"><i>En italique</i> : sans l'addon, d'après la liste de guilde. « ≈ 8/11 » se lit « vers le 8/11 » : c'est le jour du relevé. Pas de % d'XP.</p>}
+      {noAddon && <p className="rk-legend"><i>En italique</i> : sans l'addon, d'après la liste de guilde. « ≈ 8/11 » se lit « vers le 8/11 » : c'est le jour du relevé. Pas de % d'XP.
+        {seenDates && " « ≤ 8/11 » : déjà atteint au premier relevé de la guilde."}</p>}
     </div>
   );
 }

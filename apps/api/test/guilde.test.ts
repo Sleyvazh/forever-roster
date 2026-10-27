@@ -354,6 +354,27 @@ describe("Course au 60", () => {
     expect(home.race).toMatchObject({ started: true, linked: true, me: { rank: 2, tie: true, name: V.name, cls: "Rogue", level: 60 } });
     expect(home.race.podium).toHaveLength(4);
   });
+
+  it("guilde reliée en cours de course : les 60 du premier relevé figent le podium sans rang ni date", async () => {
+    const s = await scene("Les Tardifs", []);
+    const K = m("Kaeldra Brisevent", 60, { ri: 0 }), V = m("Vex Ombrelame", 60, { cls: "ROGUE" }), Y = m("Ysalis Clairsang", 60, { cls: "PRIEST" });
+    const N = m("Nessa Flotsombre", 57, { cls: "SHAMAN" });
+    const at = (d: number) => Math.round(L + d * DAY);
+    setNow(at(14.5));
+    await paste(s.owner, frl({ at: at(14), members: [K, V, Y, N] }));
+    let race = await s.race();
+    expect(race.podium.frozen).toBe(true);
+    expect(race.podium.places.map(p => [p.char.name, p.reached?.seen ?? false, p.days])).toEqual([[K.name, true, null], [V.name, true, null], [Y.name, true, null]]);
+    // Jalons du premier relevé : « avant le » (seen), pas une montée
+    const nessa = race.rows.find(r => r.best.name === N.name)!.best;
+    expect(nessa.milestones[40]).toEqual({ at: new Date(at(14) * 1000).toISOString(), exact: false, seen: true });
+    // Nessa prend le 60 ensuite : vue monter, date approximative, le podium figé ne bouge pas
+    setNow(at(15.5));
+    await paste(s.owner, frl({ at: at(15), members: [K, V, Y, { ...N, level: 60 }] }));
+    race = await s.race();
+    expect(race.podium.places.map(p => p.char.name)).toEqual([K.name, V.name, Y.name]);
+    expect(race.rows.find(r => r.best.name === N.name)!.best.milestones[60]).toEqual({ at: new Date(at(15) * 1000).toISOString(), exact: false });
+  });
 });
 
 describe("accueil de la guilde", () => {

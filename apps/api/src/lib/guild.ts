@@ -298,7 +298,7 @@ export async function loadLevels(db: Tx, groupId: string): Promise<LevelRow[]> {
     .from(guildLevels).where(eq(guildLevels.groupId, groupId));
 }
 
-const date = (e: LevelRow): RaceDate => ({ at: e.reachedAt.toISOString(), exact: e.source === "exact" });
+const date = (e: LevelRow): RaceDate => ({ at: e.reachedAt.toISOString(), exact: e.source === "exact", ...(e.source === "seen" && { seen: true }) });
 const ms = (d: RaceDate | null | undefined) => (d?.at ? Date.parse(d.at) : Number.POSITIVE_INFINITY);
 
 /** Ligne de la course d'un perso : niveau, % d'XP, niveaux de la semaine, dernière montée, jalons. */
@@ -311,7 +311,7 @@ export function raceChar(m: MemberRow, levels: readonly LevelRow[], opts: { now:
     if (m.level < lv) continue;
     // Date du jalon : celle du niveau, sinon celle du premier niveau au-dessus (« vers le », au plus tard ce jour-là)
     const e = valid.find(l => l.level === lv) ?? valid.filter(l => l.level >= lv).sort((a, b) => a.reachedAt.getTime() - b.reachedAt.getTime())[0];
-    milestones[lv] = e ? { at: e.reachedAt.toISOString(), exact: e.source === "exact" && e.level === lv } : { at: null, exact: false };
+    milestones[lv] = e ? { at: e.reachedAt.toISOString(), exact: e.source === "exact" && e.level === lv, ...(e.source === "seen" && { seen: true }) } : { at: null, exact: false };
   }
   // Niveaux de la semaine : niveau il y a 7 jours (sinon celui du premier relevé, ou celui d'avant la première montée vue)
   const t = opts.now.getTime() - 7 * DAY;
@@ -406,8 +406,10 @@ function podiumOf(r: Resolved, levels: readonly LevelRow[], chars: Map<string, R
       frozen: true, sixties: frozen.length,
       places: frozen.map(f => {
         const live = chars.get(f.guid);
-        const char: RaceChar = live ?? { guid: f.guid, name: f.name, cls: (f.cls || null) as ClassName | null, race: null, level: MAX_LEVEL, xpPct: null, addon: f.exact, weekGain: 0, last: { at: f.at, exact: f.exact }, milestones: { 60: { at: f.at, exact: f.exact } }, isMain: false, left: true };
-        return { place: f.place as 1 | 2 | 3, tie: f.tie, char, player: keyOf.get(f.guid) ?? null, reached: { at: f.at, exact: f.exact }, days: days(f.at), racing: false };
+        const reached: RaceDate = { at: f.at, exact: f.exact, ...(f.seen && { seen: true }) };
+        const char: RaceChar = live ?? { guid: f.guid, name: f.name, cls: (f.cls || null) as ClassName | null, race: null, level: MAX_LEVEL, xpPct: null, addon: f.exact, weekGain: 0, last: reached, milestones: { 60: reached }, isMain: false, left: true };
+        // Déjà 60 au premier relevé : ni nombre de jours ni rang
+        return { place: f.place as 1 | 2 | 3, tie: f.tie, char, player: keyOf.get(f.guid) ?? null, reached, days: f.seen ? null : days(f.at), racing: false };
       }),
     };
   }
@@ -423,7 +425,7 @@ function podiumOf(r: Resolved, levels: readonly LevelRow[], chars: Map<string, R
     // Les trois premiers, et les ex æquo du troisième
     if (i >= 3 && !tie) break;
     if (tie) prev.tie = true;
-    places.push({ place: (tie ? prev.place : i + 1) as 1 | 2 | 3, tie, char, player: keyOf.get(l.guid) ?? null, reached: date(l), days: days(l.reachedAt.toISOString()), racing: false });
+    places.push({ place: (tie ? prev.place : i + 1) as 1 | 2 | 3, tie, char, player: keyOf.get(l.guid) ?? null, reached: date(l), days: l.source === "seen" ? null : days(l.reachedAt.toISOString()), racing: false });
   }
   // Encore en course : les premiers joueurs qui ne sont pas déjà sur le podium
   for (const row of rows) {
