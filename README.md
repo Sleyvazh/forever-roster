@@ -85,7 +85,7 @@ DATABASE_URL_E2E=postgres://forever:forever@localhost:5432/forever_e2e npm run t
 
 Un vrai navigateur rejoue le parcours d'un joueur : inscription, fiche, portrait, patrons, équipement, groupe. Le site testé est la version construite pour la production, servie avec les mêmes en-têtes que Caddy (lus dans `infra/Caddyfile`). Toute erreur JavaScript ou violation de la CSP fait échouer le test. C'est ce filet qui manquait quand un envoi d'image fonctionnait en développement mais pas en production.
 
-Les captures de `docs/screenshots` se régénèrent de la même façon, avec des joueurs et des persos fictifs, sans les icônes du jeu (elles ne sont jamais dans le dépôt) : `CAPTURES=1 npx playwright test e2e/captures.spec.ts` sur une base e2e vide. Celles de Roster (`docs/screenshots/roster`) et l'image héros de son accueil public (`apps/web/public/landing/img/retail.webp`) viennent de `e2e/captures-roster.spec.ts`, de la même façon.
+Les captures de `docs/screenshots` se régénèrent de la même façon, avec des joueurs et des persos fictifs, sans les icônes du jeu (elles ne sont jamais dans le dépôt) : `CAPTURES=1 npx playwright test e2e/captures.spec.ts` sur une base e2e vide. Celles de Roster (`docs/screenshots/roster`) et l'image héros de son accueil public (`apps/web/public/landing/img/retail.webp`) viennent de `e2e/captures-roster.spec.ts`, de la même façon. L'image héros de l'accueil de Forever Roster (`apps/web/public/landing/img/forever.webp`, une guilde en pleine Course au 60) vient de `e2e/captures-forever.spec.ts`, avec le serveur et sa base à l'heure du 19 novembre 2026 (libfaketime, commandes en tête du fichier).
 
 ## Déploiement
 
