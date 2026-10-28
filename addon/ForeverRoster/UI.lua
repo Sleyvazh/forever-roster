@@ -66,7 +66,9 @@ refreshers.raids = function(p)
       local when = e.raid.time > 0 and date("%d/%m %H:%M", e.raid.time) or L["date à définir"]
       local site = e.onSite and (GREY .. "  " .. L("site : %s", G.StatusLabel(e.onSite)) .. (e.siteChar and (" (" .. e.siteChar .. ")") or "") .. "|r") or ""
       -- Raid arrivé avec les données d'un autre joueur (partage) : mon inscription sur le site n'y est pas
-      if e.unknown and not e.onSite then site = GREY .. "  " .. L("site : %s", L["inscription inconnue (données reçues d'un autre joueur)"]) .. "|r" end
+      if e.unknown and not e.onSite then site = GREY .. "  " .. L("site : %s", L["inscription inconnue (données reçues d'un autre joueur)"]) .. "|r"
+      -- La liste des inscrits du site (1.6.3) est là et aucun de mes persos n'y est : pas inscrit (ce n'est pas « inconnu »)
+      elseif e.siteState == "none" and not e.onSite then site = GREY .. "  " .. L("site : %s", L["pas d'inscription"]) .. "|r" end
       -- Inscription faite en jeu, en attendant que le site l'enregistre (elle est alors oubliée : 1.5.4)
       local game = ""
       if e.status then

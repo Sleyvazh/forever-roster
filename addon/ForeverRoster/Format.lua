@@ -69,7 +69,7 @@ end
 -- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
 -- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
 -- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 ») ;
--- 1.6.1 : X sortie donjon du jour ou de demain (outings, plus haut).
+-- 1.6.1 : X sortie donjon du jour ou de demain (outings, plus haut) ; 1.6.3 : Y liste des inscrits d'un raid (signups).
 -- Partage entre joueurs (1.6) : M (persos du groupe : members) et Z (signature du site : sig = { key }) juste avant END ;
 -- un bloc signé garde son texte (text : lignes de l'en-tête à END), relayé tel quel aux autres joueurs (Share.lua). Un
 -- bloc sans Z (ancien site, pas de clé, soft reserve cachée) n'a pas de texte : il ne se partage pas.
@@ -118,6 +118,29 @@ local function outing(f)
     note = utf8txt(f[14], 240),
   }
 end
+-- Liste des inscrits d'un raid (ligne Y, 1.6.3), hors du compte de END, une par ligne R, même vide (« Y;<raid>; » : liste
+-- connue, personne d'inscrit) :
+--   Y;<raid>;<prénom>[?]:<statut>:<statut depuis>,…
+-- Prénom d'un inscrit avec un compte du site ; « ? » : prénom porté par deux joueurs de la guilde (dup : jamais le mien) ;
+-- statut du site (les six) ; heure Unix du dernier changement de statut sur le site. Aucun champ personnel : l'addon
+-- reconnaît mes persos (Group.lua, G.SiteSignup). Statut inconnu ou prénom vide : sauté ; 60 inscrits au plus par raid.
+local SITE_STATUS = { present = true, late = true, tentative = true, alt = true, bench = true, absent = true }
+local function signupList(field)
+  local out = {}
+  for part in plain(field):gmatch("[^,]+") do
+    if #out >= 60 then break end
+    local name, status, at = part:match("^([^:]*):([^:]*):([^:]*)$")
+    if name then
+      name = name:gsub("^%s+", ""):gsub("%s+$", "")
+      local dup = name:sub(-1) == "?"
+      if dup then name = name:sub(1, -2) end
+      name = txt(name, 40)
+      status = status:gsub("^%s+", ""):gsub("%s+$", "")
+      if name ~= "" and SITE_STATUS[status] then out[#out + 1] = { name = name, status = status, at = tonumber(at), dup = dup } end
+    end
+  end
+  return out
+end
 function F.ParseFRG(text)
   local groups, cur, count, n, lines = {}, nil, nil, 0, nil
   local function close()
@@ -135,7 +158,7 @@ function F.ParseFRG(text)
       if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
       if tonumber(f[2]) ~= 1 then return nil, L("Version non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
       cur, count, n, lines = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
-        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil, outings = {} }, nil, 0, { line }
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil, outings = {}, signups = {} }, nil, 0, { line }
     elseif cur and f[1] == "M" and count == nil then
       cur.members = names(f[2], 1000)
     elseif cur and f[1] == "Z" and count == nil then
@@ -188,6 +211,10 @@ function F.ParseFRG(text)
       -- Sortie donjon (1.6.1), hors du compte de END ; 30 par groupe sur le site
       local o = #cur.outings < 40 and outing(f)
       if o then cur.outings[#cur.outings + 1] = o end
+    elseif cur and f[1] == "Y" and count == nil then
+      -- Inscrits d'un raid (1.6.3), hors du compte de END : une liste (même vide) = « liste connue »
+      local raidId = txt(f[2], 40)
+      if raidId ~= "" then cur.signups[raidId] = signupList(f[3]) end
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])

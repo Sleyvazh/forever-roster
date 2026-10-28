@@ -812,9 +812,13 @@ local function sharing()
   local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInGuild = IsInGuild, IsInRaid = IsInRaid,
     IsInGroup = IsInGroup, GetNumGroupMembers = GetNumGroupMembers, InCombatLockdown = InCombatLockdown, random = Sh.random,
     verify = ns.Crypto.VerifyRSA, groups = ForeverRosterDB.groups, lastLoad = ForeverRosterDB.lastLoad, companion = ForeverRosterDB.companion,
-    noRecord = ForeverRosterDB.noRecord, signups = c.signups, raidLogs = ForeverRosterDB.raidLogs, handover = ForeverRosterDB.handover }
-  -- Tables propres pendant la section (l'horloge y est 46 jours plus loin : les bilans relevés plus haut seraient effacés)
+    noRecord = ForeverRosterDB.noRecord, signups = c.signups, raidLogs = ForeverRosterDB.raidLogs, handover = ForeverRosterDB.handover,
+    greta = ForeverRosterDB.chars["Greta-Forever EU"] }
+  -- Tables propres pendant la section (l'horloge y est 46 jours plus loin : les bilans relevés plus haut seraient effacés).
+  -- Greta est un autre joueur ici : la ligne de son perso, restée dans la sauvegarde depuis « /fr oublier », la ferait passer pour
+  -- un de mes persos (la liste des inscrits de sample.frg lit mon inscription d'après mes persos)
   ForeverRosterDB.groups, ForeverRosterDB.noRecord, c.signups, ForeverRosterDB.raidLogs, ForeverRosterDB.handover = {}, true, {}, {}, {}
+  ForeverRosterDB.chars["Greta-Forever EU"] = nil
   local errorsBefore = errors()
   -- Horloge et minuteurs : le temps avance à la demande
   local clock = 1794000000 + 2 * 3600 -- sample.frg : généré à 1794000000
@@ -1001,18 +1005,20 @@ local function sharing()
   local parts = count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";")
   assert(parts >= 4 and parts == #Sh.Chunks(G1, AT, info1.shared) and count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";1;") == 1, "quatre demandes, une seule diffusion (" .. parts .. " morceaux)")
   g = myGroup(G1)
-  assert(g.at == AT and g.text and Sh.Status(g.text, "FRG") == "ok" and g.origin.from == "Greta" and g.mineAt == T0, "reçu de Greta : appliqué et gardé signé")
+  -- sample.frg a une liste des inscrits (ligne Y) pour chacun des deux raids : mes champs personnels sont aussi frais que le bloc
+  assert(g.at == AT and g.text and Sh.Status(g.text, "FRG") == "ok" and g.origin.from == "Greta" and g.mineAt == AT, "reçu de Greta : appliqué et gardé signé")
   assert(realChecks >= 1, "vraie signature vérifiée par Crypto.lua (clé de test)")
   local r1 = raidOf(g, R1)
-  assert(r1.status == "late" and r1.char == "Tournicoti" and not r1.unknown, "mon inscription sur le site gardée (pas celle de Greta)")
+  -- La liste du site (Greta, Thalwen?, Brindille) dit que je ne suis pas inscrit : ni mes anciennes données ni l'inscription de Greta
+  assert(r1.status == nil and r1.char == nil and r1.siteAt == nil and not r1.unknown, "mon inscription lue dans la liste du site : pas inscrit (pas celle de Greta)")
   assert(raidOf(g, R2) and raidOf(g, R2).status == nil and not raidOf(g, R2).unknown and not raidOf(g, R0), "pas inscrit : rien ; raid retiré du site : parti")
   assert(#g.officers == 1 and #g.members == 4 and g.reserves[R1] and g.counts and g.council[R2], "lignes du site (O, S, L, N, M)")
   assert(c.signups[R1] and c.signups[R1].status == "present" and not c.signups[R1].sent, "inscription en jeu en attente : gardée")
-  assert(c.signups[R2] and c.signups[R2].sent, "inscription reçue par le site : gardée (mes champs personnels datent de mes données, pas de la version reçue)")
+  assert(c.signups[R2] == nil, "inscription reçue par le site : oubliée (la liste du site, plus récente que son envoi, dit que je ne suis pas inscrit)")
   assert(E.Build():find("\nS;" .. esc(G1) .. ";" .. esc(R1) .. ";present\n"), "inscription en attente : toujours dans l'export")
   local e1
   for _, e in ipairs(G.Raids()) do if e.raid.id == R1 then e1 = e end end
-  assert(e1 and e1.status == "present" and e1.state == "todo" and e1.onSite == "late" and not e1.unknown, "onglet Raids : en jeu en attente, site en retard")
+  assert(e1 and e1.status == "present" and e1.state == "todo" and e1.onSite == nil and e1.siteState == "none" and not e1.unknown, "onglet Raids : en jeu en attente, pas inscrit sur le site")
   assert(lastPrinted("Données de Les Veilleurs reçues de Greta (site : ") and received() == 1, "message dans le chat, une fois")
   assert(thalwen.applied[1] and thalwen.applied[1].at == AT and brindille.applied[1] and brindille.applied[1].group == G1, "Thalwen et Brindille : appliqué")
   assert(#zeph.applied == 0 and zeph.Sh.State().outsider[G1] and zeph.Sh.last.result == "member", "Zephyra pas membre : jamais appliqué")
@@ -1301,6 +1307,7 @@ local function sharing()
   ns.SITE_KEYS.test0001, ns.SITE_KEYS.a3de5db8 = nil, nil
   ForeverRosterDB.groups, ForeverRosterDB.lastLoad, ForeverRosterDB.noRecord, ForeverRosterDB.share = keep.groups, keep.lastLoad, keep.noRecord, nil
   ForeverRosterDB.raidLogs, ForeverRosterDB.handover = keep.raidLogs, keep.handover
+  ForeverRosterDB.chars["Greta-Forever EU"] = keep.greta
   c.signups = keep.signups
   return realChecks
 end
@@ -1953,6 +1960,308 @@ local function sorties()
   ForeverRosterDB.outingsSeen, ForeverRosterDB.chars["Brindille-Forever EU"] = nil, nil
 end
 sorties()
+
+-- 8 septies. Liste des inscrits du site (ligne FRG Y, 1.6.3) : dans un bloc reçu d'un autre joueur, mon inscription se
+-- lit dans la liste (sample.frg, vraie signature du site : Greta présente, Thalwen? porté par deux joueurs, Brindille) ;
+-- mes propres données gardent leurs champs personnels et prennent l'heure du statut sur le site (r.siteAt) ; le site a
+-- le dernier mot sur un clic fait en jeu (G.Reconcile : r.siteAt >= s.at) sans faire repartir le perso ; heure du clic :
+-- GetServerTime, sinon time(). Tournicoti (moi) reçoit les blocs d'« Orvane » ; Greta, Thalwen et Brindille sont mes
+-- autres persos selon le cas. Chaque cas est indépendant et dit lequel échoue ; tout est remis en place à la fin.
+local function siteList()
+  local G, E, Sh = ns.Group, ns.Export, ns.Share
+  local c = ns.charDB()
+  local NAMES = { "Greta", "Thalwen", "Brindille" }
+  local keep = { time = time, GetServerTime = GetServerTime, groups = ForeverRosterDB.groups, lastLoad = ForeverRosterDB.lastLoad,
+    tab = ForeverRosterDB.tab, signups = c.signups, snapshot = c.snapshot, sentSig = c.sentSig, sentAt = c.sentAt,
+    verify = ns.Crypto.VerifyRSA, real = ns.SITE_KEYS.a3de5db8, sum = ns.SITE_KEYS.test0001, chars = {} }
+  for _, n in ipairs(NAMES) do keep.chars[n] = ForeverRosterDB.chars[n .. "-Forever EU"] ForeverRosterDB.chars[n .. "-Forever EU"] = nil end
+  local errorsBefore = errors()
+  local AT = 1794000000 -- sample.frg : généré à AT
+  local clock = AT + 7200
+  time = function() return clock end
+  GetServerTime = nil
+  Sh.Reset()
+
+  -- Vrai texte du site (clé de test) et blocs écrits ici, signés par une clé simulée « test0001 » (somme de contrôle du texte
+  -- canonique, comme la section 8 ter)
+  assert(loadfile("addon/tests/fixtures/SiteKeyTest.lua"))("ForeverRoster", ns)
+  ns.SITE_KEYS.test0001 = { n = "00", e = 65537 }
+  local realVerify = ns.Crypto.VerifyRSA
+  local function checksum(s)
+    local a, b = 1, 0
+    for i = 1, #s do a = (a + s:byte(i)) % 65521 b = (b + a) % 65521 end
+    return "T" .. (b * 65536 + a) .. "=="
+  end
+  ns.Crypto.VerifyRSA = function(keyId, message, sig)
+    if keyId == "test0001" then return sig == checksum(message) end
+    return realVerify(keyId, message, sig)
+  end
+  local function canon(lines)
+    local out = {}
+    for _, l in ipairs(lines) do
+      if l:sub(1, 2) == "R;" then
+        local f = {}
+        for x in (l .. ";"):gmatch("([^;]*);") do f[#f + 1] = x end
+        f[5], f[6] = "", ""
+        l = table.concat(f, ";")
+      end
+      out[#out + 1] = l
+    end
+    return table.concat(out, "\n")
+  end
+  local function block(group, at, body, members, unsigned)
+    local lines, n = { "FRG;1;" .. group .. ";" .. at .. ";Les Veilleurs" }, 0
+    for _, l in ipairs(body) do
+      lines[#lines + 1] = l
+      if l:match("^[RPB];") then n = n + 1 end
+    end
+    lines[#lines + 1] = "M;" .. table.concat(members, ",")
+    if not unsigned then lines[#lines + 1] = "Z;test0001;" .. checksum(canon(lines)) end
+    lines[#lines + 1] = "END;" .. n
+    return table.concat(lines, "\n")
+  end
+  local f = assert(io.open("addon/tests/sample.frg")) local SAMPLE = f:read("*a") f:close()
+  local REAL = {}
+  for blk in (SAMPLE .. "\n"):gmatch("(FRG;.-\nEND;%d+)") do REAL[#REAL + 1] = blk end
+  assert(#REAL == 2 and Sh.Verify(REAL[1], "FRG") and Sh.Verify(REAL[2], "FRG"), "sample.frg : deux groupes, vraie signature du site")
+  local sg = ns.Format.ParseFRG(REAL[1])[1]
+  local G1, R1, R2, RT1 = sg.id, sg.raids[1].id, sg.raids[2].id, sg.raids[1].time
+  assert(sg.raids[1].name == "Molten Core" and sg.raids[2].name == "Onyxia", "raids de sample.frg")
+
+  -- Mes persos en plus de Tournicoti (connecté) ; groupes, inscriptions et état de la synchro remis à zéro
+  local function iAm(...)
+    for _, n in ipairs(NAMES) do ForeverRosterDB.chars[n .. "-Forever EU"] = nil end
+    for _, n in ipairs({ ... }) do ForeverRosterDB.chars[n .. "-Forever EU"] = { recipes = {} } end
+  end
+  local function fresh()
+    ForeverRosterDB.groups, c.signups, GetServerTime = {}, {}, nil
+    iAm()
+    Sh.Reset()
+  end
+  local function myGroup(id) return ForeverRosterDB.groups[id] end
+  local function raidOf(g, id) for _, r in ipairs(g and g.raids or {}) do if r.id == id then return r end end end
+  -- Bloc reçu d'« Orvane » sur la guilde, par morceaux, comme le jeu le livre (vérifié par Share.lua, appliqué par Group.lua)
+  local function feed(text)
+    local info = Sh.Parse(text, "FRG")
+    for _, m in ipairs(Sh.Chunks(info.group, info.at, info.shared)) do fire("CHAT_MSG_ADDON", "FRoster", m, "GUILD", "Orvane-Forever EU") end
+    return Sh.last and Sh.last.group == info.group and Sh.last.at == info.at and Sh.last.result or nil
+  end
+  -- Ce que l'onglet Raids écrit (lignes de la liste, au dernier affichage)
+  local function raidRows()
+    ns.UI.Show("raids")
+    local p = ns.UI.pages.raids
+    local rows, add = {}, p.list.Add
+    p.list.Add = function(text, ...) rows[#rows + 1] = text return add(text, ...) end
+    ns.UI.Refresh()
+    p.list.Add = add
+    return rows
+  end
+  local function rowOf(name)
+    for _, t in ipairs(raidRows()) do if t:find(name .. "|r", 1, true) then return t end end
+  end
+
+  local failed = {}
+  local function case(name, fn)
+    local ok, err = pcall(fn)
+    if not ok then failed[#failed + 1] = name .. " : " .. tostring(err) end
+  end
+
+  -- Le bloc de sample.frg reçu par moi sans données : Greta est à moi
+  case("bloc reçu, Greta est à moi : « site : Présent (Greta) »", function()
+    fresh() iAm("Greta")
+    assert(feed(REAL[1]) == "applied", "bloc de sample.frg appliqué : " .. tostring(Sh.last and Sh.last.result))
+    local g = myGroup(G1)
+    assert(g.signups and #g.signups[R1] == 3 and g.signups[R1][1].name == "Greta" and g.signups[R1][2].dup and #g.signups[R2] == 3, "listes lues")
+    assert(g.mineAt == AT, "toutes les listes sont là : mes champs sont aussi frais que le bloc")
+    local r = raidOf(g, R1)
+    assert(r.status == "present" and r.char == "Greta" and r.siteAt == AT - 3600 and not r.unknown, "mon inscription vient de la liste : " .. tostring(r.status))
+    local e, state = G.SiteSignup(g, R1)
+    assert(state == "mine" and e.name == "Greta" and e.status == "present", "G.SiteSignup : mon inscription")
+    local row = rowOf("Molten Core")
+    assert(row and row:find("site : Présent (Greta)", 1, true) and not row:find("inconnue", 1, true), "onglet Raids : site : Présent (Greta) : " .. tostring(row))
+  end)
+  -- Aucun de mes persos n'y est : pas inscrit (ce n'est pas « inconnu »)
+  case("bloc reçu, aucun de mes persos : « site : pas d'inscription »", function()
+    fresh()
+    assert(feed(REAL[1]) == "applied", "bloc appliqué")
+    local g = myGroup(G1)
+    local r = raidOf(g, R1)
+    assert(r.status == nil and r.char == nil and r.siteAt == nil and not r.unknown, "pas inscrit, pas inconnu")
+    local e, state = G.SiteSignup(g, R1)
+    assert(e == nil and state == "none", "G.SiteSignup : aucune inscription à moi : " .. tostring(state))
+    local row = rowOf("Molten Core")
+    assert(row and row:find("site : pas d'inscription", 1, true) and not row:find("inconnue", 1, true), "onglet Raids : site : pas d'inscription : " .. tostring(row))
+    local entry
+    for _, x in ipairs(G.Raids()) do if x.raid.id == R1 then entry = x end end
+    assert(entry and entry.onSite == nil and not entry.unknown and entry.siteState == "none", "G.Raids expose l'état de la liste")
+  end)
+  -- Thalwen? : prénom porté par deux joueurs, jamais pris pour le mien
+  case("bloc reçu, Thalwen? : « inscription inconnue »", function()
+    fresh() iAm("Thalwen")
+    assert(feed(REAL[1]) == "applied", "bloc appliqué")
+    local g = myGroup(G1)
+    local r = raidOf(g, R1)
+    assert(r.status == nil and r.char == nil and r.unknown == true, "inscription inconnue")
+    local e, state = G.SiteSignup(g, R1)
+    assert(e == nil and state == "unknown", "G.SiteSignup : Thalwen? n'est jamais le mien : " .. tostring(state))
+    local row = rowOf("Molten Core")
+    assert(row and row:find("site : inscription inconnue (données reçues d'un autre joueur)", 1, true) and not row:find("pas d'inscription", 1, true), "onglet Raids : inscription inconnue : " .. tostring(row))
+    -- Deux de mes persos sur la liste : inconnu aussi (lequel est inscrit ?), qu'un des deux soit « ? » ou non
+    iAm("Greta", "Brindille")
+    local e2, s2 = G.SiteSignup(g, R1)
+    assert(e2 == nil and s2 == "unknown", "deux entrées à moi : inconnu")
+    iAm("Greta", "Thalwen")
+    local e3, s3 = G.SiteSignup(g, R1)
+    assert(e3 == nil and s3 == "unknown", "une entrée à moi et une « ? » : inconnu")
+    iAm("Brindille")
+    local e4, s4 = G.SiteSignup(g, R1)
+    assert(s4 == "mine" and e4.name == "Brindille" and e4.status == "tentative", "une seule entrée à moi : la mienne")
+    assert(select(2, G.SiteSignup({ signups = {} }, R1)) == nil and select(2, G.SiteSignup({}, R1)) == nil and select(2, G.SiteSignup(nil, R1)) == nil, "pas de liste : ni inscription ni état")
+    assert(select(2, G.SiteSignup({ signups = { [R1] = {} } }, R1)) == "none", "liste vide : pas d'inscription")
+  end)
+  -- Bloc sans liste (site plus ancien) : comme avant
+  case("bloc reçu sans liste : mes champs gardés, raid nouveau inconnu, mineAt d'avant", function()
+    fresh()
+    local T0, T1 = AT - 5000, AT - 1000
+    assert(G.Load(block("g-liste", T0, { "R;ra;" .. (clock + 86400) .. ";Molten Core;late;Tournicoti;journal", "R;rb;0;Onyxia;;;journal" }, { "Tournicoti" }, true), true, true))
+    assert(raidOf(myGroup("g-liste"), "ra").siteAt == nil, "données sans liste : pas d'heure du site")
+    assert(feed(block("g-liste", T1, { "R;ra;" .. (clock + 86400) .. ";Molten Core;;;journal", "R;rb;0;Onyxia;;;journal", "R;rc;0;Blackwing Lair;;;journal" }, { "Tournicoti" })) == "applied", "bloc appliqué")
+    local g = myGroup("g-liste")
+    local ra, rb, rc = raidOf(g, "ra"), raidOf(g, "rb"), raidOf(g, "rc")
+    assert(ra.status == "late" and ra.char == "Tournicoti" and not ra.unknown and rb.status == nil and not rb.unknown and rc.unknown == true, "champs gardés, raid nouveau inconnu")
+    assert(g.at == T1 and g.mineAt == T0, "mineAt : celui de mes dernières données")
+    assert(select(2, G.SiteSignup(g, "ra")) == nil, "pas de liste")
+  end)
+  -- Seuls certains raids ont une liste : ceux-là viennent de la liste, les autres comme avant ; mineAt comme avant
+  case("bloc reçu avec une liste pour un raid sur deux", function()
+    fresh()
+    local T0, T1 = AT - 5000, AT - 1000
+    assert(G.Load(block("g-liste", T0, { "R;ra;" .. (clock + 86400) .. ";Molten Core;late;Tournicoti;journal", "R;rb;0;Onyxia;tentative;Tournicoti;journal" }, { "Tournicoti" }, true), true, true))
+    assert(feed(block("g-liste", T1, { "R;ra;" .. (clock + 86400) .. ";Molten Core;;;journal", "R;rb;0;Onyxia;;;journal", "Y;ra;Tournicoti:absent:" .. (T1 - 60) }, { "Tournicoti" })) == "applied", "bloc appliqué")
+    local g = myGroup("g-liste")
+    local ra, rb = raidOf(g, "ra"), raidOf(g, "rb")
+    assert(ra.status == "absent" and ra.char == "Tournicoti" and ra.siteAt == T1 - 60, "raid avec liste : la liste")
+    assert(rb.status == "tentative" and rb.char == "Tournicoti" and not rb.unknown, "raid sans liste : comme avant")
+    assert(g.mineAt == T0, "une liste manque : mineAt comme avant")
+  end)
+  -- Mes propres données : champs personnels de la ligne R, heure du site de la liste
+  case("mes données collées : r.status gardé, r.siteAt pris à la liste", function()
+    fresh()
+    assert(G.Load(REAL[1], true, true), "sample.frg collé")
+    local g = myGroup(G1)
+    local r1, r2 = raidOf(g, R1), raidOf(g, R2)
+    assert(r1.status == "present" and r1.char == "Greta" and r1.siteAt == AT - 3600, "Greta : statut de la ligne R, heure de la liste")
+    assert(r2.status == "late" and r2.char == "Thalwen" and r2.siteAt == nil, "Thalwen? n'est jamais sûr : pas d'heure")
+    assert(g.mineAt == AT and not r1.unknown, "mes données : mineAt = at")
+    -- Mon statut (ligne R) n'est pas écrasé par la liste, même quand elle dit autre chose
+    fresh()
+    assert(G.Load((REAL[1]:gsub("Molten Core;present;Greta", "Molten Core;absent;Greta")), true, true))
+    local r = raidOf(myGroup(G1), R1)
+    assert(r.status == "absent" and r.char == "Greta" and r.siteAt == AT - 3600, "la ligne R garde la main sur mon statut")
+    -- Pas inscrit (champs vides) : rien à dater
+    fresh()
+    assert(G.Load((REAL[1]:gsub("Molten Core;present;Greta", "Molten Core;;")), true, true))
+    r = raidOf(myGroup(G1), R1)
+    assert(r.status == nil and r.char == nil and r.siteAt == nil, "pas inscrit : pas d'heure")
+  end)
+  case("Roster Companion : r.siteAt, groupe pris ou groupe gardé", function()
+    fresh()
+    local list, taken = G.LoadNewer(REAL[1], "companion")
+    assert(list and taken == 1, "groupe pris à l'appli")
+    local r = raidOf(myGroup(G1), R1)
+    assert(r.status == "present" and r.char == "Greta" and r.siteAt == AT - 3600, "groupe pris : r.siteAt")
+    -- Un bloc reçu plus récent que l'appli reste ; mes champs viennent de l'appli (plus récents que mes derniers), avec leur heure
+    fresh()
+    local T0, T1, T2 = AT - 5000, AT - 1000, AT - 3000
+    assert(G.Load(block("g-liste", T0, { "R;ra;" .. (clock + 86400) .. ";Molten Core;late;Tournicoti;journal" }, { "Tournicoti" }, true), true, true))
+    assert(feed(block("g-liste", T1, { "R;ra;" .. (clock + 86400) .. ";Molten Core;;;journal" }, { "Tournicoti" })) == "applied" and myGroup("g-liste").mineAt == T0, "bloc sans liste reçu")
+    local app = block("g-liste", T2, { "R;ra;" .. (clock + 86400) .. ";Molten Core;absent;Tournicoti;journal", "Y;ra;Brindille:present:1,Tournicoti:absent:" .. (T2 - 30) }, { "Tournicoti" }, true)
+    local _, took = G.LoadNewer(app, "companion")
+    local g = myGroup("g-liste")
+    local ra = raidOf(g, "ra")
+    assert(took == 0 and g.at == T1 and g.origin.from == "Orvane" and g.mineAt == T2, "groupe reçu gardé, mes champs de l'appli")
+    assert(ra.status == "absent" and ra.char == "Tournicoti" and ra.siteAt == T2 - 30, "mes champs et leur heure : ceux de l'appli : " .. tostring(ra.siteAt))
+  end)
+  -- Heure du clic
+  case("heure du clic : GetServerTime, sinon time()", function()
+    fresh()
+    GetServerTime = function() return AT + 12345 end
+    assert(G.Now() == AT + 12345, "GetServerTime")
+    GetServerTime = nil
+    assert(G.Now() == clock, "sans GetServerTime : time()")
+    GetServerTime = function() error("pas prêt") end
+    assert(G.Now() == clock, "GetServerTime qui échoue : time()")
+    GetServerTime = function() return "tard" end
+    assert(G.Now() == clock, "GetServerTime qui ne rend pas un nombre : time()")
+    GetServerTime = function() return nil end
+    assert(G.Now() == clock, "GetServerTime sans réponse : time()")
+    assert(G.Load(block("g-liste", AT, { "R;ra;" .. (clock + 86400) .. ";Molten Core;;;journal" }, { "Tournicoti" }, true), true, true))
+    GetServerTime = function() return AT + 5000 end
+    G.SignUp("g-liste", "ra", "late", clock + 86400)
+    assert(c.signups.ra and c.signups.ra.at == AT + 5000, "le clic est daté par GetServerTime")
+    GetServerTime = nil
+    clock = clock + 100
+    G.SignUp("g-liste", "ra", "present", clock + 86400)
+    assert(c.signups.ra.at == clock and c.signups.ra.status == "present", "sans GetServerTime : le clic est daté par time()")
+  end)
+  -- Le site a le dernier mot : clic en jeu à T, mon statut changé sur le site à T + 60 (oubliée), à T - 60 (gardée)
+  local function lastWord(label, siteAt, forgotten)
+    case(label, function()
+      fresh()
+      local T0, T1, T = AT - 5000, AT + 4000, AT + 3000
+      local raidAt = clock + 86400
+      -- Mes données (le site ne me connaît pas encore à ce raid), puis tout envoyé : le perso n'a rien à renvoyer
+      assert(G.Load(block("g-liste", T0, { "R;ra;" .. raidAt .. ";Molten Core;;;journal", "Y;ra;Brindille:present:" .. T0 }, { "Brindille", "Tournicoti" }, true), true, true))
+      E.MarkSent(select(2, E.Build({ onlyCurrent = true })))
+      assert(E.IsSent(c), "départ : rien à envoyer")
+      GetServerTime = function() return T end
+      G.SignUp("g-liste", "ra", "late", raidAt)
+      assert(c.signups.ra and c.signups.ra.at == T and not c.signups.ra.sent and not E.IsSent(c), "clic en jeu à T : à envoyer")
+      -- Bloc du site, plus récent que mes données, avec mon statut « Présent » changé à siteAt
+      local text = block("g-liste", T1, { "R;ra;" .. raidAt .. ";Molten Core;;;journal", "Y;ra;Tournicoti:present:" .. siteAt .. ",Brindille:present:" .. T0 }, { "Brindille", "Tournicoti" })
+      assert(feed(text) == "applied", "bloc du site appliqué : " .. tostring(Sh.last and Sh.last.result))
+      local r = raidOf(myGroup("g-liste"), "ra")
+      assert(r.status == "present" and r.char == "Tournicoti" and r.siteAt == siteAt, "mon statut sur le site, à son heure")
+      if forgotten then
+        assert(c.signups.ra == nil, "le site a changé mon statut après mon clic : l'inscription en jeu est oubliée")
+        assert(E.IsSent(c), "oubliée sans faire repartir le perso")
+      else
+        assert(c.signups.ra and c.signups.ra.status == "late" and c.signups.ra.at == T, "le site date d'avant mon clic : l'inscription en jeu est gardée")
+        assert(not E.IsSent(c), "gardée : toujours à envoyer")
+      end
+    end)
+  end
+  lastWord("site à T + 60 : l'inscription en jeu est oubliée, le perso ne repart pas", AT + 3000 + 60, true)
+  lastWord("site à T : le site a enregistré ce clic, oubliée", AT + 3000, true)
+  lastWord("site à T - 60 : l'inscription en jeu est gardée", AT + 3000 - 60, false)
+  -- Sans heure du site (Thalwen?, pas de liste) ou sans heure de clic (inscription d'avant 1.6.3) : les règles d'avant seules
+  case("règle du site : sans r.siteAt ou sans s.at, rien de nouveau", function()
+    fresh()
+    local raidAt = clock + 86400
+    assert(G.Load(block("g-liste", AT, { "R;ra;" .. raidAt .. ";Molten Core;;;journal" }, { "Tournicoti" }, true), true, true))
+    c.signups.ra = { group = "g-liste", status = "late", time = raidAt, at = AT + 10 }
+    G.Reconcile()
+    assert(c.signups.ra, "pas d'heure du site : gardée")
+    raidOf(myGroup("g-liste"), "ra").siteAt = AT + 1000
+    c.signups.ra = { group = "g-liste", status = "late", time = raidAt }
+    G.Reconcile()
+    assert(c.signups.ra, "pas d'heure de clic : gardée (règles d'avant)")
+    c.signups.ra.at = AT + 1000
+    G.Reconcile()
+    assert(c.signups.ra == nil, "heures égales : oubliée")
+  end)
+
+  -- Remise en place
+  time, GetServerTime = keep.time, keep.GetServerTime
+  ns.Crypto.VerifyRSA, ns.SITE_KEYS.a3de5db8, ns.SITE_KEYS.test0001 = keep.verify, keep.real, keep.sum
+  for _, n in ipairs(NAMES) do ForeverRosterDB.chars[n .. "-Forever EU"] = keep.chars[n] end
+  ForeverRosterDB.groups, ForeverRosterDB.lastLoad, ForeverRosterDB.tab = keep.groups, keep.lastLoad, keep.tab
+  c.signups, c.snapshot, c.sentSig, c.sentAt = keep.signups, keep.snapshot, keep.sentSig, keep.sentAt
+  Sh.Reset()
+  assert(errors() == errorsBefore and failures == 0, "liste des inscrits sans erreur : " .. tostring(printed[#printed]))
+  assert(#failed == 0, "section 8 septies :\n  " .. table.concat(failed, "\n  "))
+end
+siteList()
 
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.

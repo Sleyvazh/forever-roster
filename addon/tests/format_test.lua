@@ -166,6 +166,38 @@ check(canon and canon:find("\n" .. X1 .. "\n", 1, true) and canon:find("\n" .. X
 local changed = SNS.Share and SNS.Share.Canonical((XBLOCK:gsub("Bramm", "Brammo")), "FRG")
 check(canon and changed and changed ~= canon and changed:find("\nX;[^\n]*;Brammo;"), "sortie changée : autre texte canonique")
 
+-- Liste des inscrits (1.6.3) : ligne Y, une par ligne R, même vide ; après X, avant M ; hors du compte de END ; signée.
+-- g.signups[raid] = { { name, status, at, dup } } : « ? » après le prénom = porté par deux joueurs (dup), statut inconnu
+-- sauté, 60 entrées au plus, jamais lue après END ; pas de ligne Y (site plus ancien) : g.signups[raid] absent
+local Y1 = "Y;r1;Greta:present:1793996400,Thalwen?:late:1793998200,Brindille:tentative:1793999400"
+local YBLOCK = table.concat({ "FRG;1;g1;1794000000;Les Veilleurs", "R;r1;1794086400;Molten Core;present;Greta;journal", "R;r2;0;Onyxia;;;journal",
+  "R;r3;0;Blackwing Lair;;;journal", X1, Y1, "Y;r2;", "Y;r3;Zed:bench:1793990000,Ana:alt:1793990100,Bob:absent:1793990200",
+  "M;Brindille,Greta,Thalwen", "Z;a3de5db8;c2lnbmF0dXJl", "END;3" }, "\n")
+local yg = F.ParseFRG(YBLOCK)
+local ys = yg and yg[1] and yg[1].signups
+check(yg and #yg == 1 and #yg[1].raids == 3 and #yg[1].outings == 1 and ys, "lignes Y lues, hors du compte de END")
+local y1 = ys and ys.r1
+check(y1 and #y1 == 3 and y1[1].name == "Greta" and y1[1].status == "present" and y1[1].at == 1793996400 and not y1[1].dup, "liste : un inscrit")
+check(y1 and y1[2].name == "Thalwen" and y1[2].dup == true and y1[2].status == "late" and y1[2].at == 1793998200, "liste : « ? » = prénom porté par deux joueurs, sans le « ? »")
+check(y1 and y1[3].name == "Brindille" and y1[3].status == "tentative" and not y1[3].dup, "liste : l'ordre du site")
+check(ys and type(ys.r2) == "table" and #ys.r2 == 0, "Y;<raid>; vide : liste connue, sans inscrit")
+local y3 = ys and ys.r3
+check(y3 and #y3 == 3 and y3[1].status == "bench" and y3[2].status == "alt" and y3[3].status == "absent", "statuts du site : banc, reroll, absent")
+check(yg and yg[1].text and yg[1].text:find("\n" .. Y1 .. "\nY;r2;\n", 1, true), "lignes Y dans le texte signé gardé")
+local ycanon = SNS.Share and SNS.Share.Canonical(YBLOCK, "FRG")
+check(ycanon and ycanon:find("\n" .. X1 .. "\n" .. Y1 .. "\nY;r2;\nY;r3;", 1, true) and ycanon:find("\nY;r3;[^\n]*\nM;"), "lignes Y dans le texte canonique, entre X et M")
+check(gs and gs[1].signups and next(gs[1].signups) == nil, "bloc sans ligne Y : aucune liste")
+local ym = F.ParseFRG("FRG;1;g;1;G\nR;r1;0;Molten Core;;;journal\nY;r1;Greta:present:100,Bob:dormant:5,|cffff0000Eve|r:late:7,:late:9,Ann:absent:oups,Cid:tentative\nEND;1")
+local m1 = ym and ym[1].signups.r1
+check(m1 and #m1 == 3 and m1[1].name == "Greta" and m1[2].name == "cffff0000Ever" and not m1[2].name:find("|", 1, true) and m1[3].name == "Ann", "statut inconnu et prénom vide sautés, codes du jeu retirés")
+check(m1 and m1[3].status == "absent" and m1[3].at == nil, "heure illisible : l'inscrit reste, sans heure")
+local manyY = {}
+for i = 1, 80 do manyY[i] = "P" .. i .. ":present:" .. (1000 + i) end
+local ymany = F.ParseFRG("FRG;1;g;1;G\nR;r1;0;X;;;journal\nY;r1;" .. table.concat(manyY, ",") .. "\nEND;1")
+check(ymany and #ymany[1].signups.r1 == 60 and ymany[1].signups.r1[60].name == "P60", "60 inscrits au plus par raid")
+local yafter = F.ParseFRG("FRG;1;g;1;G\nR;r1;0;X;;;journal\nEND;1\nY;r1;Greta:present:100")
+check(yafter and next(yafter[1].signups) == nil, "ligne Y après END ignorée")
+
 -- FRL v1 (relève de la guilde, 1.6.0, en essai) : chaque partie, échappement, notes d'officier, forme stable, parties absentes
 local function frlData()
   return {

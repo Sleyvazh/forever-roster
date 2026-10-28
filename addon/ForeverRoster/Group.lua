@@ -23,6 +23,28 @@ local function db()
   return ForeverRosterDB.groups
 end
 
+-- Prénom seul, en minuscules, comme le reste de l'addon : sans royaume ni nom de famille de Forever
+-- (« Greta Coulé », « Greta-Forever EU » → greta)
+local function first(name)
+  return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
+end
+
+-- Heure du statut sur le site (r.siteAt, 1.6.3) de l'inscription d'un raid de mes propres données : celle de l'entrée de la
+-- liste des inscrits (ligne Y) au prénom de r.char, jamais une entrée « ? » (prénom porté par deux joueurs). Sans liste,
+-- sans inscription ou sans perso : nil. Le statut et le perso restent ceux de la ligne R.
+local function siteAtOf(g, r)
+  local list = r.char and g.signups and g.signups[r.id]
+  if not list then return nil end
+  local k = first(r.char)
+  for _, e in ipairs(list) do
+    if not e.dup and first(e.name) == k then return e.at end
+  end
+  return nil
+end
+local function stampSite(g)
+  for _, r in ipairs(g.raids or {}) do r.siteAt = siteAtOf(g, r) end
+end
+
 -- Groupes lus (ParseFRG) rangés dans la sauvegarde ; replace : ils remplacent tous ceux déjà chargés
 local function store(groups, replace)
   if replace then wipe(db()) end
@@ -36,7 +58,8 @@ end
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.
 -- replace : tous les groupes du joueur, qui remplacent toujours ceux chargés ; quiet : sans message.
 -- how : d'où viennent les données, noté dans chaque groupe (origin, onglet Synchro) : "companion" (Roster Companion),
--- sinon collées. Ce sont mes données : mes champs personnels (statut et perso de chaque raid) datent de g.at (mineAt).
+-- sinon collées. Ce sont mes données : mes champs personnels (statut et perso de chaque raid) datent de g.at (mineAt) et
+-- restent ceux de la ligne R ; l'heure de mon statut sur le site (r.siteAt) vient de la liste des inscrits (ligne Y).
 function G.Load(text, replace, quiet, how)
   local groups, err = ns.Format.ParseFRG(text)
   if not groups then return nil, err end
@@ -44,6 +67,7 @@ function G.Load(text, replace, quiet, how)
   for _, g in ipairs(groups) do
     g.origin = { at = time(), companion = how == "companion" or nil }
     g.mineAt = g.at
+    stampSite(g)
     raids = raids + #g.raids
     for _ in pairs(g.patterns) do patterns = patterns + 1 end
     for _ in pairs(g.bis) do bis = bis + 1 end
@@ -58,13 +82,15 @@ end
 -- autre joueur (partage) reste, avec son texte signé et son origine, l'appli ayant pu relever le site avant lui.
 -- Ce sont mes données : dans un groupe gardé, mes champs personnels (statut et perso de chaque raid) viennent quand
 -- même de l'appli s'ils sont plus récents que mes derniers à moi (mineAt), comme un bloc partagé plus récent garde
--- les miens. Un groupe absent du texte disparaît (quitté sur le site). Sans message.
+-- les miens (avec l'heure de leur statut sur le site, r.siteAt, tirée de la liste des inscrits de l'appli). Un groupe
+-- absent du texte disparaît (quitté sur le site). Sans message.
 -- Renvoie les groupes lus et le nombre de ceux pris à l'appli ; nil et l'erreur si le texte est illisible.
 function G.LoadNewer(text, how)
   local groups, err = ns.Format.ParseFRG(text)
   if not groups then return nil, err end
   local list, taken = {}, 0
   for i, g in ipairs(groups) do
+    stampSite(g)
     local old = db()[g.id]
     if old and (tonumber(old.at) or 0) >= g.at then
       if g.at > (tonumber(old.mineAt) or tonumber(old.at) or 0) then
@@ -72,7 +98,7 @@ function G.LoadNewer(text, how)
         for _, r in ipairs(g.raids) do mine[r.id] = r end
         for _, r in ipairs(old.raids or {}) do
           local m = mine[r.id]
-          if m then r.status, r.char, r.unknown = m.status, m.char, nil end
+          if m then r.status, r.char, r.siteAt, r.unknown = m.status, m.char, m.siteAt, nil end
         end
         old.mineAt = g.at
       end
@@ -123,15 +149,22 @@ function G.SignupState(s)
 end
 
 -- Raids à venir de tous les groupes chargés, avec mon inscription (faite en jeu, sinon celle du site)
+-- siteState : ce que la liste des inscrits du site dit de mes persos pour ce raid (G.SiteSignup : "mine", "none",
+-- "unknown" ; nil sans liste), pour dire « pas d'inscription » plutôt que « inconnue »
 function G.Raids()
-  local now, mine, out = time(), ns.charDB().signups or {}, {}
+  local now, mine, out, own = time(), ns.charDB().signups or {}, {}, nil
   for _, g in pairs(db()) do
     for _, r in ipairs(g.raids or {}) do
       if r.time == 0 or r.time > now - 3 * 3600 then
         local s = mine[r.id]
+        local siteState
+        if g.signups and g.signups[r.id] then
+          own = own or G.MyChars() -- relevés une fois, seulement si un site a donné sa liste (G.Raids sert aussi aux infobulles)
+          siteState = select(2, G.SiteSignup(g, r.id, own))
+        end
         -- unknown : raid arrivé avec les données d'un autre joueur (partage), mon inscription sur le site n'y est pas
         out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, state = s and G.SignupState(s) or nil, onSite = r.status, siteChar = r.char,
-          unknown = r.unknown or nil }
+          unknown = r.unknown or nil, siteState = siteState }
       end
     end
   end
@@ -140,6 +173,16 @@ function G.Raids()
     return ta < tb
   end)
   return out
+end
+
+-- Heure à comparer à celle du site (1.6.3) : GetServerTime() (heure du serveur de jeu) s'il existe et répond un nombre,
+-- sinon time(). Elle date le clic d'une inscription en jeu (s.at), que G.Reconcile met en face de r.siteAt.
+function G.Now()
+  if GetServerTime then
+    local ok, t = pcall(GetServerTime)
+    if ok and type(t) == "number" then return t end
+  end
+  return time()
 end
 
 -- Inscription en jeu : gardée pour ce perso, envoyée au site avec le prochain export (ou le prochain /reload avec
@@ -156,7 +199,7 @@ function G.SignUp(groupId, raidId, status, raidTime)
     ns.print(L("inscription : %s, c'est déjà ton statut sur le site.", label))
     return
   end
-  c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0, at = time(), inflight = inflight }
+  c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0, at = G.Now(), inflight = inflight }
   if ns.Companion and ns.Companion.Active() then
     ns.print(L("inscription notée : %s. « Envoyer maintenant » (onglet Raids) l'envoie au site tout de suite, sinon elle part au prochain /reload.", label))
   else
@@ -200,6 +243,8 @@ end
 -- celles d'un raid retiré, et celles d'un raid passé depuis plus de 24 h. Sans faire repartir le perso.
 -- Données reçues d'un autre joueur (partage) : mes champs personnels y datent de mes dernières données à moi
 -- (g.mineAt), pas de g.at ; un raid nouveau pour moi (r.unknown) ne dit rien de mon inscription.
+-- Le site a le dernier mot (1.6.3) : si son statut pour moi date d'après mon clic (r.siteAt >= s.at : il l'a changé depuis,
+-- ou il a enregistré ce clic), l'inscription faite en jeu est oubliée.
 function G.Reconcile()
   local now = time()
   for key, c in pairs(ForeverRosterDB.chars or {}) do
@@ -215,6 +260,7 @@ function G.Reconcile()
             drop = not r
               or (r.status == s.status and (r.char == nil or r.char == nameOf(key)))
               or (s.sent and not r.unknown and (g.mineAt or g.at or 0) > (s.sentAt or 0))
+              or (r.siteAt and s.at and r.siteAt >= s.at)
           end
           if drop then c.signups[raidId] = nil end
         end
@@ -541,12 +587,6 @@ function G.ShareOn()
   return not (ForeverRosterDB and ForeverRosterDB.share == false)
 end
 
--- Prénom seul, en minuscules, comme le reste de l'addon : sans royaume ni nom de famille de Forever
--- (« Greta Coulé », « Greta-Forever EU » → greta)
-local function first(name)
-  return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
-end
-
 -- Mes persos (prénoms en minuscules) : celui-ci, ceux du compte déjà vus par l'addon (ForeverRosterDB.chars, clés
 -- « Prénom-Royaume ») et ceux de mes inscriptions dans les données du site
 function G.MyChars()
@@ -558,6 +598,28 @@ function G.MyChars()
     for _, r in ipairs(g.raids or {}) do if r.char then add(r.char) end end
   end
   return out
+end
+
+-- Mon inscription à un raid d'après la liste des inscrits du site (ligne Y, 1.6.3), pour des données reçues d'un autre
+-- joueur. Renvoie l'entrée { name, status, at, dup } et l'état :
+--   "mine"    : une seule entrée porte le prénom d'un de mes persos (G.MyChars), sans « ? » ;
+--   "none"    : la liste est là et aucun de mes persos n'y est : pas inscrit ;
+--   "unknown" : une entrée « ? » à mon prénom (porté par deux joueurs) ou plusieurs entrées à moi : on ne sait pas ;
+--   nil, nil  : pas de liste pour ce raid (site plus ancien) : on ne sait rien de plus qu'avant.
+-- own : mes persos déjà relevés (G.MyChars), pour ne pas les relever à chaque raid.
+function G.SiteSignup(g, raidId, own)
+  local list = g and g.signups and g.signups[raidId]
+  if not list then return nil, nil end
+  own = own or G.MyChars()
+  local found
+  for _, e in ipairs(list) do
+    if own[first(e.name)] then
+      if e.dup or found then return nil, "unknown" end
+      found = e
+    end
+  end
+  if found then return found, "mine" end
+  return nil, "none"
 end
 
 local function inGuild()
@@ -594,10 +656,13 @@ function G.ShareNew()
 end
 
 -- Bloc reçu d'un autre joueur (déjà vérifié par Share.lua) : il remplace mes données de ce groupe (les autres groupes
--- restent), en gardant mon inscription sur le site (statut et perso) pour chaque raid que j'avais déjà ; un raid
--- nouveau pour moi : inscription inconnue (r.unknown). Mes champs personnels datent toujours de mes dernières données
--- à moi (mineAt, pour G.Reconcile) ; mes inscriptions faites en jeu (c.signups) ne bougent pas. Puis relais sur
--- l'autre canal (guilde → raid, raid → guilde).
+-- restent). Pour chaque raid qui a une liste des inscrits du site (ligne Y, 1.6.3), mon inscription s'y lit (G.SiteSignup) :
+-- statut, perso et heure du statut (r.siteAt) ; pas inscrit : rien (ni inconnu) ; inconnue (prénom « ? » ou deux persos à
+-- moi) : r.unknown. Sans liste (site plus ancien) : mon inscription sur le site (statut et perso) est gardée pour chaque
+-- raid que j'avais déjà, et un raid nouveau pour moi est inconnu (r.unknown). Mes champs personnels datent de g.at quand
+-- tous les raids ont une liste, sinon toujours de mes dernières données à moi (mineAt, pour G.Reconcile) ; mes
+-- inscriptions faites en jeu (c.signups) ne bougent pas, G.Reconcile les oublie si le site a le dernier mot. Puis relais
+-- sur l'autre canal (guilde → raid, raid → guilde).
 local function applyShared(text, sender, dist)
   local list = ns.Format.ParseFRG(text)
   local g = list and #list == 1 and list[1]
@@ -605,12 +670,20 @@ local function applyShared(text, sender, dist)
   local old = db()[g.id]
   local before = {}
   for _, r in ipairs(old and old.raids or {}) do before[r.id] = r end
+  local own, every = G.MyChars(), true -- mes persos relevés avant que ce bloc ne remplace les données précédentes
   for _, r in ipairs(g.raids) do
+    local e, state = G.SiteSignup(g, r.id, own)
     local o = before[r.id]
-    if o then r.status, r.char, r.unknown = o.status, o.char, o.unknown
-    else r.status, r.char, r.unknown = nil, nil, true end
+    if state == "mine" then r.status, r.char, r.siteAt, r.unknown = e.status, e.name, e.at, nil
+    elseif state == "none" then r.status, r.char, r.siteAt, r.unknown = nil, nil, nil, nil
+    elseif state == "unknown" then r.status, r.char, r.siteAt, r.unknown = nil, nil, nil, true
+    else
+      every = false
+      if o then r.status, r.char, r.siteAt, r.unknown = o.status, o.char, o.siteAt, o.unknown
+      else r.status, r.char, r.siteAt, r.unknown = nil, nil, nil, true end
+    end
   end
-  g.mineAt = old and (old.mineAt or old.at) or 0
+  g.mineAt = every and g.at or (old and (old.mineAt or old.at) or 0)
   g.origin = { from = sender, at = time() }
   store({ g }, false)
   if ns.UI and ns.UI.Refresh then ns.safe(N("partage des données du site"), ns.UI.Refresh) end

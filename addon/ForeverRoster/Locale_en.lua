@@ -211,6 +211,7 @@ T["en jeu : %s, part avec ton prochain export"] = "in game: %s, goes with your n
 T["Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), puis Roster Companion le transmet au site."] = "To send it right away: the interface reloads (a few seconds), then Roster Companion passes it on to the website."
 T["Envoyer maintenant"] = "Send now"
 T["inscription inconnue (données reçues d'un autre joueur)"] = "sign-up unknown (data received from another player)"
+T["pas d'inscription"] = "no sign-up"
 -- Onglet Compo
 T["Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet %sSynchro|r."] = "On the website: raid page, \"Export pour le jeu\", \"Copier\", then paste in the %sSync|r tab."
 T["Inviter"] = "Invite"
