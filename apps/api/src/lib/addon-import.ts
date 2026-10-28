@@ -8,17 +8,18 @@
  * le texte de l'autre addon est refusé avec un message clair sur chaque site.
  */
 import {
-  addonKeyOf, foreignAddonErrors, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseGuildBlocks, parseRaidLogs,
+  addonKeyOf, foreignAddonErrors, gameName, GEAR_SLOTS, IMPORT_PARTS, INVTYPE_2H, isValidCombo, linkFromRanks, parseCharacterExports, parseGuildBlocks, parseRaidLogs,
   parseRRB, PROFESSION_SKILL_LINES, professionsFromExport, sameCharacter, withoutCurrent,
   type CharacterExport, type Game, type ImportPart, type ImportResult, type RaidLogExport, type RosterRaidLog,
 } from "@forever/game-data";
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { addonIgnored, characters, gameTalents, raids, users, type Gear } from "../db/schema";
+import { addonIgnored, characters, gameTalents, groupCharacters, groupMembers, raids, raidSignups, users, type Gear } from "../db/schema";
 import { itemsById } from "../routes/gamedata";
 import { logInput, saveRaidLog } from "../routes/raidlogs";
 import { MAX_CHARACTERS } from "../routes/characters";
 import { characterFields, crossCheck } from "./character-schema";
+import { audit } from "./audit";
 import { charsChanged } from "./events";
 import { membership } from "./groups";
 import { importGuildExports } from "./guild-import";
@@ -42,7 +43,7 @@ export interface ImportOptions {
   unknown?: "ask" | "create";
   /** Adresse de l'autre site (message quand on y colle le texte de l'autre addon). */
   otherHost?: string;
-  /** Heure de référence des relevés de guilde (tests) ; maintenant sinon. */
+  /** Heure de référence des relevés de guilde et des inscriptions relayées (tests) ; maintenant sinon. */
   now?: Date;
 }
 
@@ -88,8 +89,88 @@ async function buildPatch(db: Db, c: CharacterRow, d: CharacterExport, parts: Re
   return patch;
 }
 
+/** Relais (lignes V) : raid passé depuis moins de 24 h, clic jamais plus de 5 min dans le futur ni de plus de 7 jours dans le passé. */
+const RELAY_RAID_GRACE = 24 * 3600e3, RELAY_CLICK_AHEAD = 5 * 60e3, RELAY_CLICK_AGE = 7 * 86400e3;
+
+/**
+ * Inscriptions faites en jeu par d'autres joueurs, transmises par l'officier qui envoie ce bloc (lignes V, spec B4).
+ * Chaque ligne passe ses gardes dans l'ordre ; rien n'est jamais créé pour un perso inconnu. Renvoie les prénoms des
+ * persos inscrits (`sent`), ceux dont le site avait déjà le dernier mot (`kept`) et les prénoms des lignes refusées.
+ */
+export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, now: Date) {
+  const res = { sent: [] as string[], kept: [] as string[], refused: [] as string[] };
+  const officer = new Map<string, boolean>();
+  const roster = new Map<string, { id: string; name: string; guid: string | null; userId: string }[]>();
+  /** L'envoyeur est propriétaire ou officier de la guilde ; un non-membre est refusé comme un membre simple. */
+  const isOfficer = async (groupId: string) => {
+    let ok = officer.get(groupId);
+    if (ok === undefined) {
+      ok = await membership(db, groupId, relayer.id).then(role => role !== "member", e => { if (e instanceof HttpError) return false; throw e; });
+      officer.set(groupId, ok);
+    }
+    return ok;
+  };
+  /** Persos rangés dans la guilde. */
+  const guildCharacters = async (groupId: string) => {
+    let rows = roster.get(groupId);
+    if (!rows) {
+      rows = await db.select({ id: characters.id, name: characters.name, guid: characters.guid, userId: characters.userId })
+        .from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId)).where(eq(groupCharacters.groupId, groupId));
+      roster.set(groupId, rows);
+    }
+    return rows;
+  };
+
+  for (const v of d.relayed) {
+    const refuse = () => { res.refused.push(v.name); };
+    // 1. L'envoyeur est officier ou propriétaire de la guilde
+    if (!await isOfficer(v.groupId)) { refuse(); continue; }
+    // 2. Raid de cette guilde, pas passé depuis plus de 24 h
+    const [raid] = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
+      .where(and(eq(raids.id, v.raidId), eq(raids.groupId, v.groupId)));
+    if (!raid || (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE)) { refuse(); continue; }
+    // 3. Perso visé rangé dans la guilde : par GUID, à défaut par prénom s'il est seul à le porter (une fiche qui a un autre GUID n'est pas lui)
+    const chars = await guildCharacters(v.groupId);
+    let target: (typeof chars)[number] | undefined;
+    if (v.guid) {
+      const hits = chars.filter(c => c.guid === v.guid);
+      if (hits.length > 1) { refuse(); continue; }
+      target = hits[0];
+    }
+    if (!target) {
+      const hits = chars.filter(c => sameCharacter(v.name, c.name));
+      if (hits.length !== 1 || (v.guid && hits[0]!.guid && hits[0]!.guid !== v.guid)) { refuse(); continue; }
+      target = hits[0]!;
+    }
+    // 4. Pas un perso de l'envoyeur ; son joueur est membre de la guilde et accepte le relais
+    if (target.userId === relayer.id) { refuse(); continue; }
+    const [player] = await db.select({ id: users.id, displayName: users.displayName, gameRelay: users.gameRelay }).from(groupMembers)
+      .innerJoin(users, eq(users.id, groupMembers.userId)).where(and(eq(groupMembers.groupId, v.groupId), eq(groupMembers.userId, target.userId)));
+    if (!player?.gameRelay) { refuse(); continue; }
+    // 5. Heure du clic plausible
+    const clic = v.at * 1000;
+    if (clic > now.getTime() + RELAY_CLICK_AHEAD || clic < now.getTime() - RELAY_CLICK_AGE) { refuse(); continue; }
+    // 6. Le site a le dernier mot : changement de statut fait au moins aussi tard que le clic, ou même réponse avec le même perso
+    const [old] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, statusAt: raidSignups.statusAt }).from(raidSignups)
+      .where(and(eq(raidSignups.raidId, raid.id), eq(raidSignups.userId, player.id)));
+    if (old && (old.statusAt.getTime() >= clic || (old.status === v.status && old.characterId === target.id))) { res.kept.push(gameName(target.name)); continue; }
+    // 7. Inscription du joueur visé avec ce perso (un perso sans classe est refusé comme sur le site), puis journal de la guilde
+    try {
+      await signUpSiteUser(db, raid.id, { id: player.id, displayName: player.displayName }, { status: v.status, characterId: target.id });
+    } catch (e) {
+      if (e instanceof HttpError) { refuse(); continue; }
+      throw e;
+    }
+    await audit(db, null, "signup_relayed", {
+      userId: relayer.id, groupId: v.groupId, meta: { character: target.name, raid: raid.name, at: raid.scheduledAt?.toISOString() ?? null, status: v.status },
+    });
+    res.sent.push(gameName(target.name));
+  }
+  return res;
+}
+
 /** Patrons connus et recherchés, inscriptions : enregistrés à part. Renvoie un résumé à afficher. */
-async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>) {
+async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>, now: Date) {
   const out: string[] = [];
   if (parts.has("recipes") && d.recipes.length) {
     const res = await importKnownRecipes(db, c, {
@@ -116,6 +197,16 @@ async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExpo
     }
     out.push(`${plural(ok, "inscription")} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}`);
   }
+  // Inscriptions faites en jeu par d'autres joueurs, transmises par cet officier : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée »
+  if (parts.has("signups") && d.relayed.length) {
+    const r = await applyRelayed(db, user, d, now);
+    const sent = r.sent.length, kept = r.kept.length, refused = r.refused.length;
+    out.push([
+      sent && `${plural(sent, "inscription")} transmise${sent > 1 ? "s" : ""} (${[...new Set(r.sent)].join(", ")})`,
+      kept && `${kept} gardée${kept > 1 ? "s" : ""}`,
+      refused && `${refused} refusée${refused > 1 ? "s" : ""}`,
+    ].filter(Boolean).join(" · "));
+  }
   return out.join(" · ");
 }
 
@@ -124,6 +215,7 @@ const errorText = (e: unknown, fallback: string) => (e instanceof HttpError ? e.
 /** Applique chaque bloc à sa fiche (retrouvée, choisie, ou créée) ; la date de dernière synchro est notée sur la fiche. */
 export async function importCharacters(db: Db, user: User, blocks: CharacterExport[], opts: ImportOptions): Promise<ImportResult[]> {
   const parts = opts.parts ?? ALL_PARTS;
+  const now = opts.now ?? new Date();
   const mine = await db.select().from(characters).where(and(eq(characters.userId, user.id), eq(characters.game, opts.game)));
   const ignored = new Set((await db.select({ key: addonIgnored.key }).from(addonIgnored)
     .where(and(eq(addonIgnored.userId, user.id), eq(addonIgnored.game, opts.game)))).map(r => r.key));
@@ -199,7 +291,7 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       }).where(eq(characters.id, fiche.id)).returning();
       Object.assign(fiche, row);
       changed = true;
-      const extras = await applyExtras(db, user, fiche, d, parts);
+      const extras = await applyExtras(db, user, fiche, d, parts, now);
       // Nom complet du jeu différent du nom saisi sur la fiche : gardé, mais signalé
       const conflict = d.fullName && parts.has("identity") && !create && fiche.name !== d.fullName ? { fiche: fiche.name, game: d.fullName } : null;
       out.push({

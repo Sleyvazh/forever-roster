@@ -5,16 +5,16 @@ import { fileURLToPath } from "node:url";
 import { canonicalGroupBlock, groupBlockSignature, type GroupBlockKind } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { raidSignups } from "../src/db/schema";
+import { auditEvents, characters, groupMembers, raids, raidSignups } from "../src/db/schema";
 import { signUpDiscordGuest } from "../src/lib/signups";
 import { syncSigner } from "../src/lib/sync-signing";
 import { groupExport } from "../src/routes/addon";
-import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
+import { setup, signedIn, tokenFrom, type Client, type TestEnv } from "./helpers";
 
 /**
  * Copier-coller facultatif, côté API : heure du dernier changement de statut d'une inscription (`status_at`), liste des
  * inscrits servie dans le bloc FRG signé (ligne Y), réglage « mes inscriptions faites en jeu peuvent passer par un
- * officier » (`gameRelay`). Clé de TEST du partage (addon/tests/fixtures, keyId a3de5db8). Noms fictifs.
+ * officier » (`gameRelay`), inscriptions faites en jeu transmises par un officier (lignes V du FRC, Ctrl+V et appli). Clé de TEST du partage (addon/tests/fixtures, keyId a3de5db8). Noms fictifs.
  */
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const fixture = (name: string) => readFileSync(path.join(ROOT, "addon/tests/fixtures", name), "utf8");
@@ -230,5 +230,308 @@ describe("réglage gameRelay", () => {
     expect(none.json().error).toMatch(/réglage/i);
     expect((await c.patch("/api/account/preferences", { gameRelay: "non" })).statusCode).toBe(400);
     expect((await c.get("/api/auth/me")).json().user.gameRelay).toBe(true);
+  });
+});
+
+/**
+ * Relais : une joueuse clique son inscription en jeu, un officier avec l'appli (ou qui colle son export) la transmet par
+ * les lignes `V` de son bloc FRC. Chaque garde du serveur (spec B4) est testée, par Ctrl+V comme par l'appli.
+ */
+type Player = Awaited<ReturnType<typeof signedIn>>;
+const DAY = 86400e3, nowS = () => Math.floor(Date.now() / 1000);
+const GRETA_GUID = "Player-4440-0A1B2C3D", PIKOU_GUID = "Player-4440-0A1B2C3E", GRETA_AUTRE_GUID = "Player-4440-0A1B2C3F", OPALE_GUID = "Player-4440-0A1B2C40";
+
+/** Bloc FRC d'un perso (celui de l'envoyeur) avec ses lignes V. */
+const block = (name: string, cls: string, race: string, v: string[]) =>
+  [`FRC;2;${name};Forever EU;${cls};${race};60;Horde;1790000000;1.6.3`, ...v, `END;${v.length}`].join("\n");
+const asOwner = (v: string[]) => block("Brakka", "WARRIOR", "Orc", v);
+const asOfficer = (v: string[]) => block("Dorgan", "ROGUE", "Orc", v);
+const asMember = (v: string[]) => block("Pikou", "PRIEST", "Human", v);
+
+/** Appareil : requêtes sans cookie ni origine, avec le jeton Bearer (comme Roster Companion). */
+const device = (token: string) => ({
+  req: (method: string, url: string, body?: unknown) => env.app.inject({
+    method: method as "GET", url, headers: { authorization: `Bearer ${token}` }, ...(body !== undefined ? { payload: body as object } : {}),
+  }),
+});
+async function pair(site: Client) {
+  const anon = env.app;
+  const start = (await anon.inject({ method: "POST", url: "/api/devices/pair", payload: { name: "PC-DORGAN", platform: "Windows 11", appVersion: "0.3.1" } })).json();
+  expect((await site.post("/api/devices/pair/approve", { code: start.userCode })).statusCode).toBe(200);
+  const r = (await anon.inject({ method: "POST", url: "/api/devices/pair/poll", payload: { pairId: start.pairId } })).json();
+  expect(r.status).toBe("approved");
+  return r.token as string;
+}
+
+/**
+ * Guilde : Brakka (propriétaire), Dorgan (officier), Greta (« Greta Coulé »), Pikou et Opale (membres), Nomade (sans perso) ;
+ * un étranger (Étienne) qui a sa propre guilde et son raid. Brakka et Dorgan ont leur perso rangé dans la guilde.
+ */
+async function relayScene() {
+  const own = await signedIn(env, "BrakkaJ");
+  const g = (await own.c.post("/api/groups", { name: "Les Relayeurs" })).json().group as { id: string };
+  const inv = (await own.c.post(`/api/groups/${g.id}/invites`, { maxUses: 20, expiresInHours: 24 })).json().invite;
+  const join = async (p: Player) => expect((await p.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) })).statusCode).toBe(200);
+  const char = async (p: Player, name: string, cls: string, race: string, file = true) => {
+    const ch = (await p.c.post("/api/characters", { name, ...(cls && { race, cls }) })).json().character as { id: string };
+    if (file) expect((await p.c.put(`/api/groups/${g.id}/characters/${ch.id}`, { assigned: true })).statusCode).toBe(200);
+    return ch;
+  };
+  const player = async (name: string, perso: [string, string, string] | null) => {
+    const p = await signedIn(env, name);
+    await join(p);
+    return { ...p, char: perso ? await char(p, ...perso) : null };
+  };
+  const brakka = await char(own, "Brakka", "Warrior", "Orc");
+  const off = await player("DorganJ", ["Dorgan", "Rogue", "Orc"]);
+  expect((await own.c.patch(`/api/groups/${g.id}/members/${off.user.id}`, { role: "officer" })).statusCode).toBe(200);
+  const greta = await player("GretaJ", ["Greta Coulé", "Druid", "Tauren"]);
+  const pikou = await player("PikouJ", ["Pikou", "Priest", "Human"]);
+  const opale = await player("OpaleJ", ["Opale", "Mage", "Troll"]);
+  const nomade = await player("NomadeJ", null);
+  // Guilde d'un étranger : son raid ne peut pas être relayé dans la guilde de Brakka
+  const ext = await signedIn(env, "EtienneJ");
+  const g2 = (await ext.c.post("/api/groups", { name: "Les Voisins" })).json().group as { id: string };
+  /** Raid créé ; sa date (celle de la base, en ISO) est relue pour le journal. */
+  const raidOf = async (p: Player, gid: string, name: string, offset: number | null) => {
+    const { id } = (await p.c.post(`/api/groups/${gid}/raids`, { name, scheduledAt: offset === null ? null : new Date(Date.now() + offset).toISOString() })).json().raid as { id: string };
+    const [row] = await db().select({ scheduledAt: raids.scheduledAt }).from(raids).where(eq(raids.id, id));
+    return { id, scheduledAt: row!.scheduledAt?.toISOString() ?? null };
+  };
+  return {
+    own, off, greta, pikou, opale, nomade, ext, g, g2, brakka, join, char, player,
+    raid: (name: string, offset: number | null = DAY) => raidOf(own, g.id, name, offset),
+    raid2: (name: string) => raidOf(ext, g2.id, name, DAY),
+  };
+}
+
+/** Ligne V : groupe, raid, statut, prénom, GUID, clic. */
+const vLine = (gid: string, raid: { id: string }, status: string, name: string, at: number, guid = "") => `V;${gid};${raid.id};${status};${name};${guid};${at}`;
+/** Message du bloc de l'envoyeur après un Ctrl+V. */
+async function paste(c: Client, text: string, extra: Record<string, unknown> = {}) {
+  const r = (await c.post("/api/addon/import", { text, ...extra })).json();
+  expect(r.errors).toEqual([]);
+  expect(r.results).toHaveLength(1);
+  return r.results[0] as { status: string; message: string };
+}
+const signupsOf = (raidId: string) => db().select().from(raidSignups).where(eq(raidSignups.raidId, raidId));
+const relayedEvents = async (groupId: string, raidName?: string) =>
+  (await db().select().from(auditEvents).where(and(eq(auditEvents.groupId, groupId), eq(auditEvents.type, "signup_relayed")))).filter(e => !raidName || e.meta.raid === raidName);
+const setGuid = (characterId: string, guid: string | null) => db().update(characters).set({ guid }).where(eq(characters.id, characterId));
+
+describe("relais : inscriptions faites en jeu (lignes V)", () => {
+  let s: Awaited<ReturnType<typeof relayScene>>;
+  beforeAll(async () => { s = await relayScene(); });
+  const send = (raid: { id: string }, status: string, name: string, at: number, guid = "") => vLine(s.g.id, raid, status, name, at, guid);
+  /** Refus attendu : message « 1 refusée », rien d'écrit sur le raid. */
+  async function refused(c: Client, text: string, raid: { id: string }, message = "fiche mise à jour · 1 refusée") {
+    expect(await paste(c, text)).toMatchObject({ status: "updated", message });
+    expect(await signupsOf(raid.id)).toEqual([]);
+  }
+
+  it("Ctrl+V : le propriétaire transmet, le site inscrit avec le bon perso, le journal le dit", async () => {
+    await setGuid(s.opale.char!.id, OPALE_GUID);
+    const raid = await s.raid("Onyxia");
+    const at = nowS() - 120;
+    // Greta par son prénom (seule à le porter), Opale par son GUID
+    const r = await paste(s.own.c, asOwner([send(raid, "tentative", "Greta", at), send(raid, "present", "Opale", at - 30, OPALE_GUID)]));
+    expect(r).toMatchObject({ status: "updated", message: "fiche mise à jour · 2 inscriptions transmises (Greta, Opale)" });
+    const rows = await signupsOf(raid.id);
+    expect(rows).toHaveLength(2);
+    const greta = rows.find(x => x.userId === s.greta.user.id)!, opale = rows.find(x => x.userId === s.opale.user.id)!;
+    expect(greta).toMatchObject({ status: "tentative", characterId: s.greta.char!.id, cls: "Druid", displayName: "GretaJ" });
+    expect(opale).toMatchObject({ status: "present", characterId: s.opale.char!.id, cls: "Mage" });
+    expect(greta.statusAt.getTime()).toBeGreaterThanOrEqual(at * 1000);
+
+    // Journal de la guilde : l'officier qui a transmis, le perso, le raid, sa date, le statut
+    const events = await relayedEvents(s.g.id, "Onyxia");
+    expect(events).toHaveLength(2);
+    const ev = events.find(e => e.meta.character === "Greta Coulé")!;
+    expect(ev).toMatchObject({ userId: s.own.user.id, groupId: s.g.id, meta: { character: "Greta Coulé", raid: "Onyxia", at: raid.scheduledAt, status: "tentative" } });
+    const journal = (await s.own.c.get(`/api/groups/${s.g.id}/audit`)).json().events as { type: string; actor: string; meta: Record<string, unknown> }[];
+    expect(journal.filter(e => e.type === "signup_relayed" && e.meta.raid === "Onyxia").map(e => e.actor)).toEqual(["BrakkaJ", "BrakkaJ"]);
+  });
+
+  it("appli (/api/sync/upload) : un officier promu transmet ; renvoyé, c'est gardé, sans nouveau journal", async () => {
+    const app = device(await pair(s.off.c));
+    const raid = await s.raid("Ragnaros");
+    const text = asOfficer([send(raid, "tentative", "Greta", nowS() - 60)]);
+    const first = (await app.req("POST", "/api/sync/upload", { text })).json();
+    expect(first.results).toEqual([expect.objectContaining({ status: "updated", message: "fiche mise à jour · 1 inscription transmise (Greta)" })]);
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.greta.user.id, status: "tentative", characterId: s.greta.char!.id })]);
+    const again = (await app.req("POST", "/api/sync/upload", { text })).json();
+    expect(again.results[0].message).toBe("fiche mise à jour · 1 gardée");
+    const events = await relayedEvents(s.g.id, "Ragnaros");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ userId: s.off.user.id, meta: { status: "tentative" } });
+    // Un membre simple avec l'appli : refusé, par l'appli aussi
+    const member = device(await pair(s.pikou.c));
+    const raid2 = await s.raid("Hakkar");
+    const r = (await member.req("POST", "/api/sync/upload", { text: asMember([send(raid2, "present", "Greta", nowS() - 60)]) })).json();
+    expect(r.results[0].message).toBe("fiche mise à jour · 1 refusée");
+    expect(await signupsOf(raid2.id)).toEqual([]);
+  });
+
+  it("le site a le dernier mot : status_at >= clic → gardée ; plus récent → transmise", async () => {
+    const raid = await s.raid("Zul Gurub");
+    await s.greta.c.put(`/api/groups/${s.g.id}/raids/${raid.id}/signup`, { status: "present", characterId: s.greta.char!.id, note: "Je serai là à 21 h" });
+    const get = async () => (await signupsOf(raid.id)).find(x => x.userId === s.greta.user.id)!;
+    // Clic plus ancien que le changement fait sur le site : gardée, la ligne ne bouge pas
+    const before = await get();
+    expect(await paste(s.own.c, asOwner([send(raid, "absent", "Greta", nowS() - 3600)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
+    expect(await get()).toMatchObject({ status: "present", note: "Je serai là à 21 h" });
+    expect((await get()).updatedAt.getTime()).toBe(before.updatedAt.getTime());
+    // Clic exactement à l'heure du changement (>=) : gardée
+    const at = nowS() - 600;
+    await db().update(raidSignups).set({ statusAt: new Date(at * 1000) }).where(eq(raidSignups.id, before.id));
+    expect(await paste(s.own.c, asOwner([send(raid, "absent", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
+    expect((await get()).status).toBe("present");
+    // Clic d'une seconde plus récent : transmise
+    expect(await paste(s.own.c, asOwner([send(raid, "absent", "Greta", at + 1)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect(await get()).toMatchObject({ status: "absent", characterId: s.greta.char!.id });
+    expect((await get()).statusAt.getTime()).toBeGreaterThan(at * 1000);
+    // Même statut, même perso, clic plus récent que status_at : rien à transmettre, la note est gardée
+    await db().update(raidSignups).set({ statusAt: new Date((at - 100) * 1000), note: "Peut-être en retard" }).where(eq(raidSignups.id, before.id));
+    expect(await paste(s.own.c, asOwner([send(raid, "absent", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
+    expect(await get()).toMatchObject({ status: "absent", note: "Peut-être en retard" });
+    expect(await relayedEvents(s.g.id, "Zul Gurub")).toHaveLength(1);
+  });
+
+  it("refus : envoyeur simple membre, étranger à la guilde, perso de l'envoyeur", async () => {
+    const raid = await s.raid("Naxxramas");
+    const at = nowS() - 60;
+    // Pikou est membre simple : son export ne transmet rien
+    await refused(s.pikou.c, asMember([send(raid, "present", "Greta", at)]), raid);
+    // Un étranger (officier de SA guilde seulement) ne transmet pas dans celle de Brakka
+    const ext = await s.ext.c.post("/api/characters", { name: "Etienne", race: "Troll", cls: "Mage" });
+    expect(ext.statusCode).toBe(201);
+    await refused(s.ext.c, block("Etienne", "MAGE", "Troll", [send(raid, "present", "Greta", at)]), raid);
+    // Le perso est celui de l'envoyeur : Brakka (propriétaire) et Dorgan (officier) ne s'inscrivent pas eux-mêmes par ce chemin
+    await refused(s.own.c, asOwner([send(raid, "present", "Brakka", at)]), raid);
+    await refused(s.off.c, asOfficer([send(raid, "present", "Dorgan", at)]), raid);
+    expect(await relayedEvents(s.g.id, "Naxxramas")).toEqual([]);
+  });
+
+  it("refus : le joueur a coupé le relais (réglage gameRelay) ; il le rallume, ça passe", async () => {
+    const raid = await s.raid("Karazhan");
+    const at = nowS() - 60;
+    expect((await s.opale.c.patch("/api/account/preferences", { gameRelay: false })).statusCode).toBe(200);
+    await refused(s.own.c, asOwner([send(raid, "present", "Opale", at)]), raid);
+    expect((await s.opale.c.patch("/api/account/preferences", { gameRelay: true })).statusCode).toBe(200);
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Opale", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Opale)" });
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.opale.user.id, status: "present" })]);
+  });
+
+  it("refus : raid d'une autre guilde, groupe étranger, raid passé depuis plus de 24 h ; raid récent ou sans date accepté", async () => {
+    const at = nowS() - 60;
+    // Raid de la guilde voisine donné avec le groupe de Brakka, ou avec le groupe voisin (Brakka n'y est pas officier)
+    const foreign = await s.raid2("Raid voisin");
+    await refused(s.own.c, asOwner([send(foreign, "present", "Greta", at)]), foreign);
+    await refused(s.own.c, asOwner([vLine(s.g2.id, foreign, "present", "Greta", at)]), foreign);
+    // Passé depuis 25 h : refusé ; depuis 2 h : accepté ; sans date : accepté (la date du journal est alors vide)
+    const old = await s.raid("Raid de la veille", -25 * 3600e3);
+    await refused(s.own.c, asOwner([send(old, "present", "Greta", at)]), old);
+    const recent = await s.raid("Raid de ce soir", -2 * 3600e3);
+    expect(await paste(s.own.c, asOwner([send(recent, "present", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    const open = await s.raid("Raid sans date", null);
+    expect(await paste(s.own.c, asOwner([send(open, "late", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect((await relayedEvents(s.g.id, "Raid sans date"))[0]!.meta).toMatchObject({ at: null, status: "late" });
+    expect((await relayedEvents(s.g.id, "Raid de ce soir"))[0]!.meta.at).toBe(recent.scheduledAt);
+    expect(await relayedEvents(s.g.id, "Raid de la veille")).toEqual([]);
+  });
+
+  it("refus : clic dans le futur (+ 10 min) ou trop ancien (- 8 jours) ; - 6 jours accepté", async () => {
+    const raid = await s.raid("Gnomeregan");
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() + 600)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() - 8 * 86400)]), raid);
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Greta", nowS() - 6 * 86400)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    // Quatre minutes d'avance sur l'horloge du serveur : toléré (+ 5 min)
+    const raid2 = await s.raid("Gnomeregan bis");
+    expect(await paste(s.own.c, asOwner([send(raid2, "present", "Greta", nowS() + 240)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+  });
+
+  it("homonymes : deux persos « Greta » sans GUID → refusé ; avec le GUID de l'un, c'est le bon qui s'inscrit", async () => {
+    // Rivale a « Greta Dubois » dans la même guilde : Greta est ambiguë, tant qu'elle y reste
+    const rival = await s.player("RivaleJ", ["Greta Dubois", "Rogue", "Human"]);
+    const raid = await s.raid("Mur-de-Glace");
+    const at = nowS() - 60;
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at)]), raid);
+    // GUID inconnu du site et prénom porté par deux persos : refusé aussi
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at, GRETA_AUTRE_GUID)]), raid);
+    // GUID connu : trouvée par GUID malgré l'homonyme
+    await setGuid(s.greta.char!.id, GRETA_GUID);
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Greta", at, GRETA_GUID)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.greta.user.id, characterId: s.greta.char!.id })]);
+    // Et celui de Greta Dubois renvoie à Greta Dubois
+    await setGuid(rival.char!.id, GRETA_AUTRE_GUID);
+    const raid2 = await s.raid("Mur-de-Glace bis");
+    expect(await paste(s.own.c, asOwner([send(raid2, "tentative", "Greta", at, GRETA_AUTRE_GUID)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect(await signupsOf(raid2.id)).toEqual([expect.objectContaining({ userId: rival.user.id, characterId: rival.char!.id, status: "tentative" })]);
+    // Rivale retire son perso de la guilde : Greta redevient seule à porter ce prénom
+    await setGuid(s.greta.char!.id, null);
+    expect((await rival.c.put(`/api/groups/${s.g.id}/characters/${rival.char!.id}`, { assigned: false })).statusCode).toBe(200);
+    const raid3 = await s.raid("Mur-de-Glace ter");
+    expect(await paste(s.own.c, asOwner([send(raid3, "present", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect(await signupsOf(raid3.id)).toEqual([expect.objectContaining({ userId: s.greta.user.id })]);
+  });
+
+  it("GUID : à défaut, le prénom seul suffit s'il est unique ; un GUID différent sur la fiche → refusé", async () => {
+    const raid = await s.raid("Stratholme");
+    const at = nowS() - 60;
+    // Pikou n'a pas encore de GUID sur le site : le prénom unique suffit
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "pikou", at, PIKOU_GUID)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Pikou)" });
+    // La fiche porte un autre GUID : ce n'est pas le même perso
+    await setGuid(s.pikou.char!.id, GRETA_AUTRE_GUID);
+    const raid2 = await s.raid("Stratholme bis");
+    await refused(s.own.c, asOwner([send(raid2, "present", "Pikou", at, PIKOU_GUID)]), raid2);
+    await setGuid(s.pikou.char!.id, null);
+  });
+
+  it("perso inconnu, rangé ailleurs, joueur parti ou perso sans classe : refusé, rien n'est créé", async () => {
+    const raid = await s.raid("Scholomance");
+    const at = nowS() - 60;
+    const total = async () => (await db().select({ id: characters.id }).from(characters)).length;
+    const n = await total();
+    await refused(s.own.c, asOwner([send(raid, "present", "Inconnu", at)]), raid);
+    // Perso du site rangé dans aucune guilde
+    await s.char(s.greta, "Solitaire", "Hunter", "Orc", false);
+    await refused(s.own.c, asOwner([send(raid, "present", "Solitaire", at)]), raid);
+    // Perso sans classe (rangé dans la guilde) : l'inscription du site le refuse
+    await s.char(s.nomade, "Sansclasse", "", "");
+    await refused(s.own.c, asOwner([send(raid, "present", "Sansclasse", at)]), raid);
+    // Joueur qui n'est plus membre (sa ligne de membre a disparu, son perso reste rangé) : refusé alors que le perso a une classe
+    await s.char(s.nomade, "Partie", "Hunter", "Orc");
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Partie", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Partie)" });
+    await db().delete(raidSignups).where(eq(raidSignups.raidId, raid.id));
+    await db().delete(groupMembers).where(and(eq(groupMembers.groupId, s.g.id), eq(groupMembers.userId, s.nomade.user.id)));
+    await refused(s.own.c, asOwner([send(raid, "present", "Partie", at)]), raid);
+    expect(await total()).toBe(n + 3); // Solitaire, Sansclasse et Partie, créés ici par le test lui-même
+    expect(await relayedEvents(s.g.id, "Scholomance")).toHaveLength(1); // celle de Partie, avant son départ
+  });
+
+  it("message du bloc : transmises, gardées et refusées ensemble, accords au pluriel, parties à zéro omises", async () => {
+    const raid = await s.raid("Tempete");
+    const at = nowS() - 60;
+    // Pikou et Opale ont déjà répondu sur le site après leur clic : gardées
+    for (const p of [s.pikou, s.opale]) await p.c.put(`/api/groups/${s.g.id}/raids/${raid.id}/signup`, { status: "bench", characterId: p.char!.id });
+    const r = await paste(s.own.c, asOwner([
+      send(raid, "present", "Pikou", at), send(raid, "late", "Opale", at), send(raid, "present", "Inconnu", at), send(raid, "present", "Fantome", at),
+    ]));
+    expect(r.message).toBe("fiche mise à jour · 2 gardées · 2 refusées");
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Pikou", at)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
+    const mixed = await paste(s.own.c, asOwner([send(raid, "present", "Greta", at), send(raid, "present", "Pikou", at), send(raid, "present", "Inconnu", at)]));
+    expect(mixed.message).toBe("fiche mise à jour · 1 inscription transmise (Greta) · 1 gardée · 1 refusée");
+  });
+
+  it("sans ligne V ou sans la partie « inscriptions » : rien ne change", async () => {
+    const raid = await s.raid("Ahn Qiraj");
+    const at = nowS() - 60;
+    expect(await paste(s.own.c, asOwner([]))).toMatchObject({ status: "updated", message: "fiche mise à jour" });
+    // Ctrl+V : « Choisir quoi importer » sans les inscriptions
+    expect(await paste(s.own.c, asOwner([send(raid, "present", "Pikou", at)]), { parts: ["gear"] })).toMatchObject({ message: "fiche mise à jour" });
+    expect(await signupsOf(raid.id)).toEqual([]);
+    // Les lignes S gardent leur message d'avant
+    expect(await paste(s.own.c, asOwner([`S;${s.g.id};${raid.id};present`]))).toMatchObject({ message: "fiche mise à jour · 1 inscription aux raids" });
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.own.user.id, status: "present" })]);
   });
 });

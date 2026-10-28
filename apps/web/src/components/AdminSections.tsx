@@ -1,4 +1,4 @@
-import { SKILL_LINE_NAMES, WEEKDAYS } from "@forever/game-data";
+import { gameName, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -35,9 +35,13 @@ export const EVENT_LABEL: Record<string, string> = {
   // Lot « Guilde » (Forever) : guilde du jeu, annonces de la course, mains et alts
   guild_linked: "a lié la guilde du jeu", guild_unlinked: "a délié la guilde du jeu", guild_announces: "a changé les annonces de la Course au 60",
   guild_member_linked: "a rattaché un perso", guild_member_unlinked: "a détaché un perso",
+  // Copier-coller facultatif : inscription faite en jeu par un joueur, transmise par un officier (l'acteur est l'officier)
+  signup_relayed: "a transmis une inscription faite en jeu",
 };
 const ANNOUNCE_LABEL: Record<string, string> = { none: "rien", sixty: "les 60 seulement", tens: "tous les 10 niveaux" };
-/** Détail d'une ligne du journal : nom, guilde du jeu, perso, réglage. */
+/** Jour court d'un raid dans le journal (« ven. 14/11 »), à l'heure de Paris. */
+const RELAY_DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" });
+/** Détail d'une ligne du journal : nom, guilde du jeu, perso, réglage, inscription transmise. */
 export function eventDetail(e: GroupEvent) {
   const m = e.meta;
   const str = (k: string) => (typeof m[k] === "string" ? (m[k] as string) : null);
@@ -47,6 +51,12 @@ export function eventDetail(e: GroupEvent) {
   if (e.type === "guild_announces") return ` · ${ANNOUNCE_LABEL[str("announce") ?? ""] ?? str("announce") ?? ""}`;
   if (e.type === "guild_member_linked") return ` · ${str("character") ?? "?"}${m.note === true ? " (note de guilde)" : str("to") === "new" ? " (joueur à part)" : ""}`;
   if (e.type === "guild_member_unlinked") return ` · ${str("character") ?? "?"}`;
+  if (e.type === "signup_relayed") {
+    // « · Greta : Peut-être (Onyxia, ven. 14/11) » : prénom du perso, réponse, raid et sa date (absente si le raid n'en a pas)
+    const status = str("status"), at = str("at");
+    const day = at && !Number.isNaN(Date.parse(at)) ? `, ${RELAY_DAY.format(new Date(at))}` : "";
+    return ` · ${gameName(str("character") ?? "") || "?"} : ${status ? SIGNUP_LABEL[status as SignupStatus] ?? status : "?"} (${str("raid") ?? "?"}${day})`;
+  }
   return str("name") ? ` · ${str("name")}` : "";
 }
 
