@@ -25,6 +25,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   group_role_changed: ["Rôle modifié dans une guilde", ""], group_member_removed: ["Membre retiré d'une guilde", ""],
   invite_created: ["Invitation créée", ""], invite_revoked: ["Invitation révoquée", ""], raid_created: ["Raid créé", ""], raid_deleted: ["Raid supprimé", ""],
   device_linked: ["Appareil relié", "warn"], device_pair_denied: ["Appairage refusé", "warn"], device_unlinked: ["Appareil délié", ""],
+  // Copier-coller facultatif : un officier avec Roster Companion a transmis l'inscription faite en jeu d'un joueur
+  signup_relayed: ["Inscription transmise pour un joueur", ""],
 };
 
 /** Résumé lisible d'un user-agent, sans bibliothèque. */
@@ -79,6 +81,7 @@ export function AccountPage() {
         <DiscordLink username={user.discordUsername} reminders={user.discordReminders} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
         <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
         {site.game === "retail" && <GameLanguage pref={user.gameLang} onDone={refreshMe} />}
+        {site.game === "forever" && <GameRelay on={user.gameRelay} onDone={refreshMe} />}
       </div>
       <Sessions />
       <Devices />
@@ -292,6 +295,21 @@ function DeleteAccount({ hasPassword }: { hasPassword: boolean }) {
           <button className="btn ghost" type="button" onClick={() => setOpen(false)}>Annuler</button>
         </form>
       )}
+      {a.view}
+    </Section>
+  );
+}
+
+/** Forever : mes inscriptions faites en jeu peuvent passer par un officier qui a Roster Companion (addon 1.6.3), activé d'office. */
+function GameRelay({ on, onDone }: { on: boolean; onDone: () => void }) {
+  const a = useAction();
+  return (
+    <Section title="Inscriptions faites en jeu" hint="Sans Roster Companion, ton addon confie tes inscriptions à un officier de ta guilde qui a l'appli : il les transmet au site.">
+      <label className="row" style={{ gap: 8, flexWrap: "nowrap", alignItems: "flex-start" }}>
+        <input type="checkbox" checked={on} style={{ width: "auto", marginTop: 3 }}
+          onChange={e => { const gameRelay = e.target.checked; void a.run(async () => { await patch("/account/preferences", { gameRelay }); onDone(); return "Réglage enregistré."; }); }} />
+        <span>Mes inscriptions faites en jeu peuvent passer par un officier<br /><span className="hint">Coupé : elles ne partent qu'avec ton export (copier-coller).</span></span>
+      </label>
       {a.view}
     </Section>
   );

@@ -1,4 +1,5 @@
--- Fenêtre unique à onglets (Synchro, Raids, Sorties, En raid, Compo, Patrons, Options), synchro rapide, rappel de raid et alerte au butin.
+-- Fenêtre unique à onglets (Synchro, Raids, Sorties, En raid, Compo, Patrons, Options), synchro rapide, rappel de raid, alerte au butin
+-- et diagnostic du partage (/fr partage).
 -- Deux habillages au choix (Options) : celui de l'interface de Forever, ou celui du site (sombre, liserés dorés).
 -- Fenêtres, listes et habillages : boîte à outils commune avec l'addon Roster (addon/shared/Kit.lua).
 local ADDON, ns = ...
@@ -812,6 +813,63 @@ function U.AskReload(text, goLabel)
   reloadAsk:Show()
   return reloadAsk
 end
+
+-- Diagnostic du partage (/fr partage, 1.6.3) : ce que l'addon a reçu, partagé, confié ou relayé pendant la session, en texte
+-- brut à copier. Une ligne par groupe chargé (Group.ShareLines), une ligne de réglages (partage, confier, relais et pourquoi
+-- pas), puis le journal de la session (Share.Journal : « hh:mm:ss  texte », le plus ancien d'abord).
+function U.ShareDiagText()
+  local G, R, lines = ns.Group, ns.Relay, {}
+  local function onOff(on) return on and L["activé"] or L["coupé"] end
+  local groups = G.ShareLines()
+  if #groups == 0 then lines[1] = L["Aucun groupe chargé."] else for _, line in ipairs(groups) do lines[#lines + 1] = line end end
+  lines[#lines + 1] = ""
+  local app = ns.Companion ~= nil and ns.Companion.Active()
+  local settings = { L("Partage : %s", onOff(G.ShareOn())) }
+  if R then
+    settings[2] = L("Confier mes inscriptions : %s", onOff(R.ConfideOn()) .. " (" .. (app and L["appli active ici"] or L["pas d'appli ici"]) .. ")")
+    local why = R.WhyNot()
+    for i, reason in ipairs(why) do why[i] = L[reason] end
+    settings[3] = L("Relais : %s", #why == 0 and L["oui"] or (L["non"] .. " (" .. table.concat(why, ", ") .. ")"))
+  end
+  lines[#lines + 1] = table.concat(settings, " · ")
+  lines[#lines + 1] = ""
+  local journal = ns.Share and ns.Share.Journal and ns.Share.Journal() or {}
+  if #journal == 0 then lines[#lines + 1] = L["Rien dans le journal de cette session."] end
+  for _, e in ipairs(journal) do lines[#lines + 1] = date("%H:%M:%S", e.t) .. "  " .. e.text end
+  return table.concat(lines, "\n")
+end
+
+-- Fenêtre du diagnostic : une zone de texte qu'on peut sélectionner, mais pas modifier (comme « Copier le relevé » de
+-- /fr guilde). « Copier » sélectionne tout et donne le focus : Ctrl+C, puis on colle le texte à qui aide.
+local shareWin
+function U.ShowShareDiag()
+  if not shareWin or shareWin.skin ~= site() then
+    if shareWin then shareWin:Hide() end
+    shareWin = window("ForeverRosterShare", "Forever Roster  ·  " .. L["Diagnostic du partage"], 600, 410)
+    shareWin.skin = site()
+    local win = shareWin
+    win.hintText = win:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    win.hintText:SetPoint("TOPLEFT", gapX(), -34) win.hintText:SetWidth(580 - gapX()) win.hintText:SetJustifyH("LEFT")
+    win.hintText:SetText(L["« Copier » sélectionne tout : Ctrl+C, puis colle le texte à qui t'aide. Le journal ne couvre que cette session."])
+    win.box = textArea(win, 18, -72, 564, 270)
+    win.box:SetScript("OnTextChanged", function(self, user) if user then self:SetText(win.value or "") self:HighlightText() end end)
+    win.box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    win.box:SetScript("OnEscapePressed", function() win:Hide() end)
+    local close = button(win, L["Fermer"], 110, function() win:Hide() end)
+    close:SetPoint("BOTTOMRIGHT", -16, 12)
+    local copy = button(win, L["Copier"], 110, function() win.box:SetFocus() win.box:HighlightText() end)
+    copy:SetPoint("RIGHT", close, "LEFT", -8, 0)
+  end
+  shareWin.value = U.ShareDiagText()
+  shareWin.box:SetText(shareWin.value)
+  front(shareWin)
+  shareWin:Show()
+  shareWin.box:SetFocus()
+  shareWin.box:HighlightText()
+  return shareWin
+end
+-- La fenêtre du diagnostic (tests hors jeu)
+function U.ShareWindow() return shareWin end
 
 local reminder
 local function buildReminder()

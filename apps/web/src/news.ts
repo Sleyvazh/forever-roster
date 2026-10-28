@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 53, date: "2026-10-28", kind: "addon", version: "1.6", title: "Inscriptions en jeu sans copier-coller",
+    text: "Il suffit de quelques joueurs avec Roster Companion pour que toute la guilde reçoive en jeu les données du site, avec sa propre inscription. Une inscription faite en jeu sans l'appli part au site par un officier de ta guilde qui l'a : le réglage est dans Compte & sécurité. Avec l'addon 1.6.3, /fr partage montre ce qui est passé." },
   { n: 52, date: "2026-10-26", kind: "site", title: "Range tes persos en les glissant",
     text: "Dans Mes persos, la poignée ⋮⋮ à gauche de chaque perso revient : glisse-le pour changer l'ordre (ou flèches haut et bas au clavier), il est repris sur l'Accueil, ton main en tête. Et sur l'Accueil, chaque perso montre son portrait s'il en a un, sinon l'icône de sa spé, cerclée de la couleur de sa classe." },
   { n: 51, date: "2026-10-23", kind: "site", title: "Le site fait peau neuve",

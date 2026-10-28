@@ -1805,7 +1805,7 @@ do
   assert(cw2 ~= cw and cw2.skin and cw2:IsShown() and cw2.box:GetText() == Gd.Text(KEY), "boîte à copier, habillage du site")
   ForeverRosterDB.skin = keep.skin
   run("aide")
-  assert(printed[#printed]:find("/fr guilde", 1, true), "ligne dans l'aide de /fr")
+  assert(printed[#printed - 1]:find("/fr guilde", 1, true), "ligne dans l'aide de /fr") -- l'aide finit par /fr partage (1.6.3)
   quiet("/fr guilde")
 
   -- En-tête FRC (1.6.2) : GUID du perso et nom complet. GUID secret : champs vides, sans erreur. GUID hors de la liste de
@@ -3015,6 +3015,183 @@ local function relaying()
   assert(errors() == errorsBefore and failures == 0, "relais sans erreur : " .. tostring(errs[#errs]))
 end
 relaying()
+
+-- 8 nonies. /fr partage (1.6.3) : fenêtre de diagnostic (pas d'onglet), texte brut à copier. Une ligne par groupe chargé
+-- (origine, version, signée par le site ou pourquoi pas, liste des inscrits), une ligne de réglages (partage, confier, relais
+-- et pourquoi pas), puis le journal de la session. Mêmes données que l'onglet Synchro (Group.Origins), mêmes textes traduits.
+local function diagnostic()
+  local G, Sh, U = ns.Group, ns.Share, ns.UI
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, IsInGuild = IsInGuild, random = Sh.random, groups = ForeverRosterDB.groups,
+    companion = ForeverRosterDB.companion, share = ForeverRosterDB.share, confide = ForeverRosterDB.confide, relaying = ForeverRosterDB.relaying,
+    skin = ForeverRosterDB.skin, lang = ForeverRosterDB.lang }
+  local errorsBefore = errors()
+  local clock = 1796000000
+  time = function() return clock end
+  GetTime = function() return clock end
+  C_Timer = { After = function() end, NewTicker = function() return {} end } -- l'annonce prévue par un SHW entendu n'a pas lieu
+  Sh.random = function() return 0.5 end
+  local S = { guild = true }
+  IsInGuild = function() return S.guild end
+  ForeverRosterDB.groups, ForeverRosterDB.share, ForeverRosterDB.confide, ForeverRosterDB.relaying = {}, nil, nil, nil
+  ForeverRosterDB.companion = { seen = nil }
+  Sh.Reset()
+  assert(loadfile("addon/tests/fixtures/SiteKeyTest.lua"))("ForeverRoster", ns)
+  local function hhmm(t) return date("%d/%m %H:%M", t) end
+  local failed = {}
+  local function case(name, fn)
+    local ok, err = pcall(fn)
+    if not ok then failed[#failed + 1] = name .. " : " .. tostring(err) end
+  end
+  -- La fenêtre ouverte par la commande : son texte (à copier), ses boutons
+  local function opened(cmd)
+    run(cmd)
+    local w = U.ShareWindow and U.ShareWindow()
+    assert(w and w:IsShown(), "/fr " .. cmd .. " : fenêtre du diagnostic ouverte")
+    return w, w.box:GetText()
+  end
+  local function has(text, part) assert(text:find(part, 1, true), "texte attendu : « " .. part .. " » dans\n" .. text) end
+  local function hasNot(text, part) assert(not text:find(part, 1, true), "texte inattendu : « " .. part .. " » dans\n" .. text) end
+  local f = assert(io.open("addon/tests/sample.frg")) local SAMPLE = f:read("*a") f:close()
+  local VEILLEURS = assert(SAMPLE:match("(FRG;.-\nEND;%d+)"), "sample.frg : premier groupe")
+  local AT = tonumber(VEILLEURS:match("^FRG;1;[^;]*;(%d+);"))
+  local GV = VEILLEURS:match("^FRG;1;([^;]*);")
+  local GA, GR = "6a0f3c1e-0000-4000-8000-0000000000d1", "6a0f3c1e-0000-4000-8000-0000000000d2"
+
+  -- Rien de chargé, journal vide : trois lignes
+  case("rien de chargé, journal vide", function()
+    local w, t = opened("partage")
+    has(t, "Aucun groupe chargé.")
+    has(t, "Partage : activé · Confier mes inscriptions : activé (pas d'appli ici) · Relais : non (pas d'appli ici, pas officier)")
+    has(t, "Rien dans le journal de cette session.")
+    assert(not printed[#printed]:find("/fr partage", 1, true), "la commande n'affiche pas l'aide")
+    assert(w.box:GetText() == t and TEXTS["Copier"] and TEXTS["Fermer"], "boutons Copier et Fermer")
+  end)
+
+  -- Un groupe signé avec la liste des inscrits (sample.frg), un groupe collé sans signature ni liste, un groupe sans raid
+  assert(G.Load(VEILLEURS, false, true))
+  assert(G.Load(table.concat({ "FRG;1;" .. GA .. ";" .. AT .. ";Les Autres", "R;6a0f3c1e-0000-4000-8000-0000000000d3;" .. (AT + 86400) .. ";Zul'Gurub;;;journal", "M;Tournicoti", "END;1" }, "\n"), false, true))
+  assert(G.Load(table.concat({ "FRG;1;" .. GR .. ";" .. AT .. ";Les Retardataires", "M;Tournicoti", "END;0" }, "\n"), false, true))
+  ForeverRosterDB.groups[GA].origin = { from = "Greta", at = clock - 600 }
+  ForeverRosterDB.groups[GR].origin = { at = clock - 3600, companion = true }
+  case("une ligne par groupe : origine, version, signature, liste des inscrits", function()
+    local _, t = opened("partage")
+    local when, at = hhmm(clock), hhmm(AT)
+    has(t, "Les Veilleurs : collées le " .. when .. " · version du " .. at .. " · signée par le site · liste des inscrits : oui")
+    has(t, "Les Autres : reçues de Greta le " .. hhmm(clock - 600) .. " · version du " .. at .. " · non partagée : pas de signature du site · liste des inscrits : non")
+    has(t, "Les Retardataires : chargées par Roster Companion le " .. hhmm(clock - 3600) .. " · version du " .. at .. " · non partagée : pas de signature du site · liste des inscrits : sans raid")
+    -- Dans l'ordre des noms, avant les réglages
+    local a, r, v, s = t:find("Les Autres", 1, true), t:find("Les Retardataires", 1, true), t:find("Les Veilleurs", 1, true), t:find("Partage : ", 1, true)
+    assert(a < r and r < v and v < s, "groupes par nom, puis les réglages")
+    hasNot(t, "Aucun groupe chargé.")
+    -- L'onglet Synchro garde ses textes (Group.Origins)
+    local origins = table.concat(G.Origins(), "\n")
+    has(origins, "Les Autres : reçues de Greta le " .. hhmm(clock - 600) .. " · non partagées : pas signées par le site")
+  end)
+  case("clé du site inconnue", function()
+    local key = ns.SITE_KEYS.a3de5db8
+    ns.SITE_KEYS.a3de5db8 = nil
+    local ok, t = pcall(function() local _, x = opened("partage") return x end)
+    ns.SITE_KEYS.a3de5db8 = key
+    assert(ok, t)
+    has(t, "Les Veilleurs : collées le " .. hhmm(clock) .. " · version du " .. hhmm(AT) .. " · non partagée : clé du site inconnue · liste des inscrits : oui")
+  end)
+
+  -- Réglages : appli active et officier, puis chaque réglage coupé, puis hors guilde
+  case("réglages : appli active, officier d'un groupe chargé : relais oui", function()
+    ForeverRosterDB.companion = { seen = clock }
+    ForeverRosterDB.groups[GV].officers = { "Brakka", "Tournicoti" }
+    local _, t = opened("partage")
+    has(t, "Partage : activé · Confier mes inscriptions : activé (appli active ici) · Relais : oui")
+    hasNot(t, "Relais : oui (")
+    ForeverRosterDB.groups[GV].officers = { "Brakka" }
+    _, t = opened("partage")
+    has(t, "Relais : non (pas officier)")
+  end)
+  case("réglages : partage, confier et relais coupés ; pas en guilde", function()
+    ForeverRosterDB.companion = { seen = clock }
+    ForeverRosterDB.groups[GV].officers = { "Tournicoti" }
+    ForeverRosterDB.share, ForeverRosterDB.confide, ForeverRosterDB.relaying = false, false, false
+    local _, t = opened("partage")
+    has(t, "Partage : coupé · Confier mes inscriptions : coupé (appli active ici) · Relais : non (coupé)")
+    -- Une signature qui manque reste dite quand le partage est coupé (le diagnostic dit ce qui est, pas ce qui part)
+    has(t, "Les Veilleurs : collées le " .. hhmm(clock) .. " · version du " .. hhmm(AT) .. " · signée par le site")
+    ForeverRosterDB.share, ForeverRosterDB.confide, ForeverRosterDB.relaying = nil, nil, nil
+    S.guild = false
+    _, t = opened("partage")
+    has(t, "Relais : non (pas en guilde)")
+    S.guild = true
+    ForeverRosterDB.companion = { seen = nil }
+    ForeverRosterDB.groups[GV].officers = { "Brakka" }
+    _, t = opened("partage")
+    has(t, "Confier mes inscriptions : activé (pas d'appli ici) · Relais : non (pas d'appli ici, pas officier)")
+  end)
+
+  -- Journal de la session (Share.lua), du plus ancien au plus récent : « hh:mm:ss  texte »
+  case("journal : une ligne par entrée, la plus ancienne d'abord", function()
+    Sh.Reset()
+    local t0 = clock
+    Sh.OnMessage("Greta-Forever EU", "SHW;FRG", "GUILD")
+    clock = clock + 7
+    Sh.OnMessage("Greta-Forever EU", "SHW;FRG", "GUILD")
+    local _, t = opened("partage")
+    local first = date("%H:%M:%S", t0) .. "  SHW de Greta sur GUILD : j'annonce mes groupes dans quelques secondes."
+    local second = date("%H:%M:%S", t0 + 7) .. "  SHW de Greta sur GUILD : ignoré, déjà répondu il y a moins de 5 min."
+    has(t, first)
+    has(t, second)
+    assert(t:find(first, 1, true) < t:find(second, 1, true), "la plus ancienne d'abord")
+    assert(t:sub(-#second) == second, "le journal finit le texte")
+    hasNot(t, "Rien dans le journal de cette session.")
+    clock = t0
+  end)
+
+  -- Fenêtre : « Copier » sélectionne tout et donne le focus ; la frappe ne change pas le texte ; « Fermer » ; alias ; rouverte ; habillage
+  case("fenêtre : Copier, frappe, Fermer, alias share, habillage", function()
+    local w, t = opened("share")
+    local focused, selected = 0, 0
+    w.box.SetFocus = function() focused = focused + 1 end
+    w.box.HighlightText = function() selected = selected + 1 end
+    local copyBtn = TEXTS["Copier"]
+    assert(copyBtn, "bouton Copier")
+    rawget(copyBtn, "scripts").OnClick(copyBtn)
+    assert(focused == 1 and selected == 1, "Copier : focus et tout sélectionné")
+    w.box:SetText("frappe")
+    rawget(w.box, "scripts").OnTextChanged(w.box, true)
+    assert(w.box:GetText() == t, "la frappe ne change pas le texte")
+    local closeBtn = TEXTS["Fermer"]
+    rawget(closeBtn, "scripts").OnClick(closeBtn)
+    assert(not w:IsShown(), "Fermer")
+    local w2 = opened("partage")
+    assert(w2 == w and w2:IsShown(), "rouverte : la même fenêtre")
+    ForeverRosterDB.skin = "site"
+    local w3 = opened("partage")
+    assert(w3 ~= w and w3.skin and not w:IsShown(), "habillage du site : nouvelle fenêtre")
+    ForeverRosterDB.skin = keep.skin
+    w3:Hide()
+    run("aide")
+    local helped = false
+    for _, line in ipairs(printed) do if line:find("/fr partage : ce que l'addon a reçu, partagé, confié ou relayé pendant la session", 1, true) then helped = true end end
+    assert(helped, "ligne dans l'aide de /fr")
+  end)
+  case("anglais : mêmes lignes, traduites", function()
+    ForeverRosterDB.lang = "en"
+    local ok, t = pcall(function() local _, x = opened("share") return x end)
+    ForeverRosterDB.lang = keep.lang
+    assert(ok, t)
+    has(t, "Les Veilleurs: pasted on " .. hhmm(clock) .. " · version of " .. hhmm(AT) .. " · signed by the website · sign-up list: yes")
+    has(t, "Les Retardataires: loaded by Roster Companion on " .. hhmm(clock - 3600) .. " · version of " .. hhmm(AT) .. " · not shared: no website signature · sign-up list: no raid")
+    has(t, "Sharing: on · Hand over my sign-ups: on (no app here) · Relay: no (no app here, not an officer)")
+    has(t, "  SHW de Greta sur GUILD : j'annonce mes groupes") -- le journal garde la langue du moment où la ligne a été écrite
+  end)
+
+  -- Remise en place
+  time, GetTime, C_Timer, IsInGuild, Sh.random = keep.time, keep.GetTime, keep.C_Timer, keep.IsInGuild, keep.random
+  ForeverRosterDB.groups, ForeverRosterDB.companion, ForeverRosterDB.share = keep.groups, keep.companion, keep.share
+  ForeverRosterDB.confide, ForeverRosterDB.relaying, ForeverRosterDB.skin, ForeverRosterDB.lang = keep.confide, keep.relaying, keep.skin, keep.lang
+  Sh.Reset()
+  assert(#failed == 0, "section 8 nonies :\n  " .. table.concat(failed, "\n  "))
+  assert(errors() == errorsBefore and failures == 0, "diagnostic sans erreur")
+end
+diagnostic()
 
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.

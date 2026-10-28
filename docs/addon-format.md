@@ -93,6 +93,7 @@ P;<métier ou compétence>;<rang>;<rang max>
 R;<métier>;s<sort>,i<objet>,…
 T;<arbre>;<nœud>:<rang>,<nœud>:<rang>,…
 S;<groupe>;<raid>;<statut>
+V;<groupe>;<raid>;<statut>;<prénom>;<guid>;<clic>
 W;<objet patron>;<1 | 0>
 K;<objet>:<quantité>,<objet>:<quantité>,…
 END;<nombre de lignes entre l'en-tête et END>
@@ -108,9 +109,22 @@ END;<nombre de lignes entre l'en-tête et END>
 | `T` | Talents pris (système de talents de Forever, `C_Traits`), par arbre : identifiant du nœud et rang. En version 1 : une ligne par nœud, avec rang max, position, sort, sous-arbre et arbre. |
 | `W` | Patron marqué « recherché » en jeu (`1`) ou retiré (`0`) : onglet Patrons ou `/fr cherche <lien>`. Le site retrouve la recette enseignée par l'objet ; un patron déjà connu n'est jamais rétrogradé. |
 | `S` | Inscription faite en jeu (onglet Raids) : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. L'addon envoie la ligne jusqu'à ce que les données du site (FRG) montrent ce statut, ou soient plus récentes que l'accusé de réception, puis l'oublie (1.5.4) : un changement fait ensuite sur le site n'est pas écrasé. |
+| `V` | Inscription faite en jeu **par un autre joueur** et transmise par l'officier qui envoie ce bloc (addon 1.6.3, voir « Relais des inscriptions faites en jeu ») : identifiant du groupe, du raid, statut du jeu (`present`, `late`, `tentative`, `absent`), prénom de celui qui s'est inscrit (1 à 40 caractères, donné par le jeu à l'officier), son GUID (`Player-<serveur>-<hex>`, vide si inconnu) et l'heure de son clic en secondes Unix (heure du serveur de jeu : `GetServerTime()`, sinon `time()`). Écrite par l'addon de l'officier (appli active, option « Transmettre au site les inscriptions de la guilde ») dans le bloc du perso connecté seulement, après les lignes `S` ; 60 au plus par bloc ; comptée par `END` et dans l'empreinte du perso (le bloc repart). Le site la traite comme décrit plus bas (7 contrôles) ; un site plus ancien l'ignore. Ligne `V` en double (même prénom, même raid) : la dernière l'emporte. |
 | `K` | Lot G : consommables demandés par les raids chargés (lignes `C` du FRG), comptés dans les sacs et la banque (`GetItemCount`, banque incluse si elle a été ouverte) à la connexion, quand les sacs changent et à l'ouverture de la banque. Le site les garde sur la fiche (onglet Préparation des raids). |
 
-Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts`. Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.
+**Ce que le site fait des lignes `V` (addon 1.6.3).** Pour chaque ligne, dans l'ordre, avec l'envoyeur du bloc (le compte relié à l'appli, ou celui qui colle) comme relais (`applyRelayed`, `apps/api/src/lib/addon-import.ts`). Elles sont traitées pour chaque bloc dès que sa partie « inscriptions » est reprise, que le perso porteur soit connu, ignoré ou laissé de côté, et leur résultat s'ajoute à celui du bloc :
+
+1. l'envoyeur est **officier ou propriétaire** de la guilde, sinon refusée ;
+2. le raid est un raid de cette guilde, pas passé depuis plus de 24 h ;
+3. le perso visé est **rangé dans cette guilde** : par GUID (`characters.guid`), mais seulement si la fiche trouvée porte bien ce prénom (le GUID est déclaré dans le message, il se falsifie : le prénom, lui, vient du jeu) ; sinon par prénom (`sameCharacter`) s'il est seul à le porter dans la guilde (une fiche qui a un autre GUID n'est pas lui) ; deux persos au même prénom sans GUID : refusée ;
+4. le perso n'est pas à l'envoyeur ; son joueur est membre de la guilde et a le réglage **`users.game_relay`** activé (défaut : oui, réglage « Mes inscriptions faites en jeu peuvent passer par un officier », Compte et sécurité) ;
+5. le clic est au plus à 5 minutes dans le futur et au plus à 7 jours dans le passé ;
+6. **gardée** si le joueur a déjà une inscription à ce raid dont `status_at` est postérieur ou égal au clic (le site a le dernier mot), ou qui a déjà ce statut avec ce perso (un même clic ne remplace ni la spé ni la note) ;
+7. sinon `signUpSiteUser` (statut du jeu, perso visé) et une ligne du journal de la guilde, `signup_relayed` (`meta` : perso, raid, date du raid, statut ; l'acteur est l'officier) : « Brakka a transmis une inscription faite en jeu · Greta : Peut-être (Onyxia, ven. 14/11) ». Elle figure aussi dans le journal de sécurité du compte de l'officier (« Inscription transmise pour un joueur »).
+
+Rien n'est jamais créé pour un perso inconnu. Le message du bloc est complété : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée » (parties à zéro omises) ; l'appli accuse réception de ce résultat et l'addon oublie alors les lignes, les refusées comme les autres (les renvoyer ne changerait rien). `POST /api/sync/upload` (appli) et `POST /api/addon/import` (Ctrl+V) : même traitement.
+
+Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport` dans `packages/game-data/src/charexport.ts` (`relayed`). Le test Lua (`addon/tests/format_test.lua`) écrit `addon/tests/sample.frc`, que le test du site relit : les deux côtés sont vérifiés sur le même texte.
 
 # FRG, version 1 : données des groupes, du site vers le jeu
 
@@ -130,6 +144,7 @@ L;<raid>;<persos du conseil>
 I;<raid>;<perso>;<Tank | Heal | DPS>;<melee | ranged | caster>
 N;<période courte>;<période>;<perso>+<perso>:<nombre>,…
 X;<sortie>;<heure>;<donjon>;<titre>;<niv min>;<niv max>;<créateur>;<places>;<tanks>;<heals>;<dps>;<attente>;<note>
+Y;<raid>;<prénom>[?]:<statut>:<statut depuis>,<prénom>[?]:<statut>:<statut depuis>,…
 M;<persos du groupe>
 Z;<keyId>;<signature base64>
 END;<nombre de lignes R, P et B>
@@ -149,8 +164,9 @@ END;<nombre de lignes R, P et B>
 | `P` | Patron suivi : identifiant de l'objet « Patron / Plans / Recette » tel qu'il est dans les sacs, nom de la recette, prénoms des persos du groupe qui le **recherchent** puis qui le **connaissent**, séparés par des virgules. Comme l'onglet Artisans, seuls les métiers actuels des persos comptent. |
 | `N` | Lot I : objets reçus (spé principale, exclusions et corrections des officiers comprises) sur la période du groupe : libellé court (`saison`, `30 j`, `5 raids`), libellé complet (`depuis le 05/11/2026`…), puis une entrée par joueur (ses persos du groupe joints par `+`, main d'abord, qui partagent le compte) ou par perso, selon le réglage du groupe. Colonne « Reçus » du conseil du butin. |
 | `X` | Sortie donjon (addon 1.6.1) : une ligne par sortie **du jour ou de demain** (heure de Paris), non annulée, dont l'heure n'est pas passée depuis plus de 2 h ; une sortie « dès que complet » (heure `0`) reste jusqu'à la fin de son jour. Identifiant de la sortie (même forme que celui d'un raid), heure en secondes Unix (`0` : dès que complet), clé du donjon (`FOREVER_DUNGEONS` de game-data, ou `other` pour « Autre (quête de groupe, élite…) »), nom anglais du donjon ou titre libre, fourchette de niveaux (vide pour `other`), prénom du perso du créateur, places `T/H/D` (ex. `1/1/3`, 5 en tout), inscrits de chaque rôle (prénoms séparés par `,`, dans l'ordre d'arrivée ; un inscrit Discord sans compte s'écrit `@<pseudo>`, sans espace), liste d'attente dans l'ordre (`rôle:prénom`, ex. `Heal:Kaelys,DPS:@vex`), note (80 caractères au plus). Rien de personnel : l'addon reconnaît ses persos dans les listes. Ligne signée comme le reste. |
+| `Y` | Liste des inscrits d'un raid (addon 1.6.3) : une ligne `Y` par ligne `R`, même raid, même ordre, **même vide** (`Y;<raid>;`) : une ligne `Y` présente veut dire « liste connue » ; pas de `Y` (ancien site) : l'addon se comporte comme avant (« inscription inconnue »). Une entrée par inscrit **avec un compte du site** (les invités Discord sans compte n'y sont pas) : `<prénom>:<statut>:<statut depuis>`. Prénom : le perso de l'inscription (`gameName`) ; sans perso (absent), le main du joueur dans la guilde, sinon son premier perso de la guilde ; sans aucun perso : omis. Statut : `present`, `late`, `tentative`, `alt`, `bench` ou `absent`. Statut depuis : heure Unix du dernier **changement de statut** (`raid_signups.status_at`, qui ne bouge pas quand seule la spé ou le perso change). Un prénom porté par des persos de **deux joueurs différents** de la guilde (tous les persos rangés dans la guilde, comme `M`) s'écrit `Prénom?` : l'addon ne le prend jamais pour le sien. Aucun champ personnel : ligne signée, et le même texte pour tous. L'addon lit 60 inscrits au plus par raid ; un statut inconnu ou un prénom vide est sauté. |
 
-Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I`, `N` et `X` viennent après les autres (dans cet ordre) et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. `M` (persos du groupe) et `Z` (signature du site) ferment le bloc, juste avant `END`, hors du compte aussi : voir « Partage entre joueurs (signature du site) ». Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes) : ce bloc n'est pas signé, il ne se partage pas entre joueurs. L'addon garde le texte de chaque bloc signé (de l'en-tête à `END`) pour le partager ; `M` peut lister plus de 40 persos.
+Les lignes `S`, `O`, `C`, `F`, `T`, `L`, `I`, `N`, `X` et `Y` viennent après les autres (dans cet ordre) et **ne sont pas comptées par `END`** : un addon plus ancien les ignore sans signaler de texte incomplet. `Y` vient donc après `X` et avant `M`. `M` (persos du groupe) et `Z` (signature du site) ferment le bloc, juste avant `END`, hors du compte aussi : voir « Partage entre joueurs (signature du site) ». Avec la soft reserve cachée, un membre ne reçoit que ses propres réservations (les officiers les reçoivent toutes) : ce bloc n'est pas signé, il ne se partage pas entre joueurs. L'addon garde le texte de chaque bloc signé (de l'en-tête à `END`) pour le partager ; `M` peut lister plus de 40 persos.
 
 L'addon s'en sert pour :
 
@@ -158,7 +174,8 @@ L'addon s'en sert pour :
 - **les infobulles** : « Recherché par / Connu par » sur l'objet patron, partout (sacs, butin, hôtel des ventes, lien dans le chat) ;
 - **les sacs** : liste des patrons suivis présents, avec un bouton **Annoncer** ;
 - **le butin** : quand on ramasse un patron suivi ou un BiS recherché, une fenêtre indique qui le recherche, avec **Annoncer au groupe** (message dans le raid ou le groupe, avec le lien de l'objet) ;
-- **les sorties donjon** (lignes `X`) : sorties du jour et de demain ; l'inscription se fait sur le site ou sur Discord (pas en jeu en v1).
+- **les sorties donjon** (lignes `X`) : sorties du jour et de demain ; l'inscription se fait sur le site ou sur Discord (pas en jeu en v1) ;
+- **mon inscription** (lignes `Y`, addon 1.6.3) : lue dans la liste du site, y compris dans un bloc reçu d'un autre joueur.
 
 Exemple de lignes `X` (le même texte sert aux tests du site, `packages/game-data/src/outings.test.ts`, et de l'addon) :
 
@@ -171,6 +188,15 @@ X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1
 
 - **onglet Sorties** (`/fr sorties`) : sorties du jour et de demain des groupes chargés (heure locale du jeu), « dès que complet » en tête du jour, puis par heure ; places par rôle (« libre » pour une place vide), inscrits, liste d'attente, note, créateur. Une sortie passée depuis plus de 2 h disparaît ; une sortie « dès que complet » reste jusqu'à la fin du lendemain du jour où le bloc a été généré. Mes persos (celui connecté et ceux du compte déjà vus par l'addon) sont reconnus par leur prénom : « ta sortie », « tu viens en DPS », « tu es en attente ». Sans sortie : « Crée-en une ou inscris-toi sur le site ou sur Discord. » ;
 - **bandeau**, une fois par sortie (fermé : plus jamais pour elle), 15 min avant l'heure et jusqu'à 1 h après, ou dès qu'elle est complète pour « dès que complet » ; jamais en combat ni pendant une rencontre (caché, il revient après). Chez le **créateur** (un de mes persos) : « Gnomeregan à 21:00, complet », les inscrits (en ligne ou non, d'après la liste de guilde du jeu ; déjà dans mon groupe) et **Inviter les N** : `C_PartyInfo.InviteUnit` pour les inscrits qui sont des persos, pas déjà dans le groupe ni hors ligne, hors combat, seul ou chef du groupe, 5 au plus (pas de passage en raid) ; un `@pseudo` est donné « à inviter à la main ». Le même bouton est dans l'onglet, le jour même. Chez un **inscrit** : **Chuchoter <créateur>** ouvre la saisie d'un chuchotement au créateur, vide (rien n'est envoyé tout seul).
+
+**Ce que l'addon fait des lignes `Y` (liste des inscrits, addon 1.6.3).** `Format.ParseFRG` les lit avant `END` seulement (hors de son compte) : `g.signups[<raid>] = { { name, status, at, dup } }`. La liste est celle du site, la même pour tous : chaque joueur y reconnaît ses persos (`G.MyChars`, prénoms seuls) et en tire son inscription (`G.SiteSignup`) :
+
+- **bloc reçu d'un autre joueur** (partage) : pour chaque raid qui a une liste, mes champs personnels viennent de la liste : une seule entrée à un de mes persos, sans `?` : mon statut (`r.status`), mon perso (`r.char`) et l'heure de mon statut sur le site (`r.siteAt`) ; aucune entrée à moi : pas inscrit (`r.status = nil`, pas « inconnu ») ; une entrée `?` à mon prénom, ou deux entrées à moi : inconnu (`r.unknown`). `g.mineAt` prend la date du bloc quand tous ses raids ont leur liste (mes champs sont alors aussi frais que lui). Un raid sans liste (site plus ancien) : comme avant (mon inscription gardée, un raid nouveau est « inconnu ») ;
+- **mes propres données** (collage, Roster Companion) : `r.status` et `r.char` restent ceux de la ligne `R` ; seul `r.siteAt` vient de l'entrée de la liste au prénom de `r.char` ;
+- **le site a le dernier mot** : `G.Reconcile` oublie l'inscription faite en jeu si `r.siteAt` existe et `r.siteAt >= s.at` (le site a changé mon statut après mon clic, ou a enregistré ce clic). L'heure du clic (`s.at`) est `GetServerTime()` s'il existe (l'heure du serveur de jeu, comparable à celle du site), sinon `time()`. Les règles d'avant (accusé de réception, données plus récentes que l'envoi) restent ;
+- l'onglet **Raids** dit « site : pas d'inscription » quand la liste est là sans aucun de mes persos.
+
+Exemple de lignes `Y` (celles de `addon/tests/sample.frg`, écrit par `packages/game-data/src/share.test.ts`) : `Y;6b3a4f5e-d6c7-48b9-ac9d-8e7f6a5b4c3d;Greta:present:1793996400,Thalwen?:late:1793998200,Brindille:tentative:1793999400` (Thalwen est porté par deux joueurs). Générateur : `signupsLine` et `groupAddonExport` (`packages/game-data/src/addon.ts`, champ `signups` de `GroupExportRaid`), rempli par `groupExport` (`apps/api/src/routes/addon.ts`). L'`ETag` de `GET /api/sync/frg` ne change pas de forme : il change quand une inscription change.
 
 
 
@@ -289,6 +315,8 @@ Préfixe `FRoster`, champs séparés par « ; », canal du raid (ou du groupe) s
 | `LV;<session>;<candidat>` | conseil → conseil (privé) | Vote (vide : vote retiré). |
 | `LC;<session>;<gagnant>` | maître du butin → raid | Conseil terminé : les fenêtres de réponse se ferment. |
 | `SHV`, `SHQ`, `SHD` | guilde, raid, chuchoté | Partage des données du site entre joueurs (1.6) : voir « Partage entre joueurs (signature du site) ». |
+| `SHW` | guilde | Demande à la connexion « qui a les données du site ? » (1.6.3) : même section. |
+| `SUP`, `SUA`, `RLY` | guilde, chuchoté | Relais des inscriptions faites en jeu (1.6.3) : voir « Relais des inscriptions faites en jeu ». |
 
 Les jets (soft reserve, MS / OS, jet libre) passent par `/roll` : l'addon du maître du butin lit le message du jeu (`RANDOM_ROLL_RESULT`, dans la langue du client), ne compte que le premier jet de chacun et le bon dé (100, ou 99 en OS), ajoute le bonus SR+ ; en cas d'égalité, seuls les ex æquo relancent.
 
@@ -325,8 +353,8 @@ ForeverRosterData = { v = 1, at = <unix>, app = "0.1.0",
 
 **Actualisation sans /reload (lot K3, addons 1.4 et 1.5).** L'appli écrit le même `Data.lua` dans 20 copies, `ForeverRoster_Data1` à `ForeverRoster_Data20` (9 avec l'appli 0.1.0), avec `## LoadOnDemand: 1`. Le jeu lit les fichiers d'un addon chargé à la demande au moment où on le charge, mais il ne voit que les fichiers présents à son lancement (vérifié sur le client de Forever : un fichier créé jeu ouvert reste inconnu) ; l'addon ne peut donc pas savoir quand l'appli a du nouveau. Charger la copie suivante (`C_AddOns.LoadAddOn`) remplace `ForeverRosterData`, puis l'addon applique les données comme à la connexion. Chaque copie ne se charge qu'une fois par session : 20 actualisations, puis il faut un `/reload` (qui remet le compte à zéro). Quand l'addon charge une copie (1.5) :
 
-- tout seul, si la dernière actualisation (ou la connexion) date d'au moins 2 minutes : à l'ouverture de sa fenêtre, 30 et 5 minutes avant chaque raid chargé (vérifié toutes les 30 s), à l'appel (`READY_CHECK`), en entrant dans un groupe de raid ou dans une instance de raid, et au moins toutes les heures (1.5.1) ; message dans le chat seulement s'il y a du nouveau dans les groupes ;
-- les 20 copies utilisées : le jeu n'autorise le rechargement de l'interface qu'après un clic ou une touche du joueur (`C_UI.Reload`, restreint) ; l'addon affiche donc une fenêtre « Recharger / Plus tard », hors combat, au plus une fois par heure (1.5.1) ;
+- tout seul, si la dernière actualisation (ou la connexion) date d'au moins 2 minutes : à l'ouverture de sa fenêtre, 30 et 5 minutes avant chaque raid chargé (vérifié toutes les 30 s), à l'appel (`READY_CHECK`), en entrant dans un groupe de raid ou dans une instance de raid, et au moins toutes les 15 minutes (1.6.3 ; toutes les heures avant : avec 20 copies, 5 h de jeu sans `/reload` au lieu de 20 h) ; message dans le chat seulement s'il y a du nouveau dans les groupes ;
+- les 20 copies utilisées : le jeu n'autorise le rechargement de l'interface qu'après un clic ou une touche du joueur (`C_UI.Reload`, restreint) ; l'addon affiche donc une fenêtre « Recharger / Plus tard », hors combat, au plus une fois par heure (1.5.1, inchangé en 1.6.3 malgré l'actualisation toutes les 15 minutes) ;
 - à la demande : « Charger les nouveautés » (onglet Synchro), sa touche (Échap > Options > Raccourcis > AddOns) ou `/fr actualiser` ;
 - en combat, l'actualisation attend la fin du combat.
 
@@ -503,6 +531,7 @@ Lignes du bloc de l'en-tête (`RRG;…` ou `FRG;…`) à la dernière avant `Z`,
 - chaque ligne sans `\r`, espaces et tabulations retirés au début et à la fin (lignes vides omises) ;
 - **champs personnels vidés** dans les lignes `R` (champ 1 = `R`) : champs 7 et 8 en RRG (mon statut, mon perso), 5 et 6 en FRG ; les séparateurs restent (`R;<raid>;<date>;<nom>;;;journal` en FRG). Seuls les champs présents sont vidés (le site écrit toujours tous les champs) ;
 - lignes jointes par `\n`, sans `\n` final, en octets UTF-8.
+- (FRG, 1.6.3) les lignes `Y` (liste des inscrits) font partie du texte signé sans autre traitement : elles ne contiennent aucun champ personnel.
 
 Ainsi le bloc d'un joueur vaut pour tous les membres : deux joueurs du même groupe, au même moment, ont la même forme canonique et la même signature. Un bloc dont les champs personnels sont déjà vides est sa propre forme canonique. Code : `canonicalGroupBlock(text, kind)` et `splitGroupBlocks(text, kind)` dans `packages/game-data/src/share.ts` (partagés par l'API et les tests).
 
@@ -515,7 +544,7 @@ Ainsi le bloc d'un joueur vaut pour tous les membres : deux joueurs du même gro
 - `GET /api/sync/key` (sans connexion) : `{ keyId, publicKey }` (PEM de la clé publique) ; 404 si le serveur n'a pas de clé.
 - `GET /api/sync/frg` (Roster Companion) : blocs signés comme « Copier pour le jeu » ; l'`ETag` ignore la date de génération et la signature (qui change avec elle) mais garde le keyId.
 
-## Messages entre addons (SHV, SHQ, SHD)
+## Messages entre addons (SHV, SHQ, SHD, SHW)
 
 Préfixe de chaque addon (`RosterRT` pour Roster, `FRoster` pour Forever Roster) et sa file d'envoi ; chaque message ≤ 255 octets.
 
@@ -523,6 +552,7 @@ Préfixe de chaque addon (`RosterRT` pour Roster, `FRoster` pour Forever Roster)
 |---|---|---|
 | `SHV;<kind>;<groupe>;<at>;<len>` | annonce, GUILD ou RAID | « J'ai le groupe `<groupe>` généré à `<at>` » (`kind` : `RRG` ou `FRG` ; `len` : taille en octets). Seulement pour un bloc **signé**. Envoyé sur GUILD 20 à 40 s (au hasard) après la connexion et juste après un collage ou de nouvelles données ; sur RAID en rejoignant ou en formant un raid. |
 | `SHQ;<groupe>;<at>` | chuchoté à celui qui annonce | « Envoie, j'ai `<at>` » (0 : rien). Seulement si le `<at>` annoncé est plus récent que le mien ; sans données pour ce groupe, une fois par groupe et par session au plus. |
+| `SHW;<kind>` | demande, GUILD | « Qui a les données du site ? » (1.6.3) : envoyée **25 à 45 s** (au hasard) après la connexion, une fois par session, en guilde seulement, partage activé ou non (on reçoit toujours). Forever Roster seulement (`Share.Want`) ; Roster (Retail) comprend `SHW` mais n'en envoie pas. Qui l'entend (même `kind`), a le partage activé et détient au moins un bloc signé répond par `Share.Announce("GUILD", true)` **1 à 5 s** plus tard : un groupe annoncé sur GUILD par n'importe qui depuis moins de 60 s est réannoncé à la fin de ce délai (le demandeur vient de se connecter, il a pu manquer l'annonce) ; en pratique un seul joueur répond. Un même expéditeur de `SHW` n'est écouté qu'une fois par 300 s (`Share.WANT_GAP`). Ensuite le chemin d'avant : `SHV`, `SHQ`, `SHD`. |
 | `SHD;<groupe>;<at>;<i>;<n>;<morceau>` | diffusé sur le canal de l'annonce | Morceau `i` sur `n` du texte partagé (forme canonique, puis la ligne `Z`, puis `END`). Une seule diffusion, sur le canal où l'`SHV` demandé a été annoncé, après 0,5 à 3 s au hasard, annulée si quelqu'un d'autre diffuse déjà cette version ou une plus récente ; une diffusion d'une même version par canal et par 60 s au plus. |
 
 À la réception : morceaux réassemblés (abandon après 120 s), signature vérifiée (`keyId` connu de `ns.SITE_KEYS`, signature valable sur la forme canonique), `at` plus récent que le mien, et l'un de mes persos dans `M` ; alors l'addon applique les données en gardant **mes** champs personnels (mon statut et mon perso pour chaque raid, d'après mes données précédentes). Les données appliquées restent signées et peuvent être relayées à leur tour.
@@ -533,8 +563,74 @@ Option de chaque addon (onglet Options) : « Partager les données du site avec 
 
 Branchement : fin de `Group.lua` (adaptateur de `Share.lua`) et `Raid.lua` (préfixe `FRoster`, réception des `SHV`, `SHQ`, `SHD`, file de fond).
 
-- **Noms** : prénoms seuls, comme le reste de l'addon (royaume et nom de famille de Forever retirés, casse ignorée). L'expéditeur est le prénom donné par `CHAT_MSG_ADDON` (`SHQ` chuchoté à ce prénom) ; l'écho de mes propres messages (guilde, raid) est ignoré. Mes persos, pour la ligne `M` : celui connecté, ceux du compte déjà vus par l'addon (`ForeverRosterDB.chars`) et ceux de mes inscriptions (champ 6 des lignes `R` de mes données).
-- **Champs personnels** : un bloc reçu remplace le groupe (les autres groupes restent), avec mon statut et mon perso (champs 5 et 6 des lignes `R`) repris de mes données précédentes pour chaque raid ; un raid nouveau pour moi est « inscription inconnue » (`unknown`). Le groupe retient la date de mes dernières données à moi (`mineAt`) : `G.Reconcile` compare l'accusé de réception d'une inscription faite en jeu à cette date, pas à celle du bloc reçu, et ne se prononce pas sur un raid inconnu. Les inscriptions en attente (lignes `S` du FRC) partent donc comme avant.
-- **Sources** : collage (synchro, synchro rapide) et Roster Companion (`frg` de `ForeverRoster_Data`, blocs signés aussi) ; `G.Load(text, replace, quiet, how)` garde son sens (plusieurs groupes : ils remplacent les autres ; un seul : ajouté ou mis à jour ; `how = "companion"` pour l'origine affichée). Annonce à la guilde 20 à 40 s après la connexion (les données de Roster Companion lues à la connexion partent avec elle), à la guilde et au raid 1 à 3 s après un collage ou une actualisation de Roster Companion qui apporte du nouveau, au raid 3 à 8 s après l'arrivée dans un raid ou quand il s'agrandit ; un bloc reçu est relayé sur l'autre canal 2 à 6 s après.
+- **Noms** : prénoms seuls, comme le reste de l'addon (royaume et nom de famille de Forever retirés, casse ignorée). L'expéditeur est celui que donne `CHAT_MSG_ADDON` (« Prénom-Royaume », 1.6.3) : `Raid.lua` passe ce nom brut à `Share.lua`, qui y chuchote le `SHQ` (et `SUA`, plus bas) : un chuchotement au prénom seul peut échouer, ou toucher un homonyme, quand la guilde mêle plusieurs serveurs. L'affichage (adaptateur `display`) et les comparaisons restent au prénom, et `g.origin.from` aussi ; l'écho de mes propres messages (guilde, raid) est ignoré. Mes persos, pour la ligne `M` : celui connecté, ceux du compte déjà vus par l'addon (`ForeverRosterDB.chars`) et ceux de mes inscriptions (champ 6 des lignes `R` de mes données).
+- **Champs personnels** : un bloc reçu remplace le groupe (les autres groupes restent), avec mon statut et mon perso (champs 5 et 6 des lignes `R`) repris de mes données précédentes pour chaque raid ; un raid nouveau pour moi est « inscription inconnue » (`unknown`) — **sauf** quand le bloc porte la liste des inscrits du site (lignes `Y`, 1.6.3), où mon inscription est lue dans la liste (voir « Ce que l'addon fait des lignes `Y` »). Le groupe retient la date de mes dernières données à moi (`mineAt`) : `G.Reconcile` compare l'accusé de réception d'une inscription faite en jeu à cette date, pas à celle du bloc reçu, et ne se prononce pas sur un raid inconnu. Les inscriptions en attente (lignes `S` du FRC) partent donc comme avant.
+- **Sources** : collage (synchro, synchro rapide) et Roster Companion (`frg` de `ForeverRoster_Data`, blocs signés aussi) ; `G.Load(text, replace, quiet, how)` garde son sens (plusieurs groupes : ils remplacent les autres ; un seul : ajouté ou mis à jour ; `how = "companion"` pour l'origine affichée). Annonce à la guilde 20 à 40 s après la connexion (les données de Roster Companion lues à la connexion partent avec elle) et demande `SHW` 25 à 45 s après, à la guilde et au raid 1 à 3 s après un collage ou une actualisation de Roster Companion qui apporte du nouveau, au raid 3 à 8 s après l'arrivée dans un raid ou quand il s'agrandit ; un bloc reçu est relayé sur l'autre canal 2 à 6 s après.
 - **File de fond** : les messages du partage ne partent jamais tout de suite. Le jeu limite les messages d'addon (10 d'affilée par préfixe, puis 1 par seconde) ; l'addon compte aussi ses messages du raid (envoyés tout de suite) et la file laisse toujours 6 messages libres pour eux. Rien en combat (`InCombatLockdown`, joueur en combat), attente si le jeu répond `AddOnMessageLockdown` ou une limite atteinte ; un message attend 10 minutes au plus.
+- **Journal** : `Share.Log` / `Share.Journal` (40 lignes en mémoire, perdues à la déconnexion, traduites à l'écriture) : voir « Diagnostic : `/fr partage` ».
 - **Option** : `ForeverRosterDB.share = false` (onglet Options). **Onglet Synchro** : « collées le … », « chargées par Roster Companion le … » ou « reçues de X le … » pour chaque groupe (3 lignes au plus), avec « non partagées : pas signées par le site » (soft reserve cachée, ancien site) ou « clé du site inconnue ».
+
+## Diagnostic : `/fr partage` (addon 1.6.3)
+
+On ne peut plus essayer le partage à plusieurs avant de le livrer (plus d'accès à la bêta) : `/fr partage` (alias `/fr share`) montre ce que l'addon a reçu, partagé, confié ou relayé pendant la session, en **texte brut à coller** dans une demande d'aide. Une fenêtre sans onglet (`U.ShowShareDiag`, `UI.lua` ; même famille que « Copier le relevé » de `/fr guilde`) : une zone de texte qu'on peut sélectionner mais pas modifier, **Copier** (sélectionne tout et donne le focus : Ctrl+C) et **Fermer**. Texte traduit, trois blocs séparés par une ligne vide (`U.ShareDiagText`) :
+
+1. **Une ligne par groupe chargé** (`Group.ShareLines`) : `<nom> : <origine> · version du <jj/mm hh:mm> · <signée par le site | non partagée : raison> · liste des inscrits : <oui | non | sans raid>`. L'origine est celle de l'onglet Synchro (« collées le … », « chargées par Roster Companion le … », « reçues de X le … »). Raisons : « pas de signature du site », « clé du site inconnue », « bloc illisible ». « oui » : un raid du groupe a une liste `Y` ; « non » : aucun (site plus ancien) ; « sans raid » : le groupe n'a aucun raid. Sans groupe : « Aucun groupe chargé. ».
+2. **Une ligne de réglages** : `Partage : activé|coupé · Confier mes inscriptions : activé|coupé (appli active ici | pas d'appli ici) · Relais : oui|non (<raisons>)`. Raisons du « non » (toutes celles qui s'appliquent, `Relay.WhyNot`) : « pas d'appli ici », « coupé » (option), « pas en guilde », « pas officier » (aucun de mes persos dans la ligne `O` d'un groupe chargé).
+3. **Le journal de la session** (`Share.Journal`), une ligne `hh:mm:ss  <texte>` par entrée, la plus ancienne d'abord ; « Rien dans le journal de cette session. » s'il est vide.
+
+Le journal (`Share.Log`) tient **40 lignes en mémoire** (la plus ancienne sort), perdues à la déconnexion et à `Share.Reset` ; chaque ligne est écrite déjà traduite, dans la langue du moment. Il est alimenté par `Share.lua` (`SHW` envoyé, entendu ou ignoré et pourquoi ; annonce `SHV` faite ou entendue ; demande `SHQ` envoyée, reçue ou ignorée et pourquoi ; diffusion `SHD` faite ou annulée ; réception : morceaux attendus, abandon, données appliquées ou refusées et pourquoi) et par `Relay.lua` (`SUP` envoyé, `SUA` reçu, `RLY` entendu ou envoyé, `SUP` gardé, redit ou ignoré et pourquoi, accusé de l'appli, export copié, ménage, fenêtre affichée). Certaines lignes ne se disent qu'une fois par session (raison d'inéligibilité du relais, refus d'un groupe dont je ne suis pas membre).
+
+# Relais des inscriptions faites en jeu (addon 1.6.3)
+
+Décidé avec Flo le 28/10 pour rendre le copier-coller facultatif : très peu de joueurs ont Roster Companion. Ceux qui l'ont reçoivent les données du site tout seuls et les passent aux autres (partage, section précédente) ; dans l'autre sens, ils **transmettent au site les inscriptions faites en jeu** par ceux qui n'ont pas l'appli. Une inscription faite en jeu part toujours au site avec l'export du joueur (ligne `S` du FRC, Ctrl+C ou appli) : le relais s'y ajoute, il ne le remplace pas. Équipement, métiers et talents ne passent pas par le relais (étudié, pas fait : il faudrait une preuve propre à chaque joueur). Code : `addon/ForeverRoster/Relay.lua` ; le site : `applyRelayed` (voir « Ce que le site fait des lignes `V` », section FRC).
+
+```
+Greta (sans l'appli)  --SUP, GUILD-->  Brakka (officier, appli)  --SUA, chuchoté-->  Greta
+                                       Brakka : garde, puis écrit une ligne V dans son bloc FRC
+                                       au /reload ou à la déconnexion → Roster Companion → site (7 contrôles, journal de la guilde)
+```
+
+## Messages (SUP, SUA, RLY)
+
+Préfixe `FRoster`, par la file de fond de `Raid.lua` (`RA.SendLow` : jamais en combat), ≤ 255 octets. Jamais traduits.
+
+| Message | Sens | Contenu |
+|---|---|---|
+| `SUP;<groupe>;<raid>;<statut>;<clic>;<guid>` | joueur → GUILD | « Mon inscription en jeu » : statut `present`, `late`, `tentative` ou `absent` ; `clic` : heure du clic (`GetServerTime()`, sinon `time()`), en chiffres ; `guid` : `UnitGUID("player")` (`Player-<serveur>-<hex>`) ou vide. Envoyé par le perso inscrit seulement : l'expéditeur donné par le jeu doit être lui. |
+| `SUA;<raid>;<clic>` | officier → joueur, chuchoté | « Reçue, je la transmets au site. » Chuchoté au **nom complet de l'expéditeur du `SUP`** tel que le jeu le donne (« Greta-Forever EU »). |
+| `RLY;<groupe>,<groupe>,…` | officier → GUILD | « Je transmets pour ces groupes » : les groupes où un de ses persos est officier, identifiants séparés par `,` et coupés pour tenir dans 255 octets. |
+
+## Chez le joueur
+
+- **Confie** si : l'appli n'est pas active ici (`Companion.Active()` faux), l'option « Confier mes inscriptions faites en jeu à un officier qui a Roster Companion » est activée (`ForeverRosterDB.confide ~= false`, onglet Options), et le joueur est en guilde (`Relay.CanConfide`).
+- **Envoie un `SUP`** pour une inscription du perso connecté vivante (raid pas passé) qui n'est pas encore reçue par le site : au clic (1 à 3 s plus tard ; un clic qui suit de près part avec le précédent) ; à la connexion (40 à 60 s) pour chaque inscription pas encore confiée, ou confiée depuis plus de 6 h et toujours pas réglée ; en entendant un `RLY` qui couvre son groupe (2 à 6 s plus tard, au plus une fois par minute, seulement s'il a une inscription à confier). 10 `SUP` au plus d'un coup.
+- **`SUA` reçu** (chuchoté, même clic) : `s.confided = { by = <prénom>, at = <heure> }` ; le premier reçu l'emporte, et un `SUA` d'un autre clic est ignoré ; un nouveau clic efface la confiance ; une inscription confiée depuis plus de 6 h, renvoyée, prend le `SUA` suivant.
+- **État affiché** (onglet Raids) : « confiée à X : part au site à son prochain /reload » ; sans officier joignable : « aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un » ; option coupée ou appli ici : les textes d'avant. L'inscription est ensuite oubliée comme avant (`G.Reconcile`, `r.siteAt >= s.at` : voir « Ce que l'addon fait des lignes `Y` »).
+
+## Chez l'officier
+
+- **Éligible** si : appli active, option « Transmettre au site les inscriptions de la guilde » activée (`ForeverRosterDB.relaying ~= false`), en guilde (`Relay.Eligible`) ; et, pour un groupe donné, un de mes persos dans sa ligne `O` (officiers, ligne signée du FRG : `Relay.Officer`). Le site revérifie le rôle.
+- **`SUP` reçu** (GUILD seulement, de quelqu'un d'autre que moi), contrôles dans l'ordre ; le premier qui échoue ignore le message et l'écrit au journal : message lisible (clic entier) ; groupe dans mes données ; j'y suis officier ; raid de ce groupe dans mes données, pas passé depuis plus de 24 h ; statut connu ; expéditeur (prénom) dans la ligne `M` du groupe et pas un de mes persos ; clic entre maintenant − 7 jours et maintenant + 5 minutes ; **GUID** : si la liste de guilde relevée (`/fr guilde`) a un membre à ce GUID, son prénom doit être celui de l'expéditeur ; si le GUID manque, celui du membre au même prénom s'il est seul à le porter ; GUID inconnu de la liste alors que le seul membre à ce prénom en a un autre : refusé ; sans liste de guilde : le GUID tel quel. Un clic plus ancien que celui déjà gardé est ignoré ; le même clic redit : `SUA` renvoyé.
+- **Gardée** dans `ForeverRosterDB.relayed["<prénom en minuscules>|<raid>"] = { group, raid, status, at, name, guid, got, from }` (`from` : nom complet de l'expéditeur, cible du `SUA` ; `outKey` et `outSig` s'y ajoutent quand elle est écrite pour l'appli). 200 au plus (la plus ancienne reçue sort) ; oubliée 7 jours après réception ou 24 h après le raid. Réponse : `SUA` chuchoté.
+- **Envoi** : au `/reload` et à la déconnexion, dans le bloc FRC du perso connecté, une ligne `V;<groupe>;<raid>;<statut>;<prénom>;<guid>;<clic>` par inscription gardée (60 au plus par bloc, les plus anciennes reçues d'abord). Elles comptent dans `END` et dans l'empreinte du perso (le bloc repart) ; `outKey` / `outSig` notent le bloc où chacune est écrite. **Accusé de l'appli** pour ce perso et cette empreinte : inscriptions oubliées, sans faire repartir le perso (`Export.Quietly`) ; lu sur un autre perso du compte, il reconnaît le bloc par l'empreinte de ses lignes `V`. **Ctrl+C** d'un export qui les contient : oubliées aussi (sauf celle dont le clic a changé depuis).
+- **Fenêtre** « Envoyer au site » (`UI.AskReload`) : une minute après la première inscription gardée pas encore écrite dans la sauvegarde, puis vérifiée toutes les 30 s ; seulement hors combat, hors instance, et au plus une fois par 30 minutes. « Envoyer au site » recharge l'interface (`Companion.Reload`) ; « Plus tard » : elles partent au prochain `/reload` ou à la déconnexion. Texte : le nombre, puis prénom, statut, raid et date (5 lignes au plus, puis « et N autres »).
+- **Onglet Synchro** : « Relais : N inscriptions confiées par la guilde, envoyées au site au prochain /reload » avec « Envoyer maintenant », seulement avec l'appli et s'il y en a.
+- **`RLY`** : 30 à 50 s après la connexion si éligible, et une fois quand on le devient pendant la session (appli vue pour la première fois : vérifié au tick de 30 s) ; rien si je ne suis officier d'aucun groupe.
+
+## Côté site
+
+- Les 7 contrôles et le journal de la guilde : section FRC, « Ce que le site fait des lignes `V` ». Le journal de la guilde (Administration) montre « Brakka a transmis une inscription faite en jeu · Greta : Peut-être (Onyxia, ven. 14/11) ».
+- **Réglage du joueur** : Compte et sécurité (Forever Roster seulement), bloc « Inscriptions faites en jeu », case « Mes inscriptions faites en jeu peuvent passer par un officier » ; activé d'office. `PATCH /api/account/preferences { gameRelay: boolean }` (au moins un des réglages `gameLang`, `gameRelay`) ; `gameRelay` dans `GET /api/auth/me` et les réponses du compte (`publicUser`). Coupé : le site refuse les lignes `V` qui visent ce joueur ; ses inscriptions ne partent qu'avec son export (copier-coller).
+- **Migration 0039** : `raid_signups.status_at timestamptz not null default now()` (rempli avec `updated_at` pour les lignes existantes, mis à jour seulement quand le **statut** change : `signUpSiteUser`, `signUpDiscordGuest`, le PATCH des officiers, les absences) et `users.game_relay boolean not null default true`.
+
+## Garde-fous
+
+- **Officiers seulement** : l'addon ne relaie que pour une guilde où un de ses persos est officier (ligne `O` signée), et le site exige que l'envoyeur le soit.
+- **Le site garde le dernier mot** : une inscription relayée n'est prise que si personne n'a changé le statut du joueur après son clic.
+- **Le bon joueur** : l'expéditeur du `SUP` est donné par le jeu ; son GUID est comparé à la liste de guilde ; un prénom porté par deux membres sans GUID est refusé ; le site retrouve le perso par GUID (avec le même prénom) ou par prénom unique.
+- **Réglage de chacun** sur le site, activé d'office ; journal de la guilde.
+- Données reçues d'un autre joueur : toujours vérifiées par la signature du site, comme avant.
+
+## Pas vérifiable sans la bêta
+
+Messages d'addon de guilde à plusieurs sur Forever (jamais essayés), `IsInInstance` et `UnitGUID` réels du client Forever, `GetServerTime` (absent : `time()`, l'horloge du PC, décalage possible de quelques minutes). `wow_sim.lua` simule plusieurs joueurs (Brakka officier avec l'appli, Greta sans rien, Pikou connecté après coup) ; le 5/11, `/fr partage` chez deux joueurs confirmera en vrai. Un officier qui ne se reconnecte pas : l'inscription repart vers un autre officier au bout de 6 h (connexion suivante du joueur).

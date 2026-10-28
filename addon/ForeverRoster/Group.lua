@@ -744,25 +744,52 @@ if Sh.Setup then Sh.Setup({
   stamp = function(at) return date("%d/%m %H:%M", at) end,
 }) end
 
--- Origine des données de chaque groupe (onglet Synchro) : collées, chargées par Roster Companion ou reçues d'un joueur,
--- et quand ; pourquoi elles ne se partagent pas (bloc sans signature du site, clé du site pas encore dans l'addon)
+-- Origine des données d'un groupe, déjà traduite : collées, chargées par Roster Companion ou reçues d'un joueur, et quand
+-- (onglet Synchro, fenêtre /fr partage)
+local function originText(g)
+  local o = type(g.origin) == "table" and g.origin or nil
+  if not o then -- groupe chargé avant le partage : date du dernier chargement des données du site
+    local last = ForeverRosterDB.lastLoad
+    o = (last and last.groups) and { at = last.at, companion = last.companion } or {}
+  end
+  local when = o.at and date("%d/%m %H:%M", o.at)
+  if o.from then return when and L("reçues de %s le %s", o.from, when) or L("reçues de %s", o.from) end
+  if o.companion then return when and L("chargées par Roster Companion le %s", when) or L["chargées par Roster Companion"] end
+  return when and L("collées le %s", when) or L["collées"]
+end
+
+-- Signature du site sur le bloc d'un groupe : "ok", "unsigned", "key" (clé du site pas encore dans l'addon) ou "invalid"
+local function signatureOf(g)
+  return (g.text and Sh.Status) and Sh.Status(g.text, "FRG") or "unsigned"
+end
+
+-- Pourquoi les données ne se partagent pas (bloc sans signature du site, clé du site pas encore dans l'addon)
 local NOT_SHARED = { unsigned = N("pas signées par le site"), invalid = N("pas signées par le site"), key = N("clé du site inconnue") }
 function G.Origins()
   local out = {}
   for _, g in ipairs(G.List()) do
-    local o = type(g.origin) == "table" and g.origin or nil
-    if not o then -- groupe chargé avant le partage : date du dernier chargement des données du site
-      local last = ForeverRosterDB.lastLoad
-      o = (last and last.groups) and { at = last.at, companion = last.companion } or {}
-    end
-    local when = o.at and date("%d/%m %H:%M", o.at)
-    local how
-    if o.from then how = when and L("reçues de %s le %s", o.from, when) or L("reçues de %s", o.from)
-    elseif o.companion then how = when and L("chargées par Roster Companion le %s", when) or L["chargées par Roster Companion"]
-    else how = when and L("collées le %s", when) or L["collées"] end
-    local status = (g.text and Sh.Status) and Sh.Status(g.text, "FRG") or "unsigned"
-    local why = G.ShareOn() and NOT_SHARED[status]
-    out[#out + 1] = L("%s : %s", g.name or "?", how) .. (why and (" · " .. L("non partagées : %s", L[why])) or "")
+    local why = G.ShareOn() and NOT_SHARED[signatureOf(g)]
+    out[#out + 1] = L("%s : %s", g.name or "?", originText(g)) .. (why and (" · " .. L("non partagées : %s", L[why])) or "")
+  end
+  return out
+end
+
+-- Diagnostic du partage (/fr partage), une ligne par groupe chargé, déjà traduite :
+--   <nom> : <origine> · version du <jj/mm hh:mm> · <signée par le site | non partagée : raison> · liste des inscrits : <oui | non | sans raid>
+-- La signature et la liste des inscrits se disent que le partage soit activé ou non (ce qui est, pas ce qui part). Liste des
+-- inscrits (ligne Y, 1.6.3) : « oui » si un raid du groupe en a une, « non » sinon (site plus ancien), « sans raid » si le
+-- groupe n'a aucun raid.
+local NO_SIGNATURE = { unsigned = N("pas de signature du site"), invalid = N("bloc illisible"), key = N("clé du site inconnue") }
+function G.ShareLines()
+  local out = {}
+  for _, g in ipairs(G.List()) do
+    local parts = { L("%s : %s", g.name or "?", originText(g)) }
+    if tonumber(g.at) then parts[#parts + 1] = L("version du %s", date("%d/%m %H:%M", g.at)) end
+    local status = signatureOf(g)
+    parts[#parts + 1] = status == "ok" and L["signée par le site"] or L("non partagée : %s", L[NO_SIGNATURE[status] or NO_SIGNATURE.invalid])
+    local lists = #(g.raids or {}) == 0 and L["sans raid"] or (next(g.signups or {}) and L["oui"] or L["non"])
+    parts[#parts + 1] = L("liste des inscrits : %s", lists)
+    out[#out + 1] = table.concat(parts, " · ")
   end
   return out
 end

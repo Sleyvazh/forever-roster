@@ -122,6 +122,20 @@ function R.Officer(g)
   for _, name in ipairs(g and g.officers or {}) do if own[first(name)] then return true end end
   return false
 end
+-- Pourquoi je ne relaie pas (fenêtre /fr partage) : toutes les raisons qui s'appliquent, des textes N traduits à
+-- l'affichage ; vide si je relaie pour au moins un groupe chargé (appli active, option activée, en guilde, officier)
+function R.WhyNot()
+  local out = {}
+  if not appHere() then out[#out + 1] = N("pas d'appli ici") end
+  if not R.RelayOn() then out[#out + 1] = N("coupé") end
+  if not inGuild() then out[#out + 1] = N("pas en guilde") end
+  local officer = false
+  for _, g in ipairs(ns.Group.List()) do
+    if R.Officer(g) then officer = true break end
+  end
+  if not officer then out[#out + 1] = N("pas officier") end
+  return out
+end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Joueur : confier mes inscriptions faites en jeu (SUP), « confiée à … » (SUA), renvoi à l'annonce d'un relais (RLY)

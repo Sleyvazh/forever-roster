@@ -57,6 +57,8 @@ export interface User {
   hasPassword: boolean; hasBattlenet: boolean; avatarId: string | null; discordUsername: string | null; discordReminders: boolean; createdAt: string;
   /** Roster : langue des noms du jeu (auto = navigateur) et accès anticipé tant que Roster est fermé. */
   gameLang: import("@forever/game-data").GameLangPref; rosterPreview: boolean;
+  /** Forever : mes inscriptions faites en jeu peuvent passer par un officier avec Roster Companion (activé d'office). */
+  gameRelay: boolean;
   /** Admin du site (page des signalements) ; dernière version de l'addon vue à l'import. */
   siteAdmin?: boolean; addonVersion?: string | null;
 }

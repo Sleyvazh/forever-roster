@@ -145,6 +145,7 @@ local HELP = {
   N("/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)"),
   N("/fr langue fr | en | jeu : langue de l'addon (Français, English ou celle du jeu ; recharge l'interface)"),
   N("/fr guilde : ce que l'addon a relevé de ta guilde (liste, journal, banque, XP), son envoi au site et le relevé à copier"),
+  N("/fr partage : ce que l'addon a reçu, partagé, confié ou relayé pendant la session (diagnostic à copier)"),
 }
 
 SLASH_FOREVERROSTER1 = "/fr"
@@ -237,6 +238,8 @@ local function run(msg)
     ns.Minimap.Toggle()
   elseif cmd == "guilde" or cmd == "guild" then
     ns.Guild.Show()
+  elseif cmd == "partage" or cmd == "share" then
+    ns.UI.ShowShareDiag()
   else
     ns.print("version " .. ns.version)
     for _, line in ipairs(HELP) do print("  " .. L[line]) end

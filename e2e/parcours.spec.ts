@@ -594,6 +594,27 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord" }) })).toContainText("Non lié");
   });
 
+  await test.step("Compte & sécurité : les inscriptions faites en jeu peuvent passer par un officier (activé d'office, se coupe, se remet)", async () => {
+    await page.goto("/account");
+    const block = page.locator("section").filter({ has: page.getByRole("heading", { name: "Inscriptions faites en jeu" }) });
+    await expect(block).toContainText("Sans Roster Companion, ton addon confie tes inscriptions à un officier de ta guilde qui a l'appli : il les transmet au site.");
+    const toggle = block.getByRole("checkbox", { name: /Mes inscriptions faites en jeu peuvent passer par un officier/ });
+    await expect(toggle).toBeChecked();
+    // La case suit le compte (elle bascule une fois le réglage enregistré) : clic, puis attente de l'état
+    await toggle.click();
+    await expect(block.getByRole("status")).toContainText("Réglage enregistré.");
+    await expect(toggle).not.toBeChecked();
+    // Rechargée : le réglage est bien gardé sur le compte
+    await page.reload();
+    await expect(toggle).not.toBeChecked();
+    await expect(block).toContainText("Coupé : elles ne partent qu'avec ton export (copier-coller).");
+    await toggle.click();
+    await expect(block.getByRole("status")).toContainText("Réglage enregistré.");
+    await expect(toggle).toBeChecked();
+    await page.reload();
+    await expect(toggle).toBeChecked();
+  });
+
   await test.step("menu du compte : thème et déconnexion", async () => {
     await page.locator(".acct-btn").click();
     await page.locator(".acct-menu").getByRole("button", { name: "Sombre" }).click();

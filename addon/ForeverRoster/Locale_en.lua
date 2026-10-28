@@ -408,6 +408,32 @@ T["Envoyer au site"] = "Send to website"
 T["Fenêtre du relais affichée : %d inscription(s) à envoyer au site."] = "Relay window shown: %d sign-up(s) to send to the website."
 
 -- ==============================================================================================================
+-- /fr partage (1.6.3) : diagnostic du partage (groupes, réglages, relais, journal de la session), texte à copier
+-- ==============================================================================================================
+T["/fr partage : ce que l'addon a reçu, partagé, confié ou relayé pendant la session (diagnostic à copier)"] = "/fr share: what the addon has received, shared, handed over or relayed during the session (diagnostic to copy)"
+T["Diagnostic du partage"] = "Sharing diagnostic"
+T["« Copier » sélectionne tout : Ctrl+C, puis colle le texte à qui t'aide. Le journal ne couvre que cette session."] = "\"Copy\" selects everything: Ctrl+C, then paste the text to whoever is helping you. The log only covers this session."
+T["Copier"] = "Copy"
+T["Aucun groupe chargé."] = "No group loaded."
+T["Rien dans le journal de cette session."] = "Nothing in this session's log."
+T["version du %s"] = "version of %s"
+T["signée par le site"] = "signed by the website"
+T["non partagée : %s"] = "not shared: %s"
+T["pas de signature du site"] = "no website signature"
+T["bloc illisible"] = "unreadable block"
+T["liste des inscrits : %s"] = "sign-up list: %s"
+T["sans raid"] = "no raid"
+T["oui"] = "yes"
+T["non"] = "no"
+T["Partage : %s"] = "Sharing: %s"
+T["Confier mes inscriptions : %s"] = "Hand over my sign-ups: %s"
+T["Relais : %s"] = "Relay: %s"
+T["appli active ici"] = "app active here"
+T["pas d'appli ici"] = "no app here"
+T["pas en guilde"] = "not in a guild"
+T["pas officier"] = "not an officer"
+
+-- ==============================================================================================================
 -- Outings (sorties donjon, 1.6.1) : onglet Sorties, bandeau chez le créateur et chez les inscrits
 -- ==============================================================================================================
 
