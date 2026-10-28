@@ -151,6 +151,31 @@ export function signupsLine(raidId: string, list: GroupExportSignup[]): string {
   return `Y;${raidId};${entries.join(",")}`;
 }
 
+/**
+ * Lignes Y d'un bloc : 16 000 octets au plus en tout (UTF-8, sauts de ligne compris). Le texte partagé entre joueurs
+ * (canonique, Z, END) doit rester sous la limite de l'addon (60 000 octets, Share.lua) ; le reste du bloc garde sa place.
+ */
+export const MAX_SIGNUP_BYTES = 16_000;
+
+/**
+ * Lignes Y des raids qui ont une liste, dans l'ordre des raids (lignes R) ; on s'arrête au premier raid dont la ligne ferait
+ * dépasser MAX_SIGNUP_BYTES : ce raid et les suivants n'ont pas de ligne Y (l'addon fait pour eux comme avant la liste).
+ */
+function signupsLines(raids: GroupExportRaid[]): string[] {
+  const out: string[] = [];
+  const encoder = new TextEncoder();
+  let size = 0;
+  for (const r of raids) {
+    if (!Array.isArray(r.signups)) continue;
+    const line = signupsLine(r.id, r.signups);
+    const bytes = encoder.encode(line).length + 1;
+    if (size + bytes > MAX_SIGNUP_BYTES) break;
+    out.push(line);
+    size += bytes;
+  }
+  return out;
+}
+
 /** Ligne X d'une sortie (docs/addon-format.md, section FRG). */
 export function outingLine(o: GroupExportOuting): string {
   return ["X", o.id, o.at, clean(o.dungeon), clean(o.title), o.min ?? "", o.max ?? "", gameName(o.creator), placesText(o.places),
@@ -192,8 +217,9 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
       counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
     // Sorties donjon : X, une par sortie du jour ou de demain (addon 1.6.1), après les autres lignes non comptées
     ...outings.map(outingLine),
-    // Liste des inscrits : Y, une par raid dont `signups` est un tableau (même vide), après les X, avant M ; signée, hors de END
-    ...raids.filter(r => Array.isArray(r.signups)).map(r => signupsLine(r.id, r.signups!)),
+    // Liste des inscrits : Y, une par raid dont `signups` est un tableau (même vide), après les X, avant M ; signée, hors de END ;
+    // 16 000 octets au plus (signupsLines)
+    ...signupsLines(raids),
     // Partage entre joueurs : M (persos du groupe, prénoms comme la ligne O) toujours, en dernier ; Z ajoutée par sealGroupBlock
     `M;${list(share.members ?? [])}`,
   ];

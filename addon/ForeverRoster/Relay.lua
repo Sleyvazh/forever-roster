@@ -189,13 +189,23 @@ function R.ConfidePending(reason)
   return n
 end
 
--- SUA chuchoté par un officier : mon inscription (même clic) lui est confiée. Le premier reçu ; un nouveau clic l'efface
--- (nouvelle inscription) ; une confiée depuis plus de 6 h, renvoyée, prend la réponse suivante.
+-- SUA chuchoté par un officier : mon inscription (même clic) lui est confiée. Seulement d'un officier du groupe de
+-- l'inscription (ligne O de mes données) : un autre joueur ne la fait pas passer pour confiée (ignoré, dit au journal).
+-- Le premier reçu ; un nouveau clic l'efface (nouvelle inscription) ; une confiée depuis plus de 6 h, renvoyée, prend la
+-- réponse suivante.
 local function onAck(name, f, dist)
   if dist ~= "WHISPER" or name == "" then return end
   local raidId, clic = f[2], tonumber(f[3])
   local s = raidId and (ns.charDB().signups or {})[raidId]
   if not (type(s) == "table" and clic and s.at == clic) then return end
+  local g = ForeverRosterDB.groups and ForeverRosterDB.groups[s.group]
+  local officer = false
+  for _, o in ipairs(g and g.officers or {}) do if first(o) == first(name) then officer = true break end end
+  if not officer then
+    noteOnce("sua\1" .. name .. "\1" .. raidId .. "\1" .. clic, N("SUA de %s ignoré : pas officier de %s."), name,
+      g and g.name or tostring(s.group))
+    return
+  end
   local t = now()
   if type(s.confided) == "table" and t - (tonumber(s.confided.at) or 0) <= RECONFIDE then return end
   s.confided = { by = name, at = t }
@@ -233,7 +243,8 @@ local function refuse(name, code) note(N("SUP de %s ignoré : %s."), name, L[REF
 
 -- GUID de l'inscrit d'après la liste de guilde relevée (Guild.lua) : si un membre a ce GUID, son prénom doit être celui de
 -- l'expéditeur ; GUID absent : celui du seul membre à ce prénom (s'il est connu) ; GUID inconnu de la liste alors que le
--- seul membre à ce prénom en a un autre : refusé. Sans liste : tel quel. Renvoie le GUID (ou "") ou nil et le refus.
+-- seul membre à ce prénom en a un autre (un GUID vide de la liste est inconnu) : refusé. Sans liste : tel quel. Renvoie
+-- le GUID (ou "") ou nil et le refus.
 local function checkGuid(name, guid)
   local g = ns.Guild and ns.Guild.Current and ns.Guild.Current()
   local members = g and g.roster and g.roster.members
@@ -248,7 +259,8 @@ local function checkGuid(name, guid)
   end
   local only = n == 1 and same or nil
   if guid == "" then return only and cleanGuid(only.guid) or "" end
-  if only and only.guid and only.guid ~= guid then return nil, "guidDiff" end
+  -- Un GUID vide dans la liste (membre relevé sans GUID) compte comme inconnu
+  if only and only.guid and only.guid ~= "" and only.guid ~= guid then return nil, "guidDiff" end
   return guid
 end
 

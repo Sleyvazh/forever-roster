@@ -209,6 +209,41 @@ describe("FRG : ligne Y (liste des inscrits)", () => {
     expect(list[0]).toMatch(/^Brindille:bench:\d+$/);
     expect(Number(list[0]!.split(":")[2])).toBeGreaterThan(before);
   });
+
+  it("homonymes : le perso de chaque inscription compte aussi, même retiré de la guilde", async () => {
+    const s = await scene("D");
+    // Rivale s'inscrit avec « Greta Dubois », puis retire ce perso de la guilde : l'inscription le garde
+    const rival = await signedIn(env, "RivaleD");
+    await s.join(rival);
+    const dubois = await s.char(rival, "Greta Dubois", "Rogue", "Human");
+    await s.signup(rival, s.raid.id, { status: "tentative", characterId: dubois.id });
+    expect((await rival.c.put(`/api/groups/${s.g.id}/characters/${dubois.id}`, { assigned: false })).statusCode).toBe(200);
+    const signer = syncSigner(env.cfg);
+    const text = (await groupExport(db(), s.g.id, s.mem.user.id, signer)).text;
+    const y = text.split("\n").find(l => l.startsWith(`Y;${s.raid.id};`))!;
+    // Deux joueurs portent « Greta » dans la liste : les deux entrées sont marquées
+    expect(y.split(";")[2]!.split(",").map(e => e.split(":").slice(0, 2).join(":"))).toEqual(["Brindille:late", "Greta?:present", "Greta?:tentative"]);
+    expect(verified(text, "FRG")).toBe(true);
+  });
+
+  it("même created_at : départagé par l'id, même liste à chaque appel", async () => {
+    const s = await scene("T");
+    const signer = syncSigner(env.cfg);
+    // Les deux inscriptions reçoivent la même heure d'arrivée. Ids choisis à l'inverse de l'ordre des joueurs et de l'ordre
+    // dans la table (la ligne réécrite en dernier passe en fin de table) : seul le départage par id donne l'ordre attendu
+    const rows = await db().select({ id: raidSignups.id, userId: raidSignups.userId }).from(raidSignups).where(eq(raidSignups.raidId, s.raid.id));
+    expect(rows).toHaveLength(2);
+    const [a, b] = [...rows].sort((x, y) => (x.userId! < y.userId! ? -1 : 1));
+    const same = new Date(Date.now() - 60_000);
+    await db().update(raidSignups).set({ id: "ffffffff-ffff-4fff-bfff-ffffffffffff", createdAt: same }).where(eq(raidSignups.id, a!.id));
+    await db().update(raidSignups).set({ id: "00000000-0000-4000-8000-000000000000", createdAt: same }).where(eq(raidSignups.id, b!.id));
+    const nameOf = (userId: string | null) => (userId === s.mem.user.id ? "Brindille" : "Greta");
+    const yLine = async () => (await groupExport(db(), s.g.id, s.mem.user.id, signer)).text.split("\n").find(l => l.startsWith(`Y;${s.raid.id};`))!;
+    const first = await yLine();
+    expect(first.split(";")[2]!.split(",").map(e => e.split(":")[0])).toEqual([nameOf(b!.userId), nameOf(a!.userId)]);
+    expect(await yLine()).toBe(first);
+    expect(await yLine()).toBe(first);
+  });
 });
 
 describe("réglage gameRelay", () => {
@@ -323,9 +358,9 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
   let s: Awaited<ReturnType<typeof relayScene>>;
   beforeAll(async () => { s = await relayScene(); });
   const send = (raid: { id: string }, status: string, name: string, at: number, guid = "") => vLine(s.g.id, raid, status, name, at, guid);
-  /** Refus attendu : message « 1 refusée », rien d'écrit sur le raid. */
-  async function refused(c: Client, text: string, raid: { id: string }, message = "fiche mise à jour · 1 refusée", empty = true) {
-    expect(await paste(c, text)).toMatchObject({ status: "updated", message });
+  /** Refus attendu : message « 1 refusée (Prénom : raison) », rien d'écrit sur le raid. */
+  async function refused(c: Client, text: string, raid: { id: string }, why: string, empty = true) {
+    expect(await paste(c, text)).toMatchObject({ status: "updated", message: `fiche mise à jour · 1 refusée (${why})` });
     if (empty) expect(await signupsOf(raid.id)).toEqual([]);
   }
 
@@ -368,7 +403,7 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const member = device(await pair(s.pikou.c));
     const raid2 = await s.raid("Hakkar");
     const r = (await member.req("POST", "/api/sync/upload", { text: asMember([send(raid2, "present", "Greta", nowS() - 60)]) })).json();
-    expect(r.results[0].message).toBe("fiche mise à jour · 1 refusée");
+    expect(r.results[0].message).toBe("fiche mise à jour · 1 refusée (Greta : pas officier)");
     expect(await signupsOf(raid2.id)).toEqual([]);
   });
 
@@ -401,14 +436,14 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const raid = await s.raid("Naxxramas");
     const at = nowS() - 60;
     // Pikou est membre simple : son export ne transmet rien
-    await refused(s.pikou.c, asMember([send(raid, "present", "Greta", at)]), raid);
+    await refused(s.pikou.c, asMember([send(raid, "present", "Greta", at)]), raid, "Greta : pas officier");
     // Un étranger (officier de SA guilde seulement) ne transmet pas dans celle de Brakka
     const ext = await s.ext.c.post("/api/characters", { name: "Etienne", race: "Troll", cls: "Mage" });
     expect(ext.statusCode).toBe(201);
-    await refused(s.ext.c, block("Etienne", "MAGE", "Troll", [send(raid, "present", "Greta", at)]), raid);
+    await refused(s.ext.c, block("Etienne", "MAGE", "Troll", [send(raid, "present", "Greta", at)]), raid, "Greta : pas officier");
     // Le perso est celui de l'envoyeur : Brakka (propriétaire) et Dorgan (officier) ne s'inscrivent pas eux-mêmes par ce chemin
-    await refused(s.own.c, asOwner([send(raid, "present", "Brakka", at)]), raid);
-    await refused(s.off.c, asOfficer([send(raid, "present", "Dorgan", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Brakka", at)]), raid, "Brakka : ton perso");
+    await refused(s.off.c, asOfficer([send(raid, "present", "Dorgan", at)]), raid, "Dorgan : ton perso");
     expect(await relayedEvents(s.g.id, "Naxxramas")).toEqual([]);
   });
 
@@ -416,7 +451,7 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const raid = await s.raid("Karazhan");
     const at = nowS() - 60;
     expect((await s.opale.c.patch("/api/account/preferences", { gameRelay: false })).statusCode).toBe(200);
-    await refused(s.own.c, asOwner([send(raid, "present", "Opale", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Opale", at)]), raid, "Opale : relais coupé par le joueur");
     expect((await s.opale.c.patch("/api/account/preferences", { gameRelay: true })).statusCode).toBe(200);
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Opale", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Opale)" });
     expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.opale.user.id, status: "present" })]);
@@ -426,11 +461,11 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const at = nowS() - 60;
     // Raid de la guilde voisine donné avec le groupe de Brakka, ou avec le groupe voisin (Brakka n'y est pas officier)
     const foreign = await s.raid2("Raid voisin");
-    await refused(s.own.c, asOwner([send(foreign, "present", "Greta", at)]), foreign);
-    await refused(s.own.c, asOwner([vLine(s.g2.id, foreign, "present", "Greta", at)]), foreign);
+    await refused(s.own.c, asOwner([send(foreign, "present", "Greta", at)]), foreign, "Greta : raid introuvable");
+    await refused(s.own.c, asOwner([vLine(s.g2.id, foreign, "present", "Greta", at)]), foreign, "Greta : pas officier");
     // Passé depuis 25 h : refusé ; depuis 2 h : accepté ; sans date : accepté (la date du journal est alors vide)
     const old = await s.raid("Raid de la veille", -25 * 3600e3);
-    await refused(s.own.c, asOwner([send(old, "present", "Greta", at)]), old);
+    await refused(s.own.c, asOwner([send(old, "present", "Greta", at)]), old, "Greta : raid passé");
     const recent = await s.raid("Raid de ce soir", -2 * 3600e3);
     expect(await paste(s.own.c, asOwner([send(recent, "present", "Greta", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
     const open = await s.raid("Raid sans date", null);
@@ -442,8 +477,8 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
 
   it("refus : clic dans le futur (+ 10 min) ou trop ancien (- 8 jours) ; - 6 jours accepté", async () => {
     const raid = await s.raid("Gnomeregan");
-    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() + 600)]), raid);
-    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() - 8 * 86400)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() + 600)]), raid, "Greta : heure du clic");
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", nowS() - 8 * 86400)]), raid, "Greta : heure du clic");
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Greta", nowS() - 6 * 86400)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
     // Quatre minutes d'avance sur l'horloge du serveur : toléré (+ 5 min)
     const raid2 = await s.raid("Gnomeregan bis");
@@ -455,9 +490,9 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const rival = await s.player("RivaleJ", ["Greta Dubois", "Rogue", "Human"]);
     const raid = await s.raid("Mur-de-Glace");
     const at = nowS() - 60;
-    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at)]), raid, "Greta : prénom en double");
     // GUID inconnu du site et prénom porté par deux persos : refusé aussi
-    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at, GRETA_AUTRE_GUID)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Greta", at, GRETA_AUTRE_GUID)]), raid, "Greta : prénom en double");
     // GUID connu : trouvée par GUID malgré l'homonyme
     await setGuid(s.greta.char!.id, GRETA_GUID);
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Greta", at, GRETA_GUID)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
@@ -485,7 +520,7 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     await db().update(raidSignups).set({ statusAt: new Date((nowS() - 3600) * 1000) }).where(eq(raidSignups.id, mine.id));
     const before = (await signupsOf(raid.id))[0]!;
     // Pikou envoie le GUID de Greta : refusé, rien ne change pour Greta, rien n'est créé pour Pikou
-    await refused(s.own.c, asOwner([send(raid, "absent", "Pikou", nowS() - 60, GRETA_GUID)]), raid, "fiche mise à jour · 1 refusée", false);
+    await refused(s.own.c, asOwner([send(raid, "absent", "Pikou", nowS() - 60, GRETA_GUID)]), raid, "Pikou : GUID d'un autre perso", false);
     expect(await signupsOf(raid.id)).toEqual([before]);
     expect(await relayedEvents(s.g.id, "Orgrimmar")).toEqual([]);
     // Avec son propre prénom (casse sans importance), le même GUID passe
@@ -502,7 +537,12 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     // La fiche porte un autre GUID : ce n'est pas le même perso
     await setGuid(s.pikou.char!.id, GRETA_AUTRE_GUID);
     const raid2 = await s.raid("Stratholme bis");
-    await refused(s.own.c, asOwner([send(raid2, "present", "Pikou", at, PIKOU_GUID)]), raid2);
+    await refused(s.own.c, asOwner([send(raid2, "present", "Pikou", at, PIKOU_GUID)]), raid2, "Pikou : GUID différent sur la fiche");
+    // Deux fiches au même GUID : on ne sait pas laquelle
+    await setGuid(s.pikou.char!.id, GRETA_AUTRE_GUID);
+    await setGuid(s.opale.char!.id, GRETA_AUTRE_GUID);
+    await refused(s.own.c, asOwner([send(raid2, "present", "Pikou", at, GRETA_AUTRE_GUID)]), raid2, "Pikou : GUID en double");
+    await setGuid(s.opale.char!.id, OPALE_GUID);
     await setGuid(s.pikou.char!.id, null);
   });
 
@@ -511,19 +551,19 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const at = nowS() - 60;
     const total = async () => (await db().select({ id: characters.id }).from(characters)).length;
     const n = await total();
-    await refused(s.own.c, asOwner([send(raid, "present", "Inconnu", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Inconnu", at)]), raid, "Inconnu : perso introuvable");
     // Perso du site rangé dans aucune guilde
     await s.char(s.greta, "Solitaire", "Hunter", "Orc", false);
-    await refused(s.own.c, asOwner([send(raid, "present", "Solitaire", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Solitaire", at)]), raid, "Solitaire : perso introuvable");
     // Perso sans classe (rangé dans la guilde) : l'inscription du site le refuse
     await s.char(s.nomade, "Sansclasse", "", "");
-    await refused(s.own.c, asOwner([send(raid, "present", "Sansclasse", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Sansclasse", at)]), raid, "Sansclasse : perso sans classe");
     // Joueur qui n'est plus membre (sa ligne de membre a disparu, son perso reste rangé) : refusé alors que le perso a une classe
     await s.char(s.nomade, "Partie", "Hunter", "Orc");
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Partie", at)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Partie)" });
     await db().delete(raidSignups).where(eq(raidSignups.raidId, raid.id));
     await db().delete(groupMembers).where(and(eq(groupMembers.groupId, s.g.id), eq(groupMembers.userId, s.nomade.user.id)));
-    await refused(s.own.c, asOwner([send(raid, "present", "Partie", at)]), raid);
+    await refused(s.own.c, asOwner([send(raid, "present", "Partie", at)]), raid, "Partie : pas membre");
     expect(await total()).toBe(n + 3); // Solitaire, Sansclasse et Partie, créés ici par le test lui-même
     expect(await relayedEvents(s.g.id, "Scholomance")).toHaveLength(1); // celle de Partie, avant son départ
   });
@@ -536,10 +576,13 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     const r = await paste(s.own.c, asOwner([
       send(raid, "present", "Pikou", at), send(raid, "late", "Opale", at), send(raid, "present", "Inconnu", at), send(raid, "present", "Fantome", at),
     ]));
-    expect(r.message).toBe("fiche mise à jour · 2 gardées · 2 refusées");
+    expect(r.message).toBe("fiche mise à jour · 2 gardées · 2 refusées (Inconnu : perso introuvable, Fantome : perso introuvable)");
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Pikou", at)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
     const mixed = await paste(s.own.c, asOwner([send(raid, "present", "Greta", at), send(raid, "present", "Pikou", at), send(raid, "present", "Inconnu", at)]));
-    expect(mixed.message).toBe("fiche mise à jour · 1 inscription transmise (Greta) · 1 gardée · 1 refusée");
+    expect(mixed.message).toBe("fiche mise à jour · 1 inscription transmise (Greta) · 1 gardée · 1 refusée (Inconnu : perso introuvable)");
+    // Raisons différentes, chacune dite ; le même prénom refusé deux fois pour la même raison n'est écrit qu'une fois
+    const two = await paste(s.own.c, asOwner([send(raid, "present", "Greta", nowS() + 600), send(raid, "present", "Inconnu", at), vLine(s.g.id, { id: (await s.raid("Tempete bis")).id }, "present", "Inconnu", at)]));
+    expect(two.message).toBe("fiche mise à jour · 3 refusées (Greta : heure du clic, Inconnu : perso introuvable)");
   });
 
   it("porteur du bloc inconnu du site (appli, sans création) : les lignes V sont transmises quand même, et renvoyées elles sont gardées", async () => {
@@ -587,7 +630,7 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     // Classe différente sur la fiche du porteur : résultat en erreur, lignes V transmises
     const raid2 = await s.raid("Ironforge bis");
     const mismatch = await paste(s.own.c, block("Brakka", "MAGE", "Troll", [send(raid2, "late", "Pikou", at), send(raid2, "present", "Inconnu", at)]));
-    expect(mismatch).toMatchObject({ status: "error", message: "classe différente sur la fiche (Warrior) · 1 inscription transmise (Pikou) · 1 refusée" });
+    expect(mismatch).toMatchObject({ status: "error", message: "classe différente sur la fiche (Warrior) · 1 inscription transmise (Pikou) · 1 refusée (Inconnu : perso introuvable)" });
     expect(await signupsOf(raid2.id)).toEqual([expect.objectContaining({ userId: s.pikou.user.id, status: "late" })]);
     // Sans la partie « inscriptions » : porteur laissé de côté et lignes V ignorées
     const raid3 = await s.raid("Ironforge ter");

@@ -212,9 +212,9 @@ T["Pour l'envoyer tout de suite : l'interface se recharge (quelques secondes), p
 T["Envoyer maintenant"] = "Send now"
 T["inscription inconnue (données reçues d'un autre joueur)"] = "sign-up unknown (data received from another player)"
 T["pas d'inscription"] = "no sign-up"
-T["Inscription de %s : sans Roster Companion, elle est confiée à un officier qui a l'appli."] = "%s's sign-up: without Roster Companion, it is handed to an officer who has the app."
+T["Inscription de %s : sans Roster Companion, elle est confiée à un officier qui a l'appli (ou part avec ton export)."] = "%s's sign-up: without Roster Companion, it is handed to an officer who has the app (or goes with your export)."
 T["en jeu : %s, confiée à %s : part au site à son prochain /reload"] = "in game: %s, handed to %s: goes to the website at their next /reload"
-T["en jeu : %s, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un"] = "in game: %s, no officer with the app online: it will go as soon as one is"
+T["en jeu : %s, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un, ou avec ton export"] = "in game: %s, no officer with the app online: it will go as soon as one is, or with your export"
 -- Onglet Compo
 T["Sur le site : page du raid, « Export pour le jeu », Copier, puis colle dans l'onglet %sSynchro|r."] = "On the website: raid page, \"Export pour le jeu\", \"Copier\", then paste in the %sSync|r tab."
 T["Inviter"] = "Invite"
@@ -373,6 +373,7 @@ T["connexion"] = "login"
 T["relais annoncé"] = "relay announced"
 T["SUP envoyé sur GUILD (%s) : %s, %s."] = "SUP sent on GUILD (%s): %s, %s."
 T["SUA de %s : inscription à %s confiée."] = "SUA from %s: sign-up for %s handed over."
+T["SUA de %s ignoré : pas officier de %s."] = "SUA from %s ignored: not an officer of %s."
 T["RLY de %s : mes inscriptions pas encore confiées repartent dans quelques secondes."] = "RLY from %s: my sign-ups not handed over yet go again in a few seconds."
 T["pas de relais ici : Roster Companion inactif"] = "no relay here: Roster Companion inactive"
 T["pas de relais ici : option coupée"] = "no relay here: option off"
@@ -432,6 +433,8 @@ T["appli active ici"] = "app active here"
 T["pas d'appli ici"] = "no app here"
 T["pas en guilde"] = "not in a guild"
 T["pas officier"] = "not an officer"
+T["Heure du serveur : décalage de %d s avec l'horloge du PC"] = "Server time: %d s offset from the PC clock"
+T["Heure du serveur : absente (horloge du PC utilisée)"] = "Server time: missing (PC clock used)"
 
 -- ==============================================================================================================
 -- Outings (sorties donjon, 1.6.1) : onglet Sorties, bandeau chez le créateur et chez les inscrits

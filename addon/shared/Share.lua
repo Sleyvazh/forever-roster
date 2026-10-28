@@ -605,7 +605,13 @@ local function onAnnounce(sender, msg, dist)
     return
   end
   if mine and at == mine then return end
-  if len > Sh.MAX_LEN then return end
+  if len > Sh.MAX_LEN then -- jamais demandé ; dit au journal, une fois par groupe et par version
+    if not (outsider[group] and not mine) then
+      noteOnce("big\1" .. group .. "\1" .. at, N("Annonce SHV de %s sur %s : %s, version du %s : ignorée, trop gros : %d octets, limite %d."),
+        shown(sender), dist, labelOf(group), stamp(at), len, Sh.MAX_LEN)
+    end
+    return
+  end
   if not (outsider[group] and not mine) then -- plus récente que la mienne (ou rien) : dite dans le journal
     note(N("Annonce SHV de %s sur %s : %s, version du %s."), shown(sender), dist, labelOf(group), stamp(at))
   end

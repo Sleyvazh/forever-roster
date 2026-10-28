@@ -1411,6 +1411,18 @@ local function sharing()
   assert(journalHas("Annonce SHV de Brakka", "GUILD", "Les Veilleurs"), "journal : annonce entendue (qui, canal, groupe)")
   assert(journalHas("Demande SHQ envoyée à Brakka", "Les Veilleurs"), "journal : demande envoyée")
   assert(journalHas("Données de Les Veilleurs appliquées", "Brakka"), "journal : réception, appliquée")
+  -- Annonce d'un texte trop gros (plus de Sh.MAX_LEN octets) : pas de demande ; une ligne au journal par groupe et version
+  local function bigLines() local n = 0 for _, e in ipairs(Sh.Journal()) do if e.text:find("trop gros", 1, true) then n = n + 1 end end return n end
+  m14 = #mine
+  local T10b = T10 + 50
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. T10b .. ";70000", "GUILD", "Brakka-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. T10b .. ";70000", "GUILD", "Brakka-Forever EU")
+  advance(1)
+  assert(count(mine, "^SHQ", m14 + 1) == 0, "texte trop gros : pas demandé")
+  assert(bigLines() == 1 and journalHas("Annonce SHV de Brakka", "Les Veilleurs", "trop gros : 70000 octets, limite 60000"),
+    "journal : trop gros, une fois pour cette version : " .. tostring((Sh.Journal()[#Sh.Journal()] or {}).text))
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. (T10b + 1) .. ";61000", "GUILD", "Brakka-Forever EU")
+  assert(bigLines() == 2 and journalHas("trop gros : 61000 octets"), "journal : autre version, une autre ligne")
   -- Mon propre SHW (connexion) : 25 à 45 s après PLAYER_LOGIN, une fois, même si le partage est coupé ; pas sans guilde
   advance(Sh.QUIET + 5)
   m14 = #mine
@@ -2630,6 +2642,20 @@ local function relaying()
     hear("Greta", sup(GA, RA1, "present", clock - 60, GUID.greta))
     assert(count() == 0 and journalHas("SUP de Greta ignoré", "option coupée"), "option coupée : ignoré, dit au journal")
   end)
+  -- Membre de la liste de guilde au GUID vide (relevé sans GUID) : son GUID compte comme inconnu, celui reçu est gardé
+  case("officier : GUID vide dans la liste de guilde : compte comme inconnu", function()
+    fresh(true)
+    local pikou = ForeverRosterDB.guilds[GK].roster.members[4]
+    assert(pikou.key == "pikou", "Pikou dans la liste de guilde")
+    pikou.guid = ""
+    local ok, err = pcall(function()
+      hear("Pikou", sup(GA, RA1, "late", clock - 60, GUID.pikou))
+      assert(kept("pikou") and kept("pikou").guid == GUID.pikou, "gardé avec le GUID reçu : " .. tostring((Sh.Journal()[#Sh.Journal()] or {}).text))
+      assert(not journalHas("SUP de Pikou ignoré"), "pas de refus au journal")
+    end)
+    pikou.guid = nil
+    assert(ok, err)
+  end)
 
   -- Deux SUP de Greta : le clic le plus récent l'emporte ; le même clic redit : SUA de nouveau, rien d'autre
   case("officier : deux SUP, la plus récente", function()
@@ -2852,8 +2878,9 @@ local function relaying()
     local s = c.signups[RA1]
     assert(G.SignupState(s) == "waiting", "état : en attente d'un officier")
     local r = row("raids", "Onyxia|r")
-    assert(r and r.text:find("en jeu : Présent, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un", 1, true), "onglet Raids : en attente : " .. tostring(r and r.text))
-    assert(row("raids", "Inscription de Tournicoti : sans Roster Companion, elle est confiée à un officier qui a l'appli."), "ligne des groupes")
+    -- L'export reste une voie : le texte le dit (« ou avec ton export »)
+    assert(r and r.text:find("en jeu : Présent, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un, ou avec ton export|r", 1, true), "onglet Raids : en attente : " .. tostring(r and r.text))
+    assert(row("raids", "Inscription de Tournicoti : sans Roster Companion, elle est confiée à un officier qui a l'appli (ou part avec ton export)."), "ligne des groupes")
     advance(0.9)
     assert(#since(n, "^SUP") == 0, "pas avant 1 s")
     advance(2.2)
@@ -2865,7 +2892,10 @@ local function relaying()
     assert(not s.confided, "SUA d'un autre clic ou pas chuchoté : ignoré")
     hear("Brakka", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
     assert(s.confided and s.confided.by == "Brakka" and s.confided.at == time() and G.SignupState(s) == "confided", "confiée à Brakka")
+    -- Un autre officier du groupe répond aussi : le premier SUA reçu reste
+    ForeverRosterDB.groups[GA].officers = { "Tournicoti", "Brakka", "Kaeldra" }
     hear("Kaeldra", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+    ForeverRosterDB.groups[GA].officers = { "Tournicoti", "Brakka" }
     assert(s.confided.by == "Brakka", "le premier SUA reçu")
     r = row("raids", "Onyxia|r")
     assert(r.text:find("en jeu : Présent, confiée à Brakka : part au site à son prochain /reload", 1, true), "onglet Raids : confiée : " .. r.text)
@@ -2879,6 +2909,28 @@ local function relaying()
     assert(not c.signups[RA1].confided and G.SignupState(c.signups[RA1]) == "waiting", "nouveau clic : plus confiée")
     advance(3.1)
     assert(#since(n, "^SUP;" .. esc(GA) .. ";" .. esc(RA1) .. ";late;") == 1, "nouveau clic : nouveau SUP")
+  end)
+
+  -- SUA : accepté seulement d'un officier du groupe de l'inscription (ligne O) ; d'un simple membre, ou d'un officier d'un
+  -- autre groupe seulement : ignoré, noté au journal
+  case("joueur : SUA d'un simple membre ignoré, d'un officier accepté", function()
+    fresh(false)
+    local keepGB = ForeverRosterDB.groups[GB].officers
+    local ok, err = pcall(function()
+      G.SignUp(GA, RA1, "present", ONY)
+      advance(5)
+      local s = c.signups[RA1]
+      hear("Greta", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+      assert(not s.confided and G.SignupState(s) == "waiting", "SUA d'un simple membre : ignoré")
+      assert(journalHas("SUA de Greta ignoré", "Les Veilleurs"), "journal : SUA d'un simple membre : " .. tostring((Sh.Journal()[#Sh.Journal()] or {}).text))
+      ForeverRosterDB.groups[GB].officers = { "Brakka", "Ulric" }
+      hear("Ulric", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+      assert(not s.confided and journalHas("SUA de Ulric ignoré"), "SUA d'un officier d'un autre groupe : ignoré")
+      hear("Brakka", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+      assert(s.confided and s.confided.by == "Brakka" and G.SignupState(s) == "confided", "SUA d'un officier du groupe : accepté")
+    end)
+    ForeverRosterDB.groups[GB].officers = keepGB
+    assert(ok, err)
   end)
 
   -- Confiée (ou proposée par SUP), puis retour au statut du site : pas annulée, elle repart (l'officier a peut-être déjà
@@ -3126,6 +3178,32 @@ local function diagnostic()
     has(t, "Confier mes inscriptions : activé (pas d'appli ici) · Relais : non (pas d'appli ici, pas officier)")
   end)
 
+  -- Heure du serveur (GetServerTime, qui date les clics) : son décalage avec l'horloge du PC (time()), ou absente ; une
+  -- ligne juste après les réglages
+  case("heure du serveur : décalage avec l'horloge du PC, ou absente", function()
+    local keepST = GetServerTime
+    local ok, err = pcall(function()
+      GetServerTime = nil
+      local _, t = opened("partage")
+      has(t, "\nHeure du serveur : absente (horloge du PC utilisée)\n")
+      assert(t:find("Relais : ", 1, true) < t:find("Heure du serveur", 1, true), "après la ligne des réglages")
+      GetServerTime = function() return clock + 3 end
+      _, t = opened("partage")
+      has(t, "\nHeure du serveur : décalage de 3 s avec l'horloge du PC\n")
+      GetServerTime = function() return clock - 42 end
+      _, t = opened("partage")
+      has(t, "\nHeure du serveur : décalage de -42 s avec l'horloge du PC\n")
+      GetServerTime = function() error("pas prêt") end
+      _, t = opened("partage")
+      has(t, "\nHeure du serveur : absente (horloge du PC utilisée)\n")
+      GetServerTime = function() return "tard" end
+      _, t = opened("partage")
+      has(t, "\nHeure du serveur : absente (horloge du PC utilisée)\n")
+    end)
+    GetServerTime = keepST
+    assert(ok, err)
+  end)
+
   -- Journal de la session (Share.lua), du plus ancien au plus récent : « hh:mm:ss  texte »
   case("journal : une ligne par entrée, la plus ancienne d'abord", function()
     Sh.Reset()
@@ -3174,9 +3252,16 @@ local function diagnostic()
   end)
   case("anglais : mêmes lignes, traduites", function()
     ForeverRosterDB.lang = "en"
+    local keepST = GetServerTime
+    GetServerTime = nil
     local ok, t = pcall(function() local _, x = opened("share") return x end)
-    ForeverRosterDB.lang = keep.lang
+    GetServerTime = function() return clock + 3 end
+    local ok2, t2 = pcall(function() local _, x = opened("share") return x end)
+    ForeverRosterDB.lang, GetServerTime = keep.lang, keepST
     assert(ok, t)
+    assert(ok2, t2)
+    has(t, "\nServer time: missing (PC clock used)\n")
+    has(t2, "\nServer time: 3 s offset from the PC clock\n")
     has(t, "Les Veilleurs: pasted on " .. hhmm(clock) .. " · version of " .. hhmm(AT) .. " · signed by the website · sign-up list: yes")
     has(t, "Les Retardataires: loaded by Roster Companion on " .. hhmm(clock - 3600) .. " · version of " .. hhmm(AT) .. " · not shared: no website signature · sign-up list: no raid")
     has(t, "Sharing: on · Hand over my sign-ups: on (no app here) · Relay: no (no app here, not an officer)")

@@ -150,18 +150,23 @@ export async function groupExport(db: Db, groupId: string, userId: string, signe
  * reste signé) : les inscrits avec un compte du site, dans l'ordre d'arrivée (les invités Discord n'y sont pas). Prénom : celui
  * du perso de l'inscription ; sans perso (absent), le main du joueur dans la guilde, sinon son premier perso rangé dans la
  * guilde ; aucun perso : omis. `at` : heure du dernier changement de statut. `dup` : le prénom est porté par des persos de
- * deux joueurs différents de la guilde (`played`) ; l'addon ne le prend alors jamais pour le sien.
+ * deux joueurs différents, parmi ceux rangés dans la guilde (`played`) et ceux des inscriptions (un perso retiré de la
+ * guilde garde son inscription) ; l'addon ne le prend alors jamais pour le sien. Ordre d'arrivée départagé par l'id :
+ * même liste à chaque appel (bloc signé, ETag).
  */
 async function raidSignupsExport(db: Db, raidIds: string[], played: Awaited<ReturnType<typeof playedInGroup>>) {
   const out = new Map<string, GroupExportSignup[]>();
   if (!raidIds.length) return out;
   const rows = await db.select({ raidId: raidSignups.raidId, userId: raidSignups.userId, status: raidSignups.status, statusAt: raidSignups.statusAt, character: characters.name })
     .from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
-    .where(and(inArray(raidSignups.raidId, raidIds), isNotNull(raidSignups.userId))).orderBy(asc(raidSignups.createdAt));
+    .where(and(inArray(raidSignups.raidId, raidIds), isNotNull(raidSignups.userId))).orderBy(asc(raidSignups.createdAt), asc(raidSignups.id));
   const key = (name: string) => gameName(name).normalize("NFC").toLocaleLowerCase("fr");
-  // Joueurs qui portent chaque prénom (tous les persos rangés dans la guilde, comme la ligne M)
+  // Joueurs qui portent chaque prénom : tous les persos rangés dans la guilde (comme la ligne M), et le perso de chaque
+  // inscription (couple prénom, joueur), même s'il n'est plus rangé dans la guilde
   const bearers = new Map<string, Set<string>>();
-  for (const c of played) bearers.set(key(c.name), (bearers.get(key(c.name)) ?? new Set()).add(c.userId));
+  const bear = (name: string, userId: string) => bearers.set(key(name), (bearers.get(key(name)) ?? new Set()).add(userId));
+  for (const c of played) bear(c.name, c.userId);
+  for (const r of rows) if (r.character) bear(r.character, r.userId!);
   // Perso « par défaut » de chaque joueur : son main, sinon le premier rangé dans la guilde
   const fallback = new Map<string, string>();
   for (const c of [...played].sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.addedAt.getTime() - b.addedAt.getTime() || a.name.localeCompare(b.name))) {

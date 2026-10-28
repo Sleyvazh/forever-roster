@@ -62,7 +62,7 @@ refreshers.raids = function(p)
     local confide = ns.Relay and ns.Relay.CanConfide()
     rows.Add(GREY .. L["Groupes :"] .. " |r" .. table.concat(names, ", ") .. "\n" .. GREY
       .. (companion and L("Inscription de %s : elle part au site au prochain /reload (« Envoyer maintenant ») ou à la déconnexion.", who)
-        or confide and L("Inscription de %s : sans Roster Companion, elle est confiée à un officier qui a l'appli.", who)
+        or confide and L("Inscription de %s : sans Roster Companion, elle est confiée à un officier qui a l'appli (ou part avec ton export).", who)
         or L("Inscription de %s, envoyée au site avec l'export.", who)) .. "|r")
     local raids = G.Raids()
     if #raids == 0 then rows.Add(GREY .. L["Aucun raid à venir."] .. "|r") end
@@ -80,7 +80,7 @@ refreshers.raids = function(p)
         if e.state == "sent" then game = GREEN .. "  " .. L("en jeu : %s, reçu par le site", label) .. "|r"
         elseif e.state == "outbox" then game = GOLD .. "  " .. L("en jeu : %s, envoi en cours", label) .. "|r"
         elseif e.state == "confided" then game = GOLD .. "  " .. L("en jeu : %s, confiée à %s : part au site à son prochain /reload", label, e.by or "?") .. "|r"
-        elseif e.state == "waiting" then game = GOLD .. "  " .. L("en jeu : %s, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un", label) .. "|r"
+        elseif e.state == "waiting" then game = GOLD .. "  " .. L("en jeu : %s, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un, ou avec ton export", label) .. "|r"
         elseif companion then game = GOLD .. "  " .. L("en jeu : %s, pas encore envoyé", label) .. "|r"
         else game = GOLD .. "  " .. L("en jeu : %s, part avec ton prochain export", label) .. "|r" end
       end
@@ -832,6 +832,14 @@ function U.ShareDiagText()
     settings[3] = L("Relais : %s", #why == 0 and L["oui"] or (L["non"] .. " (" .. table.concat(why, ", ") .. ")"))
   end
   lines[#lines + 1] = table.concat(settings, " · ")
+  -- Heure du serveur (GetServerTime, qui date les clics d'inscription) : son décalage avec l'horloge du PC, ou absente
+  local okT, server = false, nil
+  if GetServerTime then okT, server = pcall(GetServerTime) end
+  if okT and type(server) == "number" then
+    lines[#lines + 1] = L("Heure du serveur : décalage de %d s avec l'horloge du PC", math.floor(server - time() + 0.5))
+  else
+    lines[#lines + 1] = L["Heure du serveur : absente (horloge du PC utilisée)"]
+  end
   lines[#lines + 1] = ""
   local journal = ns.Share and ns.Share.Journal and ns.Share.Journal() or {}
   if #journal == 0 then lines[#lines + 1] = L["Rien dans le journal de cette session."] end

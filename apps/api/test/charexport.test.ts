@@ -22,6 +22,10 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(professionsFromExport(r.data.professions)).toEqual({
       prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 295 }, cooking: 150, fishing: 0, firstAid: 0,
     });
+    // Ligne V écrite par l'addon (inscription faite en jeu par Greta, relayée par ce perso d'officier)
+    expect(r.data.relayed).toEqual([{
+      groupId: "6f1c2a10-0000-4000-8000-000000000001", raidId: "7a1c2a10-0000-4000-8000-000000000002", status: "late", name: "Greta", guid: "Player-5826-0A1B2C3E", at: 1794000100,
+    }]);
   });
   it("reconnaît les métiers en français et refuse un export abîmé", () => {
     expect(professionFromGame("Travail du cuir")).toBe("Leatherworking");

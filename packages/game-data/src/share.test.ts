@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupAddonExport, signupsLine, type GroupExportOuting, type GroupExportRaid, type GroupExportSignup } from "./addon";
+import { groupAddonExport, MAX_SIGNUP_BYTES, signupsLine, type GroupExportOuting, type GroupExportRaid, type GroupExportSignup } from "./addon";
 import { buildRRG, type RosterGroupRaid } from "./roster-addon";
 import { canonicalGroupBlock, groupBlockSignature, sealGroupBlock, splitGroupBlocks, type GroupBlockSigner } from "./share";
 import { TEST_KEY_ID, testSigner, verifyWithTestKey } from "./test-signer";
@@ -111,6 +111,36 @@ describe("ligne Y : liste des inscrits", () => {
     expect(groupAddonExport(G1, AT, [raid([])], []).split("\n")).toEqual([
       `FRG;1;${G1.id};${AT};Les Veilleurs`, `R;${R1};0;Molten Core;;;`, `Y;${R1};`, "M;", "END;1",
     ]);
+  });
+
+  it("16 000 octets au plus de lignes Y, dans l'ordre des raids : les raids suivants n'en ont pas ; le bloc reste signé", async () => {
+    const { sign } = await testSigner();
+    const bytes = (l: string) => new TextEncoder().encode(l).length + 1; // octets UTF-8, saut de ligne compris
+    // 120 inscrits aux prénoms accentués (la limite compte des octets, pas des caractères)
+    const many: GroupExportSignup[] = Array.from({ length: 120 }, (_, i) => ({ name: `Élodïe${i}`, status: "present", at: AT + i }));
+    // 15 raids : les 5 premiers avec 120 inscrits, les 10 suivants sans inscrit (leur ligne Y vide tiendrait encore)
+    const raids: GroupExportRaid[] = Array.from({ length: 15 }, (_, i) => ({
+      id: `7c4b5a6f-e7d8-49ca-bdae-${String(i).padStart(12, "0")}`, name: `Raid ${i}`, at: AT + i * 3600, status: null, character: null, signups: i < 5 ? many : [],
+    }));
+    const full = bytes(signupsLine(raids[0]!.id, many));
+    expect(full * 4).toBeLessThanOrEqual(16_000);
+    expect(full * 5).toBeGreaterThan(16_000);
+
+    const text = groupAddonExport(G1, AT, raids, [], [], [], undefined, { members: ["Greta"], sign });
+    const lines = text.split("\n");
+    const y = lines.filter(l => l.startsWith("Y;"));
+    // Les 4 premiers raids : le 5e dépasserait, et on s'arrête là (les lignes vides des suivants ne sont pas écrites)
+    expect(y).toEqual(raids.slice(0, 4).map(r => signupsLine(r.id, many)));
+    expect(y.reduce((n, l) => n + bytes(l), 0)).toBeLessThanOrEqual(MAX_SIGNUP_BYTES);
+    expect(MAX_SIGNUP_BYTES).toBe(16_000);
+    // Toutes les lignes R sont là ; le bloc est signé et la signature vaut
+    expect(lines.filter(l => l.startsWith("R;"))).toHaveLength(15);
+    const sig = groupBlockSignature(text);
+    expect(sig?.keyId).toBe(TEST_KEY_ID);
+    expect(await verifyWithTestKey(canonicalGroupBlock(text, "FRG"), sig!.signature)).toBe(true);
+    // Sous la limite : toutes les lignes Y, comme avant
+    const small = groupAddonExport(G1, AT, raids.map(r => ({ ...r, signups: SIGNUPS })), [], [], [], undefined, { members: ["Greta"], sign });
+    expect(small.split("\n").filter(l => l.startsWith("Y;"))).toHaveLength(15);
   });
 
   it("signée : la liste fait partie de la forme canonique, sans champ personnel", async () => {

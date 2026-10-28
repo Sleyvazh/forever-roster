@@ -45,12 +45,15 @@ local text = F.BuildFRC(
     { "T", 104938, 5, 5, 5620, 2130, 16934, 0, 1089 }, { "T", 104939, 3, 5, 6220, 2130, 24894, 0, 1089 },
     { "T", 104940, 0, 3, 5620, 2730, 16947, 0, 1089 },
     { "G", 13, "piège;|cff" },
+    -- Relais (1.6.3) : inscription faite en jeu par Greta, confiée à ce perso d'officier (Relay.lua, R.Lines)
+    { "V", "6f1c2a10-0000-4000-8000-000000000001", "7a1c2a10-0000-4000-8000-000000000002", "late", "Greta", "Player-5826-0A1B2C3E", 1794000100 },
   }))
 check(text:match("^FRC;2;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;0%.1%.0;Player%-5826%-0A1B2C3D;Tournicoti Ventfeuille\n"), "en-tête FRC (GUID et nom complet)")
 check(text:find("\nG;1:16866,7:15065,13:piège  cff\n", 1, true), "équipement sur une ligne")
 check(text:find("\nR;Leatherworking;i15065,s2152\n", 1, true), "patrons regroupés par métier")
 check(text:find("\nT;1089;104938:5,104939:3\n", 1, true), "seulement les talents pris")
-check(text:match("\nEND;7$"), "ligne END")
+check(text:find("\nV;6f1c2a10-0000-4000-8000-000000000001;7a1c2a10-0000-4000-8000-000000000002;late;Greta;Player-5826-0A1B2C3E;1794000100\n", 1, true), "ligne V (inscription relayée) telle quelle")
+check(text:match("\nEND;8$"), "ligne END")
 check(text:find("piège  cff", 1, true), "« ; » et « | » retirés des valeurs")
 local out = io.open("addon/tests/sample.frc", "w") out:write(text) out:close()
 -- Sans GUID ni nom complet (relevé d'avant 1.6.2, valeur secrète) : les deux champs sont là, vides ; « ; » et « | » retirés

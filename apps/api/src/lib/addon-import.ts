@@ -95,12 +95,13 @@ const RELAY_RAID_GRACE = 24 * 3600e3, RELAY_CLICK_AHEAD = 5 * 60e3, RELAY_CLICK_
 /**
  * Inscriptions faites en jeu par d'autres joueurs, transmises par l'officier qui envoie ce bloc (lignes V, spec B4).
  * Chaque ligne passe ses gardes dans l'ordre ; rien n'est jamais créé pour un perso inconnu. Renvoie les prénoms des
- * persos inscrits (`sent`), ceux dont le site avait déjà le dernier mot (`kept`) et les prénoms des lignes refusées.
+ * persos inscrits (`sent`), ceux dont le site avait déjà le dernier mot (`kept`) et les lignes refusées, chacune avec le
+ * prénom de la ligne et une raison courte (`refused`, dite à l'officier dans le message du bloc).
  */
 export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, now: Date) {
-  const res = { sent: [] as string[], kept: [] as string[], refused: [] as string[] };
+  const res = { sent: [] as string[], kept: [] as string[], refused: [] as { name: string; why: string }[] };
   const officer = new Map<string, boolean>();
-  const roster = new Map<string, { id: string; name: string; guid: string | null; userId: string }[]>();
+  const roster = new Map<string, { id: string; name: string; guid: string | null; cls: string; userId: string }[]>();
   /** L'envoyeur est propriétaire ou officier de la guilde ; un non-membre est refusé comme un membre simple. */
   const isOfficer = async (groupId: string) => {
     let ok = officer.get(groupId);
@@ -114,7 +115,7 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
   const guildCharacters = async (groupId: string) => {
     let rows = roster.get(groupId);
     if (!rows) {
-      rows = await db.select({ id: characters.id, name: characters.name, guid: characters.guid, userId: characters.userId })
+      rows = await db.select({ id: characters.id, name: characters.name, guid: characters.guid, cls: characters.cls, userId: characters.userId })
         .from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId)).where(eq(groupCharacters.groupId, groupId));
       roster.set(groupId, rows);
     }
@@ -122,13 +123,14 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
   };
 
   for (const v of d.relayed) {
-    const refuse = () => { res.refused.push(v.name); };
+    const refuse = (why: string) => { res.refused.push({ name: v.name, why }); };
     // 1. L'envoyeur est officier ou propriétaire de la guilde
-    if (!await isOfficer(v.groupId)) { refuse(); continue; }
+    if (!await isOfficer(v.groupId)) { refuse("pas officier"); continue; }
     // 2. Raid de cette guilde, pas passé depuis plus de 24 h
     const [raid] = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
       .where(and(eq(raids.id, v.raidId), eq(raids.groupId, v.groupId)));
-    if (!raid || (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE)) { refuse(); continue; }
+    if (!raid) { refuse("raid introuvable"); continue; }
+    if (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE) { refuse("raid passé"); continue; }
     // 3. Perso visé rangé dans la guilde : par GUID, à défaut par prénom s'il est seul à le porter (une fiche qui a un autre GUID n'est pas lui).
     // Le prénom de la ligne est celui de l'expéditeur, authentifié par le jeu ; le GUID, lui, est déclaré dans le message et se
     // falsifie : un GUID connu ne vaut que pour le perso qui porte ce prénom.
@@ -136,31 +138,36 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
     let target: (typeof chars)[number] | undefined;
     if (v.guid) {
       const hits = chars.filter(c => c.guid === v.guid);
-      if (hits.length > 1 || (hits.length === 1 && !sameCharacter(v.name, hits[0]!.name))) { refuse(); continue; }
+      if (hits.length > 1) { refuse("GUID en double"); continue; }
+      if (hits.length === 1 && !sameCharacter(v.name, hits[0]!.name)) { refuse("GUID d'un autre perso"); continue; }
       target = hits[0];
     }
     if (!target) {
       const hits = chars.filter(c => sameCharacter(v.name, c.name));
-      if (hits.length !== 1 || (v.guid && hits[0]!.guid && hits[0]!.guid !== v.guid)) { refuse(); continue; }
+      if (!hits.length) { refuse("perso introuvable"); continue; }
+      if (hits.length > 1) { refuse("prénom en double"); continue; }
+      if (v.guid && hits[0]!.guid && hits[0]!.guid !== v.guid) { refuse("GUID différent sur la fiche"); continue; }
       target = hits[0]!;
     }
     // 4. Pas un perso de l'envoyeur ; son joueur est membre de la guilde et accepte le relais
-    if (target.userId === relayer.id) { refuse(); continue; }
+    if (target.userId === relayer.id) { refuse("ton perso"); continue; }
     const [player] = await db.select({ id: users.id, displayName: users.displayName, gameRelay: users.gameRelay }).from(groupMembers)
       .innerJoin(users, eq(users.id, groupMembers.userId)).where(and(eq(groupMembers.groupId, v.groupId), eq(groupMembers.userId, target.userId)));
-    if (!player?.gameRelay) { refuse(); continue; }
+    if (!player) { refuse("pas membre"); continue; }
+    if (!player.gameRelay) { refuse("relais coupé par le joueur"); continue; }
     // 5. Heure du clic plausible
     const clic = v.at * 1000;
-    if (clic > now.getTime() + RELAY_CLICK_AHEAD || clic < now.getTime() - RELAY_CLICK_AGE) { refuse(); continue; }
+    if (clic > now.getTime() + RELAY_CLICK_AHEAD || clic < now.getTime() - RELAY_CLICK_AGE) { refuse("heure du clic"); continue; }
     // 6. Le site a le dernier mot : changement de statut fait au moins aussi tard que le clic, ou même réponse avec le même perso
     const [old] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, statusAt: raidSignups.statusAt }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raid.id), eq(raidSignups.userId, player.id)));
     if (old && (old.statusAt.getTime() >= clic || (old.status === v.status && old.characterId === target.id))) { res.kept.push(gameName(target.name)); continue; }
     // 7. Inscription du joueur visé avec ce perso (un perso sans classe est refusé comme sur le site), puis journal de la guilde
+    if (!target.cls) { refuse("perso sans classe"); continue; }
     try {
       await signUpSiteUser(db, raid.id, { id: player.id, displayName: player.displayName }, { status: v.status, characterId: target.id });
     } catch (e) {
-      if (e instanceof HttpError) { refuse(); continue; }
+      if (e instanceof HttpError) { refuse("inscription impossible"); continue; }
       throw e;
     }
     await audit(db, null, "signup_relayed", {
@@ -171,13 +178,16 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
   return res;
 }
 
-/** Résumé des lignes V pour le message du bloc : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée » (parties à zéro omises). */
+/**
+ * Résumé des lignes V pour le message du bloc : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée (Kaelys :
+ * heure du clic) » (parties à zéro omises ; un même prénom refusé pour la même raison n'est dit qu'une fois).
+ */
 function relayedText(r: Awaited<ReturnType<typeof applyRelayed>>) {
   const sent = r.sent.length, kept = r.kept.length, refused = r.refused.length;
   return [
     sent && `${plural(sent, "inscription")} transmise${sent > 1 ? "s" : ""} (${[...new Set(r.sent)].join(", ")})`,
     kept && `${kept} gardée${kept > 1 ? "s" : ""}`,
-    refused && `${refused} refusée${refused > 1 ? "s" : ""}`,
+    refused && `${refused} refusée${refused > 1 ? "s" : ""} (${[...new Set(r.refused.map(x => `${x.name} : ${x.why}`))].join(", ")})`,
   ].filter(Boolean).join(" · ");
 }
 

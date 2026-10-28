@@ -19,6 +19,7 @@ T["SHW de %s sur %s : j'annonce mes groupes dans quelques secondes."] = "SHW fro
 T["SHW de %s sur %s : ignoré, %s."] = "SHW from %s on %s: ignored, %s."
 T["Annonce SHV faite sur %s : %s, version du %s."] = "SHV announcement made on %s: %s, version of %s."
 T["Annonce SHV de %s sur %s : %s, version du %s."] = "SHV announcement from %s on %s: %s, version of %s."
+T["Annonce SHV de %s sur %s : %s, version du %s : ignorée, trop gros : %d octets, limite %d."] = "SHV announcement from %s on %s: %s, version of %s: ignored, too big: %d bytes, limit %d."
 T["Pas de demande pour %s, version du %s : déjà refusée."] = "No request for %s, version of %s: already refused."
 T["Pas de demande pour %s : %s."] = "No request for %s: %s."
 T["Demande SHQ envoyée à %s pour %s : j'ai la version du %s."] = "SHQ request sent to %s for %s: I have the version of %s."
