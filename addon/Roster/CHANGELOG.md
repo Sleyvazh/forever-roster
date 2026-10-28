@@ -2,6 +2,14 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.4.2
+
+- Sharing the website's data between players: the code shared with Forever Roster now keeps a short log of what was announced, requested, received or refused, and understands Forever Roster's new "send me your data" request (Roster itself does not send it). Nothing changes on screen.
+
+Français :
+
+- Partage des données du site entre joueurs : le code commun avec Forever Roster garde un court journal de ce qui a été annoncé, demandé, reçu ou refusé, et comprend la nouvelle demande « envoie-moi tes données » de Forever Roster (Roster ne l'envoie pas lui-même). Rien ne change à l'écran.
+
 ## 0.4.1
 
 - **Loot council set in game**, no website needed: guild ranks down to a minimum rank (by default the Guild Master and the next rank), plus names added by hand (from the guild or not), minus names removed by hand. Kept up to date from the guild roster: a promoted officer joins on their own, a demoted former officer leaves on their own. New page **Options › Loot council** (`/roster council`): change the minimum rank in 2 clicks, add a member (completion on the guild roster), remove or put back, who can change it, tonight's council. Only ranks down to the minimum rank can change it (Flo's choice); others see it read-only. The setting is kept in your addon, one per guild (not shared between officers yet: the loot master's applies to the raid).
