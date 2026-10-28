@@ -854,13 +854,16 @@ local function sharing()
   InCombatLockdown = function() return S.combat end
   local clients, mine, throttled = {}, {}, 0
   local allowance, allowanceAt = 10, clock
+  -- Comme le jeu : l'expéditeur arrive avec son royaume (« Greta-Forever EU »), un chuchotement va au joueur dont le prénom
+  -- est celui de la cible (« Greta » ou « Greta-Forever EU »)
+  local function firstName(n) return (tostring(n):match("^[^%-%s]+")) or "" end
   local function deliver(from, msg, dist, target)
     for _, cl in ipairs(clients) do
-      if cl.name ~= from and ((dist == "GUILD" and cl.guild) or (dist == "RAID" and cl.raid) or (dist == "WHISPER" and cl.name == target)) then
-        schedule(0.05, function() cl.Sh.OnMessage(from, msg, dist) end)
+      if cl.name ~= from and ((dist == "GUILD" and cl.guild) or (dist == "RAID" and cl.raid) or (dist == "WHISPER" and cl.name == firstName(target))) then
+        schedule(0.05, function() cl.Sh.OnMessage(from .. "-Forever EU", msg, dist) end)
       end
     end
-    if (dist == "GUILD" and S.guild) or (dist == "RAID" and S.raid) or (dist == "WHISPER" and target == ME and from ~= ME) then
+    if (dist == "GUILD" and S.guild) or (dist == "RAID" and S.raid) or (dist == "WHISPER" and firstName(target) == ME and from ~= ME) then
       schedule(0.05, function() fire("CHAT_MSG_ADDON", "FRoster", msg, dist, from .. "-Forever EU") end)
     end
   end
@@ -999,7 +1002,7 @@ local function sharing()
   local m0 = #mine
   assert(greta.Sh.Announce("GUILD") == 1 and greta.sent[1].msg == "SHV;FRG;" .. G1 .. ";" .. AT .. ";" .. #info1.shared, "annonce SHV de Greta")
   advance(0.3)
-  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T0 .. ";GUILD$", m0 + 1) == 1 and mine[#mine].dist == "WHISPER" and mine[#mine].target == "Greta", "données plus anciennes : demande chuchotée à Greta")
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T0 .. ";GUILD$", m0 + 1) == 1 and mine[#mine].dist == "WHISPER" and mine[#mine].target == "Greta-Forever EU", "données plus anciennes : demande chuchotée à Greta, au nom complet")
   assert(count(thalwen.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(zeph.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(brindille.sent, "^SHQ;" .. esc(G1) .. ";0;") == 1, "sans données : demande")
   advance(4)
   local parts = count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";")
@@ -1295,6 +1298,163 @@ local function sharing()
   -- Relu avec les mêmes données (même frgAt) : rien ne bouge
   assert(ns.Companion.Apply() == nil and myGroup(G1).at == T7 and myGroup(G2).at == T8, "mêmes données de l'appli : rien à faire")
   ForeverRosterData = nil
+  ForeverRosterDB.companion = keep.companion
+
+  -- 14. Demande à la connexion (SHW, 1.6.3) : Pikou (client sans données) se connecte après l'annonce de Tournicoti, la demande
+  -- et reçoit ; un même joueur n'est écouté qu'une fois par 5 min ; chuchotements au nom complet (Brakka) ; journal du partage
+  for _, cl in ipairs(clients) do cl.guild = false end -- les autres clients se taisent : seuls Pikou et Brakka parlent ici
+  -- Journal du partage de Tournicoti (session, 40 lignes au plus) : première ligne qui contient tous ces morceaux de texte
+  local function journalHas(...)
+    for _, e in ipairs(Sh.Journal()) do
+      local ok = true
+      for _, part in ipairs({ ... }) do if not e.text:find(part, 1, true) then ok = false end end
+      if ok then return e end
+    end
+  end
+  advance(Sh.QUIET + 5)
+  local T9 = T8 + 1000
+  local MEMBERS9 = { "Brakka", "Brindille", "Greta", "Ilyra", "Pikou", "Thalwen", "Tournicoti" }
+  local m14 = #mine
+  assert(ns.UI.LoadFromSite(block(G1, T9, "Les Veilleurs", body, MEMBERS9)))
+  advance(5)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T9 .. ";", m14 + 1) == 1, "collage : annonce à la guilde, avant l'arrivée de Pikou")
+  local pikou = client("Pikou")
+  advance(Sh.QUIET + 5)
+  assert(lastAt(pikou, G1) == nil and #pikou.applied == 0, "Pikou connecté après l'annonce : rien")
+  -- Il demande ; une seule annonce par groupe sur la guilde, 1 à 5 s plus tard (3 s ici), puis demande, diffusion, réception
+  m14 = #mine
+  local t14 = clock
+  assert(pikou.Sh.Want and pikou.Sh.Want("GUILD") == true and pikou.sent[#pikou.sent].msg == "SHW;FRG" and pikou.sent[#pikou.sent].dist == "GUILD", "Pikou : SHW;FRG sur la guilde")
+  advance(1)
+  assert(count(mine, "^SHV", m14 + 1) == 0, "pas de réponse avant 1 s")
+  advance(4)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T9 .. ";", m14 + 1) == 1 and count(mine, "^SHV;FRG;" .. esc(G2) .. ";" .. T8 .. ";", m14 + 1) == 1, "une seule annonce par groupe sur la guilde")
+  for i = m14 + 1, #mine do if mine[i].msg:find("^SHV") then assert(mine[i].dist == "GUILD", "annonce sur la guilde") end end
+  assert(mine[m14 + 1].t - t14 >= 1 and mine[m14 + 1].t - t14 <= 5.2, "annonce 1 à 5 s après le SHW")
+  advance(15)
+  assert(count(pikou.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and lastAt(pikou, G1) == T9 and pikou.applied[1].dist == "GUILD", "Pikou : demande puis réception de la version de Tournicoti")
+  assert(count(mine, "^SHV;FRG;" .. esc(G1), m14 + 1) == 1, "toujours une seule annonce de G1")
+  assert(journalHas("SHW de Pikou", "GUILD"), "journal : SHW de Pikou entendu")
+  -- Deuxième SHW moins de 5 min après : pas de réponse (même si la dernière annonce date de plus de 60 s)
+  advance(100)
+  local m14b = #mine
+  pikou.Sh.Want("GUILD")
+  advance(10)
+  assert(count(mine, "^SHV", m14b + 1) == 0, "deux SHW en moins de 5 min : une seule réponse")
+  assert(journalHas("SHW de Pikou", "ignoré", "déjà répondu"), "journal : deuxième SHW ignoré, avec la raison")
+  -- 5 min après la première réponse : de nouveau écouté
+  advance(200)
+  m14b = #mine
+  pikou.Sh.Want("GUILD")
+  advance(10)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T9 .. ";", m14b + 1) == 1, "SHW de nouveau écouté plus de 5 min après")
+  -- Un autre joueur, un autre kind, un chuchotement, le partage coupé, rien de signé : pas de réponse
+  advance(Sh.QUIET + 5)
+  m14b = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;RRG", "GUILD", "Nomade-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;FRG", "WHISPER", "Nomade-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;FRG", "PARTY", "Nomade-Forever EU")
+  advance(10)
+  assert(count(mine, "^SHV", m14b + 1) == 0, "SHW d'un autre kind, chuchoté ou hors guilde et raid : ignoré")
+  ForeverRosterDB.share = false
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;FRG", "GUILD", "Nomade-Forever EU")
+  advance(10)
+  assert(count(mine, "^SHV", m14b + 1) == 0 and journalHas("SHW de Nomade", "ignoré", "partage coupé"), "partage coupé : pas de réponse, dit dans le journal")
+  ForeverRosterDB.share = nil
+  local held14 = ForeverRosterDB.groups
+  ForeverRosterDB.groups = {}
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;FRG", "GUILD", "Ulric-Forever EU")
+  advance(10)
+  assert(count(mine, "^SHV", m14b + 1) == 0 and journalHas("SHW de Ulric", "ignoré", "aucun bloc signé"), "aucun bloc signé : pas de réponse, dit dans le journal")
+  ForeverRosterDB.groups = held14
+  -- Un SHW entendu alors que mes groupes viennent d'être annoncés : l'annonce est refaite à la fin du délai (later)
+  advance(Sh.QUIET + 5)
+  assert(Sh.Announce("GUILD") >= 1)
+  advance(10)
+  m14b = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHW;FRG", "GUILD", "Ilyra-Forever EU")
+  advance(10)
+  assert(count(mine, "^SHV", m14b + 1) == 0, "groupe annoncé il y a moins de 60 s : pas tout de suite")
+  advance(Sh.QUIET + 5)
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T9 .. ";", m14b + 1) == 1, "refaite à la fin du délai")
+
+  -- Brakka annonce une version plus récente : ma demande est chuchotée à son nom complet (royaume compris), il diffuse
+  advance(Sh.QUIET + 5)
+  local T10 = T9 + 500
+  local brakka = client("Brakka")
+  hold(brakka, block(G1, T10, "Les Veilleurs", body, MEMBERS9))
+  m14 = #mine
+  brakka.Sh.Announce("GUILD")
+  advance(0.3)
+  local ask = mine[#mine]
+  assert(#mine > m14 and ask.msg == "SHQ;" .. G1 .. ";" .. T9 .. ";GUILD" and ask.dist == "WHISPER" and ask.target == "Brakka-Forever EU", "demande chuchotée à Brakka-Forever EU : " .. tostring(ask and ask.target))
+  advance(15)
+  g = myGroup(G1)
+  assert(g.at == T10 and g.origin.from == "Brakka" and lastPrinted("Données de Les Veilleurs reçues de Brakka (site : "), "reçu de Brakka, affiché au prénom")
+  assert(brakka.sent[#brakka.sent].msg:find("^SHD;") and count(brakka.sent, "^SHD;" .. esc(G1) .. ";" .. T10 .. ";1;") == 1, "Brakka a diffusé après la demande")
+  local log = Sh.Journal()
+  assert(#log >= 5 and #log <= 40 and type(log[1].t) == "number" and type(log[1].text) == "string", "journal : lignes { t, text }")
+  for i = 2, #log do assert(log[i].t >= log[i - 1].t, "journal : du plus ancien au plus récent") end
+  assert(journalHas("Annonce SHV de Brakka", "GUILD", "Les Veilleurs"), "journal : annonce entendue (qui, canal, groupe)")
+  assert(journalHas("Demande SHQ envoyée à Brakka", "Les Veilleurs"), "journal : demande envoyée")
+  assert(journalHas("Données de Les Veilleurs appliquées", "Brakka"), "journal : réception, appliquée")
+  -- Mon propre SHW (connexion) : 25 à 45 s après PLAYER_LOGIN, une fois, même si le partage est coupé ; pas sans guilde
+  advance(Sh.QUIET + 5)
+  m14 = #mine
+  ForeverRosterDB.share = false
+  local t14b = clock
+  fire("PLAYER_LOGIN")
+  advance(24)
+  assert(count(mine, "^SHW", m14 + 1) == 0, "SHW pas avant 25 s")
+  advance(21)
+  assert(count(mine, "^SHW;FRG$", m14 + 1) == 1, "SHW 25 à 45 s après la connexion")
+  for i = m14 + 1, #mine do
+    if mine[i].msg:find("^SHW") then assert(mine[i].dist == "GUILD" and mine[i].t - t14b >= 25 and mine[i].t - t14b <= 45, "SHW sur la guilde, 25 à 45 s après") end
+  end
+  assert(journalHas("Demande SHW envoyée sur GUILD"), "journal : SHW envoyé")
+  advance(60)
+  assert(count(mine, "^SHW", m14 + 1) == 1, "une seule fois")
+  ForeverRosterDB.share = nil
+  S.guild = false
+  m14 = #mine
+  fire("PLAYER_LOGIN")
+  advance(60)
+  assert(count(mine, "^SHW", m14 + 1) == 0, "pas de guilde : pas de SHW")
+  S.guild = true
+
+  advance(Sh.QUIET + 5)
+  -- Gestionnaires de Raid.lua : RA.On(code, fn) reçoit (prénom, champs, canal, texte, expéditeur brut)
+  local seen14
+  RA.On("ZZ", function(...) seen14 = { ... } end)
+  fire("CHAT_MSG_ADDON", "FRoster", "ZZ;1;deux", "GUILD", "Zed Trois-Forever EU")
+  assert(seen14 and seen14[1] == "Zed" and seen14[2][1] == "ZZ" and seen14[2][3] == "deux" and seen14[3] == "GUILD" and seen14[4] == "ZZ;1;deux" and seen14[5] == "Zed Trois-Forever EU", "RA.On : prénom, champs, canal, texte, expéditeur brut")
+  seen14 = nil
+  RA.Deliver("Zed", "ZZ;3", "RAID")
+  assert(seen14 and seen14[1] == "Zed" and seen14[3] == "RAID" and seen14[5] == "Zed", "RA.Deliver : l'expéditeur est aussi le nom brut")
+  -- Anneau du journal : 40 lignes au plus, les plus anciennes d'abord, copie (modifier le résultat ne change rien)
+  local ringClient = client("Anneau")
+  ringClient.guild = false
+  local ring = ringClient.Sh
+  for i = 1, 55 do ring.Log("ligne " .. i) end
+  local rj = ring.Journal()
+  assert(#rj == 40 and rj[1].text == "ligne 16" and rj[40].text == "ligne 55" and rj[40].t == time(), "journal : 40 dernières lignes, plus ancienne d'abord")
+  table.remove(rj, 1)
+  assert(#ring.Journal() == 40, "journal : copie")
+
+  -- Actualisation de Roster Companion toute seule, toutes les 15 min (et plus toutes les heures) ; la proposition de recharger
+  -- reste au plus une fois par heure. Copies simulées par AutoRefresh (le vrai chargement est vérifié à la section 9)
+  local Cp = ns.Companion
+  local realAuto, autoCalls = Cp.AutoRefresh, {}
+  ForeverRosterDB.companion = { seen = time() }
+  fire("PLAYER_LOGIN")
+  Cp.AutoRefresh = function(reason) autoCalls[#autoCalls + 1] = reason return true end
+  advance(10 * 60)
+  Cp.Tick()
+  assert(#autoCalls == 0, "Roster Companion : pas d'actualisation à 10 min")
+  advance(5 * 60)
+  Cp.Tick()
+  assert(#autoCalls == 1, "Roster Companion : actualisation toute seule à 15 min")
+  Cp.AutoRefresh = realAuto
   ForeverRosterDB.companion = keep.companion
 
   advance(300)
@@ -1691,7 +1851,10 @@ do
     return found
   end
   fire("PLAYER_LOGOUT")
-  assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat")
+  -- La connexion envoie la demande SHW à la guilde (1.6.3) ; le relevé, lui, ne part jamais aux autres joueurs
+  local sentOther = 0
+  for i = sentBefore + 1, #sent do if not sent[i].msg:find("^SHW;FRG$") then sentOther = sentOther + 1 end end
+  assert(sentOther == 0 and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat (hors la demande SHW de la connexion)")
   assert(not frlBlock(), "relevé déjà envoyé : rien dans la boîte d'envoi")
   MEMBERS[3][4] = MEMBERS[3][4] + 1
   clock = clock + 120
@@ -2395,13 +2558,13 @@ if helper and helper ~= "" then
   ReloadUI = realReload
   ForeverRoster_Refresh()
   assert(left() == 10, "touche « Charger les nouveautés »")
-  -- Mode passif : au moins une actualisation par heure
-  clock = clock + 59 * 60
+  -- Mode passif : au moins une actualisation toutes les 15 min (1.6.3 : 60 min avant)
+  clock = clock + 10 * 60
   ns.Companion.Tick()
-  assert(left() == 10, "pas avant une heure")
-  clock = clock + 61
+  assert(left() == 10, "pas avant 15 min")
+  clock = clock + 5 * 60
   ns.Companion.Tick()
-  assert(left() == 9, "une heure sans actualisation : chargée toute seule")
+  assert(left() == 9, "15 min sans actualisation : chargée toute seule")
   for _ = 1, 9 do ok, msg = ns.Companion.Refresh() end
   assert(ok and msg:find("dernière actualisation", 1, true), msg)
   ok, msg = ns.Companion.Refresh()
@@ -2421,7 +2584,13 @@ if helper and helper ~= "" then
   local said = 0
   for k = before + 1, #printed do if printed[k]:find("20 actualisations", 1, true) then said = said + 1 end end
   assert(said == 1, "copies épuisées : dit une seule fois dans le chat")
-  clock = clock + 61 * 60
+  clock = clock + 16 * 60
+  ns.Companion.Tick()
+  assert(asks == 1, "mode passif toutes les 15 min, mais la proposition reste au plus une fois par heure")
+  clock = clock + 40 * 60
+  ns.Companion.Tick()
+  assert(asks == 1, "pas de nouvelle proposition avant une heure")
+  clock = clock + 5 * 60
   ns.Companion.Tick()
   assert(asks == 2, "reproposé au bout d'une heure (mode passif)")
   local reloads2, realReload2 = 0, ReloadUI

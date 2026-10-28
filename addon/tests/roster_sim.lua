@@ -2288,6 +2288,30 @@ local after8 = 0
 for _, c in ipairs(clients) do after8 = after8 + msgs(c.sent, "^SHV;RRG;g8;" .. T11) end
 assert(after8 - answers == 1 and lastAt(olderC, "g8") == T11, "une seule réponse à une annonce ancienne, puis mise à jour")
 
+-- 11.8 bis Demande à la connexion (SHW, 1.6.3) : Roster l'entend (annonce de mes groupes signés 1 à 5 s plus tard, une fois par
+-- joueur et par 5 min) mais n'en envoie jamais
+advance(Sh.QUIET + 5)
+before = #S.sent
+addon("Ilyra-Hyjal", "SHW;RRG", "GUILD")
+advance(0.9)
+assert(msgs(S.sent, "^SHV", before + 1) == 0, "SHW : pas de réponse avant 1 s")
+advance(5.2)
+assert(msgs(S.sent, "^SHV;RRG;g1;" .. T10, before + 1) == 1 and S.sent[#S.sent].dist == "GUILD", "SHW entendu : annonce de mes groupes sur la guilde")
+advance(100)
+before = #S.sent
+addon("Ilyra-Hyjal", "SHW;RRG", "GUILD")
+advance(10)
+assert(msgs(S.sent, "^SHV", before + 1) == 0, "deuxième SHW du même joueur en moins de 5 min : pas de réponse")
+addon("Ilyra-Hyjal", "SHW;FRG", "GUILD") -- un autre kind : ignoré
+addon("Zephyra-Hyjal", "SHW;RRG", "WHISPER") -- chuchoté : ignoré
+advance(10)
+assert(msgs(S.sent, "^SHV", before + 1) == 0, "autre kind ou chuchotement : ignoré")
+RosterDB.share = false
+addon("Vex-Kael'Thas", "SHW;RRG", "GUILD")
+advance(10)
+assert(msgs(S.sent, "^SHV", before + 1) == 0, "partage coupé : pas de réponse")
+RosterDB.share = nil
+
 -- 11.9 Vraie signature du site (clé de test, addon/tests/fixtures) : vérifiée par Crypto.lua une fois fusionné
 local REAL_SIG = "wdCuNRiT5QTvkUzGHnSsAAd1ti78hVLYZrVv7+0MSLMbJ6gm7vy7C7ozapF+b1i7I57sRuBW4fbYvrhznq6U7f9Y3CJGBhNZow6xlJjFYBrrD+zDmiUL3lubtg/gGOuGi1efCivBCuNP+dKqkW5VEWvgfzalhosDnFa1XiiaeFU0aAbODc8XX4VHYWoFBUHDZbOwE4xVf6NgSQcqJR8HPj6OTJAWt8cMj9Fzksq8Hvc0mN5rWiuL5c1RUT1/bD0iQgZsYnV8BYGJVjSRDVAHYkpg/tiHF7fuu+M+v0bmwShYnwhQS4ZB/EX1uWMovyWMBSzFoBxtp7Ii45WHXCyQbg=="
 local REAL = table.concat({
@@ -2310,6 +2334,7 @@ end
 ns.Crypto.VerifyRSA = realVerify
 S.bus, S.guild, S.raid = nil, false, false
 S.members = { S.members[1] }
+assert(msgs(S.sent, "^SHW") == 0, "Roster n'envoie jamais de SHW (connexions comprises)")
 assert(errors() == 0, "partage sans erreur : " .. tostring(lastPrinted("erreur")))
 end
 sharing()

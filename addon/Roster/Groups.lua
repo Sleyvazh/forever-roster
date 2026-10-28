@@ -228,7 +228,7 @@ end
 -- Partage entre joueurs (addon/shared/Share.lua) : un joueur colle les données du site, son addon les annonce à la
 -- guilde et au raid ; les addons qui ont une version plus ancienne (ou rien) la demandent, la vérifient (signature du
 -- site, ligne M : un de mes persos est membre du groupe) et l'appliquent. Option : RosterDB.share (nil : oui, par
--- défaut ; false : ni annonce ni envoi, la réception continue). Messages SHV, SHQ, SHD : docs/addon-format.md.
+-- défaut ; false : ni annonce ni envoi, la réception continue). Messages SHV, SHQ, SHD (et SHW, entendu seulement) : docs/addon-format.md.
 --------------------------------------------------------------------------------------------------------------------
 local Sh = ns.Share or {} -- Share.lua absent ou cassé : pas de partage, le reste de l'addon marche
 local function isTrue(v) return not F.secret(v) and v and true or false end
@@ -323,7 +323,8 @@ if Sh.Setup then Sh.Setup({
   stamp = function(at) return F.Stamp(at) end,
 }) end
 
-for _, code in ipairs({ "SHV", "SHQ", "SHD" }) do
+-- SHW (demande à la connexion, de Forever Roster) : Roster l'entend et annonce ses groupes, il n'en envoie pas
+for _, code in ipairs({ "SHV", "SHQ", "SHD", "SHW" }) do
   ns.Comm.On(code, function(sender, _, dist, msg)
     if F.SameName(sender, ns.Comm.Me()) or not Sh.OnMessage then return end -- écho de mes propres messages
     Sh.OnMessage(sender, msg, dist)

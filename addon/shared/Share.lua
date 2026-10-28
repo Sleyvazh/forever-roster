@@ -10,7 +10,8 @@
 --   ns.Share.Setup{
 --     kind    = "RRG" | "FRG",                      -- en-tête des blocs de groupe de l'addon
 --     send    = function(msg, dist, target) end,     -- envoie un message d'addon (≤ 255 octets) avec le préfixe et la
---                                                    --   file de l'addon ; dist : "GUILD", "RAID" ou "WHISPER" (target)
+--                                                    --   file de l'addon ; dist : "GUILD", "RAID" ou "WHISPER" (target :
+--                                                    --   le nom de l'expéditeur tel que le jeu l'a donné, royaume compris)
 --     blocks  = function() return { [groupe] = { at = n, text = texte } } end,
 --                                                    --   groupes détenus : at = « généré le » du site (en-tête) ;
 --                                                    --   text = le bloc tel que collé ou reçu (avec M et Z), nil s'il
@@ -19,24 +20,34 @@
 --                                                    --   remplace les données de ce groupe par le bloc reçu (vérifié) en
 --                                                    --   gardant MES champs personnels (statut et perso par raid) ; garde
 --                                                    --   sharedText comme texte signé du groupe (relayé ensuite) ; une
---                                                    --   erreur ou false : refusé
+--                                                    --   erreur ou false : refusé ; sender : nom brut, comme reçu
 --     mine    = function(names) return bool end,     -- un de mes persos est-il dans cette liste (ligne M) ?
 --     notify  = function(text, info) end,            -- message au joueur, déjà traduit, une fois par bloc appliqué ;
 --                                                    --   info = { group, name, sender, at, dist }
 --     -- facultatifs :
 --     enabled = function() return bool end,          -- option « Partager les données du site… » : coupée, ni annonce
 --                                                    --   (SHV) ni envoi de données (SHD) ; la réception continue
---     display = function(name) return text end,      -- nom d'un joueur dans le message (par défaut : tel quel)
+--     display = function(name) return text end,      -- nom d'un joueur dans les messages et le journal (par défaut :
+--                                                    --   tel quel ; Forever Roster : le prénom seul)
 --     stamp   = function(at) return text end,        -- date affichée (par défaut : « 12/10 21:04 »)
 --   }
---   ns.Share.OnMessage(sender, msg, dist)  -- chaque message SHV, SHQ ou SHD reçu d'un AUTRE joueur (pas l'écho des
---                                          --   miens), avec son canal ("GUILD", "RAID", "WHISPER")
+--   ns.Share.OnMessage(sender, msg, dist)  -- chaque message SHV, SHQ, SHD ou SHW reçu d'un AUTRE joueur (pas l'écho des
+--                                          --   miens), avec son canal ("GUILD", "RAID", "WHISPER") ; sender : le nom
+--                                          --   BRUT donné par le jeu (« Prénom-Royaume ») : les chuchotements (SHQ)
+--                                          --   partent à ce nom, un prénom seul pouvant échouer ou toucher un homonyme
+--                                          --   quand la guilde mêle plusieurs serveurs ; l'affichage passe par display
 --   ns.Share.Announce(dist, later)         -- annonce mes blocs signés sur "GUILD" ou "RAID" ; à appeler : ~20-40 s
 --                                          --   après la connexion (GUILD, si en guilde), juste après un collage ou des
 --                                          --   données reçues (GUILD et RAID), à l'arrivée dans un raid et quand il
 --                                          --   s'agrandit (RAID, later = true : un groupe déjà annoncé sur ce canal
 --                                          --   il y a moins de 60 s, par moi ou un autre, est réannoncé à la fin de
 --                                          --   ce délai). Renvoie le nombre de groupes annoncés.
+--   ns.Share.Want(dist)                    -- demande « qui a les données du site ? » (SHW) sur "GUILD" ou "RAID" : à
+--                                          --   appeler une fois par session, 25 à 45 s après la connexion (Forever Roster
+--                                          --   seulement ; Roster comprend les SHW des autres, il n'en envoie pas)
+--   ns.Share.Log(text) / Journal()         -- journal de la session (40 lignes en mémoire, { t = heure, text = texte },
+--                                          --   du plus ancien au plus récent) : chaque étape du partage y écrit une ligne
+--                                          --   déjà traduite, l'addon peut y ajouter les siennes (fenêtre /fr partage)
 --   Autres : ns.Share.Jitter(a, b) (délai au hasard), ns.Share.Parse / Canonical / Verify / Status (lecture d'un
 --   bloc), ns.Share.Chunks (découpage), ns.Share.State / Reset (tests).
 --
@@ -46,6 +57,12 @@
 --                                         récente, l'a été depuis moins de 60 s). Celui qui entend une version plus
 --                                         ancienne que la sienne répond par sa propre annonce (1 à 5 s au hasard,
 --                                         sauf si quelqu'un l'a fait entre-temps).
+--   SHW;<kind>                            « qui a les données du site ? » (canal GUILD ou RAID), envoyé par un joueur qui
+--                                         vient de se connecter, 25 à 45 s plus tard (Forever Roster seulement). Qui
+--                                         l'entend (même kind), a le partage activé et détient au moins un bloc signé
+--                                         annonce ses groupes (SHV) 1 à 5 s plus tard ; un groupe annoncé il y a moins de
+--                                         60 s est réannoncé à la fin de ce délai. Un même expéditeur n'est écouté
+--                                         qu'une fois par 5 min. On reçoit toujours ces demandes, partage activé ou non.
 --   SHQ;<groupe>;<at>;<canal>             chuchoté à celui qui annonce : « envoie, j'ai <at> (0 : rien) », canal de
 --                                         l'annonce entendue (GUILD ou RAID ; sans ce champ : celui de ma dernière
 --                                         annonce). Seulement si l'annonce est plus récente que mes données ; sans
@@ -77,12 +94,15 @@ Sh.MAX_LEN = 60000   -- octets au plus d'un texte partagé
 Sh.MAX_PARTS = 400   -- morceaux au plus d'un texte partagé
 Sh.MAX_BUFFERS = 16  -- textes en cours de réception au plus (2 par expéditeur)
 Sh.FUTURE = 86400    -- s : une version datée de plus d'un jour dans le futur est ignorée
+Sh.WANT_GAP = 300    -- s : un même joueur n'est écouté qu'une fois par ce temps pour sa demande (SHW)
+Sh.JOURNAL = 40      -- lignes du journal de la session
 
 local CHANNELS = { GUILD = true, RAID = true }
 -- Champs personnels vidés dans le texte canonique (lignes R ; champ 1 = « R »)
 local PERSONAL = { RRG = { 7, 8 }, FRG = { 5, 6 } }
 
 local cfg -- adaptateur de l'addon (Setup)
+local N = ns.N or function(text) return text end -- marque un texte à traduire (L(texte, …) plus loin)
 
 --------------------------------------------------------------------------------------------------------------------
 -- Outils
@@ -256,6 +276,7 @@ end
 -- État de la session
 --------------------------------------------------------------------------------------------------------------------
 local rx, heard, seen, pending, counter, lastDist, asked, askedEmpty, refused, outsider, retrying, parsed, parsedN
+local wanted, noted, journal
 function Sh.Reset()
   rx = {}                             -- textes en cours : [expéditeur \1 groupe \1 at] = { parts, n, got, size, first, last, … }
   heard = { GUILD = {}, RAID = {} }   -- [groupe] = { at, t } : annonce (SHV) la plus récente entendue ou faite sur ce canal
@@ -269,11 +290,29 @@ function Sh.Reset()
   outsider = {}                       -- [groupe] = true : je ne suis pas dans sa ligne M (plus de demande sans données)
   retrying = {}                       -- [canal] = true : annonce refaite à la fin du délai
   parsed, parsedN = {}, 0             -- [texte détenu] = { info, why } : lecture et vérification de mes blocs
+  wanted = {}                         -- [expéditeur] = t : dernière demande (SHW) à laquelle j'ai répondu
+  noted = {}                          -- [clé] = true : lignes du journal qui ne se disent qu'une fois
+  journal = {}                        -- { t, text } : journal de la session (Sh.JOURNAL lignes au plus)
 end
 Sh.Reset()
 --- État interne (tests)
 function Sh.State()
-  return { rx = rx, heard = heard, seen = seen, pending = pending, asked = asked, askedEmpty = askedEmpty, refused = refused, outsider = outsider }
+  return { rx = rx, heard = heard, seen = seen, pending = pending, asked = asked, askedEmpty = askedEmpty, refused = refused, outsider = outsider, wanted = wanted }
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Journal de la session (fenêtre /fr partage) : les dernières lignes, en mémoire, du plus ancien au plus récent
+--------------------------------------------------------------------------------------------------------------------
+--- Ajoute une ligne (déjà traduite) au journal ; au-delà de Sh.JOURNAL lignes, la plus ancienne s'efface
+function Sh.Log(text)
+  journal[#journal + 1] = { t = wall(), text = tostring(text) }
+  if #journal > Sh.JOURNAL then table.remove(journal, 1) end
+end
+--- Les lignes du journal, du plus ancien au plus récent : { { t = heure Unix, text = texte }, … } (une copie)
+function Sh.Journal()
+  local out = {}
+  for i, e in ipairs(journal) do out[i] = { t = e.t, text = e.text } end
+  return out
 end
 
 function Sh.Setup(adapter)
@@ -295,6 +334,72 @@ end
 local function myAt(group)
   local b = held()[group]
   return b and (tonumber(b.at) or 0) or nil
+end
+
+-- Date affichée et nom d'un joueur (messages et journal)
+local function stamp(at)
+  if cfg.stamp then
+    local ok, s = pcall(cfg.stamp, at)
+    if ok and type(s) == "string" then return s end
+  end
+  return ((date or os.date)("%d/%m %H:%M", at))
+end
+local function shown(name)
+  if cfg.display then
+    local ok, s = pcall(cfg.display, name)
+    if ok and type(s) == "string" then return s end
+  end
+  return name
+end
+
+-- Nom d'un groupe que je détiens (en-tête de son bloc), sinon son identifiant : pour le journal
+local function labelOf(group)
+  local b = held()[group]
+  local text = b and b.text
+  if type(text) == "string" then
+    local line = text:match(cfg.kind .. ";[^\n]*")
+    if line then
+      local f = fields((line:gsub("\r", "")))
+      if f[3] == group and f[5] and f[5] ~= "" then return (f[5]:gsub("|", "")) end
+    end
+  end
+  return group
+end
+
+-- Une ligne du journal, traduite comme le message de réception : note(N("texte %s"), valeur, …)
+local function note(fmt, ...)
+  local L = ns.L
+  local ok, text = pcall(function(...) return L and L(fmt, ...) or string.format(fmt, ...) end, ...)
+  Sh.Log(ok and text or fmt)
+end
+-- Idem, une seule fois par clé et par session (sinon une ligne par annonce entendue)
+local function noteOnce(key, fmt, ...)
+  if noted[key] then return end
+  noted[key] = true
+  note(fmt, ...)
+end
+-- Pourquoi un message n'a pas de suite, ou une version a été refusée (dit dans le journal)
+local function why(code)
+  local L = ns.L
+  if not L then return code end
+  if code == "off" then return L["partage coupé"]
+  elseif code == "nosigned" then return L["aucun bloc signé à partager"]
+  elseif code == "gap" then return L["déjà répondu il y a moins de 5 min"]
+  elseif code == "newer" then return L["pas de version plus récente que la sienne"]
+  elseif code == "channel" then return L["canal inconnu"]
+  elseif code == "queued" then return L["diffusion déjà programmée"]
+  elseif code == "recent" then return L["diffusée il y a moins de 60 s"]
+  elseif code == "invalid" then return L["texte incomplet ou illisible"]
+  elseif code == "older" then return L["version pas plus récente que la mienne"]
+  elseif code == "members" then return L["liste des membres absente"]
+  elseif code == "member" then return L["aucun de mes persos dans ce groupe"]
+  elseif code == "unsigned" then return L["pas de signature"]
+  elseif code == "key" then return L["clé de signature inconnue"]
+  elseif code == "crypto" then return L["vérification impossible"]
+  elseif code == "signature" then return L["signature fausse"]
+  elseif code == "apply" then return L["refusées par l'addon"]
+  end
+  return tostring(code)
 end
 
 local function send(msg, dist, target)
@@ -330,6 +435,7 @@ local function announce(group, info, dist)
   if not send(table.concat({ "SHV", cfg.kind, group, info.at, #info.shared }, ";"), dist) then return false end
   heard[dist][group] = { at = info.at, t = now() }
   lastDist[group] = dist
+  note(N("Annonce SHV faite sur %s : %s, version du %s."), dist, labelOf(group), stamp(info.at))
   return true
 end
 
@@ -377,27 +483,37 @@ end
 --------------------------------------------------------------------------------------------------------------------
 local function request(sender, group, at, mine, dist)
   local t = now()
-  if refused[group] and refused[group][at] then return end -- version déjà refusée
+  if refused[group] and refused[group][at] then -- version déjà refusée
+    noteOnce("refused\1" .. group .. "\1" .. at, N("Pas de demande pour %s, version du %s : déjà refusée."), labelOf(group), stamp(at))
+    return
+  end
   for _, r in pairs(rx) do if r.group == group and r.at >= at then return end end -- déjà en route
   if mine then
     local a = asked[group]
     if a and a.at >= at and t - a.t < Sh.TIMEOUT then return end -- déjà demandée
   else
-    if outsider[group] then return end -- pas membre de ce groupe
+    if outsider[group] then -- pas membre de ce groupe
+      noteOnce("outsider\1" .. group, N("Pas de demande pour %s : %s."), labelOf(group), why("member"))
+      return
+    end
     local e = askedEmpty[group]
     if e and (e.done or t - e.t < Sh.TIMEOUT) then return end -- une fois par session (sauf demande restée sans réponse)
   end
   if send("SHQ;" .. group .. ";" .. (mine or 0) .. ";" .. dist, "WHISPER", sender) then
     asked[group] = { at = at, t = t }
     if not mine then askedEmpty[group] = { t = t } end
+    if mine then note(N("Demande SHQ envoyée à %s pour %s : j'ai la version du %s."), shown(sender), labelOf(group), stamp(mine))
+    else note(N("Demande SHQ envoyée à %s pour %s : je n'ai rien."), shown(sender), labelOf(group)) end
   end
 end
 
+-- Programme ma diffusion sur ce canal. Renvoie true, ou false et pourquoi pas ("queued" : déjà programmée, "recent" :
+-- diffusée il y a moins de 60 s)
 local function broadcast(group, info, dist)
   local p = pending[dist][group]
-  if p and p.at >= info.at then return end -- déjà programmée
+  if p and p.at >= info.at then return false, "queued" end
   local s = seen[dist][group]
-  if s and s.at >= info.at and now() - s.t < Sh.QUIET then return end -- diffusée il y a moins de 60 s
+  if s and s.at >= info.at and now() - s.t < Sh.QUIET then return false, "recent" end
   local id = {}
   pending[dist][group] = { at = info.at, id = id }
   after(Sh.Jitter(0.5, 3), function()
@@ -413,42 +529,35 @@ local function broadcast(group, info, dist)
     if not list then return end
     seen[dist][group] = { at = cur.at, t = now() }
     for _, msg in ipairs(list) do send(msg, dist) end
+    note(N("Données de %s diffusées sur %s : %d morceau(x)."), labelOf(group), dist, #list)
   end)
+  return true
 end
 
 --------------------------------------------------------------------------------------------------------------------
 -- Réception
 --------------------------------------------------------------------------------------------------------------------
-local function stamp(at)
-  if cfg.stamp then
-    local ok, s = pcall(cfg.stamp, at)
-    if ok and type(s) == "string" then return s end
-  end
-  return ((date or os.date)("%d/%m %H:%M", at))
-end
-local function shown(name)
-  if cfg.display then
-    local ok, s = pcall(cfg.display, name)
-    if ok and type(s) == "string" then return s end
-  end
-  return name
-end
-
 -- Texte complet reçu : vérifié, puis appliqué par l'addon. Renvoie true (appliqué) ou false et la raison.
 -- Un refus n'est retenu (version plus jamais demandée ni lue) que pour un texte dont la signature est valide : un
 -- texte forgé ne doit pas pouvoir faire ignorer la vraie version du même groupe et de la même date.
 local function receive(r, text)
   local group, at, sender = r.group, r.at, r.sender
-  local function result(why, keep)
+  local label = labelOf(group)
+  local function result(reason, keep)
     if keep then
       refused[group] = refused[group] or {}
-      refused[group][at] = why
+      refused[group][at] = reason
     end
-    Sh.last = { group = group, at = at, sender = sender, result = why }
-    return why == "applied", why
+    Sh.last = { group = group, at = at, sender = sender, result = reason }
+    if reason == "applied" then note(N("Données de %s appliquées (reçues de %s, version du %s)."), label, shown(sender), stamp(at))
+    elseif reason == "member" then -- pas mon groupe : une seule ligne par groupe
+      noteOnce("member\1" .. group, N("Données de %s refusées (reçues de %s) : %s."), label, shown(sender), why(reason))
+    else note(N("Données de %s refusées (reçues de %s) : %s."), label, shown(sender), why(reason)) end
+    return reason == "applied", reason
   end
   local info = Sh.Parse(text, cfg.kind)
   if not (info and info.shared) or info.group ~= group or info.at ~= at then return result("invalid") end
+  if info.name ~= "" then label = (info.name:gsub("|", "")) end
   local mine = myAt(group)
   if mine and at <= mine then return result("older") end
   if not info.members then return result("members") end
@@ -460,8 +569,8 @@ local function receive(r, text)
     if e then e.done = true end
     return result("member")
   end
-  local ok, why = verify(info)
-  if not ok then return result(why) end
+  local ok, bad = verify(info)
+  if not ok then return result(bad) end
   if e then e.done = true end
   local okA, res = pcall(cfg.apply, info.shared, sender, r.dist)
   if not okA or res == false then return result("apply", true) end
@@ -475,7 +584,10 @@ end
 
 local function sweep(t)
   for k, r in pairs(rx) do
-    if t - r.last > Sh.TIMEOUT or t - r.first > 8 * Sh.TIMEOUT then rx[k] = nil end
+    if t - r.last > Sh.TIMEOUT or t - r.first > 8 * Sh.TIMEOUT then
+      rx[k] = nil
+      note(N("Réception de %s depuis %s abandonnée : %d morceau(x) sur %d."), labelOf(r.group), shown(r.sender), r.got, r.n)
+    end
   end
 end
 
@@ -494,18 +606,34 @@ local function onAnnounce(sender, msg, dist)
   end
   if mine and at == mine then return end
   if len > Sh.MAX_LEN then return end
+  if not (outsider[group] and not mine) then -- plus récente que la mienne (ou rien) : dite dans le journal
+    note(N("Annonce SHV de %s sur %s : %s, version du %s."), shown(sender), dist, labelOf(group), stamp(at))
+  end
   request(sender, group, at, mine, dist)
 end
 
 local function onRequest(sender, msg, dist)
-  if dist ~= "WHISPER" or not enabled() then return end
+  if dist ~= "WHISPER" then return end
   local group, theirs, chan = msg:match("^SHQ;([^;]+);(%d+);?(%u*)")
   theirs = tonumber(theirs)
   if not theirs then return end
-  local info = mineSigned(group)
-  if not info or info.at <= theirs then return end
-  chan = CHANNELS[chan] and chan or lastDist[group]
-  if chan then broadcast(group, info, chan) end
+  local who, reason = shown(sender), nil
+  if not enabled() then reason = "off"
+  else
+    local info = mineSigned(group)
+    if not info then reason = "nosigned"
+    elseif info.at <= theirs then reason = "newer"
+    else
+      chan = CHANNELS[chan] and chan or lastDist[group]
+      if not chan then reason = "channel"
+      else
+        local ok, no = broadcast(group, info, chan)
+        if ok then note(N("Demande SHQ de %s pour %s : je diffuse sur %s dans quelques secondes."), who, labelOf(group), chan) return end
+        reason = no
+      end
+    end
+  end
+  note(N("Demande SHQ de %s pour %s : ignorée, %s."), who, labelOf(group), why(reason))
 end
 
 local function onData(sender, msg, dist)
@@ -516,7 +644,10 @@ local function onData(sender, msg, dist)
   local t = now()
   -- Quelqu'un diffuse cette version (ou une plus récente) sur ce canal : ma diffusion programmée est annulée
   local p = pending[dist][group]
-  if p and at >= p.at then pending[dist][group] = nil end
+  if p and at >= p.at then
+    pending[dist][group] = nil
+    note(N("Diffusion de %s sur %s annulée : %s la diffuse déjà."), labelOf(group), dist, shown(sender))
+  end
   local s = seen[dist][group]
   if not s or at >= s.at then seen[dist][group] = { at = at, t = t } end
   local mine = myAt(group)
@@ -532,6 +663,9 @@ local function onData(sender, msg, dist)
     if count >= Sh.MAX_BUFFERS or from >= 2 then return end
     r = { parts = {}, n = n, got = 0, size = 0, first = t, last = t, group = group, at = at, sender = sender, dist = dist }
     rx[key] = r
+    if not outsider[group] then -- les diffusions d'un groupe qui n'est pas le mien ne remplissent pas le journal
+      note(N("Réception de %s depuis %s : %d morceau(x) attendu(s)."), labelOf(group), shown(sender), n)
+    end
   end
   if r.n ~= n then rx[key] = nil return end
   if r.parts[i] then return end -- doublon
@@ -542,13 +676,50 @@ local function onData(sender, msg, dist)
   receive(r, table.concat(r.parts, "", 1, r.n))
 end
 
+-- Un joueur qui vient de se connecter demande qui a les données du site (SHW) : si j'en ai (blocs signés, partage
+-- activé), j'annonce mes groupes 1 à 5 s plus tard, au plus une fois par Sh.WANT_GAP s pour un même joueur. Un groupe
+-- annoncé il y a moins de 60 s (par moi ou un autre) est réannoncé à la fin de ce délai : il a pu se connecter juste après.
+local function onWant(sender, msg, dist)
+  if not CHANNELS[dist] or msg:match("^SHW;([^;]*)") ~= cfg.kind then return end
+  local t, who = now(), shown(sender)
+  local reason
+  if not enabled() then reason = "off"
+  else
+    local signed = false
+    for group, b in pairs(held()) do
+      if mineSigned(group, b) then signed = true break end
+    end
+    local last = wanted[sender]
+    if not signed then reason = "nosigned"
+    elseif last and t - last < Sh.WANT_GAP then reason = "gap" end
+  end
+  if reason then
+    note(N("SHW de %s sur %s : ignoré, %s."), who, dist, why(reason))
+    return
+  end
+  for k, at in pairs(wanted) do if t - at >= Sh.WANT_GAP then wanted[k] = nil end end
+  wanted[sender] = t
+  note(N("SHW de %s sur %s : j'annonce mes groupes dans quelques secondes."), who, dist)
+  after(Sh.Jitter(1, 5), function() Sh.Announce(dist, true) end)
+end
+
+--- Demande « qui a les données du site ? » (SHW) sur "GUILD" ou "RAID" : on la fait même partage coupé (la réception
+--- reste active). Renvoie true si le message est parti.
+function Sh.Want(dist)
+  if not (cfg and CHANNELS[dist]) then return false end
+  if not send("SHW;" .. cfg.kind, dist) then return false end
+  note(N("Demande SHW envoyée sur %s."), dist)
+  return true
+end
+
 function Sh.OnMessage(sender, msg, dist)
   if not cfg or type(sender) ~= "string" or type(msg) ~= "string" then return end
   sweep(now())
   local code = msg:sub(1, 4)
   if code == "SHV;" then onAnnounce(sender, msg, dist)
   elseif code == "SHQ;" then onRequest(sender, msg, dist)
-  elseif code == "SHD;" then onData(sender, msg, dist) end
+  elseif code == "SHD;" then onData(sender, msg, dist)
+  elseif code == "SHW;" then onWant(sender, msg, dist) end
 end
 
 return Sh

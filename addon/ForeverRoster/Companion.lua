@@ -7,9 +7,11 @@
 -- Le jeu lit leurs fichiers au moment du chargement : chaque copie donne une actualisation, une seule fois par session
 -- (le /reload remet tout à zéro). Le jeu ne voit pas les fichiers créés après son lancement (vérifié sur Forever) :
 -- l'addon ne peut pas savoir quand l'appli a du nouveau, il charge donc aux moments utiles (1.5) : ouverture de la
--- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, et au moins toutes les heures (1.5.1) ; et à la demande
--- (bouton, touche, /fr actualiser). Les 20 copies utilisées : le jeu interdit à un addon de recharger l'interface tout
--- seul (il faut un clic ou une touche), l'addon le propose donc dans sa propre fenêtre, au plus une fois par heure.
+-- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, et au moins toutes les 15 min (1.5.1 : toutes les heures ;
+-- 1.6.3 : 15 min, pour que les données du site, que ses utilisateurs partagent ensuite avec la guilde, soient fraîches :
+-- 20 copies tiennent ainsi environ 5 h de jeu sans /reload) ; et à la demande (bouton, touche, /fr actualiser). Les 20
+-- copies utilisées : le jeu interdit à un addon de recharger l'interface tout seul (il faut un clic ou une touche),
+-- l'addon le propose donc dans sa propre fenêtre, au plus une fois par heure.
 -- Sans l'appli, rien ne change : la synchro rapide et le copier-coller restent là.
 local _, ns = ...
 local L, N = ns.L, ns.N
@@ -20,7 +22,8 @@ local ACTIVE_DAYS = 3
 local SLOTS = 20           -- ForeverRoster_Data1 à 20 (9 avec l'appli 0.1.0 : les autres sont simplement absentes)
 local AUTO_GAP = 2 * 60    -- actualisation toute seule seulement si la dernière (ou la connexion) date d'au moins 2 min
 local RAID_MOMENTS = { 30, 5 } -- minutes avant un raid
-local HOURLY = 3600        -- mode passif : au moins une actualisation par heure, et la proposition de recharger au plus une fois par heure
+local PASSIVE = 15 * 60    -- mode passif : au moins une actualisation toute seule toutes les 15 min (60 min avant 1.6.3)
+local HOURLY = 3600        -- la proposition de recharger (copies épuisées) au plus une fois par heure
 local dead = {}            -- copies absentes ou refusées pendant cette session
 local refreshedAt = 0      -- connexion ou dernière actualisation (cette session)
 local afterCombat = false
@@ -220,8 +223,8 @@ end
 function C.Tick()
   if not C.Active() then return end
   local now = time()
-  -- Mode passif : au moins une actualisation par heure
-  if now - refreshedAt >= HOURLY then C.AutoRefresh("hourly") end
+  -- Mode passif : au moins une actualisation toutes les 15 min
+  if now - refreshedAt >= PASSIVE then C.AutoRefresh("passive") end
   if not ns.Group or not ns.Group.Raids then return end
   for _, e in ipairs(ns.Group.Raids()) do
     local t = tonumber(e.raid.time) or 0

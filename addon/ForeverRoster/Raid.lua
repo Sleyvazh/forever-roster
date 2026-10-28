@@ -110,6 +110,10 @@ end
 -- que la file de fond du partage leur laisse toujours de la place.
 --------------------------------------------------------------------------------------------------------------------
 local handlers = {}
+-- Enregistre le gestionnaire d'un message : fn(prénom de l'expéditeur, champs, canal, message entier, nom brut de
+-- l'expéditeur). Le nom brut est celui que le jeu donne (« Prénom-Royaume ») : chuchoter à ce nom, jamais au prénom seul
+-- (un homonyme d'un autre serveur, ou un échec, quand la guilde mêle plusieurs serveurs)
+function RA.On(code, fn) handlers[code] = fn end
 local BURST, RESERVE = 10, 6 -- allocation du préfixe ; messages toujours laissés aux messages du raid
 local allowance, allowanceAt = BURST, nil
 local function clock() return (GetTime and GetTime()) or time() end
@@ -127,7 +131,7 @@ local function send(msg, dist, target)
   if not api or not dist then return false end
   if dist == "WHISPER" and target == me() then -- à soi-même : traité tout de suite
     local f = ns.Format.split(msg)
-    if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER", msg) end
+    if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER", msg, me()) end
     return true
   end
   if RA.test then return RA.test.send(msg, dist, target) end
@@ -137,22 +141,22 @@ end
 -- Message reçu d'un joueur (raid d'essai : réponses simulées des autres addons)
 function RA.Deliver(sender, msg, dist)
   local f = ns.Format.split(msg)
-  if handlers[f[1]] then ns.safe("message", handlers[f[1]], sender, f, dist or "RAID", msg) end
+  if handlers[f[1]] then ns.safe("message", handlers[f[1]], sender, f, dist or "RAID", msg, sender) end
 end
 ns.on("PLAYER_LOGIN", function()
   local reg = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
   if reg then pcall(reg, PREFIX) end
 end)
--- handlers[code](expéditeur (prénom seul), champs, canal, message entier)
+-- handlers[code](expéditeur (prénom seul), champs, canal, message entier, expéditeur brut : voir RA.On)
 ns.on("CHAT_MSG_ADDON", function(prefix, text, dist, sender)
   if prefix ~= PREFIX or type(text) ~= "string" then return end
   local f = ns.Format.split(text)
-  if handlers[f[1]] then handlers[f[1]](short(sender), f, dist, text) end
+  if handlers[f[1]] then handlers[f[1]](short(sender), f, dist, text, ns.str(sender)) end
 end)
 
 --------------------------------------------------------------------------------------------------------------------
--- Partage des données du site entre joueurs (addon/shared/Share.lua, branché en bas de Group.lua) : SHV, SHQ, SHD sur
--- la guilde, le raid et en chuchotant. Ces messages de fond passent par leur propre file : après les messages du raid
+-- Partage des données du site entre joueurs (addon/shared/Share.lua, branché en bas de Group.lua) : SHV, SHQ, SHD, SHW
+-- sur la guilde, le raid et en chuchotant (SHQ, au nom complet de l'expéditeur : celui que le jeu a donné). Ces messages de fond passent par leur propre file : après les messages du raid
 -- (6 messages de l'allocation toujours laissés libres), au rythme permis (10 d'affilée puis 1 par seconde), jamais en
 -- combat, et en attendant si le jeu bloque les messages d'addon (AddOnMessageLockdown) ; abandonnés après 10 min.
 -- Le raid d'essai n'y touche pas (ses messages simulés passent par RA.test).
@@ -196,7 +200,7 @@ function lowFlush()
   lowFlushing = false
   if not ok then error(err, 0) end
 end
--- Envoi d'un message du partage (≤ 255 octets) : dist "GUILD", "RAID" ou "WHISPER" (target : prénom)
+-- Envoi d'un message du partage (≤ 255 octets) : dist "GUILD", "RAID" ou "WHISPER" (target : nom complet, royaume compris)
 function RA.SendLow(msg, dist, target)
   if type(msg) ~= "string" or #msg > 255 or not dist then return false end
   if dist == "WHISPER" and not target then return false end
@@ -206,12 +210,13 @@ function RA.SendLow(msg, dist, target)
   return true
 end
 ns.on("PLAYER_REGEN_ENABLED", function() lowFlush() end)
--- Message d'un autre joueur (pas l'écho des miens, renvoyés par la guilde et le raid)
-for _, code in ipairs({ "SHV", "SHQ", "SHD" }) do
-  handlers[code] = function(sender, _, dist, msg)
+-- Message d'un autre joueur (pas l'écho des miens, renvoyés par la guilde et le raid) : le filtre se fait sur le prénom,
+-- Share.lua reçoit le nom brut (ou, sans lui, le prénom) pour chuchoter à ce nom
+for _, code in ipairs({ "SHV", "SHQ", "SHD", "SHW" }) do
+  RA.On(code, function(sender, _, dist, msg, raw)
     if not (ns.Share and ns.Share.OnMessage) or type(msg) ~= "string" or sender == "" or sender == short(me()) then return end
-    ns.Share.OnMessage(sender, msg, dist)
-  end
+    ns.Share.OnMessage((type(raw) == "string" and raw ~= "") and raw or sender, msg, dist)
+  end)
 end
 
 --------------------------------------------------------------------------------------------------------------------

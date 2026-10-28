@@ -29,6 +29,11 @@ local function first(name)
   return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
 end
 
+-- Prénom seul comme on l'affiche, casse gardée : « Greta-Forever EU », « Greta Coulé-Forever EU » → Greta
+local function shortName(name)
+  return (ns.text(name):gsub("^%s+", ""):match("^[^%-%s]+")) or ""
+end
+
 -- Heure du statut sur le site (r.siteAt, 1.6.3) de l'inscription d'un raid de mes propres données : celle de l'entrée de la
 -- liste des inscrits (ligne Y) au prénom de r.char, jamais une entrée « ? » (prénom porté par deux joueurs). Sans liste,
 -- sans inscription ou sans perso : nil. Le statut et le perso restent ceux de la ligne R.
@@ -631,6 +636,22 @@ local function inRaid()
   return ok and r and true or false
 end
 
+-- Demande « qui a les données du site ? » (SHW) à la guilde, 25 à 45 s après la connexion (PLAYER_LOGIN : une fois par
+-- session) : seulement si je suis en guilde à ce moment-là, que le partage soit activé ou non (on reçoit toujours). Qui a
+-- des données signées et le partage activé annonce ses groupes (Share.lua). Une demande déjà prévue suffit.
+local wantPending = false
+function G.WantSoon()
+  if wantPending or not (Sh.Want and Sh.Jitter) then return false end
+  wantPending = true
+  local function go()
+    wantPending = false
+    if inGuild() then Sh.Want("GUILD") end
+  end
+  local delay = Sh.Jitter(25, 45)
+  if C_Timer and C_Timer.After then C_Timer.After(delay, go) else go() end
+  return true
+end
+
 -- Annonce sur la guilde ou le raid dans min à max secondes (une annonce déjà prévue plus tôt suffit)
 local soonAt = {}
 function G.ShareSoon(dist, min, max)
@@ -684,7 +705,7 @@ local function applyShared(text, sender, dist)
     end
   end
   g.mineAt = every and g.at or (old and (old.mineAt or old.at) or 0)
-  g.origin = { from = sender, at = time() }
+  g.origin = { from = shortName(sender), at = time() } -- le prénom : le nom reçu est « Prénom-Royaume »
   store({ g }, false)
   if ns.UI and ns.UI.Refresh then ns.safe(N("partage des données du site"), ns.UI.Refresh) end
   if ns.Minimap and ns.Minimap.Update then ns.safe(N("minicarte"), ns.Minimap.Update) end
@@ -709,6 +730,7 @@ if Sh.Setup then Sh.Setup({
   end,
   notify = function(text) ns.print(text) end,
   enabled = G.ShareOn,
+  display = shortName, -- Share.lua reçoit le nom brut (« Prénom-Royaume », pour chuchoter) ; on affiche le prénom
   stamp = function(at) return date("%d/%m %H:%M", at) end,
 }) end
 
@@ -735,9 +757,13 @@ function G.Origins()
   return out
 end
 
--- Connexion : annonce à la guilde 20 à 40 s après (le temps que tout charge). Les données de Roster Companion lues à
--- la connexion partent avec elle ; celles chargées ensuite (actualisation) sont annoncées tout de suite (G.ShareNew).
-ns.on("PLAYER_LOGIN", function() G.ShareSoon("GUILD", 20, 40) end)
+-- Connexion : annonce à la guilde 20 à 40 s après (le temps que tout charge), puis ma demande (SHW) 25 à 45 s après : qui
+-- avait des données les annonce, les autres arrivent à ce moment-là. Les données de Roster Companion lues à la connexion
+-- partent avec l'annonce ; celles chargées ensuite (actualisation) sont annoncées tout de suite (G.ShareNew).
+ns.on("PLAYER_LOGIN", function()
+  G.ShareSoon("GUILD", 20, 40)
+  G.WantSoon()
+end)
 
 -- Arrivée dans un raid, ou raid qui s'agrandit : annonce au raid (pour ceux qui ne sont pas de la guilde)
 local wasRaid, lastCount = false, 0
