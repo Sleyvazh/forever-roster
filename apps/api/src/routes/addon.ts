@@ -1,5 +1,5 @@
-import { buildRRG, dpsType, groupAddonExport, IMPORT_PARTS, outingDays, specDef, type Game, type GroupExportBis, type GroupExportOuting, type GroupExportPattern } from "@forever/game-data";
-import { and, asc, eq, gt, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { buildRRG, dpsType, gameName, groupAddonExport, IMPORT_PARTS, outingDays, specDef, type Game, type GroupExportBis, type GroupExportOuting, type GroupExportPattern, type GroupExportSignup } from "@forever/game-data";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
@@ -28,8 +28,9 @@ export const UPLOAD_BODY_LIMIT = 2 * 1024 * 1024;
 /**
  * Persos rangés dans le groupe par ses membres actuels (mains et alts), avec le rôle du joueur : ligne M du partage
  * entre joueurs (tous), conseil du butin par défaut (ceux du propriétaire et des officiers), conseil d'un raid.
+ * Avec le perso, son main et son rang d'arrivée dans le groupe : ligne Y (prénom d'un inscrit sans perso, homonymes).
  */
-const playedInGroup = (db: Db, groupId: string) => db.select({ userId: groupCharacters.userId, name: characters.name, realm: characters.realm, role: groupMembers.role })
+const playedInGroup = (db: Db, groupId: string) => db.select({ userId: groupCharacters.userId, characterId: groupCharacters.characterId, isMain: groupCharacters.isMain, addedAt: groupCharacters.createdAt, name: characters.name, realm: characters.realm, role: groupMembers.role })
   .from(groupCharacters)
   .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
   .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, groupCharacters.userId)))
@@ -121,10 +122,12 @@ export async function groupExport(db: Db, groupId: string, userId: string, signe
   const entries = settings.countBy === "player"
     ? [...byPlayer.values()].map(rs => ({ names: rs.sort((a, b) => Number(b.isMain) - Number(a.isMain)).map(r => r.name), n: rs[0]!.player }))
     : counts.rows.map(r => ({ names: [r.name], n: r.own }));
+  const listed = await raidSignupsExport(db, raidRows.map(r => r.id), played);
   const text = groupAddonExport(g, Math.floor(now / 1000),
     raidRows.map(r => {
       const m = myByRaid.get(r.id);
       return { id: r.id, name: r.name, at: r.scheduledAt ? Math.floor(r.scheduledAt.getTime() / 1000) : 0, status: m?.status ?? null, character: m?.character ?? null,
+        signups: listed.get(r.id) ?? [],
         lootMode: r.lootMode, reserves: reservesOf.get(r.id),
         consumables: r.prep.consumables,
         bosses: r.prep.bosses.map(b => ({ ...b, rows: b.rows.map(row => ({ label: row.label, text: row.text, names: row.characterIds.flatMap(id => byId.get(id) ?? []) })) })),
@@ -140,6 +143,38 @@ export async function groupExport(db: Db, groupId: string, userId: string, signe
     { members: played.map(c => c.name), sign: signer && !raidRows.some(r => r.lootMode === "softres" && r.srHidden) ? signer.sign : undefined },
     await outingsExport(db, groupId, new Date(now)));
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
+}
+
+/**
+ * Liste des inscrits de chaque raid pour la ligne Y du FRG (même liste pour tous les joueurs : rien de personnel, le bloc
+ * reste signé) : les inscrits avec un compte du site, dans l'ordre d'arrivée (les invités Discord n'y sont pas). Prénom : celui
+ * du perso de l'inscription ; sans perso (absent), le main du joueur dans la guilde, sinon son premier perso rangé dans la
+ * guilde ; aucun perso : omis. `at` : heure du dernier changement de statut. `dup` : le prénom est porté par des persos de
+ * deux joueurs différents de la guilde (`played`) ; l'addon ne le prend alors jamais pour le sien.
+ */
+async function raidSignupsExport(db: Db, raidIds: string[], played: Awaited<ReturnType<typeof playedInGroup>>) {
+  const out = new Map<string, GroupExportSignup[]>();
+  if (!raidIds.length) return out;
+  const rows = await db.select({ raidId: raidSignups.raidId, userId: raidSignups.userId, status: raidSignups.status, statusAt: raidSignups.statusAt, character: characters.name })
+    .from(raidSignups).leftJoin(characters, eq(characters.id, raidSignups.characterId))
+    .where(and(inArray(raidSignups.raidId, raidIds), isNotNull(raidSignups.userId))).orderBy(asc(raidSignups.createdAt));
+  const key = (name: string) => gameName(name).normalize("NFC").toLocaleLowerCase("fr");
+  // Joueurs qui portent chaque prénom (tous les persos rangés dans la guilde, comme la ligne M)
+  const bearers = new Map<string, Set<string>>();
+  for (const c of played) bearers.set(key(c.name), (bearers.get(key(c.name)) ?? new Set()).add(c.userId));
+  // Perso « par défaut » de chaque joueur : son main, sinon le premier rangé dans la guilde
+  const fallback = new Map<string, string>();
+  for (const c of [...played].sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.addedAt.getTime() - b.addedAt.getTime() || a.name.localeCompare(b.name))) {
+    if (!fallback.has(c.userId)) fallback.set(c.userId, c.name);
+  }
+  for (const r of rows) {
+    const name = r.character ?? fallback.get(r.userId!);
+    if (!name || !gameName(name)) continue;
+    out.set(r.raidId, [...(out.get(r.raidId) ?? []), {
+      name, status: r.status, at: Math.floor(r.statusAt.getTime() / 1000), ...((bearers.get(key(name))?.size ?? 0) >= 2 && { dup: true }),
+    }]);
+  }
+  return out;
 }
 
 /**

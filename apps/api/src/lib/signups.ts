@@ -28,6 +28,12 @@ export const signupInput = z.object({
 });
 export type SignupInput = z.infer<typeof signupInput>;
 
+/**
+ * `status_at` (heure du dernier changement de statut) dans la mise à jour d'une ré-inscription : il ne bouge que si le
+ * statut change (une autre spé ou une autre note ne comptent pas). Sert à l'addon (ligne FRG Y) et au relais des inscriptions faites en jeu.
+ */
+const statusAtOnConflict = sql`case when ${raidSignups.status} is distinct from excluded.status then now() else ${raidSignups.statusAt} end`;
+
 /** Inscription (ou mise à jour) d'un joueur du site avec l'un de SES persos. */
 export async function signUpSiteUser(db: Db, raidId: string, user: { id: string; displayName: string }, input: SignupInput) {
   let cls = "", spec = "", characterId: string | null = null;
@@ -49,7 +55,7 @@ export async function signUpSiteUser(db: Db, raidId: string, user: { id: string;
   }
   const values = { raidId, userId: user.id, displayName: user.displayName, characterId, cls, spec, status: input.status, note: input.note ?? "", updatedAt: new Date() };
   const [row] = await db.insert(raidSignups).values(values)
-    .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.userId], set: values })
+    .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.userId], set: { ...values, statusAt: statusAtOnConflict } })
     .returning();
   await touchRaid(db, raidId);
   return row!;
@@ -73,7 +79,7 @@ export async function signUpDiscordGuest(db: Db, raidId: string, who: { discordU
     characterId: null, cls, spec, status: input.status, note: "", updatedAt: new Date(),
   };
   const [row] = await db.insert(raidSignups).values(values)
-    .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.discordUserId], set: values })
+    .onConflictDoUpdate({ target: [raidSignups.raidId, raidSignups.discordUserId], set: { ...values, statusAt: statusAtOnConflict } })
     .returning();
   await touchRaid(db, raidId);
   return row!;

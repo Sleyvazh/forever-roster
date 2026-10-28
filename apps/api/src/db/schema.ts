@@ -26,6 +26,8 @@ export const users = pgTable("users", {
   discordReminders: boolean("discord_reminders").notNull().default(true),
   /** Roster (R2) : langue des noms du jeu (classes, spés, raids) ; auto = celle du navigateur. */
   gameLang: text("game_lang").$type<GameLangPref>().notNull().default("auto"),
+  /** Forever : mes inscriptions faites en jeu peuvent passer par un officier qui a l'appli (relais vers le site). */
+  gameRelay: boolean("game_relay").notNull().default(true),
   /** Roster encore fermé : accès anticipé (Flo et les officiers de la guilde), donné par roster-preview-cli. */
   rosterPreview: boolean("roster_preview").notNull().default(false),
   /** Admin du site (signalements : page admin, réponses), donné par site-admin-cli. */
@@ -563,6 +565,8 @@ export const raidSignups = pgTable("raid_signups", {
   note: text("note").notNull().default(""),
   createdAt: ts("created_at").notNull().defaultNow(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
+  /** Heure du dernier CHANGEMENT DE STATUT (pas d'une spé ou d'une note) : sert à l'addon (ligne FRG Y) et au relais des inscriptions faites en jeu. */
+  statusAt: ts("status_at").notNull().defaultNow(),
 }, t => [
   uniqueIndex("raid_signups_user_uq").on(t.raidId, t.userId),
   uniqueIndex("raid_signups_discord_uq").on(t.raidId, t.discordUserId),

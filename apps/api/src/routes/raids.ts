@@ -353,10 +353,12 @@ export async function raidRoutes(app: FastifyInstance) {
     await loadRaid(p.id, p.raidId);
     const body = parse(z.object({ status: z.enum(SIGNUP_STATUSES).optional(), spec: z.string().trim().max(20).optional() })
       .refine(b => b.status || b.spec, "Rien à changer."), req.body);
-    const [cur] = await db.select({ cls: raidSignups.cls }).from(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId)));
+    const [cur] = await db.select({ cls: raidSignups.cls, status: raidSignups.status }).from(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId)));
     if (!cur) throw notFound("Inscription introuvable.");
     if (body.spec && !isValidSpecFor(await groupGame(p.id), cur.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${cur.cls}.`);
-    const [row] = await db.update(raidSignups).set({ ...(body.status && { status: body.status }), ...(body.spec && { spec: body.spec }), updatedAt: new Date() })
+    // L'heure du dernier changement de statut ne bouge que si le statut change vraiment (pas pour une spé)
+    const statusChanged = !!body.status && body.status !== cur.status;
+    const [row] = await db.update(raidSignups).set({ ...(body.status && { status: body.status }), ...(body.spec && { spec: body.spec }), ...(statusChanged && { statusAt: new Date() }), updatedAt: new Date() })
       .where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId))).returning({ id: raidSignups.id });
     if (!row) throw notFound("Inscription introuvable.");
     await touchRaid(db, p.raidId);

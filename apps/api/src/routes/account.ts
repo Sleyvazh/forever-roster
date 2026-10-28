@@ -48,11 +48,17 @@ export async function accountRoutes(app: FastifyInstance) {
     return { user: publicUser(row!) };
   });
 
-  /** Préférences d'affichage : langue des noms du jeu sur Roster (auto = celle du navigateur). */
+  /**
+   * Préférences : langue des noms du jeu sur Roster (auto = celle du navigateur) et relais des inscriptions faites en jeu
+   * par un officier (Forever). Au moins un réglage ; ceux qui manquent ne changent pas.
+   */
   app.patch("/preferences", async (req) => {
     const u = currentUser(req);
-    const { gameLang } = parse(z.object({ gameLang: z.enum(GAME_LANGS) }), req.body);
-    const [row] = await db.update(users).set({ gameLang, updatedAt: new Date() }).where(eq(users.id, u.id)).returning();
+    const body = parse(z.object({ gameLang: z.enum(GAME_LANGS).optional(), gameRelay: z.boolean().optional() })
+      .refine(b => b.gameLang !== undefined || b.gameRelay !== undefined, "Choisis au moins un réglage à changer."), req.body);
+    const [row] = await db.update(users).set({
+      ...(body.gameLang !== undefined && { gameLang: body.gameLang }), ...(body.gameRelay !== undefined && { gameRelay: body.gameRelay }), updatedAt: new Date(),
+    }).where(eq(users.id, u.id)).returning();
     return { user: publicUser(row!) };
   });
 
