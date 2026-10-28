@@ -129,12 +129,14 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
     const [raid] = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
       .where(and(eq(raids.id, v.raidId), eq(raids.groupId, v.groupId)));
     if (!raid || (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE)) { refuse(); continue; }
-    // 3. Perso visé rangé dans la guilde : par GUID, à défaut par prénom s'il est seul à le porter (une fiche qui a un autre GUID n'est pas lui)
+    // 3. Perso visé rangé dans la guilde : par GUID, à défaut par prénom s'il est seul à le porter (une fiche qui a un autre GUID n'est pas lui).
+    // Le prénom de la ligne est celui de l'expéditeur, authentifié par le jeu ; le GUID, lui, est déclaré dans le message et se
+    // falsifie : un GUID connu ne vaut que pour le perso qui porte ce prénom.
     const chars = await guildCharacters(v.groupId);
     let target: (typeof chars)[number] | undefined;
     if (v.guid) {
       const hits = chars.filter(c => c.guid === v.guid);
-      if (hits.length > 1) { refuse(); continue; }
+      if (hits.length > 1 || (hits.length === 1 && !sameCharacter(v.name, hits[0]!.name))) { refuse(); continue; }
       target = hits[0];
     }
     if (!target) {
@@ -169,8 +171,18 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
   return res;
 }
 
+/** Résumé des lignes V pour le message du bloc : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée » (parties à zéro omises). */
+function relayedText(r: Awaited<ReturnType<typeof applyRelayed>>) {
+  const sent = r.sent.length, kept = r.kept.length, refused = r.refused.length;
+  return [
+    sent && `${plural(sent, "inscription")} transmise${sent > 1 ? "s" : ""} (${[...new Set(r.sent)].join(", ")})`,
+    kept && `${kept} gardée${kept > 1 ? "s" : ""}`,
+    refused && `${refused} refusée${refused > 1 ? "s" : ""}`,
+  ].filter(Boolean).join(" · ");
+}
+
 /** Patrons connus et recherchés, inscriptions : enregistrés à part. Renvoie un résumé à afficher. */
-async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>, now: Date) {
+async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>) {
   const out: string[] = [];
   if (parts.has("recipes") && d.recipes.length) {
     const res = await importKnownRecipes(db, c, {
@@ -197,16 +209,6 @@ async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExpo
     }
     out.push(`${plural(ok, "inscription")} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}`);
   }
-  // Inscriptions faites en jeu par d'autres joueurs, transmises par cet officier : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée »
-  if (parts.has("signups") && d.relayed.length) {
-    const r = await applyRelayed(db, user, d, now);
-    const sent = r.sent.length, kept = r.kept.length, refused = r.refused.length;
-    out.push([
-      sent && `${plural(sent, "inscription")} transmise${sent > 1 ? "s" : ""} (${[...new Set(r.sent)].join(", ")})`,
-      kept && `${kept} gardée${kept > 1 ? "s" : ""}`,
-      refused && `${refused} refusée${refused > 1 ? "s" : ""}`,
-    ].filter(Boolean).join(" · "));
-  }
   return out.join(" · ");
 }
 
@@ -228,6 +230,7 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
   for (const d of blocks) {
     const key = addonKeyOf(d);
     const base = { key, kind: "character" as const, name: d.name, cls: d.cls, level: d.level };
+    const first = out.length;
     try {
       // 1. Fiche visée : choix explicite (Ctrl+V), sinon perso déjà lié, sinon même prénom et même classe
       const target = opts.targets?.[key];
@@ -291,7 +294,7 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       }).where(eq(characters.id, fiche.id)).returning();
       Object.assign(fiche, row);
       changed = true;
-      const extras = await applyExtras(db, user, fiche, d, parts, now);
+      const extras = await applyExtras(db, user, fiche, d, parts);
       // Nom complet du jeu différent du nom saisi sur la fiche : gardé, mais signalé
       const conflict = d.fullName && parts.has("identity") && !create && fiche.name !== d.fullName ? { fiche: fiche.name, game: d.fullName } : null;
       out.push({
@@ -300,6 +303,16 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       });
     } catch (e) {
       out.push({ ...base, status: "error", message: errorText(e, "mise à jour impossible") });
+    } finally {
+      // Lignes V : des inscriptions d'autres joueurs, qui ne parlent pas du perso porteur du bloc. Elles sont donc transmises
+      // quel que soit son sort (inconnu, ignoré, laissé de côté, classe différente, erreur) et le message s'ajoute à son résultat :
+      // l'appli accuse réception de ces résultats et l'addon oublie alors ces lignes pour de bon.
+      if (parts.has("signups") && d.relayed.length) {
+        let note: string | null = null;
+        try { note = relayedText(await applyRelayed(db, user, d, now)); } catch (e) { out[first] = { ...(out[first] ?? base), status: "error", message: errorText(e, "transmission des inscriptions impossible") }; }
+        const res = out[first];
+        if (note && res) out[first] = { ...res, message: res.message ? `${res.message} · ${note}` : note };
+      }
     }
   }
   if (changed) await charsChanged(db, user.id).catch(() => {});

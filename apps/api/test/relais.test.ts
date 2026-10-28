@@ -324,9 +324,9 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
   beforeAll(async () => { s = await relayScene(); });
   const send = (raid: { id: string }, status: string, name: string, at: number, guid = "") => vLine(s.g.id, raid, status, name, at, guid);
   /** Refus attendu : message « 1 refusée », rien d'écrit sur le raid. */
-  async function refused(c: Client, text: string, raid: { id: string }, message = "fiche mise à jour · 1 refusée") {
+  async function refused(c: Client, text: string, raid: { id: string }, message = "fiche mise à jour · 1 refusée", empty = true) {
     expect(await paste(c, text)).toMatchObject({ status: "updated", message });
-    expect(await signupsOf(raid.id)).toEqual([]);
+    if (empty) expect(await signupsOf(raid.id)).toEqual([]);
   }
 
   it("Ctrl+V : le propriétaire transmet, le site inscrit avec le bon perso, le journal le dit", async () => {
@@ -475,6 +475,25 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     expect(await signupsOf(raid3.id)).toEqual([expect.objectContaining({ userId: s.greta.user.id })]);
   });
 
+  it("GUID falsifié : un GUID connu envoyé avec un autre prénom est refusé, l'inscription visée ne bouge pas", async () => {
+    // Le prénom de la ligne est celui de l'expéditeur (authentifié par le jeu) ; le GUID, déclaré dans son message, se falsifie
+    await setGuid(s.greta.char!.id, GRETA_GUID);
+    const raid = await s.raid("Orgrimmar");
+    expect((await s.greta.c.put(`/api/groups/${s.g.id}/raids/${raid.id}/signup`, { status: "tentative", characterId: s.greta.char!.id })).statusCode).toBe(200);
+    // Greta a répondu sur le site il y a une heure : un clic de maintenant l'emporterait, sans la garde du prénom
+    const mine = (await signupsOf(raid.id))[0]!;
+    await db().update(raidSignups).set({ statusAt: new Date((nowS() - 3600) * 1000) }).where(eq(raidSignups.id, mine.id));
+    const before = (await signupsOf(raid.id))[0]!;
+    // Pikou envoie le GUID de Greta : refusé, rien ne change pour Greta, rien n'est créé pour Pikou
+    await refused(s.own.c, asOwner([send(raid, "absent", "Pikou", nowS() - 60, GRETA_GUID)]), raid, "fiche mise à jour · 1 refusée", false);
+    expect(await signupsOf(raid.id)).toEqual([before]);
+    expect(await relayedEvents(s.g.id, "Orgrimmar")).toEqual([]);
+    // Avec son propre prénom (casse sans importance), le même GUID passe
+    expect(await paste(s.own.c, asOwner([send(raid, "absent", "greta", nowS() - 60, GRETA_GUID)]))).toMatchObject({ message: "fiche mise à jour · 1 inscription transmise (Greta)" });
+    expect((await signupsOf(raid.id))[0]).toMatchObject({ userId: s.greta.user.id, status: "absent" });
+    await setGuid(s.greta.char!.id, null);
+  });
+
   it("GUID : à défaut, le prénom seul suffit s'il est unique ; un GUID différent sur la fiche → refusé", async () => {
     const raid = await s.raid("Stratholme");
     const at = nowS() - 60;
@@ -521,6 +540,59 @@ describe("relais : inscriptions faites en jeu (lignes V)", () => {
     expect(await paste(s.own.c, asOwner([send(raid, "present", "Pikou", at)]))).toMatchObject({ message: "fiche mise à jour · 1 gardée" });
     const mixed = await paste(s.own.c, asOwner([send(raid, "present", "Greta", at), send(raid, "present", "Pikou", at), send(raid, "present", "Inconnu", at)]));
     expect(mixed.message).toBe("fiche mise à jour · 1 inscription transmise (Greta) · 1 gardée · 1 refusée");
+  });
+
+  it("porteur du bloc inconnu du site (appli, sans création) : les lignes V sont transmises quand même, et renvoyées elles sont gardées", async () => {
+    const app = device(await pair(s.off.c));
+    const raid = await s.raid("Silithus");
+    const at = nowS() - 60;
+    const total = async () => (await db().select({ id: characters.id }).from(characters)).length;
+    const n = await total();
+    const text = block("Dorganalt", "ROGUE", "Orc", [send(raid, "present", "Greta", at), send(raid, "late", "Pikou", at)]);
+    const first = (await app.req("POST", "/api/sync/upload", { text })).json();
+    expect(first.results).toEqual([expect.objectContaining({
+      key: "Dorganalt-Forever EU", status: "unknown", message: "perso inconnu du site : à créer ou à ignorer · 2 inscriptions transmises (Greta, Pikou)",
+    })]);
+    expect((await signupsOf(raid.id)).map(x => `${x.userId === s.greta.user.id ? "Greta" : "Pikou"}:${x.status}`).sort()).toEqual(["Greta:present", "Pikou:late"]);
+    expect(await total()).toBe(n); // rien n'est créé pour le porteur
+    expect((await relayedEvents(s.g.id, "Silithus")).map(e => e.userId)).toEqual([s.off.user.id, s.off.user.id]);
+    // L'appli renvoie le même bloc (la question « créer ou ignorer ? » est toujours posée) : gardées, sans nouveau journal
+    const again = (await app.req("POST", "/api/sync/upload", { text })).json();
+    expect(again.results[0]).toMatchObject({ status: "unknown", message: "perso inconnu du site : à créer ou à ignorer · 2 gardées" });
+    expect(await relayedEvents(s.g.id, "Silithus")).toHaveLength(2);
+  });
+
+  it("porteur ignoré dans l'appli : les lignes V partent aussi, sur l'envoi qui l'ignore comme sur les suivants", async () => {
+    const app = device(await pair(s.off.c));
+    const raid = await s.raid("Tanaris");
+    const at = nowS() - 60;
+    const text = block("Dorganbis", "ROGUE", "Orc", [send(raid, "tentative", "Opale", at)]);
+    const first = (await app.req("POST", "/api/sync/upload", { text, ignore: ["Dorganbis-Forever EU"] })).json();
+    expect(first.results[0]).toMatchObject({ status: "ignored", message: "perso ignoré (à remettre dans les options de l'appli) · 1 inscription transmise (Opale)" });
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.opale.user.id, status: "tentative" })]);
+    // Une autre inscription sur un nouvel envoi : porteur toujours ignoré, ligne transmise
+    const raid2 = await s.raid("Tanaris bis");
+    const next = (await app.req("POST", "/api/sync/upload", { text: block("Dorganbis", "ROGUE", "Orc", [send(raid2, "present", "Opale", at), send(raid, "tentative", "Opale", at)]) })).json();
+    expect(next.results[0]).toMatchObject({ status: "ignored", message: "perso ignoré (à remettre dans les options de l'appli) · 1 inscription transmise (Opale) · 1 gardée" });
+    expect(await signupsOf(raid2.id)).toEqual([expect.objectContaining({ userId: s.opale.user.id, status: "present" })]);
+  });
+
+  it("porteur laissé de côté au Ctrl+V, de classe différente ou hors de la partie « inscriptions » : message ajouté, ou lignes ignorées", async () => {
+    const at = nowS() - 60;
+    const raid = await s.raid("Ironforge");
+    // « Ignorer » ce perso au Ctrl+V ne retient pas les inscriptions des autres joueurs
+    const skipped = await paste(s.own.c, asOwner([send(raid, "present", "Greta", at)]), { targets: { "Brakka-Forever EU": "skip" } });
+    expect(skipped).toMatchObject({ status: "skipped", message: "ignoré · 1 inscription transmise (Greta)" });
+    expect(await signupsOf(raid.id)).toEqual([expect.objectContaining({ userId: s.greta.user.id, status: "present" })]);
+    // Classe différente sur la fiche du porteur : résultat en erreur, lignes V transmises
+    const raid2 = await s.raid("Ironforge bis");
+    const mismatch = await paste(s.own.c, block("Brakka", "MAGE", "Troll", [send(raid2, "late", "Pikou", at), send(raid2, "present", "Inconnu", at)]));
+    expect(mismatch).toMatchObject({ status: "error", message: "classe différente sur la fiche (Warrior) · 1 inscription transmise (Pikou) · 1 refusée" });
+    expect(await signupsOf(raid2.id)).toEqual([expect.objectContaining({ userId: s.pikou.user.id, status: "late" })]);
+    // Sans la partie « inscriptions » : porteur laissé de côté et lignes V ignorées
+    const raid3 = await s.raid("Ironforge ter");
+    expect(await paste(s.own.c, asOwner([send(raid3, "present", "Greta", at)]), { targets: { "Brakka-Forever EU": "skip" }, parts: ["gear"] })).toMatchObject({ status: "skipped", message: "ignoré" });
+    expect(await signupsOf(raid3.id)).toEqual([]);
   });
 
   it("sans ligne V ou sans la partie « inscriptions » : rien ne change", async () => {
