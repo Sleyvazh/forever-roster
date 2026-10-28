@@ -63,6 +63,13 @@ export function inviteMacros(names: string[], max = 255): string[] {
 
 /* ---------- Données du groupe pour l'addon (format « FRG », version 1) ---------- */
 
+/**
+ * Un inscrit d'un raid (ligne Y) : prénom en jeu (`gameName` du perso), statut, heure Unix du dernier changement de statut.
+ * `dup` : le prénom est porté par des persos de deux joueurs différents du groupe (écrit « Prénom? » : l'addon ne le prend
+ * jamais pour le sien).
+ */
+export interface GroupExportSignup { name: string; status: SignupStatus; at: number; dup?: boolean }
+
 export interface GroupExportRaid {
   id: string; name: string;
   /** Date du raid (secondes Unix, 0 si non fixée). */
@@ -78,6 +85,11 @@ export interface GroupExportRaid {
   council?: string[] | null;
   /** Inscrits qui viennent, avec leur rôle (et type de DPS) : pour savoir quels consommables chacun doit avoir. */
   roster?: { name: string; role: Role | null; dps: string | null }[];
+  /**
+   * Liste des inscrits du site (ligne Y, signée : rien de personnel). Un tableau, même vide, écrit la ligne (« liste connue ») ;
+   * absent, pas de ligne Y (comportement d'avant : « inscription inconnue »).
+   */
+  signups?: GroupExportSignup[];
 }
 export interface GroupExportPattern {
   /** Objet « Patron / Plans / Recette » tel qu'il apparaît dans les sacs. */
@@ -129,6 +141,16 @@ export interface OutingExportMember { name: string; guest?: boolean }
 const outingName = (m: OutingExportMember) => (m.guest ? `@${clean(m.name).replace(/[,:\s]+/g, "")}` : gameName(m.name).replace(/[,:]/g, ""));
 const outingNames = (list: OutingExportMember[]) => list.map(outingName).filter(n => n && n !== "@").join(",");
 
+/**
+ * Ligne Y d'un raid : `Y;<raid>;<prénom>[?]:<statut>:<depuis>,…` (docs/addon-format.md, section FRG). Prénom en jeu sans
+ * « , : ? ; | » (séparateurs de la ligne) ; une entrée sans prénom est omise ; `?` marque un prénom porté par deux joueurs.
+ */
+export function signupsLine(raidId: string, list: GroupExportSignup[]): string {
+  const entries = list.map(s => ({ s, name: gameName(s.name).replace(/[,:?;|]/g, "") })).filter(e => e.name)
+    .map(({ s, name }) => `${name}${s.dup ? "?" : ""}:${s.status}:${Math.floor(s.at)}`);
+  return `Y;${raidId};${entries.join(",")}`;
+}
+
 /** Ligne X d'une sortie (docs/addon-format.md, section FRG). */
 export function outingLine(o: GroupExportOuting): string {
   return ["X", o.id, o.at, clean(o.dungeon), clean(o.title), o.min ?? "", o.max ?? "", gameName(o.creator), placesText(o.places),
@@ -139,8 +161,8 @@ export function outingLine(o: GroupExportOuting): string {
 
 /**
  * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
- * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; partage entre joueurs : persos du groupe (M) et
- * signature du site (Z). Spécification : docs/addon-format.md.
+ * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; partage entre joueurs : liste des inscrits (Y),
+ * persos du groupe (M) et signature du site (Z). Spécification : docs/addon-format.md.
  */
 export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}, outings: GroupExportOuting[] = []): string {
   const lines = [
@@ -170,6 +192,8 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
       counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
     // Sorties donjon : X, une par sortie du jour ou de demain (addon 1.6.1), après les autres lignes non comptées
     ...outings.map(outingLine),
+    // Liste des inscrits : Y, une par raid dont `signups` est un tableau (même vide), après les X, avant M ; signée, hors de END
+    ...raids.filter(r => Array.isArray(r.signups)).map(r => signupsLine(r.id, r.signups!)),
     // Partage entre joueurs : M (persos du groupe, prénoms comme la ligne O) toujours, en dernier ; Z ajoutée par sealGroupBlock
     `M;${list(share.members ?? [])}`,
   ];

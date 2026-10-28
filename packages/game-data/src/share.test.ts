@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupAddonExport, type GroupExportOuting, type GroupExportRaid } from "./addon";
+import { groupAddonExport, signupsLine, type GroupExportOuting, type GroupExportRaid, type GroupExportSignup } from "./addon";
 import { buildRRG, type RosterGroupRaid } from "./roster-addon";
 import { canonicalGroupBlock, groupBlockSignature, sealGroupBlock, splitGroupBlocks, type GroupBlockSigner } from "./share";
 import { TEST_KEY_ID, testSigner, verifyWithTestKey } from "./test-signer";
@@ -17,13 +17,19 @@ const G1 = { id: "4f1e2d3c-b4a5-4697-8a7b-6c5d4e3f2a1b", name: "Les Veilleurs" }
 const G2 = { id: "5a2f3e4d-c5b6-47a8-9b8c-7d6e5f4a3b2c", name: "Les Retardataires" };
 const R1 = "6b3a4f5e-d6c7-48b9-ac9d-8e7f6a5b4c3d", R2 = "7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e";
 const AT = 1_794_000_000;
+/** Liste des inscrits de l'échantillon (ligne Y) : Thalwen est porté par deux joueurs du groupe (« Thalwen? »). */
+const SIGNUPS: GroupExportSignup[] = [
+  { name: "Greta Coulé", status: "present", at: AT - 3600 },
+  { name: "Thalwen", status: "late", at: AT - 1800, dup: true },
+  { name: "Brindille", status: "tentative", at: AT - 600 },
+];
 
 /** FRG d'un joueur : `me` donne son inscription (statut, perso) à chaque raid. */
 const frg = (me: [GroupExportRaid["status"], string | null][], sign?: GroupBlockSigner, outings: GroupExportOuting[] = []) =>
   groupAddonExport(G1, AT, [
-    { id: R1, name: "Molten Core", at: AT + 86400, status: me[0]![0], character: me[0]![1], lootMode: "softres",
+    { id: R1, name: "Molten Core", at: AT + 86400, status: me[0]![0], character: me[0]![1], lootMode: "softres", signups: SIGNUPS,
       reserves: [{ itemId: 18814, by: [{ name: "Greta Coulé", bonus: 10 }, { name: "Thalwen", bonus: 0 }] }] },
-    { id: R2, name: "Onyxia", at: 0, status: me[1]![0], character: me[1]![1], lootMode: "council", council: ["Thalwen", "Brindille"] },
+    { id: R2, name: "Onyxia", at: 0, status: me[1]![0], character: me[1]![1], lootMode: "council", council: ["Thalwen", "Brindille"], signups: SIGNUPS },
   ],
   [{ itemId: 15090, recipe: "Warbear Woolies", wanted: ["Greta Coulé"], known: ["Tournicoti"] }],
   [{ itemId: 16866, characters: ["Thalwen"] }],
@@ -70,6 +76,53 @@ describe("ligne M : persos du groupe", () => {
   it("toujours là, même vide et même sans signature", () => {
     expect(groupAddonExport(G2, 1, [], []).split("\n")).toEqual([`FRG;1;${G2.id};1;Les Retardataires`, "M;", "END;0"]);
     expect(buildRRG(G2, 1, []).split("\n")).toEqual([`RRG;1;${G2.id};1;Les Retardataires`, "M;", "END;0"]);
+  });
+});
+
+describe("ligne Y : liste des inscrits", () => {
+  it("ligne Y : liste des inscrits, homonymes marqués, hors du compte de END", () => {
+    expect(signupsLine(R1, [
+      { name: "Greta Coulé", status: "present", at: 1794000100 },
+      { name: "Thalwen", status: "late", at: 1794000200, dup: true },
+    ])).toBe(`Y;${R1};Greta:present:1794000100,Thalwen?:late:1794000200`);
+    // Une ligne Y présente veut dire « liste connue » : elle est écrite même vide
+    expect(signupsLine(R2, [])).toBe(`Y;${R2};`);
+
+    const lines = frg([["present", "Greta Coulé"], [null, null]]).split("\n");
+    const y = lines.filter(l => l.startsWith("Y;"));
+    // Une ligne Y par raid, dans l'ordre des lignes R, juste avant M ; END ne les compte pas
+    expect(y).toEqual([
+      `Y;${R1};Greta:present:${AT - 3600},Thalwen?:late:${AT - 1800},Brindille:tentative:${AT - 600}`,
+      `Y;${R2};Greta:present:${AT - 3600},Thalwen?:late:${AT - 1800},Brindille:tentative:${AT - 600}`,
+    ]);
+    expect(lines.slice(-4, -2)).toEqual(y);
+    expect(lines.slice(-2)).toEqual(["M;Brindille,Greta,Thalwen,Tournicoti", "END;4"]);
+  });
+
+  it("prénom en jeu sans « , : ? ; | » ; entrées sans prénom omises ; sans tableau, pas de ligne Y", () => {
+    expect(signupsLine(R1, [
+      { name: "Gre,ta|:; Coulé", status: "alt", at: 5 },
+      { name: " ?;|,: ", status: "present", at: 6 },
+      { name: "", status: "absent", at: 7 },
+      { name: "Kae?lys", status: "bench", at: 8, dup: true },
+    ])).toBe(`Y;${R1};Greta:alt:5,Kaelys?:bench:8`);
+    const raid = (signups?: GroupExportSignup[]): GroupExportRaid => ({ id: R1, name: "Molten Core", at: 0, status: null, character: null, signups });
+    expect(groupAddonExport(G1, AT, [raid()], []).split("\n").filter(l => l.startsWith("Y;"))).toEqual([]);
+    expect(groupAddonExport(G1, AT, [raid([])], []).split("\n")).toEqual([
+      `FRG;1;${G1.id};${AT};Les Veilleurs`, `R;${R1};0;Molten Core;;;`, `Y;${R1};`, "M;", "END;1",
+    ]);
+  });
+
+  it("signée : la liste fait partie de la forme canonique, sans champ personnel", async () => {
+    const { sign } = await testSigner();
+    const a = frg([["present", "Greta Coulé"], [null, null]], sign), b = frg([["absent", "Thalwen"], ["late", "Thalwen"]], sign);
+    expect(canonicalGroupBlock(a, "FRG")).toContain(`\nY;${R1};Greta:present:${AT - 3600},`);
+    expect(canonicalGroupBlock(a, "FRG")).toBe(canonicalGroupBlock(b, "FRG"));
+    // Une inscription changée : la signature ne vaut plus
+    const forged = a.replace(`Brindille:tentative:${AT - 600}`, `Brindille:present:${AT - 600}`);
+    expect(forged).not.toBe(a);
+    expect(await verifyWithTestKey(canonicalGroupBlock(a, "FRG"), groupBlockSignature(a)!.signature)).toBe(true);
+    expect(await verifyWithTestKey(canonicalGroupBlock(forged, "FRG"), groupBlockSignature(a)!.signature)).toBe(false);
   });
 });
 

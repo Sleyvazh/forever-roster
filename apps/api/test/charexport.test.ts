@@ -45,6 +45,40 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     if (!res.ok) throw new Error(res.error);
     expect(res.data.signups).toEqual([{ groupId: g, raidId: r, status: "present" }]);
   });
+  it("ligne V lue, mauvaises lignes ignorées", () => {
+    const g = "6f1c2a10-0000-4000-8000-000000000001", r1 = "7a1c2a10-0000-4000-8000-000000000002", r2 = "7a1c2a10-0000-4000-8000-000000000003";
+    const head = "FRC;2;Pikou;Beta;DRUID;Skyborne;20;Alliance;1;1.6.3";
+    const text = [head,
+      `V;${g};${r1};present;Greta;Player-4453-0a1b2c3d;1794000100`,
+      `V;${g};${r2};late;Thalwen;;1794000200`,
+      `V;${g};${r1};bench;Brindille;Player-4453-0A1B2C3E;1794000150`,
+      `V;${g};pas-un-uuid;present;Kaelys;Player-4453-0A1B2C3F;1794000160`,
+      `V;${g};${r1};tentative;GRETA;Player-4453-0A1B2C3D;1794000300`,
+      `V;${g};${r1};present;;Player-4453-0A1B2C40;1794000170`,
+      `V;${g};${r1};present;Torvin;Player-4453-0A1B2C41;0`,
+      `V;${g};${r1};present;Bramm;Player-4453-0A1B2C42;12abc`,
+      "END;8"].join("\n");
+    const res = parseCharacterExport(text);
+    if (!res.ok) throw new Error(res.error);
+    // La dernière ligne par (prénom en minuscules, raid) l'emporte ; le GUID est normalisé, un GUID absent donne null
+    expect(res.data.relayed).toEqual([
+      { groupId: g, raidId: r2, status: "late", name: "Thalwen", guid: null, at: 1794000200 },
+      { groupId: g, raidId: r1, status: "tentative", name: "GRETA", guid: "Player-4453-0A1B2C3D", at: 1794000300 },
+    ]);
+    // Sans ligne V (ou site d'avant) : liste vide
+    const none = parseCharacterExport(`${head}\nEND;0`);
+    if (!none.ok) throw new Error(none.error);
+    expect(none.data.relayed).toEqual([]);
+  });
+  it("ligne V : 60 inscriptions au plus par bloc", () => {
+    const g = "6f1c2a10-0000-4000-8000-000000000001", r = "7a1c2a10-0000-4000-8000-000000000002";
+    const lines = Array.from({ length: 70 }, (_, i) => `V;${g};${r};present;Perso${i};;${1794000000 + i}`);
+    const res = parseCharacterExport(["FRC;2;Pikou;Beta;DRUID;Skyborne;20;Alliance;1;1.6.3", ...lines, `END;${lines.length}`].join("\n"));
+    if (!res.ok) throw new Error(res.error);
+    expect(res.data.relayed).toHaveLength(60);
+    expect(res.data.relayed[0]!.name).toBe("Perso0");
+    expect(res.data.relayed.at(-1)!.name).toBe("Perso59");
+  });
   it("lit toujours l'ancien format (v1, une ligne par objet et par talent)", () => {
     const v1 = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.2.0\nG;1;7997\nR;Cooking;s2541\nT;105721;3;3;1020;2730;14156;0;1111\nEND;3";
     const r = parseCharacterExport(v1);

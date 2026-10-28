@@ -46,6 +46,11 @@ export interface CharacterExport {
   talents: ExportedTalentNode[];
   /** Inscriptions faites en jeu (fenêtre « Groupe » de l'addon), à reporter sur le site. */
   signups: { groupId: string; raidId: string; status: SignupStatus }[];
+  /**
+   * Inscriptions de joueurs du groupe transmises par cet officier (ligne V, addon 1.6.3) : faites en jeu, relayées par son
+   * appli. `guid` : GUID du perso inscrit (null si absent ou illisible), `at` : heure du clic (secondes Unix).
+   */
+  relayed: { groupId: string; raidId: string; status: SignupStatus; name: string; guid: string | null; at: number }[];
   /** Patrons marqués « recherché » (on) ou retirés en jeu, par l'objet patron. */
   wanted: { itemId: number; on: boolean }[];
   /** Lot G : consommables demandés pour les raids à venir, comptés dans les sacs (et la banque) : objet → quantité. */
@@ -61,6 +66,12 @@ function fullNameOf(raw: string | undefined, first: string): string | null {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const int = (s: string | undefined) => { const n = Number.parseInt(s ?? "", 10); return Number.isFinite(n) ? n : 0; };
+/** Statuts qu'on peut choisir en jeu (les autres, « alt » et « bench », n'existent que sur le site). */
+const GAME_STATUSES = ["present", "late", "tentative", "absent"] as const;
+/** Inscriptions relayées (ligne V) gardées par bloc. */
+const MAX_RELAYED = 60;
+/** Une inscription relayée par prénom (sans casse) et par raid. */
+const relayKey = (name: string, raidId: string) => `${name.normalize("NFC").toLocaleLowerCase("fr")}|${raidId.toLowerCase()}`;
 
 export function parseCharacterExport(text: string): { ok: true; data: CharacterExport } | { ok: false; error: string } {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -79,7 +90,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
     guid: normalizeGuid(head[10]), fullName: fullNameOf(head[11], head[2] ?? ""),
-    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], wanted: [], consumables: {},
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], relayed: [], wanted: [], consumables: {},
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -110,6 +121,15 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
       if (UUID.test(groupId) && UUID.test(raidId) && (SIGNUP_STATUSES as readonly string[]).includes(status)) {
         data.signups = data.signups.filter(s => s.raidId !== raidId).concat({ groupId, raidId, status: status as SignupStatus });
       }
+    } else if (f[0] === "V") {
+      // Inscription relayée : groupe, raid, statut du jeu, prénom (1 à 40 caractères), GUID, heure du clic (entier > 0)
+      const [, groupId = "", raidId = "", status = "", rawName = "", guid = "", clic = ""] = f;
+      const name = rawName.trim(), at = /^\d{1,12}$/.test(clic) ? Number(clic) : 0;
+      if (!UUID.test(groupId) || !UUID.test(raidId) || !(GAME_STATUSES as readonly string[]).includes(status) || !name || name.length > 40 || at <= 0) continue;
+      // La dernière ligne par (prénom en minuscules, raid) l'emporte ; au-delà de 60 inscriptions distinctes, les suivantes sont ignorées
+      const rest = data.relayed.filter(v => relayKey(v.name, v.raidId) !== relayKey(name, raidId));
+      if (rest.length === data.relayed.length && rest.length >= MAX_RELAYED) continue;
+      data.relayed = rest.concat({ groupId, raidId, status: status as SignupStatus, name, guid: normalizeGuid(guid), at });
     } else if (f[0] === "W") {
       const itemId = int(f[1]);
       if (itemId > 0) data.wanted = data.wanted.filter(w => w.itemId !== itemId).concat({ itemId, on: f[2] === "1" });
