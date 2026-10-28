@@ -2,6 +2,20 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.3
+
+- **In-game sign-ups reach the website without copy-paste**: if you don't have Roster Companion, the sign-up you make in game (Raids tab, raid reminder) is handed to a guild officer who has the app, and it goes to the website at their next /reload. The Raids tab says who took it ("handed to Brakka"), or that no officer with the app is online yet (it goes as soon as one is). Copy-paste still works. Setting: "Hand my in-game sign-ups to an officer who has Roster Companion" (Options tab, on by default).
+- **Officers with Roster Companion** pass these sign-ups on to the website: a small "Send to website" window (never in combat or in an instance, at most every 30 minutes) offers to reload the interface; otherwise they go at your next /reload or logout. The website still checks everything (officer, guild member, the player's own setting on the website) and keeps the last word. Setting: "Pass the guild's sign-ups on to the website" (Options tab, on by default).
+- Website data shared by a guildmate now shows your own sign-up (and "no sign-up" rather than "unknown"); a change made on the website after your in-game click wins.
+- When you log in, the addon asks your guild who has the website's data, so you get it even if you logged in after it was announced. With Roster Companion, the automatic refresh now runs every 15 minutes (it was every hour).
+
+Français :
+
+- **Inscriptions faites en jeu envoyées au site sans copier-coller** : si tu n'as pas Roster Companion, ton inscription faite en jeu (onglet Raids, rappel de raid) est confiée à un officier de la guilde qui a l'appli ; elle part au site à son prochain /reload. L'onglet Raids dit à qui elle est confiée (« confiée à Brakka »), ou qu'aucun officier avec l'appli n'est en ligne (elle partira dès qu'il y en aura un). Le copier-coller marche toujours. Réglage : « Confier mes inscriptions faites en jeu à un officier qui a Roster Companion » (onglet Options, activé d'office).
+- **Officiers avec Roster Companion** : ils transmettent ces inscriptions au site. Une petite fenêtre « Envoyer au site » (jamais en combat ni en instance, au plus toutes les 30 minutes) propose de recharger l'interface ; sinon elles partent au prochain /reload ou à la déconnexion. Le site vérifie tout (officier, membre de la guilde, réglage du joueur sur le site) et garde le dernier mot. Réglage : « Transmettre au site les inscriptions de la guilde » (onglet Options, activé d'office).
+- Les données du site reçues d'un guildé montrent maintenant ton inscription (et « pas d'inscription » plutôt qu'« inconnue ») ; un changement fait sur le site après ton clic en jeu l'emporte.
+- À la connexion, l'addon demande à ta guilde qui a les données du site : tu les reçois même en te connectant après leur annonce. Avec Roster Companion, l'actualisation toute seule passe à toutes les 15 minutes (au lieu de toutes les heures).
+
 ## 1.6.2
 
 - **Guild scan sent to the website**: the guild scan (roster, guild log, guild bank, your characters' levels) now goes to the website with your sync: after your characters and raid logs in the text you copy (Sync tab, quick sync), and through Roster Companion. It only goes again when something has really changed (not just time passing). `/fr guild` shows when it was last sent.

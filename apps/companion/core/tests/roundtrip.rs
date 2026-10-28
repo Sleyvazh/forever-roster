@@ -25,6 +25,13 @@ fn helper_ecrit_data_lua() {
             .iter()
             .any(|b| b.kind == BlockKind::Frc && b.key == "Tournicoti-Forever EU" && b.text.starts_with("FRC;2;Tournicoti;"))
     );
+    // Inscription faite en jeu par Greta, confiée à Tournicoti (officier) : ligne V dans son bloc, envoyée telle quelle
+    assert!(
+        ob.blocks
+            .iter()
+            .any(|b| b.kind == BlockKind::Frc && b.key == "Tournicoti-Forever EU" && b.text.contains("\nV;")),
+        "inscription relayée (ligne V) dans le bloc du perso"
+    );
     assert!(ob.blocks.iter().any(|b| b.kind == BlockKind::Frb && b.lead), "bilan du chef de raid");
     assert!(
         ob.blocks

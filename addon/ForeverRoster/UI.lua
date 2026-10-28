@@ -57,8 +57,11 @@ refreshers.raids = function(p)
     rows.Header(L["Raids à venir"])
     local companion = ns.Companion and ns.Companion.Active()
     local who = UnitName("player") or L["ce perso"]
+    -- Sans l'appli (1.6.3) : mes inscriptions faites en jeu sont confiées à un officier qui l'a (Relay.lua)
+    local confide = ns.Relay and ns.Relay.CanConfide()
     rows.Add(GREY .. L["Groupes :"] .. " |r" .. table.concat(names, ", ") .. "\n" .. GREY
       .. (companion and L("Inscription de %s : elle part au site au prochain /reload (« Envoyer maintenant ») ou à la déconnexion.", who)
+        or confide and L("Inscription de %s : sans Roster Companion, elle est confiée à un officier qui a l'appli.", who)
         or L("Inscription de %s, envoyée au site avec l'export.", who)) .. "|r")
     local raids = G.Raids()
     if #raids == 0 then rows.Add(GREY .. L["Aucun raid à venir."] .. "|r") end
@@ -75,6 +78,8 @@ refreshers.raids = function(p)
         local label = G.StatusLabel(e.status)
         if e.state == "sent" then game = GREEN .. "  " .. L("en jeu : %s, reçu par le site", label) .. "|r"
         elseif e.state == "outbox" then game = GOLD .. "  " .. L("en jeu : %s, envoi en cours", label) .. "|r"
+        elseif e.state == "confided" then game = GOLD .. "  " .. L("en jeu : %s, confiée à %s : part au site à son prochain /reload", label, e.by or "?") .. "|r"
+        elseif e.state == "waiting" then game = GOLD .. "  " .. L("en jeu : %s, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un", label) .. "|r"
         elseif companion then game = GOLD .. "  " .. L("en jeu : %s, pas encore envoyé", label) .. "|r"
         else game = GOLD .. "  " .. L("en jeu : %s, part avec ton prochain export", label) .. "|r" end
       end
@@ -287,6 +292,13 @@ local function buildSynchro(p)
   p.reload:Hide()
   p.chars = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.chars:SetPoint("TOPLEFT", 6, -458) p.chars:SetWidth(526) p.chars:SetJustifyH("LEFT")
+  -- Relais (1.6.3) : inscriptions confiées par la guilde, envoyées au site au prochain /reload (Relay.lua) ; seulement
+  -- s'il y en a
+  p.relay = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  p.relay:SetPoint("TOPLEFT", p.chars, "BOTTOMLEFT", 0, -12) p.relay:SetWidth(360) p.relay:SetJustifyH("LEFT")
+  p.relaySend = button(p, L["Envoyer maintenant"], 160, function() ns.Companion.Reload() end)
+  p.relaySend:SetPoint("LEFT", p.relay, "RIGHT", 8, 0)
+  p.relaySend:Hide()
 end
 refreshers.synchro = function(p)
   -- Roster Companion (lot K1) : l'appli fait la synchro ; le copier-coller reste possible pour forcer un envoi
@@ -326,6 +338,15 @@ refreshers.synchro = function(p)
     all[#all + 1] = colored(h.class, h.name or e.key) .. GREY .. " (" .. (e.char.sentAt and L("envoyé le %s", date("%d/%m", e.char.sentAt)) or L["jamais envoyé"]) .. ")|r"
   end
   p.chars:SetText(L("%sPersos relevés : |r%s%s. Pour retirer un perso supprimé : /fr oublier Nom-Royaume.|r", GREY, table.concat(all, ", "), GREY))
+  local relayed = companion and ns.Relay and ns.Relay.Count() or 0
+  if relayed > 0 then
+    p.relay:SetText(GOLD .. (relayed > 1 and L("Relais : %d inscriptions confiées par la guilde, envoyées au site au prochain /reload.", relayed)
+      or L("Relais : %d inscription confiée par la guilde, envoyée au site au prochain /reload.", relayed)) .. "|r")
+    p.relaySend:Show()
+  else
+    p.relay:SetText("")
+    p.relaySend:Hide()
+  end
   if #names > 0 and not p.sent then p.text:SetFocus() p.text:HighlightText() end
 end
 
@@ -471,6 +492,14 @@ refreshers.options = function(p)
       if share then ForeverRosterDB.share = false else ForeverRosterDB.share = nil ns.Group.ShareNew() end
       U.Refresh()
     end } })
+  -- Relais des inscriptions faites en jeu (Relay.lua, 1.6.3) : nil = oui (par défaut), false = coupé
+  local confide, relaying = ForeverRosterDB.confide ~= false, ForeverRosterDB.relaying ~= false
+  rows.Add(L("Confier mes inscriptions faites en jeu à un officier qui a Roster Companion : %s", confide and (GREEN .. L["activé"] .. "|r") or (GREY .. L["coupé"] .. "|r")) ..
+    "\n" .. GREY .. L["Seulement sans l'appli. Coupé : elles partent avec ton export."] .. "|r",
+    { { confide and L["Couper"] or L["Activer"], 100, function() if confide then ForeverRosterDB.confide = false else ForeverRosterDB.confide = nil end U.Refresh() end } })
+  rows.Add(L("Transmettre au site les inscriptions de la guilde : %s", relaying and (GREEN .. L["activé"] .. "|r") or (GREY .. L["coupé"] .. "|r")) ..
+    "\n" .. GREY .. L["Officiers avec Roster Companion."] .. "|r",
+    { { relaying and L["Couper"] or L["Activer"], 100, function() if relaying then ForeverRosterDB.relaying = false else ForeverRosterDB.relaying = nil end U.Refresh() end } })
   rows.Header(L["Persos de l'export"])
   local chars = ns.Export.Characters()
   if #chars == 0 then rows.Add(GREY .. L["Aucun perso relevé pour l'instant."] .. "|r") end
@@ -762,8 +791,10 @@ end
 
 -- Roster Companion : les 20 actualisations sans /reload sont utilisées, proposer de recharger l'interface (le jeu ne
 -- l'autorise qu'après un clic). Fenêtre de l'addon plutôt que StaticPopup, qui toucherait l'interface de Blizzard.
+-- goLabel : texte du bouton qui recharge (« Recharger » par défaut ; relais : « Envoyer au site », 1.6.3) ; « Plus tard »
+-- ferme. La fenêtre s'agrandit avec le texte.
 local reloadAsk
-function U.AskReload(text)
+function U.AskReload(text, goLabel)
   if not reloadAsk then
     reloadAsk = window("ForeverRosterReload", "Forever Roster  ·  Roster Companion", 420, 150, ns.LOGO)
     reloadAsk.text = reloadAsk:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -773,7 +804,10 @@ function U.AskReload(text)
     reloadAsk.go = button(reloadAsk, L["Recharger"], 120, function() reloadAsk:Hide() ns.Companion.Reload() end)
     reloadAsk.go:SetPoint("RIGHT", later, "LEFT", -8, 0)
   end
+  reloadAsk.go:SetText(goLabel or L["Recharger"])
+  reloadAsk.go:SetWidth(goLabel and 150 or 120)
   reloadAsk.text:SetText(text)
+  reloadAsk:SetHeight(math.max(150, 90 + (reloadAsk.text.GetStringHeight and reloadAsk.text:GetStringHeight() or 0)))
   front(reloadAsk)
   reloadAsk:Show()
   return reloadAsk

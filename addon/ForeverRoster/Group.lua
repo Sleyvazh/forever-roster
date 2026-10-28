@@ -28,6 +28,7 @@ end
 local function first(name)
   return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower()
 end
+G.First = first -- même comparaison des prénoms dans le relais des inscriptions (Relay.lua)
 
 -- Prénom seul comme on l'affiche, casse gardée : « Greta-Forever EU », « Greta Coulé-Forever EU » → Greta
 local function shortName(name)
@@ -127,13 +128,15 @@ function G.List()
 end
 
 -- Inscriptions faites en jeu (c.signups[raidId] = { group, status, time = heure du raid, at = heure du clic,
--- outSig, sent, sentAt }) : gardées pour le perso jusqu'à ce que le site les ait enregistrées (1.5.4).
+-- outSig, sent, sentAt, confided = { by, at } : confiée à un officier, Relay.lua }) : gardées pour le perso jusqu'à ce
+-- que le site les ait enregistrées (1.5.4).
 -- L'heure du clic compte dans l'empreinte du perso : chaque clic part au site, même pour remettre un statut déjà
 -- envoyé (avant, l'addon croyait l'avoir déjà envoyé et le gardait pour lui). Une fois enregistrée sur le site,
 -- l'inscription faite en jeu est oubliée : un changement fait ensuite sur le site n'est plus écrasé au prochain envoi.
 local KEEP = 86400 -- envoyée jusqu'à 24 h après l'heure du raid
 
 local function live(s, now) return (s.time or 0) == 0 or s.time > (now or time()) - KEEP end
+G.Live = live
 
 local function findRaid(groupId, raidId)
   local g = db()[groupId]
@@ -146,10 +149,13 @@ end
 local function nameOf(key) return (key or ""):match("^(.-)%-") or key end
 
 -- Où en est une inscription faite en jeu : "sent" (le site l'a reçue), "outbox" (écrite au dernier /reload,
--- Roster Companion l'envoie), "todo" (pas encore sortie du jeu)
+-- Roster Companion l'envoie), "confided" (confiée à un officier qui a l'appli : s.confided, Relay.lua, 1.6.3),
+-- "waiting" (à confier, aucun officier ne l'a encore prise), "todo" (pas encore sortie du jeu)
 function G.SignupState(s)
   if s.sent then return "sent" end
   if s.outSig and ns.Companion and ns.Companion.Active() then return "outbox" end
+  if s.confided then return "confided" end
+  if ns.Relay and ns.Relay.CanConfide() then return "waiting" end
   return "todo"
 end
 
@@ -168,8 +174,9 @@ function G.Raids()
           siteState = select(2, G.SiteSignup(g, r.id, own))
         end
         -- unknown : raid arrivé avec les données d'un autre joueur (partage), mon inscription sur le site n'y est pas
+        -- by : l'officier à qui mon inscription faite en jeu est confiée (état "confided")
         out[#out + 1] = { group = g, raid = r, status = s and s.status or nil, state = s and G.SignupState(s) or nil, onSite = r.status, siteChar = r.char,
-          unknown = r.unknown or nil, siteState = siteState }
+          unknown = r.unknown or nil, siteState = siteState, by = s and type(s.confided) == "table" and s.confided.by or nil }
       end
     end
   end
@@ -192,12 +199,13 @@ end
 
 -- Inscription en jeu : gardée pour ce perso, envoyée au site avec le prochain export (ou le prochain /reload avec
 -- Roster Companion). Le statut déjà enregistré sur le site pour ce perso : rien à envoyer (un choix pas encore parti
--- est annulé), sauf si un choix précédent est déjà en route (les données du site ne le montrent peut-être pas encore).
+-- est annulé), sauf si un choix précédent est déjà en route (les données du site ne le montrent peut-être pas encore) :
+-- écrit pour l'appli, reçu, ou (1.6.3) proposé à la guilde ou confié à un officier (Relay.lua : relayAt, confided).
 function G.SignUp(groupId, raidId, status, raidTime)
   local c = ns.charDB()
   c.signups = c.signups or {}
   local old, label = c.signups[raidId], G.StatusLabel(status)
-  local inflight = old and (old.outSig ~= nil or old.sent or old.inflight) or nil
+  local inflight = old and (old.outSig ~= nil or old.sent or old.inflight or old.relayAt ~= nil or old.confided ~= nil) or nil
   local _, r = findRaid(groupId, raidId)
   if r and r.status == status and (r.char == nil or r.char == UnitName("player")) and not inflight then
     c.signups[raidId] = nil
@@ -205,6 +213,8 @@ function G.SignUp(groupId, raidId, status, raidTime)
     return
   end
   c.signups[raidId] = { group = groupId, status = status, time = raidTime or 0, at = G.Now(), inflight = inflight }
+  -- Sans Roster Companion (1.6.3) : confiée 1 à 3 s plus tard à un officier de la guilde qui a l'appli (Relay.lua)
+  if ns.Relay then ns.safe(N("relais"), ns.Relay.ConfideSoon, raidId) end
   if ns.Companion and ns.Companion.Active() then
     ns.print(L("inscription notée : %s. « Envoyer maintenant » (onglet Raids) l'envoie au site tout de suite, sinon elle part au prochain /reload.", label))
   else

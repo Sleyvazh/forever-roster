@@ -71,6 +71,15 @@ local function applyAcks(acks, at)
           if c.sentSig ~= sig then c.sentSig, c.sentAt = sig, at n = n + 1 end
         end
         if c then ns.safe(N("inscriptions"), ns.Group.MarkReceived, c, sig, at) end
+        -- Inscriptions confiées par la guilde écrites dans ce bloc (lignes V, Relay.lua, 1.6.3) : sur le site, oubliées sans
+        -- faire repartir le perso (un accusé revu ne trouve plus rien). Accusé lu sur un autre perso : ses lignes V
+        -- disent si le perso est à jour (Export.Quietly)
+        if c and ns.Relay then
+          ns.safe(N("relais"), function()
+            local relayed = c ~= ns.charDB() and ns.Relay.Written(key, sig) or nil
+            ns.Export.Quietly(c, function() ns.Relay.Ack(key, sig) end, relayed)
+          end)
+        end
       end
     end
   end

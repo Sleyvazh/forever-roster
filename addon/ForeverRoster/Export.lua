@@ -228,11 +228,16 @@ function E.Forget(key)
   if c then c.snapshot = nil end
 end
 
--- Lignes d'un perso pour l'export : relevé + inscriptions + patrons marqués en jeu
-local function linesOf(c, snap)
+-- Lignes d'un perso pour l'export : relevé + inscriptions + patrons marqués en jeu.
+-- Inscriptions confiées par la guilde (lignes V, Relay.lua, 1.6.3) : seulement dans le bloc du perso connecté (elles
+-- comptent dans son empreinte : le bloc repart) ; relayed : ces lignes-là à la place (empreinte d'un bloc déjà écrit,
+-- ou {} : sans elles)
+local function linesOf(c, snap, relayed)
   local lines = {}
   for _, l in ipairs(snap.lines or {}) do lines[#lines + 1] = l end
   ns.safe(N("inscriptions"), function() for _, l in ipairs(ns.Group.SignupLines(c)) do lines[#lines + 1] = l end end)
+  if relayed then for _, l in ipairs(relayed) do lines[#lines + 1] = l end
+  elseif ns.Relay and c == ns.charDB() then ns.safe(N("relais"), function() for _, l in ipairs((ns.Relay.Lines())) do lines[#lines + 1] = l end end) end
   ns.safe(N("recherchés"), function() for _, l in ipairs(ns.Group.WantedLines(c)) do lines[#lines + 1] = l end end)
   ns.safe(N("consommables"), function() for _, l in ipairs(ns.Group.ConsumableLines(c)) do lines[#lines + 1] = l end end)
   return ns.Format.Compact(lines)
@@ -247,9 +252,9 @@ end
 
 -- Empreinte du contenu d'un perso (sans la date du relevé) : sert à savoir s'il a changé depuis le dernier envoi
 local function hash(str) return ns.Format.Hash(str) end
-local function signature(c, snap)
+local function signature(c, snap, relayed)
   local parts = { tostring(snap.header and snap.header.level) }
-  for _, l in ipairs(linesOf(c, snap)) do
+  for _, l in ipairs(linesOf(c, snap, relayed)) do
     local f = {}
     for i, v in ipairs(l) do f[i] = tostring(v) end
     parts[#parts + 1] = table.concat(f, ";")
@@ -269,9 +274,11 @@ function E.IsSent(c)
   return c.snapshot ~= nil and c.sentSig ~= nil and c.sentSig == signature(c, c.snapshot)
 end
 
--- Retire ce que le site a déjà (inscriptions enregistrées) sans faire repartir le perso pour autant
-function E.Quietly(c, change)
-  local was = E.IsSent(c)
+-- Retire ce que le site a déjà (inscriptions enregistrées) sans faire repartir le perso pour autant.
+-- relayed (accusé lu sur un autre perso que celui-ci, 1.6.3) : les lignes V écrites dans son bloc ; elles ne comptent
+-- plus dans son empreinte (elles suivent le perso connecté), il est aussi à jour si son empreinte avec elles est la sienne
+function E.Quietly(c, change, relayed)
+  local was = E.IsSent(c) or (relayed ~= nil and c.snapshot ~= nil and c.sentSig ~= nil and c.sentSig == signature(c, c.snapshot, relayed))
   change()
   if was then c.sentSig = signature(c, c.snapshot) end
 end
@@ -298,6 +305,11 @@ function E.Build(opts)
     if wanted then
       blocks[#blocks + 1] = block(e.char, e.snap)
       included[#included + 1] = e
+      -- Inscriptions confiées par la guilde mises dans ce bloc (Relay.lua) : clés et clics, oubliées au Ctrl+C
+      if e.current and ns.Relay then
+        local ok, _, sent = pcall(ns.Relay.Lines)
+        if ok then included.relayed = sent end
+      end
     end
   end
   -- Bilans de raid relevés (présence et butin) : ceux pas encore envoyés, ou ceux des 3 derniers jours avec opts.all
@@ -344,14 +356,20 @@ function E.Outbox()
     local sig = signature(e.char, e.snap)
     out[#out + 1] = { kind = "frc", key = e.key, sig = sig, text = block(e.char, e.snap) }
     ns.safe(N("inscriptions"), ns.Group.MarkOut, e.char, sig)
+    -- Inscriptions confiées par la guilde (lignes V du perso connecté) : écrites dans ce bloc (Relay.lua)
+    if e.current and ns.Relay then ns.safe(N("relais"), ns.Relay.MarkOut, e.key, sig) end
   end
   return out
 end
 
--- L'export a été copié (Ctrl+C) : ces persos sont à jour sur le site jusqu'au prochain changement
+-- L'export a été copié (Ctrl+C) : ces persos sont à jour sur le site jusqu'au prochain changement.
+-- Inscriptions confiées par la guilde copiées avec le perso connecté (Relay.lua) : oubliées (si leur clic n'a pas changé
+-- depuis) ; son empreinte est notée sans lignes V : celles arrivées ou changées entre-temps restent à envoyer.
+local NO_RELAYED = {}
 function E.MarkSent(included)
+  if included and included.relayed and ns.Relay then ns.safe(N("relais"), ns.Relay.Forget, included.relayed) end
   for _, e in ipairs(included or {}) do
-    e.char.sentSig = signature(e.char, e.snap)
+    e.char.sentSig = signature(e.char, e.snap, e.current and NO_RELAYED or nil)
     e.char.sentAt = time()
     ns.safe(N("inscriptions"), ns.Group.MarkReceived, e.char, nil)
   end

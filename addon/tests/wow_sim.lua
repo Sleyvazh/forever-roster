@@ -1021,7 +1021,8 @@ local function sharing()
   assert(E.Build():find("\nS;" .. esc(G1) .. ";" .. esc(R1) .. ";present\n"), "inscription en attente : toujours dans l'export")
   local e1
   for _, e in ipairs(G.Raids()) do if e.raid.id == R1 then e1 = e end end
-  assert(e1 and e1.status == "present" and e1.state == "todo" and e1.onSite == nil and e1.siteState == "none" and not e1.unknown, "onglet Raids : en jeu en attente, pas inscrit sur le site")
+  -- En guilde sans l'appli (1.6.3) : en attente d'un officier qui l'a (Relay.lua, section 8 octies)
+  assert(e1 and e1.status == "present" and e1.state == "waiting" and e1.onSite == nil and e1.siteState == "none" and not e1.unknown, "onglet Raids : en jeu en attente, pas inscrit sur le site")
   assert(lastPrinted("Données de Les Veilleurs reçues de Greta (site : ") and received() == 1, "message dans le chat, une fois")
   assert(thalwen.applied[1] and thalwen.applied[1].at == AT and brindille.applied[1] and brindille.applied[1].group == G1, "Thalwen et Brindille : appliqué")
   assert(#zeph.applied == 0 and zeph.Sh.State().outsider[G1] and zeph.Sh.last.result == "member", "Zephyra pas membre : jamais appliqué")
@@ -1170,9 +1171,21 @@ local function sharing()
       if type(text) == "string" and fr:GetText() == text and text:find("Partager les données du site avec la guilde et le raid : ", 1, true) then return text end
     end
   end
+  -- Bouton de la ligne du partage (les réglages du relais, en dessous, ont aussi « Couper » / « Activer », 1.6.3)
+  local function shareButton()
+    local p = ns.UI.pages.options
+    local add, spec = p.list.Add, nil
+    p.list.Add = function(text, buttons)
+      if text:find("Partager les données du site avec la guilde et le raid : ", 1, true) then spec = buttons and buttons[1] end
+      return add(text, buttons)
+    end
+    ns.UI.Refresh()
+    p.list.Add = add
+    return spec
+  end
   run("options")
-  assert(optionRow() and optionRow():find("activé", 1, true) and TEXTS["Couper"], "onglet Options : partage activé par défaut")
-  rawget(TEXTS["Couper"], "scripts").OnClick(TEXTS["Couper"])
+  assert(optionRow() and optionRow():find("activé", 1, true) and shareButton()[1] == "Couper", "onglet Options : partage activé par défaut")
+  shareButton()[3]()
   assert(ForeverRosterDB.share == false and optionRow():find("coupé", 1, true), "partage coupé depuis l'onglet Options")
   advance(Sh.QUIET + 5)
   local m7 = #mine
@@ -1192,10 +1205,10 @@ local function sharing()
   assert(myGroup(G1).at == T5 and count(mine, "^SHQ;" .. esc(G1) .. ";" .. (T4 + 10) .. ";GUILD", m7 + 1) == 1, "coupé : réception (demande et application)")
   assert(count(mine, "^SH[VD]", m7 + 1) == 0, "coupé : rien relayé")
   run("options")
-  assert(optionRow():find("coupé", 1, true) and TEXTS["Activer"], "onglet Options : partage coupé")
+  assert(optionRow():find("coupé", 1, true) and shareButton()[1] == "Activer", "onglet Options : partage coupé")
   advance(Sh.QUIET + 5)
   local m8 = #mine
-  rawget(TEXTS["Activer"], "scripts").OnClick(TEXTS["Activer"])
+  shareButton()[3]()
   assert(ForeverRosterDB.share == nil, "partage remis (option par défaut)")
   advance(4)
   assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T5 .. ";", m8 + 1) == 1, "remis : annonce tout de suite")
@@ -2426,6 +2439,583 @@ local function siteList()
 end
 siteList()
 
+-- 8 octies. Relais des inscriptions faites en jeu (Relay.lua, 1.6.3). Tournicoti officier avec Roster Companion : il garde
+-- les inscriptions confiées par la guilde (SUP), répond à chacun (SUA chuchoté au nom complet), refuse ce qui ne passe pas
+-- les contrôles de la spec B3 (raison notée au journal), les écrit dans son bloc FRC (lignes V), les oublie à l'accusé de
+-- l'appli ou au Ctrl+C sans faire repartir son perso ; fenêtre « Envoyer au site » ; annonce RLY. Puis Tournicoti joueur
+-- sans l'appli : il confie ses clics (SUP), « confiée à Brakka » (SUA), renvoie à l'annonce d'un relais (RLY) et à la
+-- connexion ; jamais avec l'appli ni l'option coupée. Les autres joueurs : des CHAT_MSG_ADDON (« Greta-Forever EU »…).
+-- Chaque cas est indépendant et dit lequel échoue ; tout est remis en place à la fin.
+local function relaying()
+  local G, E, Cp, Sh = ns.Group, ns.Export, ns.Companion, ns.Share
+  local c, KEY = ns.charDB(), ns.charKey()
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInGuild = IsInGuild, InCombatLockdown = InCombatLockdown,
+    IsInInstance = IsInInstance, UnitGUID = UnitGUID, GetServerTime = GetServerTime, ReloadUI = ReloadUI, data = ForeverRosterData, random = Sh.random,
+    askReload = ns.UI.AskReload, chars = ForeverRosterDB.chars, groups = ForeverRosterDB.groups, lastLoad = ForeverRosterDB.lastLoad,
+    companion = ForeverRosterDB.companion, guilds = ForeverRosterDB.guilds, tab = ForeverRosterDB.tab, raidLogs = ForeverRosterDB.raidLogs,
+    handover = ForeverRosterDB.handover, noRecord = ForeverRosterDB.noRecord, outbox = ForeverRosterDB.outbox,
+    signups = c.signups, snapshot = c.snapshot, sentSig = c.sentSig, sentAt = c.sentAt, ackSig = c.ackSig, guild = c.guild }
+  local errorsBefore = errors()
+  -- Horloge et minuteurs : le temps avance à la demande (comme la section 8 ter)
+  local clock = 1796000000
+  local timers = {}
+  local function schedule(delay, fn) timers[#timers + 1] = { at = clock + math.max(0, delay or 0), fn = fn } end
+  local function advance(sec)
+    local target = clock + sec
+    while true do
+      local best, bi
+      for i, t in ipairs(timers) do if t.at <= target and (not best or t.at < best.at) then best, bi = t, i end end
+      if not best then break end
+      table.remove(timers, bi)
+      clock = math.max(clock, best.at)
+      best.fn()
+    end
+    clock = target
+  end
+  time = function() return math.floor(clock) end
+  GetTime = function() return clock end
+  GetServerTime = nil
+  C_Timer = { After = function(delay, fn) schedule(delay, fn) end, NewTicker = function() return {} end }
+  Sh.random = function() return 0.5 end
+  local S = { guild = true, combat = false, instance = false }
+  IsInGuild = function() return S.guild end
+  InCombatLockdown = function() return S.combat end
+  IsInInstance = function() if S.instance then return true, "party" end return false, "none" end
+  UnitGUID = function(u) if u == "player" then return "Player-4321-00000001" end end
+  -- Messages envoyés par Tournicoti ; ceux des autres arrivent par CHAT_MSG_ADDON, avec le royaume, comme dans le jeu
+  local sent = {}
+  C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function(prefix, msg, dist, target)
+    assert(prefix == "FRoster" and #msg <= 255, "message d'addon de plus de 255 octets : " .. #msg)
+    sent[#sent + 1] = { msg = msg, dist = dist, target = target, t = clock }
+    return 0
+  end }
+  local function hear(from, msg, dist) fire("CHAT_MSG_ADDON", "FRoster", msg, dist or "GUILD", from .. "-Forever EU") end
+  local function esc(v) return (tostring(v):gsub("%p", "%%%0")) end
+  local function since(n, pattern)
+    local out = {}
+    for i = n + 1, #sent do if sent[i].msg:find(pattern) then out[#out + 1] = sent[i] end end
+    return out
+  end
+  local function journalHas(...)
+    for _, e in ipairs(Sh.Journal()) do
+      local ok = true
+      for _, part in ipairs({ ... }) do if not e.text:find(part, 1, true) then ok = false end end
+      if ok then return e end
+    end
+  end
+  -- Lignes d'un onglet (texte et boutons), au dernier affichage
+  local function rows(tab)
+    ns.UI.Show(tab)
+    local p = ns.UI.pages[tab]
+    local out, add = {}, p.list.Add
+    p.list.Add = function(text, buttons) out[#out + 1] = { text = text, buttons = buttons } return add(text, buttons) end
+    ns.UI.Refresh()
+    p.list.Add = add
+    return out
+  end
+  local function row(tab, part)
+    for _, r in ipairs(rows(tab)) do if r.text:find(part, 1, true) then return r end end
+  end
+  -- Fenêtre « Recharger / Plus tard » (UI.AskReload) : chaque appel noté, la vraie fenêtre affichée
+  local asks = {}
+  ns.UI.AskReload = function(text, go) asks[#asks + 1] = { text = text, go = go } return keep.askReload(text, go) end
+  local reloads = 0
+  ReloadUI = function() reloads = reloads + 1 end
+
+  -- Données : « Les Veilleurs » (je suis officier : ligne O ; Onyxia à venir, Molten Core passé depuis deux jours) et
+  -- « Les Autres » (officier : Brakka seulement). Persos du compte : Tournicoti (connecté) et Brindille. Liste de guilde
+  -- relevée : Greta, Ilyra, Jorund avec leur GUID ; Pikou sans GUID connu.
+  local GA, GB, GZ = "6a0f3c1e-0000-4000-8000-0000000000a0", "6a0f3c1e-0000-4000-8000-0000000000b0", "6a0f3c1e-0000-4000-8000-0000000000f0"
+  local RA1, RA2, RB1 = "6a0f3c1e-0000-4000-8000-0000000000a1", "6a0f3c1e-0000-4000-8000-0000000000a2", "6a0f3c1e-0000-4000-8000-0000000000b1"
+  local ONY, PAST = clock + 5 * 86400, clock - 2 * 86400
+  local GUID = { greta = "Player-4321-00000002", ilyra = "Player-4321-0000000B", jorund = "Player-4321-0000000C", pikou = "Player-4321-0000000A" }
+  ForeverRosterDB.chars = { [KEY] = c, ["Brindille-Forever EU"] = { recipes = {} } }
+  ForeverRosterDB.raidLogs, ForeverRosterDB.handover, ForeverRosterDB.noRecord = {}, {}, true
+  local GK = "Les Veilleurs-Forever EU-Horde"
+  ForeverRosterDB.guilds = { [GK] = { name = "Les Veilleurs", faction = "Horde", realm = "Forever EU", roster = { at = clock, by = "Tournicoti", rank = "Officier", rankIndex = 1, total = 5, members = {
+    { name = "Greta Coulé", key = "greta", guid = GUID.greta }, { name = "Ilyra", key = "ilyra", guid = GUID.ilyra },
+    { name = "Jorund", key = "jorund", guid = GUID.jorund }, { name = "Pikou", key = "pikou" },
+    { name = "Tournicoti Tournicoton", key = "tournicoti", guid = "Player-4321-00000001" } } } } }
+  c.guild = GK
+  ForeverRosterDB.groups = {}
+  assert(G.Load(table.concat({
+    "FRG;1;" .. GA .. ";" .. clock .. ";Les Veilleurs", "R;" .. RA1 .. ";" .. ONY .. ";Onyxia;;;journal", "R;" .. RA2 .. ";" .. PAST .. ";Molten Core;;;journal",
+    "O;Tournicoti,Brakka", "M;Brakka,Brindille,Greta,Ilyra,Jorund,Pikou,Tournicoti", "END;2",
+    "FRG;1;" .. GB .. ";" .. clock .. ";Les Autres", "R;" .. RB1 .. ";" .. ONY .. ";Zul'Gurub;;;journal", "O;Brakka", "M;Brakka,Greta,Tournicoti", "END;1" }, "\n"), true, true))
+  local ONY_DAY = date("%d/%m", ONY)
+
+  -- Départ de chaque cas : rien de gardé ni d'inscrit, appli active (officier) ou non (joueur), perso envoyé, journal vide
+  local function fresh(app)
+    ForeverRosterDB.relayed, ForeverRosterDB.confide, ForeverRosterDB.relaying, ForeverRosterData = nil, nil, nil, nil
+    ForeverRosterDB.companion = { seen = app and clock or nil }
+    c.signups = {}
+    S.guild, S.combat, S.instance = true, false, false
+    advance(1900) -- délais de la session écoulés (fenêtre : 30 min ; RLY entendu : 60 s)
+    advance(math.ceil(clock) - clock) -- heure ronde : les clics simulés (clock - 60…) sont des secondes entières, comme G.Now()
+    ForeverRosterDB.companion.seen = app and clock or nil
+    E.MarkSent(select(2, E.Build({ all = true })))
+    Sh.Reset()
+    asks = {}
+  end
+  local function kept(name, raid) return (ForeverRosterDB.relayed or {})[name .. "|" .. (raid or RA1)] end
+  local function count() local n = 0 for _ in pairs(ForeverRosterDB.relayed or {}) do n = n + 1 end return n end
+  local function sup(group, raid, status, clic, guid) return table.concat({ "SUP", group, raid, status, clic, guid or "" }, ";") end
+  local function pending() for _, e in ipairs(E.Pending()) do if e.key == KEY then return true end end return false end
+
+  local failed = {}
+  local function case(name, fn)
+    local ok, err = pcall(fn)
+    if not ok then failed[#failed + 1] = name .. " : " .. tostring(err) end
+  end
+
+  -- Officier : SUP de Greta (membre, GUID de la liste de guilde) gardée, SUA chuchoté à son nom complet
+  case("officier : SUP de Greta gardée, SUA chuchoté à Greta-Forever EU", function()
+    fresh(true)
+    assert(ns.Relay and ns.Relay.Eligible() and ns.Relay.Officer(ForeverRosterDB.groups[GA]) and not ns.Relay.Officer(ForeverRosterDB.groups[GB]), "éligible, officier des Veilleurs seulement")
+    assert(E.IsSent(c), "départ : rien à envoyer")
+    local n, T = #sent, clock - 120
+    hear("Greta", sup(GA, RA1, "tentative", T, GUID.greta))
+    local e = kept("greta")
+    assert(e and e.group == GA and e.raid == RA1 and e.status == "tentative" and e.at == T and e.name == "Greta" and e.guid == GUID.greta
+      and e.got == time() and e.from == "Greta-Forever EU", "gardée dans ForeverRosterDB.relayed[\"greta|<raid>\"]")
+    local a = since(n, "^SUA;")
+    assert(#a == 1 and a[1].msg == "SUA;" .. RA1 .. ";" .. T and a[1].dist == "WHISPER" and a[1].target == "Greta-Forever EU", "SUA chuchoté à Greta-Forever EU")
+    assert(journalHas("SUP de Greta gardé"), "journal : gardé")
+    assert(not E.IsSent(c) and pending(), "le perso de l'officier a de nouveau quelque chose à envoyer (ligne V)")
+    -- GUID absent : celui du seul membre à ce prénom ; membre sans GUID relevé : le GUID reçu, tel quel
+    hear("Ilyra", sup(GA, RA1, "present", T, ""))
+    hear("Pikou", sup(GA, RA1, "late", T, GUID.pikou))
+    assert(kept("ilyra") and kept("ilyra").guid == GUID.ilyra and kept("pikou") and kept("pikou").guid == GUID.pikou, "GUID : complété par la liste de guilde, ou gardé")
+    -- Sans liste de guilde relevée : accepté tel quel
+    local roster = ForeverRosterDB.guilds[GK].roster
+    ForeverRosterDB.guilds[GK].roster = nil
+    hear("Jorund", sup(GA, RA1, "absent", T, "Player-4321-000000EE"))
+    ForeverRosterDB.guilds[GK].roster = roster
+    assert(kept("jorund") and kept("jorund").guid == "Player-4321-000000EE", "sans liste de guilde : GUID tel quel")
+  end)
+
+  -- Refus : chacun noté au journal avec sa raison, rien de gardé, pas de SUA (msg : fonction qui écrit le message au début
+  -- du cas, l'horloge ayant avancé)
+  local function refused(label, from, msg, reason, dist)
+    case("officier : refusé, " .. label, function()
+      fresh(true)
+      local n = #sent
+      hear(from, msg(), dist)
+      assert(count() == 0, "rien de gardé")
+      assert(#since(n, "^SUA;") == 0, "pas de SUA")
+      if reason then assert(journalHas("SUP de " .. from .. " ignoré", reason), "journal : " .. reason .. " : " .. tostring((Sh.Journal()[1] or {}).text)) end
+      -- Témoin : le SUP de Greta, sur la guilde, passe
+      hear("Greta", sup(GA, RA1, "present", clock - 60, GUID.greta))
+      assert(count() == 1 and kept("greta"), "témoin : SUP de Greta gardé")
+    end)
+  end
+  refused("non-membre de M", "Orvane", function() return sup(GA, RA1, "present", clock - 60, "") end, "pas dans la liste des membres du groupe")
+  refused("GUID d'un autre membre", "Ilyra", function() return sup(GA, RA1, "present", clock - 60, GUID.greta) end, "GUID d'un autre membre de la guilde")
+  refused("GUID inconnu, le seul Jorund en a un autre", "Jorund", function() return sup(GA, RA1, "present", clock - 60, "Player-4321-000000FF") end, "GUID différent de celui de la liste de guilde")
+  refused("groupe où je ne suis pas officier", "Greta", function() return sup(GB, RB1, "present", clock - 60, GUID.greta) end, "je ne suis pas officier de ce groupe")
+  refused("groupe inconnu", "Greta", function() return sup(GZ, RA1, "present", clock - 60, GUID.greta) end, "groupe inconnu")
+  refused("raid passé depuis plus de 24 h", "Greta", function() return sup(GA, RA2, "present", clock - 60, GUID.greta) end, "raid passé")
+  refused("statut du site seulement", "Greta", function() return sup(GA, RA1, "bench", clock - 60, GUID.greta) end, "statut inconnu")
+  refused("clic dans 10 min", "Greta", function() return sup(GA, RA1, "present", clock + 600, GUID.greta) end, "heure du clic hors limites")
+  refused("clic d'il y a 8 jours", "Greta", function() return sup(GA, RA1, "present", clock - 8 * 86400, GUID.greta) end, "heure du clic hors limites")
+  refused("mon propre perso", "Brindille", function() return sup(GA, RA1, "present", clock - 60, "") end, "c'est un de mes persos")
+  refused("chuchoté (guilde seulement)", "Greta", function() return sup(GA, RA1, "present", clock - 60, GUID.greta) end, nil, "WHISPER")
+  refused("mon propre message (écho de la guilde)", "Tournicoti", function() return sup(GA, RA1, "present", clock - 60, "") end, nil)
+  case("pas de relais ici : appli inactive ou option coupée", function()
+    fresh(false)
+    hear("Greta", sup(GA, RA1, "present", clock - 60, GUID.greta))
+    assert(count() == 0 and journalHas("SUP de Greta ignoré", "Roster Companion inactif"), "appli inactive : ignoré, dit au journal")
+    fresh(true)
+    ForeverRosterDB.relaying = false
+    hear("Greta", sup(GA, RA1, "present", clock - 60, GUID.greta))
+    assert(count() == 0 and journalHas("SUP de Greta ignoré", "option coupée"), "option coupée : ignoré, dit au journal")
+  end)
+
+  -- Deux SUP de Greta : le clic le plus récent l'emporte ; le même clic redit : SUA de nouveau, rien d'autre
+  case("officier : deux SUP, la plus récente", function()
+    fresh(true)
+    local T = clock - 300
+    hear("Greta", sup(GA, RA1, "tentative", T, GUID.greta))
+    advance(10)
+    hear("Greta", sup(GA, RA1, "late", T + 60, GUID.greta))
+    assert(kept("greta").status == "late" and kept("greta").at == T + 60, "clic plus récent gardé")
+    local n = #sent
+    hear("Greta", sup(GA, RA1, "tentative", T, GUID.greta))
+    assert(kept("greta").status == "late" and kept("greta").at == T + 60 and #since(n, "^SUA;") == 0, "clic plus ancien : ignoré")
+    local got = kept("greta").got
+    advance(10)
+    hear("Greta", sup(GA, RA1, "late", T + 60, GUID.greta))
+    assert(kept("greta").got == got and #since(n, "^SUA;" .. esc(RA1) .. ";" .. (T + 60) .. "$") == 1 and count() == 1, "même clic redit : SUA de nouveau")
+  end)
+
+  -- /reload (déconnexion) : lignes V dans le bloc FRC de Tournicoti ; accusé de l'appli : oubliées, le perso ne repart pas ;
+  -- accusé revu : rien ; une inscription arrivée après l'envoi reste
+  case("officier : PLAYER_LOGOUT, accusé, accusé revu", function()
+    fresh(true)
+    local T = clock - 100
+    hear("Greta", sup(GA, RA1, "late", T, GUID.greta))
+    advance(5)
+    hear("Ilyra", sup(GA, RA1, "present", T + 2, ""))
+    fire("PLAYER_LOGOUT")
+    local b
+    for _, x in ipairs(ForeverRosterDB.outbox.blocks) do if x.kind == "frc" and x.key == KEY then b = x end end
+    assert(b and b.text:find("\nV;" .. GA .. ";" .. RA1 .. ";late;Greta;" .. GUID.greta .. ";" .. T .. "\n", 1, true)
+      and b.text:find("\nV;" .. GA .. ";" .. RA1 .. ";present;Ilyra;" .. GUID.ilyra .. ";" .. (T + 2) .. "\n", 1, true), "bloc FRC de Tournicoti avec les lignes V")
+    assert(b.text:find("V;[^\n]*Greta.-\nV;[^\n]*Ilyra"), "lignes V dans l'ordre de réception")
+    assert(kept("greta").outKey == KEY and kept("greta").outSig == b.sig and kept("ilyra").outSig == b.sig, "écrites pour l'appli (outKey, outSig)")
+    -- Accusé de l'appli (empreinte du bloc)
+    ForeverRosterData = { v = 1, at = clock, app = "0.3.1", acks = { [KEY] = b.sig } }
+    Cp.Apply()
+    assert(count() == 0, "accusé : oubliées")
+    assert(E.IsSent(c) and not pending(), "accusé : le perso n'est pas « à envoyer »")
+    assert(journalHas("inscription(s) relayée(s) reçue(s) par le site"), "journal : accusé")
+    -- Nouvelle inscription, puis le même accusé relu (l'appli le redonne à chaque chargement) : elle reste
+    advance(5)
+    hear("Jorund", sup(GA, RA1, "absent", clock - 10, GUID.jorund))
+    Cp.Apply()
+    assert(count() == 1 and kept("jorund") and not kept("jorund").outSig, "accusé revu : rien d'oublié")
+    assert(not E.IsSent(c) and pending(), "accusé revu : la nouvelle inscription reste à envoyer")
+  end)
+
+  -- Accusé lu sur un autre perso (Brakka a écrit son bloc, puis on se connecte avec Tournicoti) : oubliées, Brakka ne
+  -- repart pas
+  case("officier : accusé lu sur un autre perso du compte", function()
+    fresh(true)
+    local T = clock - 100
+    hear("Greta", sup(GA, RA1, "late", T, GUID.greta))
+    fire("PLAYER_LOGOUT")
+    local b
+    for _, x in ipairs(ForeverRosterDB.outbox.blocks) do if x.kind == "frc" and x.key == KEY then b = x end end
+    assert(b and b.text:find("\nV;", 1, true), "bloc avec la ligne V")
+    -- Le même bloc vu comme celui d'un autre perso : Tournicoti n'est plus le perso connecté
+    local realName = UnitName
+    UnitName = function() return "Brakka" end
+    ForeverRosterData = { v = 1, at = clock, app = "0.3.1", acks = { [KEY] = b.sig } }
+    Cp.Apply()
+    UnitName = realName
+    ForeverRosterDB.chars["Brakka-Forever EU"] = nil
+    assert(count() == 0 and E.IsSent(c) and not pending(), "oubliées, l'autre perso n'est pas « à envoyer »")
+  end)
+
+  -- Ctrl+C de l'export qui les contient : oubliées ; une inscription changée entre-temps reste, à envoyer
+  case("officier : Ctrl+C", function()
+    fresh(true)
+    local T = clock - 100
+    hear("Greta", sup(GA, RA1, "late", T, GUID.greta))
+    hear("Ilyra", sup(GA, RA1, "present", T, ""))
+    local text, inc = E.Build({})
+    assert(text:find("\nV;" .. GA .. ";" .. RA1 .. ";late;Greta;", 1, true), "export : ligne V")
+    E.MarkSent(inc)
+    assert(count() == 0 and E.IsSent(c) and not pending(), "Ctrl+C : oubliées, rien à envoyer")
+    hear("Greta", sup(GA, RA1, "late", T + 10, GUID.greta))
+    hear("Ilyra", sup(GA, RA1, "present", T + 10, ""))
+    text, inc = E.Build({})
+    advance(5)
+    hear("Ilyra", sup(GA, RA1, "absent", T + 20, ""))
+    E.MarkSent(inc)
+    assert(count() == 1 and kept("ilyra") and kept("ilyra").status == "absent", "clic changé entre-temps : gardée")
+    assert(not E.IsSent(c) and pending(), "clic changé entre-temps : toujours à envoyer")
+  end)
+
+  -- Fenêtre « Envoyer au site » : 60 s après la première inscription pas encore écrite ; pas en combat ni en instance ;
+  -- au plus une fois par 30 min ; texte (singulier, pluriel, 5 lignes puis « et N autres »)
+  case("officier : fenêtre", function()
+    fresh(true)
+    hear("Greta", sup(GA, RA1, "tentative", clock - 100, GUID.greta))
+    advance(30)
+    ns.Relay.Tick()
+    assert(#asks == 0, "pas avant 60 s")
+    advance(30)
+    assert(#asks == 1 and asks[1].go == "Envoyer au site", "60 s après : fenêtre « Envoyer au site »")
+    local text = asks[1].text
+    assert(text:find("1 inscription faite en jeu par la guilde t'a été confiée :", 1, true) and text:find("Greta : Peut-être (Onyxia, " .. ONY_DAY .. ")", 1, true)
+      and text:find("L'envoyer au site maintenant ? L'interface se recharge (quelques secondes), puis Roster Companion la transmet.", 1, true), "texte au singulier : " .. text)
+    local go = TEXTS["Envoyer au site"]
+    assert(go and go:GetText() == "Envoyer au site", "bouton « Envoyer au site »")
+    rawget(go, "scripts").OnClick(go)
+    assert(reloads == 1, "« Envoyer au site » recharge l'interface")
+    -- Sans libellé (Roster Companion, copies épuisées) : « Recharger », comme avant
+    local w = keep.askReload("Roster Companion")
+    assert(w and w.go:GetText() == "Recharger", "AskReload sans libellé : « Recharger »")
+    -- Une nouvelle inscription moins de 30 min après : pas de fenêtre ; 30 min après la première : de nouveau
+    advance(60)
+    hear("Ilyra", sup(GA, RA1, "present", clock - 10, ""))
+    advance(90)
+    ns.Relay.Tick()
+    assert(#asks == 1, "au plus une fois par 30 min")
+    advance(1800)
+    ns.Relay.Tick()
+    assert(#asks == 2 and asks[2].text:find("2 inscriptions faites en jeu par la guilde t'ont été confiées :", 1, true)
+      and asks[2].text:find("Les envoyer au site maintenant ? L'interface se recharge (quelques secondes), puis Roster Companion les transmet.", 1, true), "30 min après : de nouveau, au pluriel")
+    -- Combat, instance : pas de fenêtre ; à la sortie, elle vient
+    advance(1801)
+    S.combat = true
+    hear("Jorund", sup(GA, RA1, "absent", clock - 10, GUID.jorund))
+    advance(61)
+    ns.Relay.Tick()
+    assert(#asks == 2, "pas en combat")
+    S.combat, S.instance = false, true
+    ns.Relay.Tick()
+    assert(#asks == 2, "pas en instance")
+    S.instance = false
+    ns.Relay.Tick()
+    assert(#asks == 3, "hors combat et hors instance : fenêtre")
+    -- Sept inscriptions : 5 lignes, puis « et 2 autres »
+    fresh(true)
+    for i, name in ipairs({ "Greta", "Ilyra", "Jorund", "Pikou" }) do hear(name, sup(GA, RA1, "present", clock - 10 * i, name == "Greta" and GUID.greta or "")) end
+    ForeverRosterDB.groups[GA].members[#ForeverRosterDB.groups[GA].members + 1] = "Ulric"
+    ForeverRosterDB.groups[GA].members[#ForeverRosterDB.groups[GA].members + 1] = "Vesna"
+    ForeverRosterDB.groups[GA].members[#ForeverRosterDB.groups[GA].members + 1] = "Wendel"
+    for _, name in ipairs({ "Ulric", "Vesna", "Wendel" }) do hear(name, sup(GA, RA1, "late", clock - 5, "")) end
+    advance(61)
+    local last = asks[#asks] and asks[#asks].text or ""
+    local lines = 0
+    for _ in last:gmatch("\n[^\n]+ : [^\n]+ %(Onyxia, ") do lines = lines + 1 end
+    assert(#asks == 1 and last:find("7 inscriptions faites en jeu par la guilde t'ont été confiées :", 1, true) and lines == 5 and last:find("et 2 autres", 1, true), "5 lignes puis « et 2 autres » : " .. last)
+  end)
+
+  -- Onglet Synchro (s'il y en a) et onglet Options (deux réglages sous le partage)
+  case("officier : onglets Synchro et Options", function()
+    fresh(true)
+    run("synchro")
+    local p = ns.UI.pages.synchro
+    assert(p.relay and (p.relay:GetText() or "") == "" and not p.relaySend:IsShown(), "rien de gardé : pas de ligne")
+    hear("Greta", sup(GA, RA1, "late", clock - 10, GUID.greta))
+    run("synchro")
+    assert(p.relay:GetText():find("Relais : 1 inscription confiée par la guilde, envoyée au site au prochain /reload.", 1, true) and p.relaySend:IsShown(), "une : au singulier, « Envoyer maintenant »")
+    hear("Ilyra", sup(GA, RA1, "late", clock - 10, ""))
+    run("synchro")
+    assert(p.relay:GetText():find("Relais : 2 inscriptions confiées par la guilde, envoyées au site au prochain /reload.", 1, true), "deux : au pluriel")
+    local before = reloads
+    rawget(p.relaySend, "scripts").OnClick(p.relaySend)
+    assert(reloads == before + 1, "« Envoyer maintenant » recharge l'interface")
+    -- Options : sous le partage, « Confier… » et « Transmettre… », activés d'office ; coupés et remis
+    local all = rows("options")
+    local share, confide, relay
+    for i, r in ipairs(all) do
+      if r.text:find("Partager les données du site", 1, true) then share = i end
+      if r.text:find("Confier mes inscriptions faites en jeu à un officier qui a Roster Companion : ", 1, true) then confide = i end
+      if r.text:find("Transmettre au site les inscriptions de la guilde : ", 1, true) then relay = i end
+    end
+    assert(share and confide == share + 1 and relay == share + 2, "deux réglages sous le partage")
+    assert(all[confide].text:find("activé", 1, true) and all[confide].text:find("Seulement sans l'appli. Coupé : elles partent avec ton export.", 1, true)
+      and all[relay].text:find("activé", 1, true) and all[relay].text:find("Officiers avec Roster Companion.", 1, true), "activés d'office, avec leur aide")
+    all[relay].buttons[1][3]()
+    assert(ForeverRosterDB.relaying == false and not ns.Relay.RelayOn() and not ns.Relay.Eligible(), "relais coupé")
+    row("options", "Confier mes inscriptions").buttons[1][3]()
+    assert(ForeverRosterDB.confide == false and not ns.Relay.ConfideOn(), "confier coupé")
+    local off = row("options", "Transmettre au site les inscriptions de la guilde : ")
+    assert(off and off.text:find("coupé", 1, true) and row("options", "Confier mes inscriptions").text:find("coupé", 1, true), "affichés coupés")
+    row("options", "Transmettre au site les inscriptions de la guilde").buttons[1][3]()
+    row("options", "Confier mes inscriptions").buttons[1][3]()
+    assert(ForeverRosterDB.relaying == nil and ForeverRosterDB.confide == nil, "remis (réglages par défaut)")
+  end)
+
+  -- RLY : 30 à 50 s après la connexion (groupes où je suis officier) ; une fois quand l'appli est vue pendant la session
+  case("officier : RLY", function()
+    fresh(true)
+    local n, t0 = #sent, clock
+    fire("PLAYER_LOGIN")
+    advance(29)
+    assert(#since(n, "^RLY") == 0, "pas avant 30 s")
+    advance(21)
+    local r = since(n, "^RLY")
+    assert(#r == 1 and r[1].msg == "RLY;" .. GA and r[1].dist == "GUILD" and r[1].t - t0 >= 30 and r[1].t - t0 <= 50, "RLY;<groupes où je suis officier> sur la guilde, 30 à 50 s après")
+    ns.Relay.Tick()
+    assert(#since(n, "^RLY") == 1, "une fois")
+    -- Connexion sans l'appli : rien ; l'appli vue ensuite (actualisation) : une annonce, une seule
+    fresh(false)
+    n = #sent
+    fire("PLAYER_LOGIN")
+    advance(60)
+    assert(#since(n, "^RLY") == 0, "appli inactive : pas de RLY")
+    ForeverRosterDB.companion.seen = clock
+    ns.Relay.Tick()
+    ns.Relay.Tick()
+    assert(#since(n, "^RLY;" .. esc(GA) .. "$") == 1, "appli vue pendant la session : une annonce")
+    -- Officier de rien : rien
+    fresh(true)
+    ForeverRosterDB.groups[GA].officers = { "Brakka" }
+    n = #sent
+    fire("PLAYER_LOGIN")
+    advance(60)
+    ForeverRosterDB.groups[GA].officers = { "Tournicoti", "Brakka" }
+    assert(#since(n, "^RLY") == 0, "officier d'aucun groupe : pas de RLY")
+  end)
+
+  -- Joueur sans l'appli : clic → SUP sur la guilde (1 à 3 s) ; SUA → « confiée à Brakka »
+  case("joueur : clic, SUP, SUA, « confiée à Brakka »", function()
+    fresh(false)
+    assert(ns.Relay and ns.Relay.CanConfide() and not ns.Relay.Eligible(), "peut confier, pas de relais")
+    local n = #sent
+    G.SignUp(GA, RA1, "present", ONY)
+    local s = c.signups[RA1]
+    assert(G.SignupState(s) == "waiting", "état : en attente d'un officier")
+    local r = row("raids", "Onyxia|r")
+    assert(r and r.text:find("en jeu : Présent, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un", 1, true), "onglet Raids : en attente : " .. tostring(r and r.text))
+    assert(row("raids", "Inscription de Tournicoti : sans Roster Companion, elle est confiée à un officier qui a l'appli."), "ligne des groupes")
+    advance(0.9)
+    assert(#since(n, "^SUP") == 0, "pas avant 1 s")
+    advance(2.2)
+    local m = since(n, "^SUP")
+    assert(#m == 1 and m[1].msg == sup(GA, RA1, "present", s.at, "Player-4321-00000001") and m[1].dist == "GUILD", "SUP sur la guilde : " .. tostring(m[1] and m[1].msg))
+    -- SUA d'un autre clic, sur la guilde : rien
+    hear("Brakka", "SUA;" .. RA1 .. ";" .. (s.at - 1), "WHISPER")
+    hear("Brakka", "SUA;" .. RA1 .. ";" .. s.at, "GUILD")
+    assert(not s.confided, "SUA d'un autre clic ou pas chuchoté : ignoré")
+    hear("Brakka", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+    assert(s.confided and s.confided.by == "Brakka" and s.confided.at == time() and G.SignupState(s) == "confided", "confiée à Brakka")
+    hear("Kaeldra", "SUA;" .. RA1 .. ";" .. s.at, "WHISPER")
+    assert(s.confided.by == "Brakka", "le premier SUA reçu")
+    r = row("raids", "Onyxia|r")
+    assert(r.text:find("en jeu : Présent, confiée à Brakka : part au site à son prochain /reload", 1, true), "onglet Raids : confiée : " .. r.text)
+    assert(journalHas("Brakka", "confiée"), "journal : confiée")
+    -- Le copier-coller marche toujours : la ligne S part avec l'export
+    assert(E.Build({}):find("\nS;" .. GA .. ";" .. RA1 .. ";present\n", 1, true), "ligne S dans l'export")
+    -- Nouveau clic : plus confiée, nouveau SUP
+    advance(10)
+    n = #sent
+    G.SignUp(GA, RA1, "late", ONY)
+    assert(not c.signups[RA1].confided and G.SignupState(c.signups[RA1]) == "waiting", "nouveau clic : plus confiée")
+    advance(3.1)
+    assert(#since(n, "^SUP;" .. esc(GA) .. ";" .. esc(RA1) .. ";late;") == 1, "nouveau clic : nouveau SUP")
+  end)
+
+  -- Confiée (ou proposée par SUP), puis retour au statut du site : pas annulée, elle repart (l'officier a peut-être déjà
+  -- l'autre statut, comme une inscription en route : 1.5.4)
+  case("joueur : retour au statut du site après un SUP : repart", function()
+    fresh(false)
+    local r = ForeverRosterDB.groups[GA].raids[1]
+    r.status, r.char = "absent", "Tournicoti"
+    G.SignUp(GA, RA1, "present", ONY)
+    advance(5)
+    local n = #sent
+    G.SignUp(GA, RA1, "absent", ONY)
+    local s = c.signups[RA1]
+    advance(5)
+    r.status, r.char = nil, nil
+    assert(s and s.status == "absent" and s.inflight, "statut du site remis : gardée, en route")
+    assert(#since(n, "^SUP;" .. esc(GA) .. ";" .. esc(RA1) .. ";absent;") == 1, "statut du site remis : SUP")
+  end)
+
+  -- RLY entendu : renvoi des inscriptions pas encore confiées (2 à 6 s), au plus une fois par minute ; connexion : 40 à 60 s
+  -- après, celles pas confiées ou confiées depuis plus de 6 h ; 10 SUP au plus d'un coup
+  case("joueur : RLY et connexion", function()
+    fresh(false)
+    G.SignUp(GA, RA1, "present", ONY)
+    G.SignUp(GB, RB1, "tentative", ONY)
+    advance(5)
+    hear("Brakka", "SUA;" .. RA1 .. ";" .. c.signups[RA1].at, "WHISPER")
+    local n = #sent
+    hear("Brakka", "RLY;" .. GA, "GUILD")
+    advance(10)
+    assert(#since(n, "^SUP") == 0, "RLY d'un groupe sans inscription à confier : rien")
+    hear("Brakka", "RLY;" .. GA .. "," .. GB, "GUILD")
+    advance(1.9)
+    assert(#since(n, "^SUP") == 0, "pas avant 2 s")
+    advance(4.2)
+    local m = since(n, "^SUP")
+    assert(#m == 1 and m[1].msg:find("^SUP;" .. esc(GB) .. ";"), "RLY : renvoi de celle pas confiée seulement")
+    hear("Brakka", "RLY;" .. GB, "GUILD")
+    advance(10)
+    assert(#since(n, "^SUP") == 1, "au plus une fois par minute")
+    hear("Brakka", "RLY;" .. GB, "WHISPER")
+    advance(60)
+    hear("Ulric", "RLY;" .. GB, "WHISPER")
+    advance(10)
+    assert(#since(n, "^SUP") == 1, "RLY chuchoté : ignoré")
+    -- Connexion : 40 à 60 s après, celles pas confiées
+    n = #sent
+    local t0 = clock
+    fire("PLAYER_LOGIN")
+    advance(39)
+    assert(#since(n, "^SUP") == 0, "pas avant 40 s")
+    advance(21)
+    m = since(n, "^SUP")
+    assert(#m == 1 and m[1].msg:find(RB1, 1, true) and m[1].t - t0 >= 40 and m[1].t - t0 <= 60, "connexion : celle pas confiée")
+    -- Confiée depuis plus de 6 h : de nouveau
+    advance(6 * 3600 + 60)
+    n = #sent
+    fire("PLAYER_LOGIN")
+    advance(60)
+    assert(#since(n, "^SUP") == 2, "confiée depuis plus de 6 h : de nouveau")
+    -- 10 SUP au plus d'un coup
+    fresh(false)
+    for i = 1, 12 do c.signups[string.format("r%02d", i)] = { group = GZ, status = "present", time = ONY, at = clock - i } end
+    n = #sent
+    fire("PLAYER_LOGIN")
+    advance(60)
+    assert(#since(n, "^SUP") == 10, "10 SUP au plus : " .. #since(n, "^SUP"))
+  end)
+
+  -- Jamais de SUP : appli active ici (la ligne S part par l'appli), option coupée, pas en guilde
+  case("joueur : appli active ici, option coupée, pas de guilde : aucun SUP", function()
+    -- Témoin : sans l'appli, en guilde, option activée : le clic part (SUP)
+    fresh(false)
+    local n = #sent
+    G.SignUp(GA, RA1, "present", ONY)
+    advance(10)
+    assert(#since(n, "^SUP") == 1, "témoin : SUP envoyé")
+    fresh(true)
+    n = #sent
+    G.SignUp(GA, RA1, "present", ONY)
+    fire("PLAYER_LOGIN")
+    advance(60)
+    assert(#since(n, "^SUP") == 0 and G.SignupState(c.signups[RA1]) == "todo", "appli active : aucun SUP")
+    assert(row("raids", "Inscription de Tournicoti : elle part au site au prochain /reload"), "ligne des groupes avec l'appli : comme avant")
+    fresh(false)
+    ForeverRosterDB.confide = false
+    n = #sent
+    G.SignUp(GA, RA1, "present", ONY)
+    fire("PLAYER_LOGIN")
+    advance(60)
+    hear("Brakka", "RLY;" .. GA, "GUILD")
+    advance(10)
+    assert(#since(n, "^SUP") == 0 and G.SignupState(c.signups[RA1]) == "todo", "option coupée : aucun SUP")
+    local r = row("raids", "Onyxia|r")
+    assert(r.text:find("en jeu : Présent, part avec ton prochain export", 1, true) and row("raids", "Inscription de Tournicoti, envoyée au site avec l'export."), "option coupée : textes d'avant")
+    fresh(false)
+    S.guild = false
+    n = #sent
+    G.SignUp(GA, RA1, "present", ONY)
+    advance(10)
+    assert(#since(n, "^SUP") == 0, "pas de guilde : aucun SUP")
+  end)
+
+  -- Ménage : reçue il y a plus de 7 jours, ou raid passé depuis plus de 24 h ; 200 au plus (la plus ancienne reçue sort)
+  case("officier : ménage et 200 au plus", function()
+    fresh(true)
+    hear("Greta", sup(GA, RA1, "late", clock - 10, GUID.greta))
+    ForeverRosterDB.relayed["vieux|" .. RA1] = { group = GA, raid = RA1, status = "present", at = clock - 8 * 86400, name = "Vieux", guid = "", got = clock - 8 * 86400, from = "Vieux" }
+    ForeverRosterDB.relayed["passe|" .. RA2] = { group = GA, raid = RA2, status = "present", at = clock - 3 * 86400, name = "Passe", guid = "", got = clock - 100, from = "Passe" }
+    ns.Relay.Tick()
+    assert(count() == 1 and kept("greta"), "ménage : reçue il y a plus de 7 j, raid passé depuis plus de 24 h")
+    for i = 1, 199 do
+      ForeverRosterDB.relayed["x" .. i .. "|" .. RA1] = { group = GA, raid = RA1, status = "present", at = clock - 10, name = "X" .. i, guid = "", got = clock - 1000 + i, from = "X" .. i }
+    end
+    hear("Ilyra", sup(GA, RA1, "present", clock - 5, ""))
+    assert(count() == 200 and kept("ilyra") and kept("greta") and not kept("x1"), "200 au plus : la plus ancienne reçue sort")
+    local lines = ns.Relay.Lines()
+    assert(#lines == 60 and lines[1][1] == "V" and lines[1][5] == "X2", "60 lignes V au plus par bloc, les plus anciennes reçues d'abord")
+  end)
+
+  -- Remise en place
+  time, GetTime, C_Timer, C_ChatInfo, IsInGuild, InCombatLockdown = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo, keep.IsInGuild, keep.InCombatLockdown
+  IsInInstance, UnitGUID, GetServerTime, ReloadUI, ForeverRosterData, Sh.random = keep.IsInInstance, keep.UnitGUID, keep.GetServerTime, keep.ReloadUI, keep.data, keep.random
+  ns.UI.AskReload = keep.askReload
+  ForeverRosterDB.chars, ForeverRosterDB.groups, ForeverRosterDB.lastLoad, ForeverRosterDB.companion = keep.chars, keep.groups, keep.lastLoad, keep.companion
+  ForeverRosterDB.guilds, ForeverRosterDB.tab, ForeverRosterDB.raidLogs, ForeverRosterDB.handover = keep.guilds, keep.tab, keep.raidLogs, keep.handover
+  ForeverRosterDB.noRecord, ForeverRosterDB.outbox = keep.noRecord, keep.outbox
+  ForeverRosterDB.relayed, ForeverRosterDB.confide, ForeverRosterDB.relaying = nil, nil, nil
+  c.signups, c.snapshot, c.sentSig, c.sentAt, c.ackSig, c.guild = keep.signups, keep.snapshot, keep.sentSig, keep.sentAt, keep.ackSig, keep.guild
+  Sh.Reset()
+  assert(#failed == 0, "section 8 octies :\n  " .. table.concat(failed, "\n  "))
+  local errs = {}
+  for _, l in ipairs(printed) do if l:find("erreur") then errs[#errs + 1] = l end end
+  assert(errors() == errorsBefore and failures == 0, "relais sans erreur : " .. tostring(errs[#errs]))
+end
+relaying()
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
@@ -2461,10 +3051,19 @@ if helper and helper ~= "" then
   local guild = ForeverRosterDB.guilds and ForeverRosterDB.guilds[guildKey]
   assert(guild and guild.roster and ForeverRosterDB.chars["Tournicoti-Forever EU"].levels, "relève de la guilde dans la sauvegarde")
   guild.sentSig = nil
+  -- Une inscription faite en jeu par Greta, confiée à Tournicoti (officier) : une ligne V dans son bloc (Relay.lua, 1.6.3)
+  local relayRaid = "6a0f3c1e-0000-4000-8000-0000000000c1"
+  ForeverRosterDB.relayed = { ["greta|" .. relayRaid] = { group = "6a0f3c1e-0000-4000-8000-0000000000c0", raid = relayRaid, status = "late",
+    at = time() - 60, name = "Greta", guid = "Player-4321-00000002", got = time() - 30, from = "Greta-Forever EU" } }
   fire("PLAYER_LOGOUT")
-  local frl
-  for _, b in ipairs(ForeverRosterDB.outbox.blocks) do if b.kind == "frl" then frl = b end end
+  local frl, frc
+  for _, b in ipairs(ForeverRosterDB.outbox.blocks) do
+    if b.kind == "frl" then frl = b end
+    if b.kind == "frc" and b.key == "Tournicoti-Forever EU" then frc = b end
+  end
   assert(frl and frl.key == "frl:" .. guildKey and frl.text:match("^FRL;1;Les Veilleurs;"), "relevé de la guilde dans la boîte d'envoi")
+  assert(frc and frc.text:find("\nV;6a0f3c1e-0000-4000-8000-0000000000c0;" .. relayRaid .. ";late;Greta;Player-4321-00000002;" .. (time() - 60) .. "\n", 1, true)
+    and ForeverRosterDB.relayed["greta|" .. relayRaid].outSig == frc.sig, "inscription relayée dans le bloc du perso (ligne V)")
   local out = { "\nForeverRosterDB = " }
   ser(ForeverRosterDB, out, 0)
   out[#out + 1] = "\n"
@@ -2485,6 +3084,7 @@ if helper and helper ~= "" then
   assert(type(ForeverRosterData) == "table" and ForeverRosterData.v == 1, "Data.lua chargé")
   fire("PLAYER_LOGIN")
   for _, e in ipairs(ns.Export.Pending()) do assert(e.key ~= "Tournicoti-Forever EU", "perso marqué envoyé par l'accusé de l'appli") end
+  assert(next(ForeverRosterDB.relayed) == nil, "inscription relayée oubliée à l'accusé de l'appli")
   assert(ForeverRosterDB.raidLogs[logId].sentAt, "bilan marqué envoyé par l'accusé de l'appli")
   assert(guild.ackSig == frl.sig and guild.sentSig == frl.sig, "relevé de la guilde marqué envoyé par l'accusé de l'appli")
   local function groupNames()
@@ -2506,6 +3106,9 @@ if helper and helper ~= "" then
   ok, msg, changed = ns.Companion.Refresh()
   assert(ok and changed and msg:find("actualisées", 1, true) and msg:find("Encore 18", 1, true), msg)
   assert(groupNames():find("Les Retardataires", 1, true), "nouvelles données chargées sans /reload")
+  -- Étape 2 : l'accusé, redonné avec les nouvelles données, ne fait rien de plus ; le perso n'est pas « à envoyer »
+  assert(next(ForeverRosterDB.relayed) == nil, "inscription relayée toujours oubliée")
+  for _, e in ipairs(ns.Export.Pending()) do assert(e.key ~= "Tournicoti-Forever EU", "accusé revu : le perso n'est pas « à envoyer »") end
   -- En combat : remis à la fin du combat
   InCombatLockdown = function() return true end
   ok, msg = ns.Companion.Refresh()
@@ -2622,7 +3225,7 @@ assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 -- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai,
 -- groupes écrits par Roster Companion dans l'aller-retour de la section 9 (test Rust de l'appli : RC_HELPER)
 local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4",
-  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé", "Élite de la Vallée", "Toutes les quêtes : prenez-les avant d'entrer." }
+  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé", "Élite de la Vallée", "Toutes les quêtes : prenez-les avant d'entrer.", "Les Autres" }
 LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon ; partage : vraie signature du site vérifiée (" .. shareChecks .. " fois)")
