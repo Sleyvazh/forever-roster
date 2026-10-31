@@ -443,7 +443,8 @@ export const FIND_DUNGEONS = 3, FIND_MATES = 6, FIND_SPAN = 3;
 
 /**
  * « Trouver quoi faire » : à partir de mon perso dans la guilde (mon main, sinon le plus haut ; une fiche rangée dans la
- * guilde, avec sa classe), les donjons de sa fourchette et les persos de la guilde à FIND_SPAN niveaux près. Les persos de
+ * guilde, avec sa classe, et son niveau de fiche : celui que « + Sortie » accepte), les donjons de sa fourchette et les
+ * persos de la guilde à FIND_SPAN niveaux près. Les persos de
  * la guilde viennent de la liste du jeu quand la guilde est liée (niveau, en ligne, dernière connexion), sinon des fiches
  * du site des membres (jamais en ligne, sans connexion). Les miens (alts compris) ne sont ni comptés ni listés. null :
  * aucun perso à moi dans la guilde, pas de carte. `planned` : sorties d'aujourd'hui et de demain, la plus proche d'abord.
@@ -454,8 +455,8 @@ export async function homeFind(db: Tx, groupId: string, me: string, r: Resolved,
     .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, me), eq(characters.game, "forever")));
   const linked = !!r.data.gg;
   const roster = new Map(r.data.members.filter(m => !m.leftAt).map(m => [m.guid, m]));
-  // Le niveau le plus récent : la liste du jeu peut avoir vu monter le perso avant sa fiche (ou l'inverse)
-  const char = pickCharacterFor(null, fiches.filter(f => f.cls).map(f => ({ ...f, level: Math.max(f.level, (f.guid && roster.get(f.guid)?.level) || 0) })));
+  // Le niveau de la fiche, pas celui de la liste du jeu : « + Sortie » et le serveur (outings.ts, pickCharacter) comptent le niveau de la fiche
+  const char = pickCharacterFor(null, fiches.filter(f => f.cls));
   if (!char) return null;
 
   type Mate = HomeFind["mates"][number];
