@@ -7,6 +7,7 @@ import type { Db } from "../db/client";
 import { gameGuilds, groupMembers, groups, guildEvents, guildLevels, guildLinkProposals, guildMembers, type FrozenPodiumPlace } from "../db/schema";
 import { audit } from "./audit";
 import { bus } from "./events";
+import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 import type { GroupRole } from "./groups";
 import { applyBank, type BankApplySummary } from "./guild-bank";
 
@@ -29,8 +30,6 @@ type MemberRow = typeof guildMembers.$inferSelect;
 type GuildRow = typeof gameGuilds.$inferSelect;
 
 const HOUR = 3600e3;
-/** Deux lectures du même événement du journal (« il y a N heures ») diffèrent de moins d'une heure ; marge de 2 h. */
-const EVENT_TOLERANCE = 2 * HOUR;
 const plural = (n: number, w: string, ws = `${w}s`) => `${n} ${n > 1 ? ws : w}`;
 const officerRole = (r: GroupRole) => r === "owner" || r === "officer";
 /** Lien fait pendant la bêta : remplacé par la vraie guilde après la sortie. */
@@ -139,31 +138,22 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
       const ranks = new Map<number, string>();
       for (const m of members) if (!ranks.has(m.rankIndex)) ranks.set(m.rankIndex, m.rank);
       if (g.roster) for (const m of g.roster.members) ranks.set(m.rankIndex, m.rank);
-      const incoming = g.journal.events.map(e => ({ ...e, at: new Date(jAt - e.hoursAgo * HOUR) })).sort((a, b) => a.at.getTime() - b.at.getTime());
-      const oldest = incoming[0]!.at.getTime();
-      const stored = await tx.select().from(guildEvents).where(and(eq(guildEvents.groupId, groupId), gte(guildEvents.at, new Date(oldest - EVENT_TOLERANCE))));
-      const used = new Set<number>();
-      const tuple = (e: { type: string; player1: string; player2: string; rankIndex: number | null }) => `${e.type}|${nameKey(e.player1)}|${nameKey(e.player2)}|${e.rankIndex ?? ""}`;
-      const inserts: (typeof guildEvents.$inferInsert)[] = [];
-      for (const e of incoming) {
-        const k = tuple(e);
-        let best: (typeof stored)[number] | null = null;
-        for (const s of stored) {
-          if (used.has(s.id) || tuple(s) !== k) continue;
-          const d = Math.abs(s.at.getTime() - e.at.getTime());
-          if (d <= EVENT_TOLERANCE && (!best || d < Math.abs(best.at.getTime() - e.at.getTime()))) best = s;
-        }
-        if (best) {
-          used.add(best.id);
-          // La lecture la plus proche de l'événement : la plus ancienne (« il y a » arrondi en dessous)
-          if (e.at.getTime() < best.at.getTime()) await tx.update(guildEvents).set({ at: e.at }).where(eq(guildEvents.id, best.id));
-          continue;
-        }
-        inserts.push({ groupId, type: e.type, player1: e.player1, player2: e.player2, rankIndex: e.rankIndex, rankName: e.rankIndex === null ? null : ranks.get(e.rankIndex) ?? null, at: e.at });
-        newEvents.push({ type: e.type, player1: e.player1, player2: e.player2, at: e.at });
+      // Une ligne dont la date est impossible (« il y a » démesuré) est sautée
+      const incoming = g.journal.events.flatMap(e => { const at = gameLogDate(jAt, e.hoursAgo); return at ? [{ ...e, at }] : []; });
+      if (incoming.length) {
+        const oldest = Math.min(...incoming.map(e => e.at.getTime()));
+        const stored = await tx.select().from(guildEvents).where(and(eq(guildEvents.groupId, groupId), gte(guildEvents.at, new Date(oldest - GAME_LOG_TOLERANCE))));
+        const tuple = (e: { type: string; player1: string; player2: string; rankIndex: number | null }) => `${e.type}|${nameKey(e.player1)}|${nameKey(e.player2)}|${e.rankIndex ?? ""}`;
+        const { fresh, earlier } = matchGameLog(incoming.map(e => ({ ...e, key: tuple(e) })), stored.map(s => ({ id: s.id, key: tuple(s), at: s.at })));
+        // La lecture la plus proche de l'événement : la plus ancienne (« il y a » arrondi en dessous)
+        for (const e of earlier) await tx.update(guildEvents).set({ at: e.at }).where(eq(guildEvents.id, e.id));
+        const inserts: (typeof guildEvents.$inferInsert)[] = fresh.map(e => ({
+          groupId, type: e.type, player1: e.player1, player2: e.player2, rankIndex: e.rankIndex, rankName: e.rankIndex === null ? null : ranks.get(e.rankIndex) ?? null, at: e.at,
+        }));
+        for (const e of fresh) newEvents.push({ type: e.type, player1: e.player1, player2: e.player2, at: e.at });
+        if (inserts.length) await tx.insert(guildEvents).values(inserts);
+        sum.events = inserts.length;
       }
-      if (inserts.length) await tx.insert(guildEvents).values(inserts);
-      sum.events = inserts.length;
       if (!gg.journalAt || jAt > gg.journalAt.getTime()) Object.assign(guildPatch, { journalAt: new Date(jAt), journalBy: g.journal.by });
     }
 

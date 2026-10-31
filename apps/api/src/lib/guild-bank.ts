@@ -3,6 +3,7 @@ import { and, desc, eq, gt, gte, lt, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { guildBank, guildBankLog, guildBankTabs } from "../db/schema";
 import { itemsById } from "../routes/gamedata";
+import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 
 /**
  * Banque de la guilde du jeu (lignes B, T, I, X, O du relevé FRL, lot « Banque »), appliquée dans la transaction du relevé
@@ -10,7 +11,7 @@ import { itemsById } from "../routes/gamedata";
  * - tout membre peut envoyer le relevé ; le plus récent (heure de la ligne B) l'emporte pour l'or et les noms d'onglets ;
  * - chaque onglet garde son dernier relevé lu : un onglet que l'envoyeur ne voit pas (0;0) ou pas encore lu (1;0) garde
  *   le contenu d'avant, et un relevé plus ancien apporte un onglet que le site n'avait jamais lu ;
- * - journaux dédoublonnés comme le journal de guilde (« il y a N heures », marge de 2 h), gardés 12 mois (purges) ;
+ * - journaux dédoublonnés comme le journal de guilde (game-log.ts : « il y a N heures », marge de 2 h), gardés 12 mois (purges) ;
  * - le relevé ne borne pas les nombres : ici, une date impossible ou d'avant 2000 saute la ligne, un entier trop grand pour
  *   la base saute la case ou la ligne (objet) ou n'est pas gardé (quantité, montant, or).
  */
@@ -21,13 +22,8 @@ type KeyRow = Pick<typeof guildBankLog.$inferSelect, "kind" | "tab" | "type" | "
 
 export interface BankApplySummary { bank: "applied" | "older" | null; tabs: number; moves: number }
 
-const HOUR = 3600e3;
-/** Deux lectures de la même ligne de journal (« il y a N heures ») diffèrent de moins d'une heure ; marge de 2 h. */
-const LOG_TOLERANCE = 2 * HOUR;
 /** Plus grand entier d'une colonne integer. */
 const INT4_MAX = 2147483647;
-/** Une ligne de journal plus ancienne que ça vient d'un « il y a » démesuré : sautée. */
-const EARLIEST_LOG = Date.UTC(2000, 0, 1);
 /** Montant ou or : un entier que JavaScript garde exactement, sinon rien. */
 const safe = (n: number | null) => (n !== null && Number.isSafeInteger(n) ? n : null);
 /** Quantité : un entier de la colonne integer, sinon rien. */
@@ -37,30 +33,6 @@ const int4 = (n: number | null) => (n !== null && Number.isSafeInteger(n) && n <
 const logKey = (r: KeyRow) => (r.kind === "item"
   ? ["item", r.tab, r.type, nameKey(r.who), r.itemId, r.count, r.tab1, r.tab2]
   : ["money", r.type, nameKey(r.who), r.amount]).map(v => v ?? "").join("|");
-
-/**
- * Lignes reçues rapprochées des lignes déjà gardées (même clé, à 2 h près, la plus proche, chacune ne sert qu'une fois) :
- * `fresh` les lignes à ajouter, `earlier` les lignes gardées à reculer (la lecture la plus proche de l'événement est la plus
- * ancienne : « il y a » est arrondi en dessous). Même règle que le journal de guilde (guild-import.ts, étape 2).
- */
-export function matchBankLog<I extends { key: string; at: Date }>(incoming: readonly I[], stored: readonly { id: number; key: string; at: Date }[]) {
-  const byKey = new Map<string, { id: number; at: Date }[]>();
-  for (const s of stored) byKey.set(s.key, [...(byKey.get(s.key) ?? []), s]);
-  const used = new Set<number>();
-  const fresh: I[] = [], earlier: { id: number; at: Date }[] = [];
-  for (const e of [...incoming].sort((a, b) => a.at.getTime() - b.at.getTime())) {
-    let best: { id: number; at: Date } | null = null;
-    for (const s of byKey.get(e.key) ?? []) {
-      if (used.has(s.id)) continue;
-      const d = Math.abs(s.at.getTime() - e.at.getTime());
-      if (d <= LOG_TOLERANCE && (!best || d < Math.abs(best.at.getTime() - e.at.getTime()))) best = s;
-    }
-    if (!best) { fresh.push(e); continue; }
-    used.add(best.id);
-    if (e.at.getTime() < best.at.getTime()) earlier.push({ id: best.id, at: e.at });
-  }
-  return { fresh, earlier };
-}
 
 /** Applique la banque d'un relevé (dans la transaction du relevé de guilde). */
 export async function applyBank(tx: Tx, groupId: string, b: GuildBankExport, o: { when: (unix: number) => Date; sentBy: string | null }): Promise<BankApplySummary> {
@@ -109,8 +81,8 @@ export async function applyBank(tx: Tx, groupId: string, b: GuildBankExport, o: 
   // Journaux des objets et de l'or
   const incoming: (LogRow & { key: string })[] = [];
   const add = (r: KeyRow, hoursAgo: number) => {
-    const date = new Date(at.getTime() - hoursAgo * HOUR);
-    if (!(date.getTime() >= EARLIEST_LOG)) return; // date impossible (NaN) ou d'avant 2000
+    const date = gameLogDate(at.getTime(), hoursAgo);
+    if (!date) return;
     incoming.push({ ...r, groupId, at: date, sentBy: o.sentBy, key: logKey(r) });
   };
   for (const l of b.log) {
@@ -121,9 +93,9 @@ export async function applyBank(tx: Tx, groupId: string, b: GuildBankExport, o: 
   if (incoming.length) {
     const times = incoming.map(l => l.at.getTime());
     const known = await tx.select().from(guildBankLog).where(and(
-      eq(guildBankLog.groupId, groupId), gte(guildBankLog.at, new Date(Math.min(...times) - LOG_TOLERANCE)), lte(guildBankLog.at, new Date(Math.max(...times) + LOG_TOLERANCE)),
+      eq(guildBankLog.groupId, groupId), gte(guildBankLog.at, new Date(Math.min(...times) - GAME_LOG_TOLERANCE)), lte(guildBankLog.at, new Date(Math.max(...times) + GAME_LOG_TOLERANCE)),
     ));
-    const { fresh, earlier } = matchBankLog(incoming, known.map(s => ({ id: s.id, key: logKey(s), at: s.at })));
+    const { fresh, earlier } = matchGameLog(incoming, known.map(s => ({ id: s.id, key: logKey(s), at: s.at })));
     for (const e of earlier) await tx.update(guildBankLog).set({ at: e.at }).where(eq(guildBankLog.id, e.id));
     if (fresh.length) await tx.insert(guildBankLog).values(fresh.map(({ key: _, ...r }) => r));
     sum.moves = fresh.length;

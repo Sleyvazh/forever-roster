@@ -1,4 +1,4 @@
-import { atTime, LAUNCH_AT, outingDays, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
+import { atTime, LAUNCH_AT, outingDays, type GuildBankResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { characters, groups, guildBankLog, guildEvents, guildLevels, guildLinkProposals, guildLinks, guildMembers, guildPlayers } from "../src/db/schema";
@@ -206,6 +206,36 @@ describe("liste complète ou partielle, journal de guilde", () => {
     // Retour de Gorvash : il n'est plus parti, nouvelle arrivée
     await paste(s.owner, frl({ at: J2, members: [K, A, Z, G] }));
     expect(charOf(await s.guild(), "Gorvash Tannecuir")).toMatchObject({ level: 40, joinedApprox: true, joinedAt: new Date(J2 * 1000).toISOString() });
+  });
+
+  it("même événement relu avec un « il y a » plus grand : la date gardée recule, jamais l'inverse, jamais de doublon", async () => {
+    const s = await scene("Les Horloges");
+    const T = NOW() - 4 * HOUR;
+    const event = (hours: number) => ["promote", "Kaeldra Brisevent", "Ashka Ventsauvage", 2, hours];
+    const stored = async () => (await db().select({ at: guildEvents.at }).from(guildEvents).where(eq(guildEvents.groupId, s.g.id))).map(x => x.at.toISOString());
+    await paste(s.owner, frl({ at: T, members: [], journal: { at: T, events: [event(3)] } }));
+    expect(await stored()).toEqual([new Date((T - 3 * HOUR) * 1000).toISOString()]);
+    // Une heure plus tard le jeu dit « il y a 5 h » : 4 h avant le premier relevé, soit une heure plus tôt que la date gardée
+    await paste(s.owner, frl({ at: T + HOUR, members: [], journal: { at: T + HOUR, events: [event(5)] } }));
+    expect(await stored()).toEqual([new Date((T - 4 * HOUR) * 1000).toISOString()]);
+    // Une lecture qui tombe une heure plus tard (« il y a 5 h » au relevé suivant, T − 3 h) ne fait pas avancer la date
+    await paste(s.owner, frl({ at: T + 2 * HOUR, members: [], journal: { at: T + 2 * HOUR, events: [event(5)] } }));
+    expect(await stored()).toEqual([new Date((T - 4 * HOUR) * 1000).toISOString()]);
+  });
+
+  it("ligne du journal avec un « il y a » démesuré : sautée, le reste du relevé (liste, journal, banque) est enregistré", async () => {
+    const s = await scene("Les Éternels");
+    const K = m("Kaeldra Brisevent", 60, { rank: "Maître de guilde", ri: 0 });
+    const T = NOW() - HOUR;
+    const r = await paste(s.owner, frl({
+      at: T, members: [K],
+      journal: { at: T, events: [["join", "Torvin Rochefer", "", "", 2], ["join", "Vieux Fantome", "", "", "99999999999999999999"], ["quit", "Autre Fantome", "", "", 9999999]] },
+      bank: [`B;${T};Morwen Cendrevoile;100;1`, "T;1;Soins;1;1"],
+    }));
+    expect(r.results[0]).toMatchObject({ status: "updated", message: expect.stringContaining("journal : 1 nouvel événement") });
+    expect((await db().select({ p: guildEvents.player1 }).from(guildEvents).where(eq(guildEvents.groupId, s.g.id))).map(x => x.p)).toEqual(["Torvin Rochefer"]);
+    expect((await s.guild()).chars.map(c => c.name)).toEqual([K.name]);
+    expect((await s.get<GuildBankResponse>(s.owner, "/guild/bank")).bank).toMatchObject({ money: 100 });
   });
 });
 
