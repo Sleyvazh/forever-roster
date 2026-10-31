@@ -47,10 +47,10 @@ describe("or et textes du journal", () => {
   it("texte et sens d'un mouvement d'or", () => {
     expect(bankMoneyText("deposit")).toEqual({ verb: "a déposé", sign: 1 });
     expect(bankMoneyText("withdraw")).toEqual({ verb: "a retiré", sign: -1 });
-    expect(bankMoneyText("repair")).toEqual({ verb: "réparations", sign: -1 });
-    expect(bankMoneyText("buyTab")).toEqual({ verb: "achat d'un onglet", sign: -1 });
-    expect(bankMoneyText("withdrawForTab")).toEqual({ verb: "retrait pour un onglet", sign: -1 });
-    expect(bankMoneyText("depositSummary")).toEqual({ verb: "part du butin", sign: 1 });
+    expect(bankMoneyText("repair")).toEqual({ verb: "a payé des réparations", sign: -1 });
+    expect(bankMoneyText("buyTab")).toEqual({ verb: "a acheté un onglet", sign: -1 });
+    expect(bankMoneyText("withdrawForTab")).toEqual({ verb: "a retiré pour un onglet", sign: -1 });
+    expect(bankMoneyText("depositSummary")).toEqual({ verb: "a versé sa part du butin", sign: 1 });
     expect(bankMoneyText("weird")).toEqual({ verb: "(weird)", sign: -1 });
   });
 });

@@ -247,11 +247,7 @@ function Journal({ groupId, tabs, objects, lastMoney }: { groupId: string; tabs:
       {q.hasNextPage && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>Plus ancien</button>}
       {kind === "items" && !!lastMoney.length && (
         <p className="bk-last small muted">
-          Or : {lastMoney.map((m, i) => {
-            const s = signed(m), t = bankMoneyText(m.type);
-            // « +50 po Kaeldra », « −12 po réparations de Gorrak »
-            return <Fragment key={m.id}>{i > 0 && " · "}<b className={s.cls}>{s.text}</b> {m.type === "deposit" || m.type === "withdraw" ? m.who : `${t.verb} de ${m.who}`} ({agoText(m.at)})</Fragment>;
-          })}
+          Or : {lastMoney.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}<MoneyText m={m} /> ({agoText(m.at)})</Fragment>)}
         </p>
       )}
     </section>
@@ -273,12 +269,16 @@ function ItemMove({ m, objects, tabName }: { m: GuildBankMove; objects: Record<n
   );
 }
 
-/** « Vex réparations −12 po 30 pa » : le sens (entre ou sort) donne la couleur. */
-function MoneyMove({ m }: { m: GuildBankMoneyMove }) {
+/** « **Vex** a payé des réparations −12 po 30 pa » : le sens (l'or entre ou sort) donne la couleur du montant. */
+function MoneyText({ m }: { m: GuildBankMoneyMove }) {
   const s = signed(m);
+  return <><b>{m.who}</b> {bankMoneyText(m.type).verb} <span className={s.cls}>{s.text}</span></>;
+}
+
+function MoneyMove({ m }: { m: GuildBankMoneyMove }) {
   return (
     <li>
-      <span><b>{m.who}</b> {bankMoneyText(m.type).verb} <span className={s.cls}>{s.text}</span></span>
+      <span><MoneyText m={m} /></span>
       <When at={m.at} />
     </li>
   );

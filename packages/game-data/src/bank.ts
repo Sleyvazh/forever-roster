@@ -40,12 +40,15 @@ export const bankItemVerb = (type: string) => (Object.hasOwn(ITEM_VERBS, type) ?
 const MONEY_TEXTS: Record<string, { verb: string; sign: 1 | -1 }> = {
   deposit: { verb: "a déposé", sign: 1 },
   withdraw: { verb: "a retiré", sign: -1 },
-  repair: { verb: "réparations", sign: -1 },
-  buyTab: { verb: "achat d'un onglet", sign: -1 },
-  withdrawForTab: { verb: "retrait pour un onglet", sign: -1 },
-  depositSummary: { verb: "part du butin", sign: 1 },
+  repair: { verb: "a payé des réparations", sign: -1 },
+  buyTab: { verb: "a acheté un onglet", sign: -1 },
+  withdrawForTab: { verb: "a retiré pour un onglet", sign: -1 },
+  depositSummary: { verb: "a versé sa part du butin", sign: 1 },
 };
-/** Texte d'une ligne du journal de l'or, et son sens : +1 l'or entre dans la banque, −1 il en sort. Type inconnu : entre parenthèses, une sortie. */
+/**
+ * Texte d'une ligne du journal de l'or, et son sens : +1 l'or entre dans la banque, −1 il en sort. Le verbe est une
+ * phrase qui suit le nom (« Vex a payé des réparations », puis le montant signé). Type inconnu : entre parenthèses, une sortie.
+ */
 export const bankMoneyText = (type: string): { verb: string; sign: 1 | -1 } => (Object.hasOwn(MONEY_TEXTS, type) ? MONEY_TEXTS[type]! : { verb: `(${type})`, sign: -1 });
 
 /* ---------- Réponses de l'API (site) ---------- */

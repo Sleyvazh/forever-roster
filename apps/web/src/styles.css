@@ -1729,11 +1729,12 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .bk-log small { white-space: normal; }
 .bk-log .in, .bk-last .in { color: var(--ok); } .bk-log .out, .bk-last .out { color: var(--bad); }
 .bk-last { margin: 0; }
-/* Guilde : cinq onglets, tous visibles dès 360 px (sans le fondu des onglets qui défilent) */
+/* Guilde : cinq onglets, tous visibles dès 360 px (sans le fondu des onglets qui défilent) ; 3 px de marge à 360 px, 5 px dès 380 px */
 @media (min-width: 360px) and (max-width: 720px) {
   .tabs.bk-five { -webkit-mask-image: none; mask-image: none; padding-right: 4px; }
-  .panel > .tabs.bk-five .tab { padding-inline: 5px; }
+  .panel > .tabs.bk-five .tab { padding-inline: 3px; }
 }
+@media (min-width: 380px) and (max-width: 720px) { .panel > .tabs.bk-five .tab { padding-inline: 5px; } }
 
 /* Course au 60 */
 .c60-top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }

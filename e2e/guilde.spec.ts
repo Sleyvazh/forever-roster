@@ -49,7 +49,7 @@ function frl(now: number) {
     "E;invite;Kaeldra Brisevent;Zirta Pellerouge;;6",
     "E;join;Zirta Pellerouge;;;5",
     "E;promote;Kaeldra Brisevent;Brindille Feuillevive;1;30",
-    // Banque : or, deux onglets (le 2e que le releveur ne voit pas), trois cases (dont un objet inconnu du catalogue), un dépôt, une réparation
+    // Banque : or, deux onglets (le 2e que le releveur ne voit pas), trois cases (dont un objet inconnu du catalogue), un dépôt d'objets, une réparation et un dépôt d'or
     `B;${now};Brindille Feuillevive;1234567;2`,
     "T;1;Consommables;1;1",
     "T;2;Officiers;0;0",
@@ -58,6 +58,7 @@ function frl(now: number) {
     "I;1;2;999999;1",
     "X;1;deposit;Pikou Patacuivre;8170;20;;;3",
     "O;repair;Vex Ombrelame;123030;5",
+    "O;deposit;Kaeldra Brisevent;500000;30",
   ];
   return [`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
 }
@@ -260,9 +261,11 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(journal).toContainText("50 derniers mouvements par onglet");
     await expect(journal).toContainText("Pikou Patacuivre a déposé 20 × Rugged Leather");
     await expect(journal).toContainText("Consommables");
-    await expect(page.locator(".bk-last")).toContainText("réparations de Vex Ombrelame");
+    // « Or : » les deux derniers mouvements, du plus récent au plus ancien : qui, ce qu'il a fait, montant signé, quand
+    await expect(page.locator(".bk-last")).toContainText(/^Or : Vex Ombrelame a payé des réparations −12 po 30 pa 30 pc \(.+\) · Kaeldra Brisevent a déposé \+50 po \(.+\)$/);
     await journal.getByRole("group", { name: "Journal de la banque" }).getByRole("button", { name: "Or" }).click();
-    await expect(journal).toContainText("Vex Ombrelame réparations −12 po 30 pa 30 pc");
+    await expect(journal).toContainText("Vex Ombrelame a payé des réparations −12 po 30 pa 30 pc");
+    await expect(journal).toContainText("Kaeldra Brisevent a déposé +50 po");
   });
 
   await test.step("Accueil, Administration, téléphone", async () => {
@@ -299,5 +302,15 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     expect(rank.y, "rang, joueur et connexion sous le nom").toBeGreaterThan(name.y + name.height - 2);
     expect((await row.locator(".gx-lv").boundingBox())!.y, "niveau sur la ligne du nom").toBeLessThan(name.y + name.height);
     expect(await page.locator(".gx-table").evaluate(t => t.parentElement!.scrollWidth <= t.parentElement!.clientWidth)).toBe(true);
+    // 360, 375 et 390 px : les cinq onglets de Guilde tiennent sans défiler, rien ne déborde (Membres, Banque)
+    for (const width of [360, 375, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const url of [`/groups/${group}/membres`, `/groups/${group}/membres/banque`]) {
+        await page.goto(url);
+        await page.waitForLoadState("networkidle");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth), `${url} à ${width} px`).toBeLessThanOrEqual(width);
+        expect(await page.locator(".panel > .tabs").evaluate(t => t.scrollWidth <= t.clientWidth), `onglets de Guilde sans défilement à ${width} px`).toBe(true);
+      }
+    }
   });
 });
