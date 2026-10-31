@@ -38,6 +38,12 @@ describe("or et textes du journal", () => {
     expect(bankItemVerb("move")).toBe("a déplacé");
     expect(bankItemVerb("weird")).toBe("(weird)");
   });
+  it("un type qui porte le nom d'une propriété d'objet reste un type inconnu (le type d'une ligne est une suite de lettres, donc peut s'écrire ainsi)", () => {
+    for (const type of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(bankItemVerb(type)).toBe(`(${type})`);
+      expect(bankMoneyText(type)).toEqual({ verb: `(${type})`, sign: -1 });
+    }
+  });
   it("texte et sens d'un mouvement d'or", () => {
     expect(bankMoneyText("deposit")).toEqual({ verb: "a déposé", sign: 1 });
     expect(bankMoneyText("withdraw")).toEqual({ verb: "a retiré", sign: -1 });

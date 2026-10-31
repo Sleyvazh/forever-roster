@@ -35,7 +35,7 @@ export function moneyParts(copper: number): { g: number; s: number; c: number } 
 
 const ITEM_VERBS: Record<string, string> = { deposit: "a déposé", withdraw: "a retiré", move: "a déplacé" };
 /** Verbe d'une ligne du journal d'un onglet (« Pikou a déposé… ») ; le type du jeu entre parenthèses s'il est inconnu. */
-export const bankItemVerb = (type: string) => ITEM_VERBS[type] ?? `(${type})`;
+export const bankItemVerb = (type: string) => (Object.hasOwn(ITEM_VERBS, type) ? ITEM_VERBS[type]! : `(${type})`);
 
 const MONEY_TEXTS: Record<string, { verb: string; sign: 1 | -1 }> = {
   deposit: { verb: "a déposé", sign: 1 },
@@ -46,7 +46,7 @@ const MONEY_TEXTS: Record<string, { verb: string; sign: 1 | -1 }> = {
   depositSummary: { verb: "part du butin", sign: 1 },
 };
 /** Texte d'une ligne du journal de l'or, et son sens : +1 l'or entre dans la banque, −1 il en sort. Type inconnu : entre parenthèses, une sortie. */
-export const bankMoneyText = (type: string): { verb: string; sign: 1 | -1 } => MONEY_TEXTS[type] ?? { verb: `(${type})`, sign: -1 };
+export const bankMoneyText = (type: string): { verb: string; sign: 1 | -1 } => (Object.hasOwn(MONEY_TEXTS, type) ? MONEY_TEXTS[type]! : { verb: `(${type})`, sign: -1 });
 
 /* ---------- Réponses de l'API (site) ---------- */
 
