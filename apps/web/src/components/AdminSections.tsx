@@ -209,7 +209,8 @@ export function ChannelTag({ linked, name }: { linked: boolean; name: string | n
 
 /**
  * En tête de l'administration Discord : le lien pour inviter le bot sur son serveur (GET /api/discord/invite, qui renvoie
- * vers Discord), puis la suite : lier un salon avec le code du bouton juste en dessous.
+ * vers Discord), puis la suite : lier un salon avec le code du bouton juste en dessous. À n'afficher que tant que le salon
+ * des raids du groupe n'est pas lié : le bot est alors déjà sur le serveur, et le bouton du dessous s'appelle « Changer de salon ».
  */
 export function AddBot() {
   const game = useSite().game;

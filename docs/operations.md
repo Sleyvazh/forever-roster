@@ -558,7 +558,7 @@ Sur <https://discord.com/developers/applications>, **New Application** (« Forev
    « Voir les anciens messages » sert aux réponses sous les avis ; sur un serveur où le bot est déjà, l'ajouter à son rôle.
    « Gérer les salons » n'est **pas** dans le lien : à donner seulement sur les salons des raids récurrents qui ont le leur, voir 12.)
 
-   Le site sert ce même lien sans qu'on ait à le fabriquer : `https://forever-roster.sleyvazh.fr/api/discord/invite` renvoie vers Discord, avec le `DISCORD_CLIENT_ID` du serveur et les mêmes droits. C'est ce que font les boutons **Ajouter le bot** de l'accueil public (carte « Le bot Discord ») et d'**Administration → Discord**, en tête. Il faut pour cela **Public Bot** coché (étape 3, portail des développeurs, onglet Bot) ; sans `DISCORD_CLIENT_ID`, l'adresse répond 404 « Bot non configuré ».
+   Le site sert ce même lien sans qu'on ait à le fabriquer : `https://forever-roster.sleyvazh.fr/api/discord/invite` renvoie vers Discord, avec le `DISCORD_CLIENT_ID` du serveur et les mêmes droits. C'est ce que font les boutons **Ajouter le bot** de l'accueil public (carte « Le bot Discord ») et d'**Administration → Discord**, en tête (tant que le salon des raids de la guilde n'est pas lié : ensuite le bot est déjà sur le serveur). Il faut pour cela **Public Bot** coché (étape 3, portail des développeurs, onglet Bot) ; sans `DISCORD_CLIENT_ID`, l'adresse répond 404 « Bot non configuré ».
 
 ### Renseigner les secrets sur le serveur
 

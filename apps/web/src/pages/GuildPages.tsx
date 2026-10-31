@@ -229,7 +229,7 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
       )}
     </>,
     discord: <>
-      <AddBot />
+      {!group.discordLinked && <AddBot />}
       <DiscordChannel groupId={groupId} linked={group.discordLinked} name={group.discordChannelName} hasDiscord={hasDiscord} guard={guard} />
       <OutingsChannel groupId={groupId} linked={group.outingsLinked} name={group.outingsChannelName} hasDiscord={hasDiscord} guard={guard} />
       <RaceAnnounces groupId={groupId} linked={group.discordLinked} guard={guard} />
