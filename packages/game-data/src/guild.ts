@@ -6,6 +6,7 @@
  * La clé d'un perso de guilde est son GUID (`Player-<serveur>-<hex>`) : les prénoms ne sont pas uniques dans une
  * guilde, et une guilde mélange plusieurs serveurs. Le nom complet (« Prénom Nom ») sert à l'affichage.
  */
+import { BANK_MAX_TABS, BANK_SLOTS } from "./bank";
 import { CLASSES, LAUNCH_AT, MAX_LEVEL, type ClassName } from "./core";
 import { GAME_TIMEZONE, zonedParts } from "./time";
 
@@ -57,12 +58,27 @@ export interface GuildLogEntry {
 }
 export interface GuildXpLine { name: string; guid: string | null; level: number; xp: number; xpMax: number; at: number }
 export interface GuildLevelLine { name: string; guid: string | null; level: number; at: number }
+/** Onglet de la banque (ligne T) : visible (le rang du releveur le voit) et lu (ses cases ont été relevées). */
+export interface GuildBankTabLine { tab: number; name: string; visible: boolean; read: boolean }
+/** Case occupée (ligne I) : onglet et case de 1 à 98, objet et quantité. */
+export interface GuildBankSlot { tab: number; slot: number; id: number; n: number }
+/** Ligne du journal d'un onglet (ligne X) : objet et quantité s'ils sont donnés, onglets de départ et d'arrivée pour un déplacement. */
+export interface GuildBankLogLine { tab: number; type: string; who: string; itemId: number | null; n: number | null; tab1: number | null; tab2: number | null; hoursAgo: number }
+/** Ligne du journal de l'or (ligne O) : montant en cuivre, null si le jeu ne l'a pas dit. */
+export interface GuildMoneyLogLine { type: string; who: string; amount: number | null; hoursAgo: number }
+/** Banque de guilde relevée (lignes B, T, I, X, O) : `money` en cuivre, null si le jeu ne l'a pas dit ; journaux : les plus récents d'abord. */
+export interface GuildBankExport {
+  at: number; by: string; money: number | null; ntabs: number;
+  tabs: GuildBankTabLine[]; items: GuildBankSlot[]; log: GuildBankLogLine[]; moneyLog: GuildMoneyLogLine[];
+}
 export interface GuildExport {
   name: string; faction: string; realm: string; addon: string;
   /** Liste de guilde (null : pas relevée). `total` : nombre de membres donné par le jeu ; complète si toutes les lignes M sont là. */
   roster: { at: number; by: string; officerNotes: boolean; myRank: string; total: number; complete: boolean; members: GuildRosterMember[]; skipped: number } | null;
   /** Journal de guilde, les plus récents d'abord. */
   journal: { at: number; by: string; events: GuildLogEntry[] } | null;
+  /** Banque de guilde (null : pas relevée). */
+  bank: GuildBankExport | null;
   xp: GuildXpLine[];
   levels: GuildLevelLine[];
 }
@@ -72,6 +88,12 @@ export const MAX_FRL_BYTES = 256 * 1024;
 const MAX_FRL_LINES = 6000;
 const int = (s: string | undefined) => { const n = Number.parseInt((s ?? "").trim(), 10); return Number.isFinite(n) ? n : null; };
 const nat = (s: string | undefined) => { const n = int(s); return n !== null && n >= 0 ? n : null; };
+/** Type d'une ligne de journal de la banque (« deposit », « withdrawForTab »…) : lettres seules ; null sinon. */
+const bankType = (s: string | undefined) => { const t = (s ?? "").trim(); return /^[A-Za-z]{1,20}$/.test(t) ? t : null; };
+/** Lignes de journal gardées par onglet (X) et pour l'or (O). */
+const BANK_LOG_LINES = 50;
+/** Onglet de départ ou d'arrivée d'un déplacement (X) : de 1 à 8 s'il est donné, null sinon. */
+const bankTabRef = (s: string | undefined) => { const n = nat(s); return n !== null && n >= 1 && n <= BANK_MAX_TABS ? n : null; };
 const classOf = (token: string | undefined) => (Object.keys(CLASSES) as ClassName[]).find(c => c.toUpperCase() === (token ?? "").trim().toUpperCase()) ?? null;
 
 function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok: false; error: string } {
@@ -86,10 +108,12 @@ function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok:
   const data: GuildExport = {
     name, faction, realm, addon: clean(head[10], 20),
     roster: rosterAt > 0 ? { at: rosterAt, by: clean(head[5], 80), officerNotes: head[6]?.trim() === "1", myRank: clean(head[7], 60), total: nat(head[8]) ?? 0, complete: false, members: [], skipped: 0 } : null,
-    journal: null, xp: [], levels: [],
+    journal: null, bank: null, xp: [], levels: [],
   };
   let mLines = 0;
   const seen = new Set<string>();
+  // Banque : ce qui est déjà lu (une ligne T par onglet, une ligne I par case, 50 lignes X par onglet), la remise à zéro se fait à chaque ligne B
+  let bankTabs = new Set<number>(), bankSlots = new Set<string>(), bankLogs = new Map<number, number>();
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
     if (f[0] === "M" && data.roster) {
@@ -117,8 +141,30 @@ function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok:
       const level = nat(f[2]), at = nat(f[3]);
       if (level === null || level < 2 || level > MAX_LEVEL || !at || data.levels.length >= 60 * 60) continue;
       data.levels.push({ name: clean(f[1], 80), guid: normalizeGuid(f[4]), level, at });
+    } else if (f[0] === "B") {
+      const at = nat(f[1]);
+      data.bank = at ? { at, by: clean(f[2], 80), money: nat(f[3]), ntabs: Math.min(BANK_MAX_TABS, nat(f[4]) ?? 0), tabs: [], items: [], log: [], moneyLog: [] } : null;
+      bankTabs = new Set(); bankSlots = new Set(); bankLogs = new Map();
+    } else if (f[0] === "T" && data.bank) {
+      const tab = nat(f[1]);
+      if (tab === null || tab < 1 || tab > data.bank.ntabs || bankTabs.has(tab)) continue;
+      bankTabs.add(tab);
+      data.bank.tabs.push({ tab, name: clean(f[2], 40), visible: f[3]?.trim() === "1", read: f[4]?.trim() === "1" });
+    } else if (f[0] === "I" && data.bank) {
+      const tab = nat(f[1]), slot = nat(f[2]), id = nat(f[3]), key = `${tab}:${slot}`;
+      if (tab === null || tab < 1 || tab > data.bank.ntabs || slot === null || slot < 1 || slot > BANK_SLOTS || !id || bankSlots.has(key)) continue;
+      bankSlots.add(key);
+      data.bank.items.push({ tab, slot, id, n: nat(f[4]) ?? 1 });
+    } else if (f[0] === "X" && data.bank) {
+      const tab = nat(f[1]), type = bankType(f[2]), hours = nat(f[8]);
+      if (tab === null || tab < 1 || tab > data.bank.ntabs || !type || hours === null || (bankLogs.get(tab) ?? 0) >= BANK_LOG_LINES) continue;
+      bankLogs.set(tab, (bankLogs.get(tab) ?? 0) + 1);
+      data.bank.log.push({ tab, type, who: clean(f[3], 80), itemId: nat(f[4]) || null, n: nat(f[5]), tab1: bankTabRef(f[6]), tab2: bankTabRef(f[7]), hoursAgo: hours });
+    } else if (f[0] === "O" && data.bank) {
+      const type = bankType(f[1]), hours = nat(f[4]);
+      if (!type || hours === null || data.bank.moneyLog.length >= BANK_LOG_LINES) continue;
+      data.bank.moneyLog.push({ type, who: clean(f[2], 80), amount: nat(f[3]), hoursAgo: hours });
     }
-    // B, T, I, X, O (banque) : lus dans un lot suivant
   }
   if (data.roster) data.roster.complete = data.roster.total > 0 && mLines >= data.roster.total;
   return { ok: true, data };

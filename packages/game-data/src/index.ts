@@ -18,3 +18,4 @@ export * from "./share";
 export * from "./dungeons";
 export * from "./outings";
 export * from "./guild";
+export * from "./bank";

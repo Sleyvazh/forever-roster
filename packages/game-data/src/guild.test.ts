@@ -31,7 +31,7 @@ const sample = [
 ].join("\n");
 
 describe("relevé de la guilde (FRL v1)", () => {
-  it("liste, journal, XP et niveaux ; GUID normalisé ; banque ignorée pour l'instant", () => {
+  it("liste, journal, banque, XP et niveaux ; GUID normalisé", () => {
     const { data, errors } = parseGuildExports(`FRC;2;Kaeldra;Forever EU;WARRIOR;Orc;60;Horde;1;1.6.2\nEND;0\n${sample}`);
     expect(errors).toEqual([]);
     expect(data).toHaveLength(1);
@@ -54,6 +54,10 @@ describe("relevé de la guilde (FRL v1)", () => {
       { name: "Vexelle", guid: G2, level: 24, xp: 1500, xpMax: 10000, at: T - 100 },
     ]);
     expect(g.levels.map(l => l.level)).toEqual([59, 60]);
+    expect(g.bank).toEqual({
+      at: 1794000100, by: "Morwen Cendrevoile", money: 123456, ntabs: 1,
+      tabs: [{ tab: 1, name: "Consommables", visible: true, read: true }], items: [], log: [], moneyLog: [],
+    });
   });
 
   it("liste partielle, notes d'officier non lues, ancien format des lignes P et U (sans GUID), blocs abîmés", () => {
@@ -63,8 +67,9 @@ describe("relevé de la guilde (FRL v1)", () => {
     expect(r.data[0]!.roster!.members[0]!.officerNote).toBe("");
     expect(r.data[0]!.xp[0]!.guid).toBeNull();
     expect(r.data[0]!.levels[0]).toEqual({ name: "Vex", guid: null, level: 12, at: T - 99 });
-    // Sans liste relevée (heure 0) : roster null ; END faux ; autre version
+    // Sans liste relevée (heure 0) : roster null ; sans banque : bank null ; END faux ; autre version
     expect(parseGuildExports(`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2\nEND;0`).data[0]!.roster).toBeNull();
+    expect(r.data[0]!.bank).toBeNull();
     expect(parseGuildExports(sample.replace("END;14", "END;12")).errors).toEqual(["relevé de guilde incomplet : recopie tout le texte, jusqu'à la ligne END"]);
     expect(parseGuildExports(sample.replace("FRL;1;", "FRL;2;")).errors[0]).toMatch(/version du relevé de guilde non gérée \(2\)/);
     // Le texte de chaque bloc est gardé (guilde proposée)
@@ -77,6 +82,106 @@ describe("relevé de la guilde (FRL v1)", () => {
     expect(normalizeGuid("Creature-0-1")).toBeNull();
     expect(firstNameOf("Greta Coulé")).toBe("Greta");
     expect(firstNameOf("Greta-Forever EU")).toBe("Greta");
+  });
+});
+
+/** Un bloc FRL sans liste ni journal : l'en-tête, les lignes données et END. */
+const frl = (...lines: string[]) => [`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+const bankOf = (...lines: string[]) => parseGuildExports(frl(...lines)).data[0]!.bank;
+
+describe("banque de guilde (lignes B, T, I, X, O)", () => {
+  it("banque complète : onglets, objets, journaux des onglets et de l'or", () => {
+    const text = frl(
+      `B;${T};Morwen Cendrevoile;5000123;3`,
+      "T;1;Consommables;1;1", "T;2;Officiers;0;0", "T;3;Métiers;1;0",
+      "I;1;1;13446;20", "I;1;15;13444;5",
+      "I;1;99;1;1", // case hors de 1 à 98
+      "I;4;1;1;1", // onglet au-delà du nombre d'onglets
+      "I;1;1;999;1", // case déjà lue
+      "I;1;2;0;1", // objet 0
+      "I;3;7;2589;",
+      "X;1;deposit;Pikou;13446;20;;;3", "X;1;move;Kaeldra;13444;1;1;2;30",
+      "X;1;withdraw;Vex;;;;;", // sans heure
+      "O;deposit;Kaeldra;500000;20", "O;repair;Gorrak;123030;50", "O;withdraw;Vex;;4",
+    );
+    const r = parseGuildExports(text);
+    expect(r.errors).toEqual([]);
+    expect(r.data[0]!.bank).toEqual({
+      at: T, by: "Morwen Cendrevoile", money: 5000123, ntabs: 3,
+      tabs: [
+        { tab: 1, name: "Consommables", visible: true, read: true },
+        { tab: 2, name: "Officiers", visible: false, read: false },
+        { tab: 3, name: "Métiers", visible: true, read: false },
+      ],
+      items: [{ tab: 1, slot: 1, id: 13446, n: 20 }, { tab: 1, slot: 15, id: 13444, n: 5 }, { tab: 3, slot: 7, id: 2589, n: 1 }],
+      log: [
+        { tab: 1, type: "deposit", who: "Pikou", itemId: 13446, n: 20, tab1: null, tab2: null, hoursAgo: 3 },
+        { tab: 1, type: "move", who: "Kaeldra", itemId: 13444, n: 1, tab1: 1, tab2: 2, hoursAgo: 30 },
+      ],
+      moneyLog: [
+        { type: "deposit", who: "Kaeldra", amount: 500000, hoursAgo: 20 },
+        { type: "repair", who: "Gorrak", amount: 123030, hoursAgo: 50 },
+        { type: "withdraw", who: "Vex", amount: null, hoursAgo: 4 },
+      ],
+    });
+  });
+
+  it("sans heure de relevé : pas de banque, et ses lignes sont ignorées ; lignes avant B ignorées", () => {
+    expect(bankOf(`B;0;Morwen;100;1`, "T;1;Soins;1;1", "I;1;1;13446;1", "X;1;deposit;Pikou;13446;1;;;3", "O;deposit;Pikou;100;3")).toBeNull();
+    expect(bankOf(`B;;Morwen;100;1`, "T;1;Soins;1;1")).toBeNull();
+    expect(bankOf("T;1;Avant;1;1", "I;1;1;13446;1", "O;deposit;Pikou;100;3", `B;${T};Morwen;100;1`, "T;1;Soins;1;1")).toEqual({
+      at: T, by: "Morwen", money: 100, ntabs: 1, tabs: [{ tab: 1, name: "Soins", visible: true, read: true }], items: [], log: [], moneyLog: [],
+    });
+  });
+
+  it("or inconnu : null ; onglets limités à 8 ; un seul T par onglet", () => {
+    expect(bankOf(`B;${T};Morwen;;3`)).toMatchObject({ money: null, ntabs: 3 });
+    expect(bankOf(`B;${T};Morwen;0;0`)).toMatchObject({ money: 0, ntabs: 0 });
+    const b = bankOf(`B;${T};Morwen;1;12`, "T;8;Huitième;1;1", "T;9;Neuvième;1;1", "T;8;Doublon;0;0", "I;9;1;13446;1")!;
+    expect(b.ntabs).toBe(8);
+    expect(b.tabs).toEqual([{ tab: 8, name: "Huitième", visible: true, read: true }]);
+    expect(b.items).toEqual([]);
+  });
+
+  it("noms nettoyés et coupés ; type de ligne de journal illisible : ignoré", () => {
+    const long = "É".repeat(100);
+    const b = bankOf(
+      `B;${T};${long};1;1`, `T;1;${long};1;1`,
+      "X;1;dépôt;Pikou;13446;1;;;3", "X;1;deposit2;Pikou;13446;1;;;3", `X;1;${"a".repeat(21)};Pikou;13446;1;;;3`, "X;1;;Pikou;13446;1;;;3",
+      `X;1;deposit;${long};13446;1;;;3`, "O;dép;Pikou;100;3", "O;;Pikou;100;3",
+    )!;
+    expect(b.by).toBe("É".repeat(80));
+    expect(b.tabs[0]!.name).toBe("É".repeat(40));
+    expect(b.log).toHaveLength(1);
+    expect(b.log[0]!.who).toBe("É".repeat(80));
+    expect(b.moneyLog).toEqual([]);
+  });
+
+  it("journal : onglet inconnu ignoré, objet et quantité facultatifs, onglets de départ et d'arrivée valides ou null", () => {
+    const b = bankOf(
+      `B;${T};Morwen;1;2`,
+      "X;3;deposit;Pikou;13446;1;;;3", // onglet au-delà du nombre d'onglets
+      "X;2;withdraw;Vex;0;;;;5", // objet 0 : null, quantité vide : null
+      "X;1;move;Vex;13444;2;9;0;6", // onglets hors de 1 à 8 : null
+      "X;1;deposit;Vex;13444;-2;;;-1", // quantité négative : null ; heures négatives : ligne ignorée
+    )!;
+    expect(b.log).toEqual([
+      { tab: 2, type: "withdraw", who: "Vex", itemId: null, n: null, tab1: null, tab2: null, hoursAgo: 5 },
+      { tab: 1, type: "move", who: "Vex", itemId: 13444, n: 2, tab1: null, tab2: null, hoursAgo: 6 },
+    ]);
+  });
+
+  it("50 lignes de journal par onglet, 50 lignes d'or", () => {
+    const x = (tab: number, i: number) => `X;${tab};deposit;Pikou;13446;1;;;${i}`;
+    const lines = [`B;${T};Morwen;1;2`];
+    for (let i = 0; i < 60; i++) lines.push(x(1, i));
+    for (let i = 0; i < 55; i++) lines.push(x(2, i));
+    for (let i = 0; i < 70; i++) lines.push(`O;deposit;Pikou;100;${i}`);
+    const b = bankOf(...lines)!;
+    expect(b.log.filter(l => l.tab === 1)).toHaveLength(50);
+    expect(b.log.filter(l => l.tab === 2)).toHaveLength(50);
+    expect(b.log.filter(l => l.tab === 1).at(-1)!.hoursAgo).toBe(49);
+    expect(b.moneyLog).toHaveLength(50);
   });
 });
 
