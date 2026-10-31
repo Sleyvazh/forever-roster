@@ -89,6 +89,17 @@ describe("relevé de la guilde (FRL v1)", () => {
 const frl = (...lines: string[]) => [`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
 const bankOf = (...lines: string[]) => parseGuildExports(frl(...lines)).data[0]!.bank;
 
+describe("journal de guilde : rang d'une ligne E", () => {
+  it("rang borné à 20 comme celui des lignes M (la colonne est un smallint), vide ou illisible : null", () => {
+    const g = parseGuildExports([
+      `FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, `J;${T};Morwen`,
+      "E;promote;Kaeldra;Vexelle;99999999999;1", "E;demote;Kaeldra;Vexelle;20;2", "E;promote;Kaeldra;Vexelle;3;3", "E;promote;Kaeldra;Vexelle;;4", "E;promote;Kaeldra;Vexelle;x;5",
+      "END;6",
+    ].join("\n")).data[0]!;
+    expect(g.journal!.events.map(e => e.rankIndex)).toEqual([20, 20, 3, null, null]);
+  });
+});
+
 describe("banque de guilde (lignes B, T, I, X, O)", () => {
   it("banque complète : onglets, objets, journaux des onglets et de l'or", () => {
     const text = frl(
@@ -124,6 +135,11 @@ describe("banque de guilde (lignes B, T, I, X, O)", () => {
         { type: "withdraw", who: "Vex", amount: null, hoursAgo: 4 },
       ],
     });
+  });
+
+  it("quantité d'une case : au moins 1 (vide, 0 ou illisible : 1)", () => {
+    const b = bankOf(`B;${T};Morwen;1;1`, "T;1;Soins;1;1", "I;1;1;13446;0", "I;1;2;13446;", "I;1;3;13446;x", "I;1;4;13446;-3", "I;1;5;13446;7")!;
+    expect(b.items.map(i => i.n)).toEqual([1, 1, 1, 1, 7]);
   });
 
   it("sans heure de relevé : pas de banque, et ses lignes sont ignorées ; lignes avant B ignorées", () => {

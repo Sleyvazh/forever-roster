@@ -132,7 +132,8 @@ function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok:
     } else if (f[0] === "E" && data.journal) {
       const type = (f[1] ?? "").trim() as GuildEventType, hours = nat(f[5]);
       if (!GUILD_EVENT_TYPES.includes(type) || hours === null || data.journal.events.length >= 200) continue;
-      data.journal.events.push({ type, player1: clean(f[2], 80), player2: clean(f[3], 80), rankIndex: nat(f[4]), hoursAgo: hours });
+      const rank = nat(f[4]); // borné comme celui des lignes M : la colonne de la base est un smallint
+      data.journal.events.push({ type, player1: clean(f[2], 80), player2: clean(f[3], 80), rankIndex: rank === null ? null : Math.min(20, rank), hoursAgo: hours });
     } else if (f[0] === "P") {
       const level = nat(f[2]), xp = nat(f[3]), xpMax = nat(f[4]), at = nat(f[5]);
       if (level === null || level < 1 || xp === null || xpMax === null || !at || data.xp.length >= 60) continue;
@@ -154,7 +155,7 @@ function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok:
       const tab = nat(f[1]), slot = nat(f[2]), id = nat(f[3]), key = `${tab}:${slot}`;
       if (tab === null || tab < 1 || tab > data.bank.ntabs || slot === null || slot < 1 || slot > BANK_SLOTS || !id || bankSlots.has(key)) continue;
       bankSlots.add(key);
-      data.bank.items.push({ tab, slot, id, n: nat(f[4]) ?? 1 });
+      data.bank.items.push({ tab, slot, id, n: nat(f[4]) || 1 }); // une case occupée a au moins un objet
     } else if (f[0] === "X" && data.bank) {
       const tab = nat(f[1]), type = bankType(f[2]), hours = nat(f[8]);
       if (tab === null || tab < 1 || tab > data.bank.ntabs || !type || hours === null || (bankLogs.get(tab) ?? 0) >= BANK_LOG_LINES) continue;
