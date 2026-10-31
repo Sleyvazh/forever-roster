@@ -4,6 +4,7 @@ import {
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useLocation } from "react-router-dom";
 import { ApiError, del, get, patch, post, put } from "../api";
 import { useGameText } from "../gameText";
 import { QUARTERS } from "./DateTime";
@@ -17,6 +18,7 @@ import { RoleIcon } from "./RoleIcon";
  * chacune ; inscription en un clic par rôle avec le perso qui a le niveau, complète → liste d'attente, carte grisée si
  * aucun de mes persos n'a le niveau ; « + Sortie » en une seule carte ; ma sortie se gère depuis sa carte.
  * Règles côté serveur : apps/api/src/lib/outings.ts. Classes CSS so-, sx-, dg-, pc-chip.
+ * « + Sortie » lit une fois `?donjon=<clé>&perso=<id>` (bouton « Proposer » de l'Accueil) : donjon et perso déjà choisis.
  */
 
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
@@ -409,11 +411,15 @@ function NewOuting({ groupId, data, channelName, discordLinked, onClose }: { gro
   const qc = useQueryClient();
   const gt = useGameText();
   const chars = useMemo(() => [...data.me.characters].sort((a, b) => Number(b.isMain) - Number(a.isMain) || b.level - a.level), [data.me.characters]);
-  const [charId, setCharId] = useState(() => pickCharacterFor(null, chars)?.id ?? null);
+  // Donjon et perso proposés par l'adresse (une seule fois, à l'ouverture) ; sans effet s'ils ne vont pas ensemble
+  const { search } = useLocation();
+  const [asked] = useState(() => { const p = new URLSearchParams(search); return { dungeon: p.get("donjon"), char: p.get("perso") }; });
+  const [charId, setCharId] = useState(() => (chars.find(c => c.id === asked.char) ?? pickCharacterFor(null, chars))?.id ?? null);
   const me = chars.find(c => c.id === charId) ?? null;
   const sorted = useMemo(() => dungeonsFor(me?.level ?? 60, data.levels), [me?.level, data.levels]);
-  const [dungeon, setDungeon] = useState<string | null>(() => sorted.fit[0]?.dungeon.key ?? null);
-  const [listOpen, setListOpen] = useState(true);
+  const askedDungeon = asked.dungeon && sorted.fit.some(c => c.dungeon.key === asked.dungeon) ? asked.dungeon : null;
+  const [dungeon, setDungeon] = useState<string | null>(() => askedDungeon ?? sorted.fit[0]?.dungeon.key ?? null);
+  const [listOpen, setListOpen] = useState(!askedDungeon);
   const [q, setQ] = useState("");
   const [more, setMore] = useState(false);
   const [title, setTitle] = useState("");

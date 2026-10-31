@@ -1,9 +1,9 @@
 import {
-  firstNameOf, MAX_LEVEL, nameKey, RACE_MILESTONES, RACE_START, raceDay, resolveNoteTarget,
+  dungeonsFor, firstNameOf, MAX_LEVEL, nameKey, pickCharacterFor, RACE_MILESTONES, RACE_START, raceDay, resolveNoteTarget,
   type ClassName, type GuildChar, type GuildLinkInfo, type GuildLinkSource, type GuildMove, type GuildMoveKind, type GuildPlayer, type GuildQuestion, type GuildSuggestion,
-  type GuildUnattached, type LevelAnnounce, type RaceChar, type RaceCharRow, type RaceDate, type RacePodiumPlace, type RaceRow,
+  type GuildUnattached, type HomeFind, type LevelAnnounce, type RaceChar, type RaceCharRow, type RaceDate, type RacePodiumPlace, type RaceRow,
 } from "@forever/game-data";
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, gameGuilds, groupCharacters, groupMembers, groups, guildEvents, guildLevels, guildLinks, guildMembers, guildPlayers, users } from "../db/schema";
 import type { GroupRole } from "./groups";
@@ -434,6 +434,57 @@ function podiumOf(r: Resolved, levels: readonly LevelRow[], chars: Map<string, R
     places.push({ place: (places.length + 1) as 1 | 2 | 3, tie: false, char: row.best, player: row.player, reached: null, days: null, racing: true });
   }
   return { frozen: false, sixties: sixties.length, places };
+}
+
+/* ---------- Accueil : « Trouver quoi faire » ---------- */
+
+/** Donjons proposés, persos listés, écart de niveau toléré. */
+export const FIND_DUNGEONS = 3, FIND_MATES = 6, FIND_SPAN = 3;
+
+/**
+ * « Trouver quoi faire » : à partir de mon perso dans la guilde (mon main, sinon le plus haut ; une fiche rangée dans la
+ * guilde, avec sa classe), les donjons de sa fourchette et les persos de la guilde à FIND_SPAN niveaux près. Les persos de
+ * la guilde viennent de la liste du jeu quand la guilde est liée (niveau, en ligne, dernière connexion), sinon des fiches
+ * du site des membres (jamais en ligne, sans connexion). Les miens (alts compris) ne sont ni comptés ni listés. null :
+ * aucun perso à moi dans la guilde, pas de carte. `planned` : sorties d'aujourd'hui et de demain, la plus proche d'abord.
+ */
+export async function homeFind(db: Tx, groupId: string, me: string, r: Resolved, planned: readonly { id: string; dungeon: string; scheduledAt: Date | null }[]): Promise<HomeFind | null> {
+  const fiches = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, level: characters.level, guid: characters.guid, isMain: groupCharacters.isMain })
+    .from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+    .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, me), eq(characters.game, "forever")));
+  const linked = !!r.data.gg;
+  const roster = new Map(r.data.members.filter(m => !m.leftAt).map(m => [m.guid, m]));
+  // Le niveau le plus récent : la liste du jeu peut avoir vu monter le perso avant sa fiche (ou l'inverse)
+  const char = pickCharacterFor(null, fiches.filter(f => f.cls).map(f => ({ ...f, level: Math.max(f.level, (f.guid && roster.get(f.guid)?.level) || 0) })));
+  if (!char) return null;
+
+  type Mate = HomeFind["mates"][number];
+  let pool: Mate[];
+  if (linked) {
+    const mine = new Set([...fiches.flatMap(f => (f.guid ? [f.guid] : [])), ...(r.persons.get(`u:${me}`)?.chars.map(c => c.guid) ?? [])]);
+    pool = [...roster.values()].filter(m => !mine.has(m.guid))
+      .map(m => ({ name: m.name, cls: (m.cls || null) as ClassName | null, level: m.level, online: m.online, lastOnlineAt: iso(m.lastOnlineAt) }));
+  } else {
+    pool = (await db.select({ name: characters.name, cls: characters.cls, level: characters.level }).from(groupCharacters)
+      .innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+      .where(and(eq(groupCharacters.groupId, groupId), ne(groupCharacters.userId, me), eq(characters.game, "forever"))))
+      .map(c => ({ name: c.name, cls: (c.cls || null) as ClassName | null, level: c.level, online: false, lastOnlineAt: null }));
+  }
+
+  // Donjons de Forever d'abord ; ensuite, comme « + Sortie » : les plus fréquentés par la guilde, puis les plus hauts
+  const { fit } = dungeonsFor(char.level, pool.map(c => c.level));
+  const dungeons = [...fit.filter(c => c.dungeon.new), ...fit.filter(c => !c.dungeon.new)].slice(0, FIND_DUNGEONS).map(({ dungeon: d, count }) => {
+    const o = planned.find(x => x.dungeon === d.key);
+    return { key: d.key, name: d.name, min: d.min, max: d.max, forever: d.new, guildCount: count, planned: o ? { id: o.id, at: iso(o.scheduledAt) } : null };
+  });
+
+  // En ligne d'abord (le plus proche de mon niveau avant), puis la dernière connexion la plus récente
+  const gap = (c: Mate) => Math.abs(c.level - char.level);
+  const seen = (c: Mate) => (c.lastOnlineAt ? Date.parse(c.lastOnlineAt) : 0);
+  const mates = pool.filter(c => gap(c) <= FIND_SPAN)
+    .sort((a, b) => Number(b.online) - Number(a.online) || (a.online ? 0 : seen(b) - seen(a)) || gap(a) - gap(b) || a.name.localeCompare(b.name, "fr"))
+    .slice(0, FIND_MATES);
+  return { char: { id: char.id, name: char.name, cls: char.cls as ClassName, level: char.level }, dungeons, mates };
 }
 
 /* ---------- Noms complets (bot, annonces) ---------- */

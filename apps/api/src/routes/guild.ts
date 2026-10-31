@@ -12,7 +12,7 @@ import { audit } from "../lib/audit";
 import { bus } from "../lib/events";
 import { membership, requireRole, type GroupRole } from "../lib/groups";
 import {
-  charView, computeRace, foreverGroup, guildMoves, isOfficer, linkInfo, loadGuild, loadLevels, MOVE_FILTERS, playerOrder, playerView, questionsFor, resolveGuild,
+  charView, computeRace, foreverGroup, guildMoves, homeFind, isOfficer, linkInfo, loadGuild, loadLevels, MOVE_FILTERS, playerOrder, playerView, questionsFor, resolveGuild,
 } from "../lib/guild";
 import { bankLog, bankView } from "../lib/guild-bank";
 import { acceptSuggestion, answerQuestion, attachMember, claimMember, detachMember, linkProposed, proposalsOf, setPlayerMain } from "../lib/guild-links";
@@ -32,7 +32,7 @@ import { currentUser, requireAuth } from "../lib/session";
  *   GET  /:id/guild/history               → GuildHistoryResponse : arrivées, départs, rangs ; ?kind=all|joins|leaves|ranks&before=<ISO>&limit=50
  *   GET  /:id/guild/race                  → GuildRaceResponse : Course au 60 (podium, premiers par classe, une ligne par joueur, tous les persos, ma place)
  *   GET  /:id/home                        → GuildHomeResponse : aujourd'hui et demain (raids, sorties, mon inscription), mini-course,
- *                                           mouvements de la semaine, « Est-ce ton perso ? »
+ *                                           mouvements de la semaine, « Est-ce ton perso ? », « Trouver quoi faire » (find, null sans perso)
  *   GET  /:id/guild/link                  → GuildLinkResponse : guilde du jeu liée, guildes proposées (officiers), réglage des annonces
  *   GET  /:id/guild/bank                  → GuildBankResponse : banque relevée par l'addon (or, onglets et cases, objets du catalogue,
  *                                           deux derniers mouvements d'or) ; linked false et bank null si la guilde n'est pas liée
@@ -276,7 +276,8 @@ export async function guildRoutes(app: FastifyInstance) {
 
 /**
  * Accueil (Forever) : raids et sorties d'aujourd'hui et demain (heure de Paris) avec mon inscription et, pour une sortie
- * où il manque du monde, mon perso qui a le niveau ; mini-course ; arrivées, départs et rangs des 7 derniers jours.
+ * où il manque du monde, mon perso qui a le niveau ; mini-course ; arrivées, départs et rangs des 7 derniers jours ;
+ * « Trouver quoi faire » (donjons et joueurs à mon niveau : lib/guild.ts, homeFind).
  */
 async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string, u: string) => Promise<{ role: GroupRole; g: typeof groups.$inferSelect }>): Promise<GuildHomeResponse> {
   const { g } = await ctx(id, me);
@@ -341,6 +342,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
   const r = resolveGuild(data, { officer: true, now: t });
   const race = computeRace(r, data.gg ? await loadLevels(db, id) : [], { now: t, me, announce: g.levelAnnounces });
   const meRow = race.rows.find(x => x.me);
+  const plain = resolveGuild(data, { officer: false, now: t });
   const moves = data.gg ? (await guildMoves(db, id, data.members, { types: MOVE_FILTERS.all, since: new Date(t.getTime() - 7 * DAY), limit: 20 })).moves : [];
   return {
     today, tomorrow,
@@ -352,6 +354,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
     },
     moves,
     guild: { linked: !!data.gg, name: data.gg?.name ?? null, rosterAt: data.gg?.rosterAt?.toISOString() ?? null },
-    questions: questionsFor(resolveGuild(data, { officer: false, now: t }), me),
+    questions: questionsFor(plain, me),
+    find: await homeFind(db, id, me, plain, outs),
   };
 }

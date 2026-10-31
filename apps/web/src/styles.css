@@ -1974,6 +1974,16 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .mc-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding-top: 8px; border-top: 1px dashed var(--line-2); font-size: 13.5px; color: var(--ink-2); }
 .ag-later { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed var(--line-2); }
 .ag-later .lbl { display: block; margin-bottom: 4px; }
+/* « Trouver quoi faire » (Accueil) : donjons à mon niveau et persos de la guilde à mon niveau */
+.tf-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.tf-h .gm-sec { margin: 0; }
+.tf-h small { font: 500 13px var(--f-body); color: var(--ink-3); }
+.ag.tf-d { grid-template-columns: minmax(0, 1fr) auto; }
+.ag.tf-d .ag-end { grid-column: auto; display: grid; justify-items: end; text-align: right; }
+.tf-d .ag-t .tag { align-self: center; }
+.tf-who { padding: 0; }
+.tf-who li { padding: 5px 0; }
+@media (max-width: 640px) { .ag.tf-d { align-items: center; } .ag.tf-d .ag-end { grid-column: auto; } .tf-d .ag-end .btn, .tf-d .ag-end .link { min-height: 36px; display: inline-flex; align-items: center; } }
 .tt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .tt-list li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
 .tt-n { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--frame); font: 600 13px var(--f-mono); color: var(--gold); }

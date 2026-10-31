@@ -1,7 +1,7 @@
-import { atTime, LAUNCH_AT, outingDays, type GuildBankResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
+import { addDays, atTime, LAUNCH_AT, outingDays, type GuildBankResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { characters, groups, guildBankLog, guildEvents, guildLevels, guildLinkProposals, guildLinks, guildMembers, guildPlayers } from "../src/db/schema";
+import { characters, groupCharacters, groups, guildBankLog, guildEvents, guildLevels, guildLinkProposals, guildLinks, guildMembers, guildPlayers, outings } from "../src/db/schema";
 import { purgeOldData } from "../src/lib/purges";
 import { DAY, frc, frl, guid, HOUR, m, NOW, paste as pasteAs, scene as sceneOf, type Signed } from "./guild-helpers";
 import { setup, signedIn, type TestEnv } from "./helpers";
@@ -438,6 +438,110 @@ describe("accueil de la guilde", () => {
     // Le créateur voit sa sortie
     const mine = (await s.get<GuildHomeResponse>(s.owner, "/home")).agenda.find(a => a.kind === "outing" && a.title === "Gnomeregan");
     expect(mine).toMatchObject({ mine: { role: "Tank", creator: true, characterName: "Torvin" }, suggest: [] });
+  });
+});
+
+describe("accueil : Trouver quoi faire", () => {
+  const SPEC: Record<string, string> = { Warrior: "Protection", Mage: "Frost", Priest: "Holy", Druid: "Restoration", Rogue: "Combat" };
+  /** Perso du site rangé dans la guilde (le premier d'un joueur en devient le main), ou laissé sans guilde. */
+  const mk = async (who: Signed, g: string, name: string, cls: string, level: number, opts: { assign?: boolean; guid?: string } = {}) => {
+    const c = (await who.c.post("/api/characters", { name, race: cls === "Druid" ? "Tauren" : "Troll", cls, spec1: SPEC[cls], level })).json().character as { id: string };
+    if (opts.assign !== false) await who.c.put(`/api/groups/${g}/characters/${c.id}`, { assigned: true });
+    if (opts.guid) await db().update(characters).set({ guid: opts.guid }).where(eq(characters.id, c.id));
+    return c.id;
+  };
+  const find = async (s: Awaited<ReturnType<typeof sceneOf>>, who: Signed) => (await s.get<GuildHomeResponse>(who, "/home")).find;
+
+  it("sans perso dans la guilde : pas de carte (aucun perso, ou perso resté sans guilde)", async () => {
+    const s = await scene("Les Fougeres", ["Vexou", "Ysa"]);
+    expect(await find(s, s.p.Vexou!)).toBeNull();
+    await mk(s.p.Ysa!, s.g.id, "Sansguilde", "Mage", 24, { assign: false });
+    expect(await find(s, s.p.Ysa!)).toBeNull();
+  });
+
+  it("perso : le main de la guilde, même s'il est moins haut ; sans main, le plus haut ; niveau sans donjon : la carte reste, sans donjons", async () => {
+    const s = await scene("Les Bruyeres", ["Vexou"]);
+    const petit = await mk(s.p.Vexou!, s.g.id, "Petit", "Priest", 24);
+    const grand = await mk(s.p.Vexou!, s.g.id, "Grand", "Warrior", 45);
+    expect((await find(s, s.p.Vexou!))!.char).toEqual({ id: petit, name: "Petit", cls: "Priest", level: 24 });
+    // Sans main (donnée ancienne) : le perso le plus haut
+    await db().update(groupCharacters).set({ isMain: false }).where(eq(groupCharacters.userId, s.p.Vexou!.user.id));
+    expect((await find(s, s.p.Vexou!))!.char).toEqual({ id: grand, name: "Grand", cls: "Warrior", level: 45 });
+    // Aucun donjon à son niveau (4) : pas de liste de donjons, mais les joueurs à son niveau restent
+    const debut = await mk(s.owner, s.g.id, "Debut", "Mage", 4);
+    await mk(s.p.Vexou!, s.g.id, "Autre Debut", "Rogue", 6);
+    const f = (await find(s, s.owner))!;
+    expect(f.char).toMatchObject({ id: debut, level: 4 });
+    expect(f.dungeons).toEqual([]);
+    expect(f.mates.map(x => x.name)).toEqual(["Autre Debut"]);
+  });
+
+  it("guilde non liée (fiches du site) : donjons de Forever d'abord, puis les plus fréquentés, 3 au plus ; persos à ±3 sans les miens ; sortie prévue", async () => {
+    const s = await scene("Les Mousses", ["Hero", "Vexou"]);
+    const hero = await mk(s.p.Hero!, s.g.id, "Brindille", "Druid", 24);
+    // Un alt à portée de niveau : il n'est ni compté, ni listé (ce sont mes persos)
+    await mk(s.p.Hero!, s.g.id, "Alt Proche", "Mage", 25);
+    for (const [n, cls, lv] of [["Vingt", "Warrior", 20], ["Vingtdeux", "Priest", 22], ["Vingtcinq", "Mage", 25], ["Alpha Vingtcinq", "Rogue", 25], ["Vingtsix", "Priest", 26]] as const) await mk(s.p.Vexou!, s.g.id, n, cls, lv);
+    let big = "";
+    for (const [n, cls, lv] of [["Vingtsept", "Warrior", 27], ["Trentetun", "Warrior", 31], ["Trentetrois", "Mage", 33]] as const) { const id = await mk(s.owner, s.g.id, n, cls, lv); if (lv === 31) big = id; }
+
+    const f = (await find(s, s.p.Hero!))!;
+    expect(f.char).toEqual({ id: hero, name: "Brindille", cls: "Druid", level: 24 });
+    // À 24 : Excavation Site (Forever) d'abord, puis par nombre de persos de la guilde (les miens ne comptent pas), puis les plus hauts
+    expect(f.dungeons.map(d => [d.key, d.name, d.min, d.max, d.forever, d.guildCount, d.planned])).toEqual([
+      ["excavation-site", "Excavation Site: Wetlands", 24, 29, true, 4, null],
+      ["blackfathom-deeps", "Blackfathom Deeps", 24, 32, false, 5, null],
+      ["stockade", "The Stockade", 24, 32, false, 5, null],
+    ]);
+    // Fiches du site : jamais en ligne, pas de dernière connexion ; les plus proches du niveau d'abord (puis par nom)
+    expect(f.mates).toEqual([
+      { name: "Alpha Vingtcinq", cls: "Rogue", level: 25, online: false, lastOnlineAt: null },
+      { name: "Vingtcinq", cls: "Mage", level: 25, online: false, lastOnlineAt: null },
+      { name: "Vingtdeux", cls: "Priest", level: 22, online: false, lastOnlineAt: null },
+      { name: "Vingtsix", cls: "Priest", level: 26, online: false, lastOnlineAt: null },
+      { name: "Vingtsept", cls: "Warrior", level: 27, online: false, lastOnlineAt: null },
+    ]);
+
+    // Une sortie de Blackfathom Deeps demain : « Sortie prévue à 21:00 » ; la sortie d'un autre donjon, ou d'hier, ne compte pas
+    const { tomorrow, today } = outingDays();
+    const at = atTime(tomorrow, "21:00")!.toISOString();
+    const made = await s.owner.c.post(`/api/groups/${s.g.id}/outings`, { dungeon: "blackfathom-deeps", day: tomorrow, at, characterId: big, role: "DPS" });
+    expect(made.statusCode, made.body).toBe(201);
+    const outingId = made.json().outing.id as string;
+    await db().insert(outings).values({ groupId: s.g.id, dungeon: "stockade", title: "The Stockade", day: addDays(today, -1), expiresAt: new Date(Date.now() + 3600e3), creatorName: "Vexou" });
+    const g1 = (await find(s, s.p.Hero!))!.dungeons;
+    expect(g1.map(d => d.planned)).toEqual([null, { id: outingId, at }, null]);
+    // Annulée : plus rien de prévu
+    expect((await s.owner.c.del(`/api/groups/${s.g.id}/outings/${outingId}`)).statusCode).toBe(200);
+    expect((await find(s, s.p.Hero!))!.dungeons.map(d => d.planned)).toEqual([null, null, null]);
+  });
+
+  it("guilde liée (liste du jeu) : niveaux, connexions, mes persos (alts compris) écartés ; en ligne d'abord puis le plus récent, 6 au plus", async () => {
+    const s = await scene("Les Braises", ["Hero"]);
+    const T = NOW() - HOUR;
+    const mine = m("Brindille Feuillevive", 24, { cls: "DRUID" });
+    const alt = m("Pikou Feuillevive", 25, { cls: "MAGE" });
+    // Fiches du site : Brindille n'est qu'au niveau 20 sur la fiche (la liste du jeu est plus à jour) ; Pikou n'est rangé dans aucune guilde
+    await mk(s.p.Hero!, s.g.id, "Brindille", "Druid", 20, { guid: mine.guid });
+    await mk(s.p.Hero!, s.g.id, "Pikou", "Mage", 25, { assign: false, guid: alt.guid });
+    const others = [
+      m("Aaa Enligne27", 27, { cls: "PRIEST", online: true }), m("Bbb Enligne25", 25, { cls: "ROGUE", online: true }),
+      m("Ccc Il1h24", 24, { cls: "WARRIOR", hours: 1 }), m("Ddd Il3h23", 23, { cls: "MAGE", hours: 3 }), m("Eee Il2h22", 22, { cls: "HUNTER", hours: 2 }),
+      m("Fff Il10h26", 26, { cls: "SHAMAN", hours: 10 }), m("Ggg Il30h21", 21, { cls: "WARLOCK", hours: 30 }),
+      m("Hhh Trop20", 20, { cls: "MAGE", online: true }), m("Iii Trop28", 28, { cls: "ROGUE", online: true }),
+    ];
+    // Autre nom de guilde que les autres tests : une guilde du jeu n'est liée qu'à un seul groupe du site
+    await paste(s.owner, frl({ guild: "Les Braises", at: T, members: [mine, alt, ...others] }));
+    const f = (await find(s, s.p.Hero!))!;
+    expect(f.char).toMatchObject({ name: "Brindille", cls: "Druid", level: 24 });
+    // En ligne d'abord (le plus proche du niveau avant), puis la dernière connexion la plus récente ; le 7e (à 30 h) n'a pas de place
+    expect(f.mates.map(x => [x.name, x.level, x.online])).toEqual([
+      ["Bbb Enligne25", 25, true], ["Aaa Enligne27", 27, true], ["Ccc Il1h24", 24, false], ["Eee Il2h22", 22, false], ["Ddd Il3h23", 23, false], ["Fff Il10h26", 26, false],
+    ]);
+    expect(f.mates.find(x => x.name === "Ccc Il1h24")).toMatchObject({ cls: "Warrior", lastOnlineAt: new Date((T - HOUR) * 1000).toISOString() });
+    expect(f.mates.some(x => x.name.includes("Feuillevive"))).toBe(false);
+    // Persos de la guilde au niveau d'Excavation Site (24-29), sans Brindille ni Pikou : 27, 25, 24, 26, 28
+    expect(f.dungeons[0]).toMatchObject({ key: "excavation-site", forever: true, guildCount: 5 });
   });
 });
 

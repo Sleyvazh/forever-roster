@@ -1,10 +1,10 @@
-import { CLASS_SPECS, zonedParts, type HomeAgendaItem, type SignupStatus, type SpecDef } from "@forever/game-data";
+import { CLASS_SPECS, firstNameOf, zonedParts, type HomeAgendaItem, type HomeFind, type SignupStatus, type SpecDef } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ApiError, get, patch, post, put, type Character, type GroupDetail } from "../api";
 import { useMe } from "../auth";
-import { daysUntil, longDay, shortDay, useGuildHome, useGuildLink, useGuildMembers } from "../guild";
+import { daysUntil, longDay, seenText, shortDay, useGuildHome, useGuildLink, useGuildMembers } from "../guild";
 import { absenceLabel, MyAbsences, type Absence } from "../components/Absences";
 import { GuildHead, InviteButton } from "../components/GuildHead";
 import { moveClass, MoveSign, moveText, QuestionBand, refreshGuild } from "../components/GuildMembers";
@@ -20,7 +20,8 @@ import type { Reach } from "../components/RaidReach";
  * Accueil d'une guilde de Forever (refonte du 23/10) : la page d'arrivée. « À faire » (ce qui bloque, corrigé sur place),
  * aujourd'hui et demain (raids et sorties, inscription en un clic) et les raids de la semaine, mes persos et mes absences,
  * la Course au 60 et ma place, les arrivées et départs ; pour les officiers, « À traiter » et « Inviter ».
- * Données : GET /groups/:id/home (lot Guilde), GET /week, GET /characters ; rien de neuf côté API.
+ * « Trouver quoi faire » (maquette du 31/10, écran 4) : les donjons à mon niveau et les persos de la guilde à 3 niveaux près.
+ * Données : GET /groups/:id/home (lot Guilde, dont `find`), GET /week, GET /characters.
  */
 
 const ROLE_WORD = { Tank: "tank", Heal: "heal", DPS: "DPS" } as const;
@@ -280,6 +281,47 @@ function MyCharsCard({ groupId, chars }: { groupId: string; chars: Character[] }
   );
 }
 
+/* ---------- Trouver quoi faire : donjons à mon niveau, persos de la guilde à mon niveau ---------- */
+
+function FindCard({ groupId, find, canCreate }: { groupId: string; find: HomeFind; canCreate: boolean }) {
+  const base = `/groups/${groupId}`;
+  const { char, dungeons, mates } = find;
+  const who = (n: number) => (n === 0 ? "aucun autre perso de la guilde n'a le niveau" : `${plural(n, "perso")} de la guilde ${n > 1 ? "ont" : "a"} le niveau`);
+  return (
+    <section className="hm-card" style={{ ["--o" as string]: 1 } as CSSProperties} aria-labelledby="tf-t">
+      <div className="hm-h"><h3 id="tf-t">Trouver quoi faire</h3></div>
+      <div className="tf-h"><h4 className="gm-sec">Donjons à ton niveau</h4><small>{firstNameOf(char.name)}, niveau {char.level}</small></div>
+      {dungeons.length ? (
+        <ul className="ag-list">{dungeons.map(d => (
+          <li key={d.key} className={`ag tf-d${d.planned ? "" : " can"}`}>
+            <div className="ag-main">
+              <span className="ag-t">{d.name} <span className="lvn">{d.min}-{d.max}</span>{d.forever && <span className="tag gold">Forever</span>}</span>
+              <span className="ag-s">{who(d.guildCount)}</span>
+            </div>
+            <div className="ag-end">
+              {d.planned ? <Link className="link" to={`${base}/sorties`}>Sortie prévue {d.planned.at ? `à ${hm(d.planned.at)}` : "(dès que complet)"} →</Link>
+                : canCreate ? <Link className="btn sm" to={`${base}/sorties/nouvelle?donjon=${encodeURIComponent(d.key)}&perso=${encodeURIComponent(char.id)}`} aria-label={`Proposer une sortie à ${d.name}`}>Proposer</Link> : null}
+            </div>
+          </li>
+        ))}</ul>
+      ) : <p className="hm-none">Pas de donjon à ton niveau pour l'instant.</p>}
+      <div className="tf-h"><h4 className="gm-sec">Qui joue à ton niveau</h4><small>à 3 niveaux près</small></div>
+      {mates.length ? (
+        <ul className="mc-list tf-who">{mates.map((m, i) => {
+          const seen = m.online || m.lastOnlineAt ? seenText(m.online, m.lastOnlineAt) : null;
+          return (
+            <li key={`${i}-${m.name}`}>
+              <ClassDot cls={m.cls} size="md" />
+              <span className="t"><span><CharName name={m.name} cls={m.cls} /> <span className="lvn">{m.level}</span></span></span>
+              {seen && <span className={`mc-sync${seen.state === "on" ? " ok" : ""}`}>{seen.text}</span>}
+            </li>
+          );
+        })}</ul>
+      ) : <p className="hm-none">Personne d'autre n'est à ton niveau pour l'instant.</p>}
+    </section>
+  );
+}
+
 /* ---------- Page ---------- */
 
 export function HomePage({ groupId, detail }: { groupId: string; detail: GroupDetail }) {
@@ -378,7 +420,7 @@ export function HomePage({ groupId, detail }: { groupId: string; detail: GroupDe
       <QuestionBand groupId={groupId} questions={d.questions} />
       <TodoList groupId={groupId} groupName={group.name} chars={chars} />
       <div className="hm">
-        <div className="hm-col">{agenda}{moves}</div>
+        <div className="hm-col">{agenda}{d.find && <FindCard groupId={groupId} find={d.find} canCreate={group.creators.canCreateOuting} />}{moves}</div>
         <div className="hm-col">
           {officer && <ToHandle groupId={groupId} nextRaid={nextRaid} feedback={detail.feedback?.unseen ?? 0} />}
           <MyCharsCard groupId={groupId} chars={chars} />

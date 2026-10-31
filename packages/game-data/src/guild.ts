@@ -461,6 +461,21 @@ export interface HomeRace {
   podium: RacePodiumPlace[];
   me: { rank: number; tie: boolean; name: string; cls: ClassName | null; level: number; xpPct: number | null; weekGain: number } | null;
 }
+/**
+ * « Trouver quoi faire » : pour mon perso dans la guilde (mon main, sinon mon perso le plus haut), les donjons à son niveau
+ * (ceux de Forever d'abord, 3 au plus) et les persos de la guilde à 3 niveaux près (6 au plus, en ligne d'abord).
+ */
+export interface HomeFind {
+  char: { id: string; name: string; cls: ClassName | null; level: number };
+  dungeons: {
+    key: string; name: string; min: number; max: number; forever: boolean;
+    /** Persos de la guilde (les miens exceptés) qui ont le niveau du donjon. */
+    guildCount: number;
+    /** Sortie de ce donjon d'aujourd'hui ou de demain, s'il y en a une. */
+    planned: { id: string; at: string | null } | null;
+  }[];
+  mates: { name: string; cls: ClassName | null; level: number; online: boolean; lastOnlineAt: string | null }[];
+}
 export interface GuildHomeResponse {
   today: string; tomorrow: string;
   agenda: HomeAgendaItem[];
@@ -471,6 +486,8 @@ export interface GuildHomeResponse {
   moves: GuildMove[];
   guild: { linked: boolean; name: string | null; rosterAt: string | null };
   questions: GuildQuestion[];
+  /** Null : aucun perso à moi dans la guilde, pas de carte. */
+  find: HomeFind | null;
 }
 
 /** Lien de la guilde (Administration) : guilde liée, guildes proposées (officiers), réglage des annonces. */

@@ -295,6 +295,21 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(page.getByRole("heading", { name: /Aujourd'hui et demain/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Course au 60/ })).toBeVisible();
     await expect(page.getByRole("region", { name: /Arrivées et départs/ })).toContainText("Zirta Pellerouge rejoint la guilde");
+    // Trouver quoi faire : pour Brindille (niveau 28), les donjons de Forever d'abord, les joueurs à 3 niveaux près (liste du jeu)
+    const find = page.getByRole("region", { name: "Trouver quoi faire" });
+    await expect(find).toContainText("Brindille, niveau 28");
+    await expect(find.locator(".tf-d").first()).toContainText("City of Dalaran");
+    await expect(find.locator(".tf-d").first().locator(".tag")).toHaveText("Forever");
+    await expect(find.locator(".tf-d").filter({ hasText: "Excavation Site: Wetlands" })).toContainText("1 perso de la guilde a le niveau");
+    // Même dernière connexion : le plus proche de son niveau d'abord
+    await expect(find.locator(".tf-who li")).toHaveText([/Vex Ombrelame\s*27/, /Kaeldra Brisevent\s*30/]);
+    // « Proposer » ouvre « + Sortie » avec le donjon et le perso déjà choisis
+    await find.getByRole("link", { name: "Proposer une sortie à Excavation Site: Wetlands" }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties/nouvelle\\?donjon=excavation-site&perso=`));
+    await expect(page.locator(".dg-chosen")).toContainText("Excavation Site: Wetlands");
+    await expect(page.getByRole("button", { name: /Brindille Feuillevive/ })).toHaveAttribute("aria-pressed", "true");
+    await page.goBack();
+    await expect(find).toBeVisible();
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
     await page.getByRole("link", { name: "Administration" }).click();
     await page.locator(".adm-nav").getByRole("button", { name: /^Guilde/ }).click();
