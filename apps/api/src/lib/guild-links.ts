@@ -179,7 +179,7 @@ export async function linkProposed(db: Db, groupId: string, key: string, actor: 
   if (!prop) throw notFound("Cette guilde du jeu n'est plus proposée : envoie un nouveau relevé.");
   await db.transaction(tx => linkGameGuild(tx, groupId, prop, actor, false));
   const block = parseGuildBlocks(prop.text).blocks.find(b => guildKeyOf(b.data) === key);
-  if (block) await applyGuildExport(db, groupId, block.data, { officer: true });
+  if (block) await applyGuildExport(db, groupId, block.data, { officer: true, userId: prop.proposedBy });
   return { name: prop.name };
 }
 

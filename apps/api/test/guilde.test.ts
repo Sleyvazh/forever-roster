@@ -1,7 +1,7 @@
 import { atTime, LAUNCH_AT, outingDays, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { characters, groups, guildEvents, guildLevels, guildLinkProposals, guildLinks, guildMembers, guildPlayers } from "../src/db/schema";
+import { characters, groups, guildBankLog, guildEvents, guildLevels, guildLinkProposals, guildLinks, guildMembers, guildPlayers } from "../src/db/schema";
 import { purgeOldData } from "../src/lib/purges";
 import { DAY, frc, frl, guid, HOUR, m, NOW, paste as pasteAs, scene as sceneOf, type Signed } from "./guild-helpers";
 import { setup, signedIn, type TestEnv } from "./helpers";
@@ -438,5 +438,19 @@ describe("purges de la guilde du jeu", () => {
     expect((await db().select({ p: guildEvents.player1 }).from(guildEvents).where(eq(guildEvents.groupId, s.g.id))).map(x => x.p).sort()).toEqual([C.name, "Souvenir Recent"].sort());
     expect((await db().select({ key: guildLinkProposals.key }).from(guildLinkProposals).where(eq(guildLinkProposals.groupId, s.g.id))).map(x => x.key)).toEqual(["Neuve-Forever EU-Horde"]);
     expect(await purgeOldData(db())).toMatchObject({ guildMembers: 0, guildEvents: 0, guildProposals: 0 });
+  });
+
+  it("journal de la banque (objets et or) : effacé au bout de 12 mois", async () => {
+    const s = await scene("Les Coffres");
+    await paste(s.owner, frl({ at: NOW() - HOUR, members: [m("Kaeldra Brisevent", 60)] }));
+    const ago = (days: number) => new Date(Date.now() - days * DAY * 1000);
+    await db().insert(guildBankLog).values([
+      { groupId: s.g.id, kind: "item", tab: 1, type: "deposit", who: "Vieux Depot", itemId: 13446, count: 1, at: ago(366) },
+      { groupId: s.g.id, kind: "money", type: "deposit", who: "Vieil Or", amount: 100, at: ago(366) },
+      { groupId: s.g.id, kind: "item", tab: 1, type: "deposit", who: "Depot Recent", itemId: 13446, count: 1, at: ago(300) },
+    ]);
+    expect(await purgeOldData(db())).toMatchObject({ guildBankLog: 2 });
+    expect((await db().select({ who: guildBankLog.who }).from(guildBankLog).where(eq(guildBankLog.groupId, s.g.id))).map(x => x.who)).toEqual(["Depot Recent"]);
+    expect(await purgeOldData(db())).toMatchObject({ guildBankLog: 0 });
   });
 });

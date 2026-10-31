@@ -862,6 +862,68 @@ export const guildLinks = pgTable("guild_links", {
 ]);
 
 /**
+ * Banque de la guilde du jeu (lignes B, T, I, X, O du relevé FRL), consultation seule. Une ligne par guilde : le relevé le
+ * plus récent (heure de la ligne B) et l'or, qui suit le relevé le plus récent qui le donne. Le contenu de chaque onglet
+ * est dans guild_bank_tabs (son dernier relevé lu), les mouvements dans guild_bank_log. « Délier » efface tout.
+ * sent_by : compte du site qui a envoyé le relevé (traçabilité, jamais affiché).
+ */
+export const guildBank = pgTable("guild_bank", {
+  groupId: uuid("group_id").primaryKey().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  /** Relevé le plus récent appliqué (heure de la ligne B), et le perso qui l'a fait. */
+  at: ts("at").notNull(),
+  by: text("by").notNull().default(""),
+  /** Or en cuivre, et heure du relevé qui l'a donné (null : le jeu ne l'a jamais dit). */
+  money: bigint("money", { mode: "number" }),
+  moneyAt: ts("money_at"),
+  /** Nombre d'onglets (au plus 8) : les onglets de 1 à tabs. */
+  tabs: smallint("tabs").notNull().default(0),
+  sentBy: uuid("sent_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/**
+ * Onglet de la banque : son nom (relevé le plus récent) et ses cases occupées telles que le dernier relevé qui l'a lu les a
+ * vues. read_at null : jamais lu (le rang de ceux qui ont envoyé un relevé ne le voit pas, ou la banque s'est fermée trop tôt).
+ */
+export const guildBankTabs = pgTable("guild_bank_tabs", {
+  groupId: uuid("group_id").notNull().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  tab: smallint("tab").notNull(),
+  name: text("name").notNull().default(""),
+  readAt: ts("read_at"),
+  readBy: text("read_by").notNull().default(""),
+  sentBy: uuid("sent_by").references(() => users.id, { onDelete: "set null" }),
+  /** Cases occupées (1 à 98), dans l'ordre des cases. */
+  slots: jsonb("slots").$type<{ slot: number; id: number; n: number }[]>().notNull().default([]),
+}, t => [primaryKey({ columns: [t.groupId, t.tab] })]);
+
+/**
+ * Journaux de la banque, dédoublonnés comme le journal de guilde (le jeu ne donne qu'un « il y a N heures » : la date n'est
+ * connue qu'à l'heure près). kind « item » : dépôt, retrait ou déplacement d'un objet dans un onglet (tab1 → tab2 pour un
+ * déplacement) ; « money » : mouvement d'or (amount en cuivre). Effacé au bout de 12 mois (purges).
+ */
+export const guildBankLog = pgTable("guild_bank_log", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  groupId: uuid("group_id").notNull().references(() => gameGuilds.groupId, { onDelete: "cascade" }),
+  kind: text("kind").$type<"item" | "money">().notNull(),
+  tab: smallint("tab"),
+  /** Type du jeu : deposit, withdraw, move, repair… */
+  type: text("type").notNull(),
+  who: text("who").notNull().default(""),
+  itemId: integer("item_id"),
+  count: integer("count"),
+  tab1: smallint("tab1"),
+  tab2: smallint("tab2"),
+  amount: bigint("amount", { mode: "number" }),
+  at: ts("at").notNull(),
+  sentBy: uuid("sent_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("guild_bank_log_group_idx").on(t.groupId, t.kind, t.at),
+  index("guild_bank_log_at_idx").on(t.at),
+  check("guild_bank_log_kind_chk", sql`${t.kind} in ('item', 'money')`),
+]);
+
+/**
  * Guilde du jeu proposée (relevé d'un officier qui a plusieurs guildes Forever sans lien) : affichée dans
  * l'Administration de chacune, avec « Lier ». Le relevé est gardé pour remplir la guilde tout de suite. 30 jours (purges).
  */

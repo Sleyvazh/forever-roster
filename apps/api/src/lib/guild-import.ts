@@ -8,6 +8,7 @@ import { gameGuilds, groupMembers, groups, guildEvents, guildLevels, guildLinkPr
 import { audit } from "./audit";
 import { bus } from "./events";
 import type { GroupRole } from "./groups";
+import { applyBank, type BankApplySummary } from "./guild-bank";
 
 /**
  * Relevé de la guilde du jeu (FRL, lot « Guilde ») appliqué aux guildes du site. Règles (contrat du 20/10) :
@@ -18,7 +19,8 @@ import type { GroupRole } from "./groups";
  *   la sortie (bêta) est remplacé par le premier relevé d'une autre guilde du jeu envoyé par un officier après la sortie ;
  * - la liste la plus récente (heure de l'en-tête) l'emporte ; une liste complète (lignes M = membres du jeu) marque les
  *   absents comme partis ; les notes d'officier ne sont gardées que d'un officier du site dont l'en-tête dit 1 ;
- * - journal dédoublonné (dates à l'heure près), niveaux (date exacte des lignes U, sinon date du relevé) et XP (lignes P).
+ * - journal dédoublonné (dates à l'heure près), niveaux (date exacte des lignes U, sinon date du relevé) et XP (lignes P) ;
+ * - banque (lignes B, T, I, X, O) : guild-bank.ts, dans la même transaction.
  */
 
 type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
@@ -34,7 +36,10 @@ const officerRole = (r: GroupRole) => r === "owner" || r === "officer";
 /** Lien fait pendant la bêta : remplacé par la vraie guilde après la sortie. */
 const provisional = (g: Pick<GuildRow, "linkedAt">, now: number) => g.linkedAt.getTime() < LAUNCH_AT && now >= LAUNCH_AT;
 
-export interface GuildApplySummary { roster: "applied" | "older" | null; members: number; complete: boolean; arrivals: number; departures: number; events: number; levels: number; xp: number }
+export interface GuildApplySummary {
+  roster: "applied" | "older" | null; members: number; complete: boolean; arrivals: number; departures: number; events: number; levels: number; xp: number;
+  bank: BankApplySummary | null;
+}
 
 /** Membres repérés par un nom du journal ou d'une ligne P / U : nom complet, sinon prénom unique. */
 function byNameIndex(members: readonly Pick<MemberRow, "guid" | "name" | "leftAt">[]) {
@@ -61,12 +66,12 @@ export async function linkGameGuild(db: Tx, groupId: string, g: Pick<GuildExport
   return row!;
 }
 
-/** Applique un relevé à une guilde du site déjà liée à cette guilde du jeu. officer : l'envoyeur est officier ou propriétaire. */
-export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, opts: { officer: boolean; now?: Date }): Promise<GuildApplySummary> {
+/** Applique un relevé à une guilde du site déjà liée à cette guilde du jeu. officer : l'envoyeur est officier ou propriétaire ; userId : son compte (noté avec la banque). */
+export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, opts: { officer: boolean; now?: Date; userId?: string }): Promise<GuildApplySummary> {
   const now = opts.now ?? new Date();
   // Heures du relevé (horloge du PC du joueur) : jamais dans le futur, sinon un relevé daté de 2099 bloquerait tous les suivants
   const when = (unix: number) => new Date(Math.min(unix * 1000, now.getTime()));
-  const sum: GuildApplySummary = { roster: null, members: 0, complete: false, arrivals: 0, departures: 0, events: 0, levels: 0, xp: 0 };
+  const sum: GuildApplySummary = { roster: null, members: 0, complete: false, arrivals: 0, departures: 0, events: 0, levels: 0, xp: 0, bank: null };
   await db.transaction(async tx => {
     // Un relevé à la fois par guilde (Roster Companion de plusieurs membres en même temps)
     const [gg] = await tx.select().from(gameGuilds).where(eq(gameGuilds.groupId, groupId)).for("update");
@@ -242,6 +247,9 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
       sum.levels += res.length;
     }
 
+    // 6. Banque : onglets, or et journaux
+    if (g.bank) sum.bank = await applyBank(tx, groupId, g.bank, { when, sentBy: opts.userId ?? null });
+
     if (Object.keys(guildPatch).length) await tx.update(gameGuilds).set(guildPatch).where(eq(gameGuilds.groupId, groupId));
     await freezePodium(tx, groupId);
   });
@@ -279,6 +287,9 @@ function summaryText(s: GuildApplySummary) {
   if (s.events) parts.push(`journal : ${plural(s.events, "nouvel événement", "nouveaux événements")}`);
   if (s.levels) parts.push(plural(s.levels, "niveau noté", "niveaux notés"));
   if (s.xp) parts.push(`XP de ${plural(s.xp, "perso")}`);
+  if (s.bank?.bank === "applied") parts.push(s.bank.tabs ? `banque : ${plural(s.bank.tabs, "onglet")} ${s.bank.tabs > 1 ? "relevés" : "relevé"}` : "banque : or");
+  else if (s.bank?.bank === "older") parts.push("banque plus ancienne que celle du site (gardée)");
+  if (s.bank?.moves) parts.push(`journal de la banque : ${plural(s.bank.moves, "nouveau mouvement", "nouveaux mouvements")}`);
   return parts.join(", ") || "rien de nouveau";
 }
 
@@ -337,7 +348,7 @@ export async function importGuildExports(db: Db, user: User, blocks: readonly Gu
       }
       const parts: string[] = [];
       for (const t of targets) {
-        const s = await applyGuildExport(db, t.id, g, { officer: officerRole(t.role), now });
+        const s = await applyGuildExport(db, t.id, g, { officer: officerRole(t.role), now, userId: user.id });
         parts.push(`${targets.length > 1 || linked.length ? `${t.name}${linked.includes(t.name) ? " (liée)" : ""} : ` : ""}${summaryText(s)}`);
         bus.group({ t: "guild", g: t.id });
       }

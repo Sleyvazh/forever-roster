@@ -1,6 +1,6 @@
 import {
   characterRoles, classRoles, endOfDay, hasDungeonLevel, LEVEL_ANNOUNCES, levelsText, normalizeGuid, OUTING_ROLES, outingDays, RACE_START, roleOf,
-  type GuildCharsResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse,
+  type GuildBankLogResponse, type GuildBankResponse, type GuildCharsResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse,
   type HomeAgendaItem, type SignupStatus,
 } from "@forever/game-data";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
@@ -14,6 +14,7 @@ import { membership, requireRole, type GroupRole } from "../lib/groups";
 import {
   charView, computeRace, foreverGroup, guildMoves, isOfficer, linkInfo, loadGuild, loadLevels, MOVE_FILTERS, playerOrder, playerView, questionsFor, resolveGuild,
 } from "../lib/guild";
+import { bankLog, bankView } from "../lib/guild-bank";
 import { acceptSuggestion, answerQuestion, attachMember, claimMember, detachMember, linkProposed, proposalsOf, setPlayerMain } from "../lib/guild-links";
 import { notFound, parse } from "../lib/http";
 import { groupOutings, signupName, signupsOf } from "../lib/outings";
@@ -33,9 +34,12 @@ import { currentUser, requireAuth } from "../lib/session";
  *   GET  /:id/home                        → GuildHomeResponse : aujourd'hui et demain (raids, sorties, mon inscription), mini-course,
  *                                           mouvements de la semaine, « Est-ce ton perso ? »
  *   GET  /:id/guild/link                  → GuildLinkResponse : guilde du jeu liée, guildes proposées (officiers), réglage des annonces
+ *   GET  /:id/guild/bank                  → GuildBankResponse : banque relevée par l'addon (or, onglets et cases, objets du catalogue,
+ *                                           deux derniers mouvements d'or) ; linked false et bank null si la guilde n'est pas liée
+ *   GET  /:id/guild/bank/log              → GuildBankLogResponse : ?kind=items|money&before=<ISO>&limit=50 (1 à 200), le plus récent d'abord
  * Officiers :
  *   POST   /:id/guild/link                { key }            → GuildLinkResponse : lier une guilde du jeu proposée
- *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux ; les rattachements restent)
+ *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux, banque ; les rattachements restent)
  *   PUT    /:id/guild/announces           { announce }       → { announce } : annonces Discord des niveaux (none | sixty | tens)
  *   PUT    /:id/guild/members/:guid/link  { to }             → { player } : « Rattacher à… » (clé d'un joueur ou d'un perso, ou « new »)
  *   POST   /:id/guild/members/:guid/accept { guid? }         → { player } : accepter la suggestion d'une note (candidat si ambiguë)
@@ -121,6 +125,22 @@ export async function guildRoutes(app: FastifyInstance) {
       journal: data.gg.journalAt ? { at: data.gg.journalAt.toISOString(), by: data.gg.journalBy } : null,
       since: oldest?.at.toISOString() ?? null,
     };
+  });
+
+  app.get("/:id/guild/bank", async (req): Promise<GuildBankResponse> => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await ctx(id, u.id);
+    const [gg] = await db.select({ groupId: gameGuilds.groupId }).from(gameGuilds).where(eq(gameGuilds.groupId, id));
+    return bankView(db, id, !!gg);
+  });
+
+  app.get("/:id/guild/bank/log", async (req): Promise<GuildBankLogResponse> => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    const q = parse(z.object({ kind: z.enum(["items", "money"]).default("items"), before: z.iso.datetime({ offset: true }).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }), req.query);
+    await ctx(id, u.id);
+    return bankLog(db, id, { kind: q.kind, before: q.before ? new Date(q.before) : undefined, limit: q.limit });
   });
 
   app.get("/:id/guild/race", async (req): Promise<GuildRaceResponse> => {

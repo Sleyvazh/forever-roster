@@ -281,6 +281,13 @@
       "when": 1793205787457,
       "tag": "0039_relais",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793470716407,
+      "tag": "0040_banque",
+      "breakpoints": true
     }
   ]
 }

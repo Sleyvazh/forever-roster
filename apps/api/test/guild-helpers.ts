@@ -13,11 +13,12 @@ export interface M { name: string; cls?: string; level: number; rank?: string; r
 export const m = (name: string, level: number, more: Partial<M> = {}): M => ({ name, level, guid: guid(), ...more });
 
 /** Bloc FRL comme l'addon 1.6.2 l'écrit (docs/addon-format.md). */
-export function frl(o: { guild?: string; at: number; by?: string; officer?: boolean; total?: number; members?: M[]; journal?: { at: number; events: (string | number)[][] }; xp?: (string | number)[][]; levels?: (string | number)[][] }) {
+export function frl(o: { guild?: string; at: number; by?: string; officer?: boolean; total?: number; members?: M[]; journal?: { at: number; events: (string | number)[][] }; bank?: string[]; xp?: (string | number)[][]; levels?: (string | number)[][] }) {
   const members = o.members ?? [];
   const lines = [
     ...members.map(x => ["M", x.name, (x.cls ?? "WARRIOR").toUpperCase(), x.level, x.rank ?? "Membre", x.ri ?? 3, x.online ? 1 : 0, x.online ? 0 : x.hours === null ? "" : x.hours ?? 2, x.note ?? "", x.onote ?? "", x.guid].join(";")),
     ...(o.journal ? [`J;${o.journal.at};${o.by ?? "Morwen Cendrevoile"}`, ...o.journal.events.map(e => ["E", ...e].join(";"))] : []),
+    ...(o.bank ?? []),
     ...(o.xp ?? []).map(x => ["P", ...x].join(";")),
     ...(o.levels ?? []).map(x => ["U", ...x].join(";")),
   ];
