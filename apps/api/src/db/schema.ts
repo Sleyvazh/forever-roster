@@ -984,12 +984,29 @@ export const reports = pgTable("reports", {
   check("reports_status", sql`${t.status} IN ('new', 'wip', 'done', 'refused')`),
 ]);
 
-/** Réglages du site (une ligne par clé) : salon Discord des signalements, etc. */
+/** Réglages du site (une ligne par clé) : salon Discord des signalements, dernière sauvegarde réussie (« backup_status »), etc. */
 export const siteSettings = pgTable("site_settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").$type<Record<string, unknown>>().notNull(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+export type SiteAlertKind = "bot_down" | "bot_up" | "backup_late" | "backup_ok";
+/**
+ * Alertes de surveillance (lib/site-status.ts) : le bot Discord ne répond plus / répond à nouveau, la sauvegarde de nuit
+ * est en retard / rétablie. Chaque alerte part par e-mail aux admins du site (emailed_at), puis le bot la poste dans le
+ * salon des signalements quand il répond (posted_at). created_at : le moment de l'événement.
+ */
+export const siteAlerts = pgTable("site_alerts", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  kind: text("kind").$type<SiteAlertKind>().notNull(),
+  text: text("text").notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  emailedAt: ts("emailed_at"),
+  postedAt: ts("posted_at"),
+}, t => [
+  check("site_alerts_kind", sql`${t.kind} IN ('bot_down', 'bot_up', 'backup_late', 'backup_ok')`),
+]);
 
 /** Annonces Discord à supprimer (raid supprimé sur le site) : le bot les traite puis les efface. */
 export const discordDeletions = pgTable("discord_deletions", {

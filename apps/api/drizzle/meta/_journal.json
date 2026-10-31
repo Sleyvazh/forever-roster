@@ -288,6 +288,13 @@
       "when": 1793470716407,
       "tag": "0040_banque",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793487162707,
+      "tag": "0041_surveillance",
+      "breakpoints": true
     }
   ]
 }

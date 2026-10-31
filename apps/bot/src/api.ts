@@ -47,6 +47,12 @@ export interface ReportView {
   kind: "bug" | "idea" | "question"; area: "site" | "addon" | "bot" | "companion"; title: string; body: string; author: string;
   site: string; page: string; browser: string; addonVersion: string | null; hasImage: boolean; status: "new" | "wip" | "done" | "refused"; reply: string; repliedBy: string | null;
 }
+/** Alerte de surveillance (bot tombé ou de retour, sauvegarde en retard ou rétablie), à poster dans le salon des signalements. */
+export interface SiteAlertView {
+  id: number; kind: "bot_down" | "bot_up" | "backup_late" | "backup_ok"; text: string; channelId: string;
+  /** Moment de l'événement (ISO). */
+  at: string;
+}
 /* ---------- Sorties donjon (Forever) ---------- */
 
 export type OutingRole = "Tank" | "Heal" | "DPS";
@@ -178,6 +184,9 @@ export class InternalApi {
   reportPublished(id: string, b: { channelId: string; messageId: string; changedAt: string }) {
     return this.req<{ ok: true }>("POST", `/internal/discord/reports/${id}/published`, b);
   }
+  /** Alertes de surveillance pas encore postées (vide tant qu'aucun salon des signalements n'est lié), la plus ancienne d'abord. */
+  siteAlertsOutbox() { return this.req<{ alerts: SiteAlertView[] }>("GET", "/internal/discord/site-alerts/outbox"); }
+  siteAlertPosted(id: number) { return this.req<{ ok: true }>("POST", `/internal/discord/site-alerts/${id}/posted`, {}); }
   /** Capture du signalement (WebP), ou null si elle n'existe plus. */
   async reportImage(id: string): Promise<Buffer | null> {
     const res = await this.f(`${this.base}/internal/discord/reports/${id}/image`, {

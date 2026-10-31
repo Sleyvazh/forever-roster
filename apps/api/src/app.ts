@@ -11,6 +11,7 @@ import { accountRoutes } from "./routes/account";
 import { authRoutes } from "./routes/auth";
 import { battlenetRoutes } from "./routes/battlenet";
 import { battlenetImportRoutes } from "./routes/battlenet-import";
+import { adminRoutes } from "./routes/admin";
 import { reportRoutes } from "./routes/reports";
 import { discordRoutes } from "./routes/discord";
 import { characterRoutes } from "./routes/characters";
@@ -43,7 +44,7 @@ export interface AppContext {
   mailer: Mailer;
   /** Injectable pour les tests (Battle.net, Have I Been Pwned). */
   fetch: typeof fetch;
-  /** Horloge de la Course au 60 et de l'accueil de la guilde (tests : une date après la sortie) ; Date.now sinon. */
+  /** Horloge de la Course au 60, de l'accueil de la guilde et de la surveillance du site (tests : une date après la sortie) ; Date.now sinon. */
   now?: () => Date;
 }
 
@@ -97,6 +98,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(battlenetRoutes, { prefix: "/api/auth/battlenet" });
   await app.register(battlenetImportRoutes, { prefix: "/api/battlenet" });
   await app.register(reportRoutes, { prefix: "/api/reports" });
+  await app.register(adminRoutes, { prefix: "/api/admin" });
   await app.register(discordRoutes, { prefix: "/api/auth/discord" });
   await app.register(accountRoutes, { prefix: "/api/account" });
   await app.register(characterRoutes, { prefix: "/api/characters" });

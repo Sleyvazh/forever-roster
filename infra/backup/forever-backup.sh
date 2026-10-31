@@ -20,7 +20,11 @@ docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -
 docker compose exec -T db pg_restore --list < "$FILE.tmp" > /dev/null
 mv "$FILE.tmp" "$FILE"
 
-# 3. Rotation : on supprime les sauvegardes plus anciennes que KEEP_DAYS jours
+# 3. On le signale à l'API (page « État du site » ; sans signal pendant plus de 26 h, les admins sont prévenus).
+#    Au mieux : une API arrêtée ne fait pas échouer une sauvegarde réussie.
+docker compose exec -T api node dist/site-status.js backup-ok "$(stat -c %s "$FILE")" || true
+
+# 4. Rotation : on supprime les sauvegardes plus anciennes que KEEP_DAYS jours
 find "$DEST" -name 'forever-*.dump' -mtime +"$KEEP_DAYS" -delete
 
 echo "Sauvegarde OK : $FILE ($(du -h "$FILE" | cut -f1))"

@@ -88,7 +88,41 @@ Si une migration a modifié la base de façon incompatible, restaurer aussi la s
 
 ## Surveillance
 
-Un service externe vérifie que le site répond et prévient par e-mail sinon. Exemple avec UptimeRobot (offre gratuite, contrôle toutes les 5 min) :
+### Le bot Discord et la sauvegarde de nuit
+
+L'API vérifie **chaque minute** deux choses, et prévient les admins du site (voir [Signalements](#signalements-bug-idée-question) pour en ajouter) :
+
+| Surveillé | Alerte | Retour à la normale |
+|---|---|---|
+| Le bot Discord : il interroge l'API toutes les quelques secondes, et l'API note chaque appel | « Le bot Discord ne répond plus depuis 10 min » | « Le bot Discord répond à nouveau (coupure de N min) » |
+| La sauvegarde de nuit : `forever-backup.sh` signale chaque sauvegarde réussie | « Pas de sauvegarde réussie depuis 26 h » | « Sauvegarde rétablie » |
+
+Une seule alerte par coupure ou par retard, puis un seul message de retour. Elles partent par deux canaux :
+
+- **par e-mail**, tout de suite, à chaque admin du site dont l'adresse est confirmée, même si le bot est tombé (objet « [Forever Roster] » suivi du texte de l'alerte) ;
+- **dans le salon des signalements** (`/signalements-lier`), par le bot, **quand il répond** : un bot tombé ne peut pas écrire, la coupure est donc postée à son retour, suivie du message de retour.
+
+L'encadré **État du site**, en haut de la page `/admin/signalements` (« Administration du site »), montre le dernier signe de vie du bot, la dernière sauvegarde (date, taille, « En retard ») et les 5 dernières alertes.
+
+À savoir :
+
+- Après un redémarrage de l'API (un déploiement), le démarrage compte comme signe de vie : pas de fausse alerte avant 10 minutes. Une coupure déjà signalée le reste : pas de deuxième alerte.
+- Tant que la sauvegarde n'a jamais été signalée (script pas réinstallé), l'alerte part 26 h après le premier démarrage de l'API avec cette surveillance, pas avant.
+- Sans `INTERNAL_API_SECRET` (pas de bot sur ce serveur), le bot n'est pas surveillé ; la sauvegarde l'est toujours.
+
+**Réinstaller le script de sauvegarde (une fois, après le déploiement de cette version).** Le script installé sur le serveur est une copie : sans cette commande, il ne signale rien et l'alerte « Pas de sauvegarde réussie depuis 26 h » part le lendemain.
+
+```bash
+cd ~/forever-roster
+sudo install -m 700 infra/backup/forever-backup.sh /usr/local/sbin/forever-backup.sh
+sudo /usr/local/sbin/forever-backup.sh    # facultatif : une sauvegarde tout de suite, sinon la prochaine nuit
+```
+
+Bon si : l'encadré « État du site » montre la sauvegarde du jour (« OK »). Pour signaler une sauvegarde à la main : `sudo docker compose exec api node dist/site-status.js backup-ok <octets>`.
+
+### Le site entier : un moniteur externe
+
+L'API ne peut pas se signaler elle-même : si le site entier tombe, rien dans l'encadré ci-dessus ne prévient. Un service externe vérifie que le site répond et prévient par e-mail sinon. Exemple avec UptimeRobot (offre gratuite, contrôle toutes les 5 min) :
 
 1. Créer un compte, puis **New monitor** de type **HTTP(s) - Keyword** ;
 2. URL `https://forever-roster.sleyvazh.fr/api/health`, mot-clé `"ok":true` ;
@@ -115,6 +149,8 @@ sudo systemctl enable --now forever-backup.timer
 - L'archive est vérifiée (`pg_restore --list`) avant d'être conservée.
 - Rotation : 14 jours.
 - Journal des exécutions : `journalctl -u forever-backup.service`.
+- À la fin de chaque sauvegarde réussie, le script la signale à l'API (`node dist/site-status.js backup-ok <octets>`) : page « État du site » et alerte au bout de 26 h sans signal, voir [Surveillance](#surveillance). Au mieux : une API arrêtée ne fait pas échouer la sauvegarde.
+- Le script installé est une copie : après une mise à jour du dépôt, le réinstaller avec la première commande de l'installation ci-dessus.
 
 ### Test de restauration (à faire régulièrement)
 
@@ -259,7 +295,7 @@ sudo docker compose exec api node dist/site-admin.js remove flo@example.com  # r
 
 La personne recharge la page : **Signalements (admin)** apparaît dans le menu de son compte.
 
-**Salon Discord des admins :** un admin du site, avec son Discord lié dans Compte & sécurité, tape `/signalements-lier` dans un salon **privé** (commande visible des membres qui peuvent gérer le serveur). Le bot y poste chaque signalement (texte, auteur, site, page, navigateur, addon, capture, lien vers la page admin), puis met le message à jour quand le statut ou la réponse change ; supprimer un signalement supprime son message. Il prévient si le salon est visible par @everyone. Le salon étant privé, ajoute le bot à ses membres (Modifier le salon → Permissions → ajouter le rôle du bot). Droits du bot dans ce salon : Voir le salon, Envoyer des messages, Intégrer des liens, et Joindre des fichiers pour les captures (sinon elles restent sur le site). Un seul salon pour les deux adresses : relancer la commande ailleurs déplace les messages. Seuls les signalements des 30 derniers jours sont suivis dans Discord.
+**Salon Discord des admins :** un admin du site, avec son Discord lié dans Compte & sécurité, tape `/signalements-lier` dans un salon **privé** (commande visible des membres qui peuvent gérer le serveur). Le bot y poste chaque signalement (texte, auteur, site, page, navigateur, addon, capture, lien vers la page admin), puis met le message à jour quand le statut ou la réponse change ; supprimer un signalement supprime son message. Il prévient si le salon est visible par @everyone. Le salon étant privé, ajoute le bot à ses membres (Modifier le salon → Permissions → ajouter le rôle du bot). Droits du bot dans ce salon : Voir le salon, Envoyer des messages, Intégrer des liens, et Joindre des fichiers pour les captures (sinon elles restent sur le site). Un seul salon pour les deux adresses : relancer la commande ailleurs déplace les messages. Seuls les signalements des 30 derniers jours sont suivis dans Discord. Le même salon reçoit les alertes de surveillance (bot tombé, sauvegarde en retard), voir [Surveillance](#surveillance).
 
 ### Import Battle.net (Roster)
 

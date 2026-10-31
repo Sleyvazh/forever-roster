@@ -17,6 +17,7 @@ import { createLevelAnnouncer } from "./race";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { CAPTURE_NAME, createReportSync, renderReport } from "./reports";
+import { createSiteAlertSync, renderSiteAlert } from "./site-alerts";
 import { outingWhenText, resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
 
@@ -125,6 +126,14 @@ async function start() {
       return { channelId: ch.id, messageId: m.id };
     },
   }, log);
+  // Alertes de surveillance (bot tombé, sauvegarde en retard) : dans le salon des signalements, quand le bot répond
+  const siteAlerts = createSiteAlertSync(api, {
+    async post(a) {
+      const ch = await client.channels.fetch(a.channelId);
+      if (!ch || !ch.isSendable()) throw new Error(`Salon ${a.channelId} inaccessible`);
+      await ch.send(renderSiteAlert(a, cfg.timeZone));
+    },
+  }, log);
   // Salons des raids récurrents : renommés avec la date du raid courant (seulement ceux que l'API désigne) ;
   // puis nom réel de tous les salons liés, rapporté au site s'il a changé
   const channels = createChannelNamer(api, async id => {
@@ -220,6 +229,9 @@ async function start() {
     setInterval(() => { levels.tick().catch(e => log.warn("Annonces de niveau impossibles", e?.message)); }, 60e3);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
+    // Alertes de surveillance : dès le retour du bot (la coupure qu'il n'a pas pu poster), puis chaque minute
+    void siteAlerts.tick().catch(e => log.warn("Relève des alertes du site impossible", e?.message));
+    setInterval(() => { siteAlerts.tick().catch(e => log.warn("Relève des alertes du site impossible", e?.message)); }, 60e3);
     // Noms des salons (renommage des salons des raids récurrents, nom des salons liés) : toutes les 5 minutes (Discord : 2 renommages par 10 minutes et par salon)
     void channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message));
     setInterval(() => { channels.tick().catch(e => log.warn("Noms des salons non relevés", e?.message)); }, 5 * 60e3);

@@ -88,6 +88,13 @@ test("signaler un bug avec une capture, réponse de l'admin, pastille", async ({
     await login(adminPage, admin);
     await openMenu(adminPage);
     await adminPage.getByRole("link", { name: "Signalements (admin)" }).click();
+    await expect(adminPage.getByRole("heading", { name: "Administration du site" })).toBeVisible();
+    // « État du site » : le bot répond (l'API vient de démarrer), la sauvegarde de nuit n'a encore rien signalé, aucune alerte
+    const etat = adminPage.getByRole("region", { name: "État du site" });
+    await expect(etat).toContainText("vérifié chaque minute");
+    await expect(etat).toContainText("Répond");
+    await expect(etat).toContainText("Pas encore signalée");
+    await expect(etat).toContainText("Aucune alerte pour l'instant.");
     await expect(adminPage.getByRole("heading", { name: "Signalements", exact: true })).toBeVisible();
     await expect(adminPage.getByText("/signalements-lier")).toBeVisible();
     const item = adminPage.locator(".sg-item", { hasText: "La fenêtre du conseil se ferme" });

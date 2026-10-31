@@ -165,6 +165,12 @@ export interface GroupFeedbackItem {
   id: string; anonymous: boolean; author: string | null; text: string; status: FeedbackStatus; reachable: boolean;
   createdAt: string; closedAt: string | null; authorAt: string; unseen: boolean; messages: FeedbackMessage[];
 }
+/** « État du site » (admins) : le bot Discord, la dernière sauvegarde de nuit, les 5 dernières alertes (la plus récente d'abord). */
+export interface SiteStatus {
+  bot: { lastSeenAt: string; down: boolean; downSince: string | null };
+  backup: { at: string | null; bytes: number | null; late: boolean };
+  alerts: { at: string; kind: "bot_down" | "bot_up" | "backup_late" | "backup_ok"; text: string }[];
+}
 export interface Report {
   id: string; author: string; game: import("@forever/game-data").Game; kind: ReportKind; area: ReportArea; title: string; body: string;
   page: string; browser: string; addonVersion: string | null; hasImage: boolean;

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, type Report, type ReportStatus } from "../api";
 import { useMe } from "../auth";
 import { ReportDialog, ReportShot, ReportTags, reportDate, STATUS_LABEL } from "../components/Report";
+import { SiteStatus } from "../components/SiteStatus";
 import { useSite } from "../site";
 
 /** « Mes signalements » : ceux des deux adresses, avec la réponse de l'équipe. */
@@ -67,7 +68,7 @@ const FILTERS: { f: Filter; label: string }[] = [
   { f: "done", label: "Faits" }, { f: "refused", label: "Refusés" }, { f: "all", label: "Tous" },
 ];
 
-/** Page des admins du site : tous les signalements, statut, réponse au joueur. */
+/** Page des admins du site : l'état du site (bot, sauvegarde, alertes), puis tous les signalements, statut, réponse au joueur. */
 export function AdminReportsPage() {
   const me = useMe();
   const [params] = useSearchParams();
@@ -90,9 +91,14 @@ export function AdminReportsPage() {
     <div className="stack">
       <div className="page-head">
         <div>
-          <h1>Signalements</h1>
-          <p className="hint" style={{ margin: "4px 0 0" }}>Bugs, idées et questions des joueurs, sur les deux adresses. Ta réponse s'affiche dans « Mes signalements » de son auteur.</p>
+          <h1>Administration du site</h1>
+          <p className="hint" style={{ margin: "4px 0 0" }}>Réservé aux admins : l'état des services et les signalements des joueurs.</p>
         </div>
+      </div>
+      <SiteStatus />
+      <div>
+        <h2>Signalements</h2>
+        <p className="hint" style={{ margin: "4px 0 0" }}>Bugs, idées et questions des joueurs, sur les deux adresses. Ta réponse s'affiche dans « Mes signalements » de son auteur.</p>
       </div>
       {q.data && !q.data.channel && <div className="alert info">Aucun salon Discord pour l'instant : tape <code>/signalements-lier</code> dans le salon privé des admins pour y recevoir chaque signalement.</div>}
       <div className="seg sg-filters" role="group" aria-label="Filtrer">

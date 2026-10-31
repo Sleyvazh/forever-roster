@@ -6,6 +6,7 @@ import { runMigrations } from "./db/migrate";
 import { createMailer } from "./lib/mailer";
 import { purgeOldData } from "./lib/purges";
 import { ensureRecurringRaids } from "./lib/recurring";
+import { checkSiteStatus } from "./lib/site-status";
 
 const cfg = loadConfig();
 const { db, pool } = createDb(cfg.DATABASE_URL);
@@ -41,9 +42,22 @@ const runPurges = () => purgeOldData(db)
   .catch(err => app.log.error({ err }, "Échec de la purge des données anciennes"));
 const purgeTimer = setInterval(runPurges, 60 * 60e3);
 
+// Surveillance (lib/site-status.ts) : le bot Discord et la sauvegarde de nuit, chaque minute ; alertes par e-mail aux admins.
+// Une vérification n'en recouvre jamais une autre (un serveur de courrier lent ne doit pas en empiler).
+let checking = false;
+const runSiteStatus = async () => {
+  if (checking) return;
+  checking = true;
+  try { await checkSiteStatus({ db, cfg, mailer: mailerRef }, new Date()); }
+  catch (err) { app.log.error({ err }, "Échec de la surveillance du site"); }
+  finally { checking = false; }
+};
+const siteStatusTimer = setInterval(runSiteStatus, 60e3);
+
 const close = async () => {
   clearInterval(recurringTimer);
   clearInterval(purgeTimer);
+  clearInterval(siteStatusTimer);
   await Promise.all([app.close(), internal?.close()]);
   await pool.end();
   process.exit(0);
@@ -55,3 +69,4 @@ await app.listen({ port: cfg.PORT, host: cfg.HOST });
 if (internal) await internal.listen({ port: cfg.INTERNAL_PORT, host: cfg.HOST });
 void runRecurring();
 void runPurges();
+void runSiteStatus();

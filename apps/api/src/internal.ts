@@ -20,6 +20,7 @@ import { outingRoutes } from "./internal-outings";
 import { guildAnnounceRoutes } from "./internal-guild";
 import { fullNames } from "./lib/guild";
 import { bindReportsChannel, REPORT_DISCORD_FOLLOW_MS, reportDiscordView, reportsChannel } from "./lib/reports";
+import { markSiteAlertPosted, noteBotSeen, pendingSiteAlerts } from "./lib/site-status";
 import { listSignups, retireAnnouncements, signUpDiscordGuest, signUpSiteUser, touchRaid } from "./lib/signups";
 import { siteForGame } from "./lib/site";
 import { formatFor } from "./routes/raids";
@@ -43,6 +44,8 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     if (!cfg.INTERNAL_API_SECRET || !token || !safeEqual(token, cfg.INTERNAL_API_SECRET)) throw new HttpError(401, "Non autorisé.");
+    // Tout appel authentifié vient du bot, qui interroge l'API toutes les quelques secondes : c'est son signe de vie (surveillance)
+    noteBotSeen(ctx.now?.() ?? new Date());
   });
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
@@ -585,6 +588,20 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { id } = parse(z.object({ id: z.uuid() }), req.params);
     const body = parse(z.object({ channelId: snowflake, messageId: snowflake, changedAt: z.iso.datetime({ offset: true }) }), req.body);
     await db.update(reports).set({ discordChannelId: body.channelId, discordMessageId: body.messageId, discordSyncedAt: new Date(body.changedAt) }).where(eq(reports.id, id));
+    return { ok: true };
+  });
+
+  /* ----- Alertes de surveillance (bot tombé, sauvegarde en retard) dans le salon des admins ----- */
+
+  /** Alertes pas encore postées, la plus ancienne d'abord : le bot les poste dans le salon des signalements quand il répond. */
+  app.get("/internal/discord/site-alerts/outbox", async () => {
+    const ch = await reportsChannel(db);
+    return { alerts: ch ? await pendingSiteAlerts(db, ch.channelId) : [] };
+  });
+
+  app.post("/internal/discord/site-alerts/:id/posted", async (req: FastifyRequest) => {
+    const { id } = parse(z.object({ id: z.coerce.number().int().positive() }), req.params);
+    await markSiteAlertPosted(db, id, ctx.now?.() ?? new Date());
     return { ok: true };
   });
 
