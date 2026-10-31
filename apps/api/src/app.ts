@@ -13,7 +13,7 @@ import { battlenetRoutes } from "./routes/battlenet";
 import { battlenetImportRoutes } from "./routes/battlenet-import";
 import { adminRoutes } from "./routes/admin";
 import { reportRoutes } from "./routes/reports";
-import { discordRoutes } from "./routes/discord";
+import { discordInviteRoutes, discordRoutes } from "./routes/discord";
 import { characterRoutes } from "./routes/characters";
 import { gameDataRoutes } from "./routes/gamedata";
 import { groupPublicRoutes, groupRoutes } from "./routes/groups";
@@ -100,6 +100,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(reportRoutes, { prefix: "/api/reports" });
   await app.register(adminRoutes, { prefix: "/api/admin" });
   await app.register(discordRoutes, { prefix: "/api/auth/discord" });
+  await app.register(discordInviteRoutes, { prefix: "/api/discord" });
   await app.register(accountRoutes, { prefix: "/api/account" });
   await app.register(characterRoutes, { prefix: "/api/characters" });
   await app.register(gameDataRoutes, { prefix: "/api/gamedata" });

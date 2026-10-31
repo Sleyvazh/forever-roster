@@ -551,12 +551,14 @@ Sur <https://discord.com/developers/applications>, **New Application** (« Forev
 
 1. **Installation** : *Install Link* → **None**. Discord refuse sinon l'étape 3.
 2. **OAuth2** : ajouter la redirection `https://forever-roster.sleyvazh.fr/api/auth/discord/callback`. Noter le **Client ID** (public). **Reset Secret** donne le **Client Secret** : ne le coller que dans le terminal du serveur (étape suivante).
-3. **Bot** : décocher **Public Bot** (toi seul peux l'inviter), laisser les trois *Privileged Gateway Intents* **désactivés**. **Reset Token** donne le jeton du bot : même règle que le secret.
+3. **Bot** : **cocher Public Bot**. Sans cette case, Discord refuse l'invitation sur tout serveur qui n'est pas celui du propriétaire de l'application : le bouton « Ajouter le bot » du site (étape 4) ne marcherait que pour toi. Laisser les trois *Privileged Gateway Intents* **désactivés**. **Reset Token** donne le jeton du bot : même règle que le secret.
 4. Inviter le bot sur le serveur Discord, en remplaçant `CLIENT_ID` :
    `https://discord.com/oauth2/authorize?client_id=CLIENT_ID&scope=bot+applications.commands&permissions=84992`
    (droits : Voir les salons, Envoyer des messages, Intégrer des liens, Voir les anciens messages. Rien d'autre.
    « Voir les anciens messages » sert aux réponses sous les avis ; sur un serveur où le bot est déjà, l'ajouter à son rôle.
    « Gérer les salons » n'est **pas** dans le lien : à donner seulement sur les salons des raids récurrents qui ont le leur, voir 12.)
+
+   Le site sert ce même lien sans qu'on ait à le fabriquer : `https://forever-roster.sleyvazh.fr/api/discord/invite` renvoie vers Discord, avec le `DISCORD_CLIENT_ID` du serveur et les mêmes droits. C'est ce que font les boutons **Ajouter le bot** de l'accueil public (carte « Le bot Discord ») et d'**Administration → Discord**, en tête. Il faut pour cela **Public Bot** coché (étape 3, portail des développeurs, onglet Bot) ; sans `DISCORD_CLIENT_ID`, l'adresse répond 404 « Bot non configuré ».
 
 ### Renseigner les secrets sur le serveur
 
@@ -629,7 +631,7 @@ Fonction autonome : un serveur Discord l'utilise sans groupe ni compte sur le si
 
 **Intents :** le bot utilise *Guilds* et *Direct Messages*. Aucun n'est privilégié : rien à cocher dans le portail. Le contenu des MP envoyés au bot lui est transmis sans l'intent *Message Content*.
 
-**Autres serveurs :** le bot est privé (« Public Bot » décoché) : seul toi peux l'inviter. Pour qu'une autre guilde l'ajoute elle-même, cocher **Public Bot** et lui donner le lien d'invitation ci-dessus. Les commandes de raid restent inutiles sans groupe lié sur le site.
+**Autres serveurs :** le bot est public (« Public Bot » coché, étape 3 de la création) : une autre guilde l'ajoute elle-même avec le bouton **Ajouter le bot** (accueil public ou Administration → Discord), à condition d'avoir le droit « Gérer le serveur » chez elle. Si Discord refuse l'invitation, vérifier d'abord que la case est bien cochée (portail des développeurs, Bot → Public Bot). Les commandes de raid restent inutiles sans groupe lié sur le site.
 
 **Émojis de classe :** au démarrage, puis toutes les 6 heures, le bot envoie à Discord les icônes de `icons/class/` et `icons/spec/` (et, pour les classes propres à Retail, de `icons/retail/class/` et `icons/retail/spec/`) comme émojis de l'application (`fr_druid`, `fr_druid_feral_bear`, `fr_death_knight_blood`…). Ils apparaissent devant les noms dans les annonces. Après l'ajout d'icônes, `sudo docker compose restart bot` les prend en compte tout de suite. Une icône de plus de 256 Ko est ignorée (le journal le signale). Les émojis sont visibles et supprimables dans le portail développeur, onglet **Emojis**.
 

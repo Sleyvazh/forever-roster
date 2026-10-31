@@ -62,6 +62,24 @@ export async function discordRoutes(app: FastifyInstance) {
   });
 }
 
+/**
+ * Lien « Ajouter le bot » (accueil public et Administration) : renvoie vers la page d'invitation de Discord.
+ * Public, sans connexion : l'invitation se règle chez Discord, avec le compte de celui qui l'ouvre (il faut y
+ * avoir le droit « Gérer le serveur »). Les droits demandés (84992) : voir les salons, envoyer des messages,
+ * intégrer des liens et voir les anciens messages. Chez Discord, « Public Bot » doit être coché
+ * (portail des développeurs, Bot), sinon les autres serveurs sont refusés.
+ */
+export async function discordInviteRoutes(app: FastifyInstance) {
+  const { cfg } = app.ctx;
+  app.get("/invite", async (_req, reply) => {
+    if (!cfg.DISCORD_CLIENT_ID) throw new HttpError(404, "Bot non configuré");
+    noStore(reply);
+    const url = new URL("/oauth2/authorize", cfg.DISCORD_HOST);
+    url.search = new URLSearchParams({ client_id: cfg.DISCORD_CLIENT_ID, scope: "bot applications.commands", permissions: "84992" }).toString();
+    return reply.redirect(url.toString());
+  });
+}
+
 async function fetchDiscordUser(app: FastifyInstance, code: string, redirectUri: string) {
   const { cfg, fetch: f } = app.ctx;
   const tokenRes = await f(new URL("/api/oauth2/token", cfg.DISCORD_HOST), {

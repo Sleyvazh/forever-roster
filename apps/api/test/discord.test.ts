@@ -52,6 +52,35 @@ describe("liaison du compte Discord", () => {
   });
 });
 
+describe("lien d'invitation du bot", () => {
+  const INVITE = "/api/discord/invite";
+
+  it("redirige sans connexion vers Discord, avec l'identifiant de l'application et les droits du bot", async () => {
+    const res = await new Client(env).get(INVITE);
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toBe("https://discord.test/oauth2/authorize?client_id=dclient&scope=bot+applications.commands&permissions=84992");
+
+    // Sur le vrai Discord (adresse par défaut en production)
+    const host = env.cfg.DISCORD_HOST;
+    env.cfg.DISCORD_HOST = "https://discord.com";
+    try {
+      expect((await new Client(env).get(INVITE)).headers.location)
+        .toBe("https://discord.com/oauth2/authorize?client_id=dclient&scope=bot+applications.commands&permissions=84992");
+    } finally { env.cfg.DISCORD_HOST = host; }
+  });
+
+  it("répond 404 « Bot non configuré » sans DISCORD_CLIENT_ID", async () => {
+    const id = env.cfg.DISCORD_CLIENT_ID;
+    env.cfg.DISCORD_CLIENT_ID = "";
+    try {
+      const res = await new Client(env).get(INVITE);
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toEqual({ error: "Bot non configuré" });
+      expect(res.headers.location).toBeUndefined();
+    } finally { env.cfg.DISCORD_CLIENT_ID = id; }
+  });
+});
+
 describe("API interne du bot", () => {
   it("refuse toute requête sans le bon secret", async () => {
     expect((await bot("GET", "/internal/discord/outbox", undefined, "mauvais")).statusCode).toBe(401);

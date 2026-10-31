@@ -8,7 +8,7 @@ import { ItemHover, ItemIcon } from "./ItemTooltip";
 import { NumberField } from "./NumberField";
 import { CraftOrders, type OrderPrefill } from "./CraftOrders";
 import { useSite } from "../site";
-import { LinkCodeBox } from "./DiscordLink";
+import { LinkCodeBox, linkCommand } from "./DiscordLink";
 import { TemplateChannel, useRaidTemplates } from "./TemplateChannel";
 
 /**
@@ -205,6 +205,28 @@ export function Invites({ groupId, guard }: { groupId: string; guard: Guard }) {
 export function ChannelTag({ linked, name }: { linked: boolean; name: string | null }) {
   if (!linked) return <span className="tag">Non lié</span>;
   return name ? <span className="tag ok chan" title={`#${name}`}>#{name}</span> : <span className="tag ok">Lié</span>;
+}
+
+/**
+ * En tête de l'administration Discord : le lien pour inviter le bot sur son serveur (GET /api/discord/invite, qui renvoie
+ * vers Discord), puis la suite : lier un salon avec le code du bouton juste en dessous.
+ */
+export function AddBot() {
+  const game = useSite().game;
+  return (
+    <section className="stack admin-sec" aria-label="Ajouter le bot à ton serveur Discord">
+      <div className="av-src">
+        <span className="av-ico" aria-hidden="true">D</span>
+        <div className="stack" style={{ flex: "1 1 260px", minWidth: 0, gap: 3 }}>
+          <b>Le bot n'est pas encore sur ton serveur Discord ?</b>
+          <p className="small muted" style={{ margin: 0 }}>
+            Ensuite, tape <code>{linkCommand(game)} &lt;code&gt;</code> dans le salon voulu : le code vient de « Générer un code de liaison », juste en dessous.
+          </p>
+        </div>
+        <a className="btn discord" href="/api/discord/invite" target="_blank" rel="noopener noreferrer">Ajouter le bot</a>
+      </div>
+    </section>
+  );
 }
 
 /** Liaison du groupe à un salon Discord : code à usage unique à taper avec /forever-lier (ou /roster-lier) dans le salon voulu. */

@@ -63,6 +63,7 @@ section > .sub { color: var(--ink-2); margin: 6px 0 18px; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
 .card h3 { font-size: 19px; color: var(--gold); margin-bottom: 6px; }
 .card p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.card .btn { margin-top: 14px; }
 .same { margin-top: 14px; border: 1px dashed color-mix(in srgb, var(--frame) 70%, transparent); background: color-mix(in srgb, var(--gold-soft) 55%, transparent); border-radius: 8px; padding: 14px 18px; color: var(--ink-2); font-size: 15px; }
 footer { border-top: 1px solid var(--line); margin-top: 26px; }
 footer .wrap { padding-block: 22px 32px; color: var(--ink-3); font-size: 13px; display: grid; gap: 4px; }

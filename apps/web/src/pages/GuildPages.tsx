@@ -20,7 +20,7 @@ import { LootSettingsPanel } from "../components/Loot";
 import { FactionBadge } from "../components/Icons";
 import { NumberField } from "../components/NumberField";
 import {
-  Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
+  AddBot, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
 
 /**
@@ -229,6 +229,7 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
       )}
     </>,
     discord: <>
+      <AddBot />
       <DiscordChannel groupId={groupId} linked={group.discordLinked} name={group.discordChannelName} hasDiscord={hasDiscord} guard={guard} />
       <OutingsChannel groupId={groupId} linked={group.outingsLinked} name={group.outingsChannelName} hasDiscord={hasDiscord} guard={guard} />
       <RaceAnnounces groupId={groupId} linked={group.discordLinked} guard={guard} />
