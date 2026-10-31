@@ -24,7 +24,7 @@ import {
 
 /**
  * Pages d'une guilde de Forever Roster (refonte du 23/10) : Accueil (/groups/:id), Sorties, Raids (À venir · Passés ·
- * Présence), Guilde (Joueurs · Course au 60 · Artisans · Historique) et Administration (6 sections). Les anciennes adresses
+ * Présence), Guilde (Membres · Course au 60 · Artisans · Historique) et Administration (6 sections). Les anciennes adresses
  * d'onglets redirigent ; /groups/:id/membres/course (lien du bot) mène à la Course au 60. Roster garde sa page à onglets.
  */
 
@@ -64,7 +64,7 @@ function ForeverGroupPage({ tab: fixedTab, sub: fixedSub }: { tab?: string; sub?
   if (!tab) page = <HomePage groupId={groupId} detail={d} />;
   else if (tab === "sorties") page = <OutingsPage groupId={groupId} d={d} creating={sub === "nouvelle"} guard={guard} />;
   else if (tab === "raids") page = <RaidsPage groupId={groupId} d={d} view={sub === "passes" ? "past" : sub === "presence" ? "presence" : "next"} guard={guard} />;
-  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "course", "artisans", "historique"].includes(sub ?? "") ? sub : "joueurs") as GuildPageView} guard={guard} />;
+  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "joueurs", "course", "artisans", "historique"].includes(sub ?? "") ? sub : "membres") as GuildPageView} guard={guard} />;
   else if (tab === "admin" && d.role !== "member") page = <AdminPage groupId={groupId} d={d} guard={guard} />;
   else return <Navigate to={base} replace />;
   return <>{err}{page}</>;
@@ -122,11 +122,11 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   );
 }
 
-/* ---------- Guilde : Joueurs · Course au 60 · Artisans · Historique ---------- */
+/* ---------- Guilde : Membres · Course au 60 · Artisans · Historique ---------- */
 
 type GuildPageView = GuildView | "artisans";
 const GUILD_TABS: [GuildPageView, ReactNode, string][] = [
-  ["joueurs", "Joueurs", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"], ["historique", "Historique", "/historique"],
+  ["membres", "Membres", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"], ["historique", "Historique", "/historique"],
 ];
 
 function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetail; view: GuildPageView; guard: Guard }) {
@@ -148,7 +148,7 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   const actions = officer
     ? <><InviteButton groupId={groupId} groupName={group.name} primary /><Link className="btn ghost" to={`/groups/${groupId}/admin`}>Administration</Link></>
     : <LeaveButton onLeave={leave} />;
-  const tabOn = view === "persos" ? "joueurs" : view;
+  const tabOn = view === "persos" || view === "joueurs" ? "membres" : view;
   return (
     <div className="stack" style={{ gap: 16 }}>
       <GuildHead groupId={groupId} name={group.name} title="Guilde" meta={meta} actions={actions} />

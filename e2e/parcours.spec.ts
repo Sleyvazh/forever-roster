@@ -306,17 +306,21 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   });
 
   await test.step("fiche joueur", async () => {
-    // Guilde › Joueurs : guilde du jeu pas encore liée, les membres du site
+    // Guilde › Membres : guilde du jeu pas encore liée, Par perso d'abord (les fiches du site) ; Par joueur : les membres du site
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
     await expect(page.getByText("Pas encore de liste de guilde")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Membres" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("group", { name: "Persos : liste du jeu ou fiches du site" })).toHaveCount(0);
+    await page.getByRole("group", { name: "Par perso ou par joueur" }).getByRole("button", { name: "Par joueur" }).click();
+    await expect(page).toHaveURL(/\/membres\/joueurs$/);
     await page.locator(".ps-link").first().click();
     await expect(page.locator(".ps")).toContainText("raids venus");
     await page.locator(".ps").getByRole("button", { name: "Fermer" }).click();
   });
 
   await test.step("persos du groupe : main et alts", async () => {
-    // Guilde › Joueurs, « Par perso » : guilde du jeu pas encore liée, les fiches du site
-    await page.getByRole("group", { name: "Par joueur ou par perso" }).getByRole("button", { name: "Par perso" }).click();
+    // Guilde › Membres, « Par perso » : guilde du jeu pas encore liée, les fiches du site
+    await page.getByRole("group", { name: "Par perso ou par joueur" }).getByRole("button", { name: "Par perso" }).click();
     await expect(page).toHaveURL(/\/membres\/persos$/);
     // Rien par défaut : on choisit ses persos, le premier devient main
     const mine = page.getByRole("region", { name: "Mes persos dans cette guilde" });
@@ -348,7 +352,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(cards.last()).toContainText("Greta");
     await expect.poll(order).toEqual(["Tournicoti", "Greta"]);
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/persos-par-groupe.png", fullPage: true });
-    // Ancienne adresse de l'onglet Personnages : Guilde › Joueurs, par perso
+    // Ancienne adresse de l'onglet Personnages : Guilde › Membres, par perso
     const gid = (await page.evaluate(() => localStorage.getItem("fr-guild")))!;
     await page.goto(`/groups/${gid}/persos`);
     await expect(page).toHaveURL(/\/membres\/persos$/);
@@ -509,7 +513,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/accueil-mobile.png" });
     await page.locator(".tabbar").getByRole("link", { name: "Guilde" }).click();
-    await page.getByRole("group", { name: "Par joueur ou par perso" }).getByRole("button", { name: "Par perso" }).click();
+    await page.getByRole("group", { name: "Par perso ou par joueur" }).getByRole("button", { name: "Par perso" }).click();
     await expect(page.getByRole("listitem").filter({ hasText: "Tournicoti" }).first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.setViewportSize({ width: 1360, height: 900 });

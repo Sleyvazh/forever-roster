@@ -135,8 +135,9 @@ test("première visite : lien d'invitation, compte, e-mail, perso, Rejoindre, in
   });
   await ctx.close();
 
-  await test.step("l'officier voit le nouveau membre dans Guilde › Joueurs", async () => {
+  await test.step("l'officier voit le nouveau membre dans Guilde › Membres › Par joueur", async () => {
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
+    await page.getByRole("group", { name: "Par perso ou par joueur" }).getByRole("button", { name: "Par joueur" }).click();
     await expect(page.locator(".mb-table")).toContainText("Elouan");
   });
 

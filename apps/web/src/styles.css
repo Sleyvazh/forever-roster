@@ -1580,13 +1580,13 @@ a.ag-t:hover { color: var(--gold); }
 .moves .up .s, .gh li.up .s { color: var(--gold); } .moves .down .s, .gh li.down .s { color: var(--warn); }
 .moves small { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
 
-/* Membres : sous-vues, joueurs, alts en pastilles */
-.subnav { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
-.subnav .seg { max-width: 100%; overflow-x: auto; }
-.subnav .seg button { white-space: nowrap; }
+/* Membres : barre fixe (Par perso / Par joueur, Liste du jeu / Fiches du site), ligne de la course, joueurs, alts en pastilles */
+.gm-bar, .subnav { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.gm-bar .seg, .subnav .seg { max-width: 100%; overflow-x: auto; }
+.gm-bar .seg button, .subnav .seg button { white-space: nowrap; }
 @media (max-width: 640px) {
-  .subnav .seg { width: 100%; }
-  .subnav .seg button { flex: 1 1 auto; padding-inline: 6px; min-height: 40px; }
+  .gm-bar .seg, .subnav .seg { width: 100%; }
+  .gm-bar .seg button, .subnav .seg button { flex: 1 1 auto; padding-inline: 6px; min-height: 40px; }
 }
 .gp { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .gp-h, .gp-r { display: grid; grid-template-columns: minmax(190px, 1.3fr) 128px minmax(0, 1.4fr) 128px 128px 40px; gap: 12px; align-items: center; padding: 8px 12px; }
@@ -1664,6 +1664,23 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .gx-table td { vertical-align: middle; }
 .gx-table .gx-name { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .gx-table .gx-note { max-width: 28ch; overflow-wrap: anywhere; }
+/* Téléphone : deux lignes par perso, nom et niveau puis rang · joueur · connexion ; sans notes ni en-tête, « … » à droite */
+@media (max-width: 640px) {
+  .gx-table, .gx-table tbody { display: block; }
+  .gx-table thead, .gx-table .gx-note { display: none; }
+  .gx-table tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; column-gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .gx-table tr:last-child { border-bottom: 0; }
+  .gx-table tr.ps-sel { background: var(--panel-2); }
+  .gx-table td { padding: 0; border: 0; min-width: 0; }
+  .gx-table td:first-child { grid-column: 1 / 4; grid-row: 1; overflow: hidden; }
+  .gx-table .gx-lv { grid-column: 4; grid-row: 1; font-size: 15px; text-align: right; }
+  .gx-table .mb-act { grid-column: 5; grid-row: 1 / span 2; margin-left: 4px; }
+  .gx-table .gx-rank, .gx-table .gx-pl, .gx-table .gx-seen { grid-row: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+  .gx-table .gx-rank { grid-column: 1; padding-left: 30px; } /* sous le nom, après l'icône de classe */
+  .gx-table .gx-pl { grid-column: 2; }
+  .gx-table .gx-seen { grid-column: 3 / 5; }
+  .gx-table .gx-pl::before, .gx-table .gx-seen::before { content: "·"; margin-right: 6px; }
+}
 /* Historique (journal de guilde) */
 .gh-wrap { display: grid; }
 .gh-day { margin: 0; padding: 12px 2px 6px; border-bottom: 1px solid var(--line); font: 400 15px var(--f-disp); color: var(--gold); letter-spacing: .03em; }

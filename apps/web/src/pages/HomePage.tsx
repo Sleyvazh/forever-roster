@@ -218,7 +218,7 @@ function ToHandle({ groupId, nextRaid, feedback }: { groupId: string; nextRaid: 
   if (un.length) {
     const sug = un.filter(u => u.suggestion?.target).length;
     items.push({ key: "attach", n: un.length, t: `${un.length > 1 ? "persos" : "perso"} de la guilde à rattacher`, sub: sug ? `${plural(sug, "suggestion")} par les notes de guilde` : "pas encore de joueur",
-      action: <Link className="btn sm" to={`/groups/${groupId}/membres`}>Voir</Link> });
+      action: <Link className="btn sm" to={`/groups/${groupId}/membres/joueurs`}>Voir</Link> });
   }
   const open = (orders.data?.orders ?? []).filter(o => o.status === "open");
   if (open.length) {

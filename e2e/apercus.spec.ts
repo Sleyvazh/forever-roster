@@ -151,7 +151,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await dc.screenshot({ path: `${OUT}/apercu-reglage-relances.png` });
 
   // 2. Fiche joueur
-  await page.goto(`/groups/${group}/membres`);
+  await page.goto(`/groups/${group}/membres/joueurs`);
   await page.getByRole("button", { name: "Gorrak", exact: true }).click();
   await expect(page.locator(".ps")).toContainText("raids venus");
   await page.locator(".ps").scrollIntoViewIfNeeded();
@@ -262,7 +262,7 @@ test("aperçus du lot F", async ({ page }) => {
   await page.locator("section.ab").screenshot({ path: `${OUT}/apercu-absences.png` });
 
   // 4. Membres : colonne Présence ; fiche joueur avec son absence
-  await page.goto(`/groups/${group}/membres`);
+  await page.goto(`/groups/${group}/membres/joueurs`);
   await expect(page.locator("table.data")).toContainText("Présence");
   await page.locator("table.data").screenshot({ path: `${OUT}/apercu-membres-presence.png` });
   await page.getByRole("button", { name: "Gorrak", exact: true }).click();
@@ -411,7 +411,7 @@ test("aperçus du lot I", async ({ page }) => {
   await page.locator("section[aria-labelledby=rl-title]").screenshot({ path: `${OUT}/apercu-bilan-compte.png` });
 
   // 3. Fiche du joueur : compte et correction avec motif
-  await page.goto(`/groups/${group}/membres`);
+  await page.goto(`/groups/${group}/membres/joueurs`);
   await page.getByRole("button", { name: "Gorrak", exact: true }).click();
   await page.selectOption("#lc-delta", "1");
   await page.fill("#lc-note", "Objet donné hors addon (échange)");
@@ -598,7 +598,7 @@ test("tour des pages", async ({ page }) => {
   const pages: [string, string][] = [
     ["persos", "/persos"], ["perso-profil", `/persos/${thalwen}`], ["perso-metiers", `/persos/${thalwen}/metiers`], ["perso-equipement", `/persos/${thalwen}/equipement`],
     ["perso-notes", `/persos/${thalwen}/notes`], ["groupe-accueil", `/groups/${group}`], ["groupe-sorties", `/groups/${group}/sorties`], ["groupe-raids", `/groups/${group}/raids`],
-    ["groupe-membres", `/groups/${group}/membres`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
+    ["groupe-membres", `/groups/${group}/membres`], ["groupe-joueurs", `/groups/${group}/membres/joueurs`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
     ["groupe-presence", `/groups/${group}/raids/presence`],
     ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
     ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account"], ["addon", "/addon"],
@@ -606,7 +606,7 @@ test("tour des pages", async ({ page }) => {
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
     for (const [name, url] of pages) {
-      if (suffix && !["persos", "groupe-accueil", "groupe-raids", "groupe-membres", "raid"].includes(name)) continue;
+      if (suffix && !["persos", "groupe-accueil", "groupe-raids", "groupe-membres", "groupe-joueurs", "raid"].includes(name)) continue;
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       await page.screenshot({ path: `${OUT_T}/${name}${suffix}.png`, fullPage: true });
@@ -628,11 +628,11 @@ test("tour des pages", async ({ page }) => {
   await page.goto(`/groups/${group}/raids/${raid}/reglages`);
   await page.locator("#rw").click();
   await page.screenshot({ path: `${OUT_T}/raid-date.png` });
-  await page.goto(`/groups/${group}/membres`);
+  await page.goto(`/groups/${group}/membres/joueurs`);
   // Menu « … » de la dernière ligne : entièrement visible, pas coupé par le cadre du tableau (retour de Flo, 11/10)
   for (const [w, h, suffix] of [[1360, 900, ""], [1360, 420, "-bas"], [390, 700, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: h });
-    await page.goto(`/groups/${group}/membres`);
+    await page.goto(`/groups/${group}/membres/joueurs`);
     const dots = page.getByRole("button", { name: /^Actions pour/ }).last();
     await dots.scrollIntoViewIfNeeded();
     await dots.click();

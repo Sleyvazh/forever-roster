@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, del, patch, post, put, type GroupRole, type Member } from "../api";
 import { useGameText } from "../gameText";
 import { activeWithin, agoText, dayKey, dayMonth, fetchHistory, GUILD_QUERY_ROOTS, guildKeys, longDay, seenText, shortDay, useGuildLink, useGuildMembers } from "../guild";
+import { useViewPref } from "../prefs";
 import { siteRights, SiteMembers } from "./GroupMembers";
 import { GroupCharacters } from "./GroupRoster";
 import { CharName, GuildRace } from "./GuildRace";
@@ -14,27 +15,39 @@ import { PlayerSheet } from "./PlayerSheet";
 import { RowMenu } from "./RowMenu";
 
 /**
- * Page Guilde de Forever (lot « Guilde », refonte du 23/10) : Joueurs (main et alts, bande « À rattacher » des officiers,
- * comptes du site ; « Par perso » : la liste de guilde du jeu, ou les fiches du site), Course au 60 et Historique (journal
- * de guilde). Adresses : /groups/:id/membres (Joueurs), /membres/persos, /membres/course, /membres/historique.
+ * Page Guilde de Forever (lot « Guilde », refonte du 23/10) : Membres, Course au 60 et Historique (journal de guilde).
+ * Membres (disposition A, 31/10) : une barre fixe en haut, « Par perso / Par joueur » à gauche et, en Par perso avec la
+ * guilde du jeu liée, « Liste du jeu / Fiches du site » à droite ; Par perso d'abord. Par joueur : main et alts, bande
+ * « À rattacher » des officiers, comptes du site ; Par perso : la liste de guilde du jeu, ou les fiches du site.
+ * Les deux choix sont retenus dans le navigateur (guild-by, guild-chars-mode). Adresses : /groups/:id/membres (la vue
+ * retenue), /membres/persos et /membres/joueurs (forcent la vue sans changer le choix retenu), ?vue=jeu|fiches (force le
+ * mode), ?perso=<id> (ouvre toujours les fiches), /membres/course, /membres/historique.
  * Données : GET /api/groups/:id/guild (types dans packages/game-data/src/guild.ts). Mains et alts : le lien d'un officier
  * prime ; « Est-ce ton perso ? » au joueur concerné.
  */
 
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
-export type GuildView = "joueurs" | "persos" | "course" | "historique";
-/** « Par joueur » (Joueurs) ou « Par perso » (Persos) : la même vue, deux lectures. */
-function ByToggle({ groupId, view }: { groupId: string; view: GuildView }) {
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  const go = (persos: boolean) => {
-    const q = new URLSearchParams(params); if (!persos) { q.delete("vue"); q.delete("perso"); }
-    navigate(`/groups/${groupId}/membres${persos ? "/persos" : ""}${q.size ? `?${q}` : ""}`);
-  };
+/** « membres » : la vue retenue (Par perso ou Par joueur) ; « persos » et « joueurs » la forcent. */
+export type GuildView = "membres" | "joueurs" | "persos" | "course" | "historique";
+type GuildBy = "persos" | "joueurs";
+type CharsMode = "jeu" | "fiches";
+const BY_VALUES: readonly GuildBy[] = ["persos", "joueurs"];
+const MODE_VALUES: readonly CharsMode[] = ["jeu", "fiches"];
+
+/** Barre fixe de Membres : « Par perso / Par joueur » à gauche, « Liste du jeu / Fiches du site » à droite (Par perso, guilde liée). */
+function MembersBar({ by, onBy, mode, onMode }: { by: GuildBy; onBy: (b: GuildBy) => void; mode?: CharsMode; onMode: (m: CharsMode) => void }) {
   return (
-    <div className="seg" role="group" aria-label="Par joueur ou par perso">
-      <button type="button" className={view === "joueurs" ? "on" : ""} aria-pressed={view === "joueurs"} onClick={() => go(false)}>Par joueur</button>
-      <button type="button" className={view === "persos" ? "on" : ""} aria-pressed={view === "persos"} onClick={() => go(true)}>Par perso</button>
+    <div className="gm-bar">
+      <div className="seg" role="group" aria-label="Par perso ou par joueur">
+        <button type="button" className={by === "persos" ? "on" : ""} aria-pressed={by === "persos"} onClick={() => onBy("persos")}>Par perso</button>
+        <button type="button" className={by === "joueurs" ? "on" : ""} aria-pressed={by === "joueurs"} onClick={() => onBy("joueurs")}>Par joueur</button>
+      </div>
+      {mode && (
+        <div className="seg" role="group" aria-label="Persos : liste du jeu ou fiches du site">
+          <button type="button" className={mode === "jeu" ? "on" : ""} aria-pressed={mode === "jeu"} onClick={() => onMode("jeu")}>Liste du jeu</button>
+          <button type="button" className={mode === "fiches" ? "on" : ""} aria-pressed={mode === "fiches"} onClick={() => onMode("fiches")}>Fiches du site</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -206,7 +219,7 @@ function MainDialog({ groupId, data, pkey, onClose }: { groupId: string; data: G
   return (
     <Modal label="gm-t" onClose={onClose}>
       <form onSubmit={e => void submit(e)}>
-        <DialogHead id="gm-t" title={p.me ? "Ton main" : `Main de ${p.account?.displayName ?? byGuid.get(p.main)?.firstName ?? "ce joueur"}`} sub="Le main mène sa ligne dans Joueurs et dans la course ; les autres persos sont ses alts." onClose={onClose} />
+        <DialogHead id="gm-t" title={p.me ? "Ton main" : `Main de ${p.account?.displayName ?? byGuid.get(p.main)?.firstName ?? "ce joueur"}`} sub="Le main mène sa ligne dans la vue Par joueur et dans la course ; les autres persos sont ses alts." onClose={onClose} />
         <ul className="gd-list" aria-label="Persos du joueur">{chars.map(c => (
           <li key={c.guid}><label className="gd-opt">
             <input type="radio" name="gm-main" value={c.guid} checked={guid === c.guid} onChange={() => setGuid(c.guid)} />
@@ -239,7 +252,7 @@ function ClaimDialog({ groupId, c, onClose }: { groupId: string; c: GuildChar; o
     <Modal label="gc-t" onClose={onClose}>
       <div className="gd-body">
         <DialogHead id="gc-t" title={<>{c.name} est à toi ?</>} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
-        <p style={{ margin: 0 }}>Il rejoint tes persos dans la guilde : ta ligne dans Joueurs et dans la course. Un officier peut toujours corriger.</p>
+        <p style={{ margin: 0 }}>Il rejoint tes persos dans la guilde : ta ligne dans la vue Par joueur et dans la course. Un officier peut toujours corriger.</p>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
           <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
@@ -259,24 +272,46 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
   groupId: string; groupName: string; view: GuildView; members: Member[]; myRole: GroupRole; myId?: string; guard: Guard; onAdmin?: () => void;
 }) {
   const q = useGuildMembers(groupId);
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const [byPref, setByPref] = useViewPref<GuildBy>("guild-by", "persos", BY_VALUES);
+  const [modePref, setModePref] = useViewPref<CharsMode>("guild-chars-mode", "jeu", MODE_VALUES);
   const [dialog, setDialog] = useState<Dialog>(null);
   const officer = myRole !== "member";
   const data = q.data;
-  // Ligne au-dessus de la vue : « Par joueur / Par perso » (Joueurs) et un texte à droite (départ de la course…)
-  const nav = (right?: ReactNode, toggle = false) => (toggle || right ? <div className="subnav">{toggle && <ByToggle groupId={groupId} view={view} />}{right}</div> : null);
+  // Ligne au-dessus de Course au 60 : un texte à droite (départ de la course…)
+  const nav = (right?: ReactNode) => (right ? <div className="subnav">{right}</div> : null);
   const empty = <NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} />;
+  // Par perso ou Par joueur : l'adresse explicite l'emporte, sinon le choix retenu. Un clic le retient et mène à l'adresse explicite.
+  const by: GuildBy = view === "persos" || view === "joueurs" ? view : byPref;
+  const chooseBy = (b: GuildBy) => {
+    setByPref(b);
+    const p = new URLSearchParams(params); if (b === "joueurs") { p.delete("vue"); p.delete("perso"); }
+    navigate(`/groups/${groupId}/membres/${b}${p.size ? `?${p}` : ""}`);
+  };
+  // Liste du jeu ou fiches du site : ?perso= → fiches, sinon ?vue=, sinon le choix retenu ; guilde du jeu pas liée → fiches
+  const linked = !!data?.link;
+  const vue = params.get("vue");
+  const mode: CharsMode = !linked || params.has("perso") ? "fiches" : vue === "fiches" || vue === "jeu" ? vue : modePref;
+  const chooseMode = (m: CharsMode) => {
+    setModePref(m);
+    setParams(p => { p.set("vue", m); if (m === "jeu") p.delete("perso"); return p; }, { replace: true });
+  };
 
   let body: ReactNode;
   if (view === "course") return <GuildRace groupId={groupId} nav={nav} empty={empty} />;
   if (view === "historique") body = <History groupId={groupId} nav={nav} empty={empty} linked={data ? !!data.link : null} />;
-  else if (!data) body = <div className="stack"><p className="muted">{q.error ? "Liste de guilde indisponible pour l'instant." : "Chargement…"}</p></div>;
-  else if (view === "persos") body = <Chars groupId={groupId} groupName={groupName} data={data} nav={nav} empty={empty} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} />;
   else body = (
     <div className="stack">
-      <QuestionBand groupId={groupId} questions={data.questions} />
-      {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
-        : <>{nav(undefined, true)}{empty}<h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
-          <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} /></>}
+      <MembersBar by={by} onBy={chooseBy} mode={by === "persos" && linked ? mode : undefined} onMode={chooseMode} />
+      {!data ? <p className="muted">{q.error ? "Liste de guilde indisponible pour l'instant." : "Chargement…"}</p>
+        : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} empty={empty} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} />
+        : <>
+          <QuestionBand groupId={groupId} questions={data.questions} />
+          {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
+            : <>{empty}<h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
+              <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} /></>}
+        </>}
     </div>
   );
   return (
@@ -319,7 +354,6 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
     <>
       <div className="row gc-tools">
         <input type="search" placeholder="Chercher un joueur ou un perso…" aria-label="Chercher un joueur ou un perso" value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 220px" }} />
-        <ByToggle groupId={groupId} view="joueurs" />
       </div>
       {!data.me.player && <p className="hint" style={{ margin: 0 }}>Tu n'es pas dans la liste ? Fais ta synchro avec l'addon à jour, ou « C'est mon perso » dans le menu « … ».</p>}
       <div className="gp" role="table" aria-label="Joueurs de la guilde">
@@ -454,16 +488,14 @@ function AttachBand({ groupId, data, openDialog }: { groupId: string; data: Guil
 const LEVELS: [string, number, number][] = [["Tous", 1, 60], ["1-29", 1, 29], ["30-49", 30, 49], ["50-60", 50, 60]];
 const CHARS_PAGE = 100;
 
-function Chars({ groupId, groupName, data, nav, empty, members, myRole, myId, openDialog, guard }: {
-  groupId: string; groupName: string; data: GuildMembersResponse; nav: (right?: ReactNode, toggle?: boolean) => ReactNode; empty: ReactNode; members: Member[]; myRole: GroupRole; myId?: string;
+/** Par perso : la liste de guilde du jeu, ou (sheets) les fiches du site. Le choix se fait dans la barre de Membres. */
+function Chars({ groupId, groupName, data, sheets, empty, members, myRole, myId, openDialog, guard }: {
+  groupId: string; groupName: string; data: GuildMembersResponse; sheets: boolean; empty: ReactNode; members: Member[]; myRole: GroupRole; myId?: string;
   openDialog: (d: Dialog) => void; guard: Guard;
 }) {
   const qc = useQueryClient();
   const gt = useGameText();
-  const [params, setParams] = useSearchParams();
   const linked = !!data.link;
-  const sheets = !linked || params.get("vue") === "fiches" || params.has("perso");
-  const setSheets = (on: boolean) => setParams(p => { if (on) p.set("vue", "fiches"); else { p.delete("vue"); p.delete("perso"); } return p; }, { replace: true });
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("");
   const [lv, setLv] = useState(0);
@@ -483,19 +515,12 @@ function Chars({ groupId, groupName, data, nav, empty, members, myRole, myId, op
   const shown = all ? list : list.slice(0, CHARS_PAGE);
   const detach = (c: GuildChar) => guard(async () => { await del(`/groups/${groupId}/guild/members/${c.guid}/link`); await refreshGuild(qc, groupId); });
   const setMain = (c: GuildChar) => guard(async () => { await put(`/groups/${groupId}/guild/players/${encodeURIComponent(c.player!)}/main`, { guid: c.guid }); await refreshGuild(qc, groupId); });
-  const mode = linked && (
-    <div className="seg" role="group" aria-label="Persos : liste du jeu ou fiches du site">
-      <button type="button" className={sheets ? "" : "on"} aria-pressed={!sheets} onClick={() => setSheets(false)}>Liste du jeu</button>
-      <button type="button" className={sheets ? "on" : ""} aria-pressed={sheets} onClick={() => setSheets(true)}>Fiches du site</button>
-    </div>
-  );
   if (sheets) {
     return (
-      <div className="stack">
-        {nav(mode || undefined, true)}
+      <>
         {!linked && empty}
         <GroupCharacters groupId={groupId} groupName={groupName} members={members} myId={myId} myRole={myRole} />
-      </div>
+      </>
     );
   }
   const playerText = (c: GuildChar) => {
@@ -506,8 +531,7 @@ function Chars({ groupId, groupName, data, nav, empty, members, myRole, myId, op
     return <span className="muted">sans compte</span>;
   };
   return (
-    <div className="stack">
-      {nav(mode || undefined, true)}
+    <>
       <div className="row gc-tools">
         <input type="search" placeholder="Nom, note…" aria-label="Chercher un perso" value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 180px" }} />
         <select aria-label="Classe" value={cls} onChange={e => setCls(e.target.value)} style={{ width: "auto" }}>
@@ -540,12 +564,12 @@ function Chars({ groupId, groupName, data, nav, empty, members, myRole, myId, op
           return (
             <tr key={c.guid} className={c.mine ? "ps-sel" : undefined}>
               <td><span className="gx-name"><ClassDot cls={c.cls} />{c.player && !c.isMain && <span className="gm-alt">alt</span>}<CharName name={c.name} cls={c.cls} />{c.mine && <span className="tag gold">Toi</span>}</span></td>
-              <td className="num">{c.level}</td>
-              <td className="small">{c.rank}</td>
-              <td className="small">{playerText(c)}</td>
+              <td className="num gx-lv">{c.level}</td>
+              <td className="small gx-rank">{c.rank}</td>
+              <td className="small gx-pl">{playerText(c)}</td>
               <td className="small gx-note">{c.note || <span className="muted">—</span>}</td>
               {officer && <td className="small gx-note">{c.officerNote || <span className="muted">—</span>}</td>}
-              <td className={`small nowrap${seen.state === "on" ? " ok-c" : ""}`}>{seen.text}</td>
+              <td className={`small nowrap gx-seen${seen.state === "on" ? " ok-c" : ""}`}>{seen.text}</td>
               <td className="mb-act">
                 <PlayerMenu label={`Actions pour ${c.name}`} build={actions} />
               </td>
@@ -556,7 +580,7 @@ function Chars({ groupId, groupName, data, nav, empty, members, myRole, myId, op
       {!list.length && <p className="muted" style={{ margin: 0 }}>Aucun perso ne correspond.</p>}
       {list.length > shown.length && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} onClick={() => setAll(true)}>Voir les {list.length - shown.length} autres</button>}
       <p className="hint" style={{ margin: 0 }}>{plural(list.length, "perso")} sur {data.chars.length}{active ? " · actifs depuis moins de 7 jours" : ""}</p>
-    </div>
+    </>
   );
 }
 
@@ -580,7 +604,7 @@ export const moveClass = (m: GuildMove) => MOVE[m.kind].cls;
 /** Heure d'un événement du journal : le jeu ne la donne qu'à l'heure près (« il y a N heures »). */
 const hourText = (iso: string) => `vers ${zonedParts(new Date(iso)).hour} h`;
 
-function History({ groupId, nav, empty, linked }: { groupId: string; nav: (right?: ReactNode, toggle?: boolean) => ReactNode; empty: ReactNode; linked: boolean | null }) {
+function History({ groupId, nav, empty, linked }: { groupId: string; nav: (right?: ReactNode) => ReactNode; empty: ReactNode; linked: boolean | null }) {
   const [kind, setKind] = useState<"all" | "joins" | "leaves" | "ranks">("all");
   const q = useInfiniteQuery({
     queryKey: guildKeys.history(groupId, kind),
