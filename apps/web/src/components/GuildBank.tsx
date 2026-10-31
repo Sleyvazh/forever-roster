@@ -4,7 +4,7 @@ import {
 } from "@forever/game-data";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Fragment, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { agoText, fetchBankLog, guildKeys, shortDay, useGuildBank } from "../guild";
+import { agoText, fetchBankLog, guildKeys, shortDay, useGuildBank, type BankLogCursor } from "../guild";
 import { NotLinked } from "./GuildMembers";
 import { ItemHover, ItemIcon } from "./ItemTooltip";
 
@@ -40,7 +40,7 @@ function moneyText(copper: number) {
 /** Montant signé d'une ligne du journal de l'or (le jeu ne le dit pas toujours) et sa classe : in (entre), out (sort). */
 function signed(m: GuildBankMoneyMove) {
   const { sign } = bankMoneyText(m.type);
-  return { text: m.amount === null ? "montant inconnu" : `${sign > 0 ? "+" : "−"}${moneyText(m.amount)}`, cls: m.amount === null ? "" : sign > 0 ? "in" : "out" };
+  return { text: m.amount === null ? "un montant inconnu" : `${sign > 0 ? "+" : "−"}${moneyText(m.amount)}`, cls: m.amount === null ? "" : sign > 0 ? "in" : "out" };
 }
 
 /** Un objet dans un onglet (cases du même objet additionnées). */
@@ -201,7 +201,7 @@ function SlotGrid({ tab, objects }: { tab: GuildBankTab; objects: Record<number,
           <span key={slot} className="bk-slot" style={at}>
             {item
               ? <ItemHover item={item} className="bk-hv" label={label}>{inner}</ItemHover>
-              : <span className="bk-hv" tabIndex={0} role="group" aria-label={label}>{inner}</span>}
+              : <span className="bk-hv" tabIndex={0} role="group" aria-label={label} title={label}>{inner}</span>}
           </span>
         );
       })}
@@ -213,12 +213,15 @@ function SlotGrid({ tab, objects }: { tab: GuildBankTab; objects: Record<number,
 
 function Journal({ groupId, tabs, objects, lastMoney }: { groupId: string; tabs: GuildBankTab[]; objects: Record<number, BankItem>; lastMoney: GuildBankMoneyMove[] }) {
   const [kind, setKind] = useState<"items" | "money">("items");
-  // Une page peut dépasser 50 lignes (le serveur finit l'heure en cours) : la suivante commence à la date de la dernière ligne reçue
+  // Pages de 50 lignes : la suivante commence après la dernière ligne reçue (sa date et son identifiant)
   const q = useInfiniteQuery({
     queryKey: guildKeys.bankLog(groupId, kind),
     queryFn: ({ pageParam }) => fetchBankLog(groupId, kind, pageParam),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: last => (last.more ? (last.moves.at(-1) ?? last.money.at(-1))?.at : undefined),
+    initialPageParam: undefined as BankLogCursor | undefined,
+    getNextPageParam: (last): BankLogCursor | undefined => {
+      const row = last.more ? (last.moves.at(-1) ?? last.money.at(-1)) : undefined;
+      return row && { before: row.at, beforeId: row.id };
+    },
   });
   const pages = q.data?.pages ?? [];
   const moves = pages.flatMap(p => p.moves), money = pages.flatMap(p => p.money);
@@ -233,7 +236,7 @@ function Journal({ groupId, tabs, objects, lastMoney }: { groupId: string; tabs:
           <button type="button" className={kind === "items" ? "on" : ""} aria-pressed={kind === "items"} onClick={() => setKind("items")}>Objets</button>
           <button type="button" className={kind === "money" ? "on" : ""} aria-pressed={kind === "money"} onClick={() => setKind("money")}>Or</button>
         </div>
-        <span className="small muted">{kind === "items" ? "50 derniers mouvements par onglet" : "50 derniers mouvements"}</span>
+        <span className="small muted">{kind === "items" ? "le jeu en montre 50 par onglet" : "le jeu en montre 50"}</span>
       </div>
       {!q.data ? <p className="muted" style={{ margin: 0 }}>{q.error ? "Journal indisponible pour l'instant." : "Chargement…"}</p>
         : empty ? <p className="muted" style={{ margin: 0 }}>Aucun mouvement relevé pour l'instant.</p>
@@ -258,7 +261,8 @@ const When = ({ at }: { at: string }) => <time dateTime={at} title={`${shortDay(
 
 /** « Pikou a déposé 20 × Major Healing Potion », en dessous l'onglet (« Équipement → Officiers » pour un déplacement). */
 function ItemMove({ m, objects, tabName }: { m: GuildBankMove; objects: Record<number, BankItem>; tabName: (n: number | null) => string }) {
-  const what = m.itemId ? itemName(m.itemId, objects[m.itemId]) : "un objet inconnu";
+  // « 5 × objet inconnu » avec une quantité, « un objet inconnu » sans
+  const what = m.itemId ? itemName(m.itemId, objects[m.itemId]) : m.n ? "objet inconnu" : "un objet inconnu";
   const cls = m.type === "deposit" ? "in" : m.type === "withdraw" ? "out" : "";
   return (
     <li>

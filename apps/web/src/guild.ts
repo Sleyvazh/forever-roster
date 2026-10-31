@@ -31,9 +31,11 @@ export const useGuildLink = (g: string, enabled = true) => useQuery({ queryKey: 
 export const fetchHistory = (g: string, kind: string, before?: string) =>
   get<GuildHistoryResponse>(`/groups/${g}/guild/history?kind=${kind}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
 export const useGuildBank = (g: string) => useQuery({ queryKey: guildKeys.bank(g), queryFn: () => get<GuildBankResponse>(`/groups/${g}/guild/bank`) });
-/** Journal de la banque, 50 lignes par page ou plus (l'heure en cours est finie) ; before : date de la dernière ligne déjà reçue (exclue). */
-export const fetchBankLog = (g: string, kind: "items" | "money", before?: string) =>
-  get<GuildBankLogResponse>(`/groups/${g}/guild/bank/log?kind=${kind}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
+/** Dernière ligne reçue d'un journal de la banque : date et identifiant, la page suivante commence après elle. */
+export interface BankLogCursor { before: string; beforeId: number }
+/** Journal de la banque, 50 lignes par page ; cursor : la dernière ligne déjà reçue (exclue). */
+export const fetchBankLog = (g: string, kind: "items" | "money", cursor?: BankLogCursor) =>
+  get<GuildBankLogResponse>(`/groups/${g}/guild/bank/log?kind=${kind}${cursor ? `&before=${encodeURIComponent(cursor.before)}&beforeId=${cursor.beforeId}` : ""}`);
 
 /* ---------- Dates (heure de Paris) ---------- */
 

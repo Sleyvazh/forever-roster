@@ -227,10 +227,10 @@ const ROWS: Row[] = [
   },
   {
     title: "Guilde du jeu (Forever)",
-    data: "Liste de la guilde du jeu relevée par l'addon d'un membre : nom complet, classe, niveau, rang, notes de guilde (notes d'officier relevées par un officier, montrées aux officiers seulement), en ligne et dernière connexion, arrivée et départ ; journal de guilde (arrivées, départs, promotions, avec les noms) ; niveaux atteints et XP (heure exacte avec l'addon) ; rattachement des persos à leurs joueurs. Banque de la guilde : contenu des onglets, or, journal des dépôts et retraits (avec les noms).",
-    why: "Montrer qui joue quoi dans la guilde (mains et alts), la Course au 60 et l'historique de la guilde.",
+    data: "Liste de la guilde du jeu relevée par l'addon d'un membre : nom complet, classe, niveau, rang, notes de guilde (notes d'officier relevées par un officier, montrées aux officiers seulement), en ligne et dernière connexion, arrivée et départ ; journal de guilde (arrivées, départs, promotions, avec les noms) ; niveaux atteints et XP (heure exacte avec l'addon) ; rattachement des persos à leurs joueurs. Banque de la guilde : contenu des onglets, or, journal des dépôts et retraits (avec les noms), le compte du site qui a envoyé chaque relevé de la banque (jamais affiché).",
+    why: "Montrer qui joue quoi dans la guilde (mains et alts), la Course au 60, l'historique et la banque de la guilde.",
     basis: "Intérêt légitime",
-    keep: "Tant que la guilde du site est liée à la guilde du jeu (« Délier » efface la liste, le journal et les niveaux). Un membre parti est effacé 90 jours après son départ, avec ses niveaux et son rattachement ; le journal de guilde au bout de 12 mois ; une guilde du jeu proposée (et son relevé) au bout de 30 jours. Le podium « Premiers 60 » reste. Journal de la banque de guilde : 12 mois ; contenu des onglets et or : remplacés à chaque relevé, effacés quand la guilde est déliée.",
+    keep: "Tant que la guilde du site est liée à la guilde du jeu (« Délier » efface la liste, le journal, les niveaux et la banque). Un membre parti est effacé 90 jours après son départ, avec ses niveaux et son rattachement ; le journal de guilde au bout de 12 mois ; une guilde du jeu proposée (et son relevé) au bout de 30 jours. Le podium « Premiers 60 » reste. Journal de la banque de guilde : 12 mois ; contenu des onglets et or : remplacés à chaque relevé, effacés quand la guilde est déliée.",
     who: "Les membres de la guilde ; notes d'officier : les officiers ; annonces de niveaux : le salon Discord de la guilde.",
   },
   {
@@ -319,7 +319,7 @@ const STORAGE: [string, string][] = [
   ["fr-theme", "Thème choisi (clair ou sombre) ; absent : celui de ton appareil."],
   ["fr-news-seen", "Dernière nouveauté lue (point doré du bouton « Nouveautés »)."],
   ["fr-steps-hidden", "Étapes de démarrage masquées (Roster)."],
-  ["fr-view-…", "Affichages choisis : liste des persos de la guilde, arbres de talents, bandeau « Cette semaine »."],
+  ["fr-view-…", "Affichages choisis : liste des persos de la guilde, Guilde › Membres (par perso ou par joueur, liste du jeu ou fiches du site), arbres de talents, bandeau « Cette semaine »."],
   ["fr-addon-fiches", "Ancien choix des fiches à l'import de l'addon : seulement relu, plus jamais écrit."],
   ["fr-invite", "Jeton du lien d'invitation à une guilde, avec l'e-mail saisi en créant ton compte (pour le préremplir à la connexion) : gardés 24 h au plus, pour que l'invitation survive à la confirmation de l'e-mail, et effacés dès que tu rejoins la guilde. Sur Roster : le temps de te connecter (session de l'onglet)."],
   ["fr-guild", "Dernière guilde ouverte, pour arriver sur son Accueil."],

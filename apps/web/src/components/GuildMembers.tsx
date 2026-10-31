@@ -21,7 +21,7 @@ import { RowMenu } from "./RowMenu";
  * « À rattacher » des officiers, comptes du site ; Par perso : la liste de guilde du jeu, ou les fiches du site.
  * Les deux choix sont retenus dans le navigateur (guild-by, guild-chars-mode). Adresses : /groups/:id/membres (la vue
  * retenue), /membres/persos et /membres/joueurs (forcent la vue sans changer le choix retenu), ?vue=jeu|fiches (force le
- * mode), ?perso=<id> (ouvre toujours les fiches), /membres/course, /membres/historique.
+ * mode), ?perso=<id> (ouvre toujours les fiches : ?vue=fiches s'ajoute à l'adresse), /membres/course, /membres/historique.
  * Données : GET /api/groups/:id/guild (types dans packages/game-data/src/guild.ts). Mains et alts : le lien d'un officier
  * prime ; « Est-ce ton perso ? » au joueur concerné.
  */
@@ -297,6 +297,11 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
     setModePref(m);
     setParams(p => { p.set("vue", m); if (m === "jeu") p.delete("perso"); return p; }, { replace: true });
   };
+  // ?perso= ouvre les fiches, et GroupCharacters le retire de l'adresse une fois la fiche ouverte : sans ?vue=fiches, le choix
+  // retenu (« Liste du jeu ») reprendrait la place et la fiche disparaîtrait (ancienne adresse /groups/:id/persos?perso=…)
+  useEffect(() => {
+    if (params.has("perso") && params.get("vue") !== "fiches") setParams(p => { p.set("vue", "fiches"); return p; }, { replace: true });
+  }, [params, setParams]);
 
   let body: ReactNode;
   if (view === "course") return <GuildRace groupId={groupId} nav={nav} empty={empty} />;

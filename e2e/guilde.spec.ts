@@ -57,8 +57,10 @@ function frl(now: number) {
     "I;1;8;10940;5",
     "I;1;2;999999;1",
     "X;1;deposit;Pikou Patacuivre;8170;20;;;3",
+    "X;1;withdraw;Nessa Flotsombre;;5;;;8", // objet que le jeu n'a pas dit
     "O;repair;Vex Ombrelame;123030;5",
     "O;deposit;Kaeldra Brisevent;500000;30",
+    "O;withdraw;Vex Ombrelame;;40", // montant que le jeu n'a pas dit
   ];
   return [`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
 }
@@ -101,9 +103,10 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     const id = (await db.query("INSERT INTO characters (user_id, name, race, cls, spec1, level, professions, guid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
       [user, name, race, cls, spec, level, PROFS, guid(g)])).rows[0].id as string;
     await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, true)", [group, id, user]);
+    return id;
   };
   await fiche(me, "Brindille Feuillevive", "Druid", "Tauren", "Restoration", 28, 2);
-  await fiche(kael, "Kaeldra Brisevent", "Warrior", "Orc", "Protection", 30, 1);
+  const kaeldraId = await fiche(kael, "Kaeldra Brisevent", "Warrior", "Orc", "Protection", 30, 1);
   await db.end();
 
   await test.step("Ctrl+V du relevé : la guilde du jeu se lie et la liste arrive", async () => {
@@ -201,6 +204,20 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(page.locator(".gx-table")).toBeVisible();
   });
 
+  await test.step("ancienne adresse /persos?perso= : la fiche reste ouverte malgré le choix retenu « Liste du jeu »", async () => {
+    await page.goto(`/groups/${group}/persos?perso=${kaeldraId}`);
+    await expect(page).toHaveURL(/\/membres\/persos\?(?=.*vue=fiches)/);
+    await expect(page.getByRole("group", { name: "Affichage" })).toBeVisible();
+    await expect(page.locator(".grow[aria-expanded=true]")).toContainText("Kaeldra Brisevent");
+    await expect(page.locator(".gx-table")).toHaveCount(0);
+    // Elle y est encore une fois ?perso= retiré de l'adresse
+    await expect(page).not.toHaveURL(/perso=/);
+    await expect(page.locator(".grow[aria-expanded=true]")).toContainText("Kaeldra Brisevent");
+    // « Liste du jeu » rétablit la liste
+    await mode.getByRole("button", { name: "Liste du jeu" }).click();
+    await expect(page.locator(".gx-table")).toBeVisible();
+  });
+
   await test.step("Course au 60 et Historique", async () => {
     // Adresse utilisée par le bot (annonces de la course) : /groups/:id/membres/course
     await page.getByRole("tab", { name: "Course au 60" }).click();
@@ -232,6 +249,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     const leather = page.getByLabel("Rugged Leather × 20"), unknown = page.getByLabel("Objet n° 999999 × 1"), dust = page.getByLabel("Strange Dust × 5");
     await expect(leather).toBeVisible();
     await expect(unknown).toBeVisible();
+    await expect(unknown, "survol à la souris : l'objet inconnu se nomme").toHaveAttribute("title", "Objet n° 999999 × 1");
     const [a, b, c] = [(await leather.boundingBox())!, (await unknown.boundingBox())!, (await dust.boundingBox())!];
     expect(b.x, "case 2 sous la case 1").toBeCloseTo(a.x, 0);
     expect(b.y).toBeGreaterThan(a.y + 20);
@@ -258,14 +276,17 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     // Journal : objets (dépôt), or en dessous, puis le journal de l'or
     const journal = page.locator(".bk-journal");
     await expect(journal.getByRole("heading", { name: "Journal" })).toBeVisible();
-    await expect(journal).toContainText("50 derniers mouvements par onglet");
+    await expect(journal).toContainText("le jeu en montre 50 par onglet");
     await expect(journal).toContainText("Pikou Patacuivre a déposé 20 × Rugged Leather");
+    await expect(journal).toContainText("Nessa Flotsombre a retiré 5 × objet inconnu");
     await expect(journal).toContainText("Consommables");
     // « Or : » les deux derniers mouvements, du plus récent au plus ancien : qui, ce qu'il a fait, montant signé, quand
     await expect(page.locator(".bk-last")).toContainText(/^Or : Vex Ombrelame a payé des réparations −12 po 30 pa 30 pc \(.+\) · Kaeldra Brisevent a déposé \+50 po \(.+\)$/);
     await journal.getByRole("group", { name: "Journal de la banque" }).getByRole("button", { name: "Or" }).click();
     await expect(journal).toContainText("Vex Ombrelame a payé des réparations −12 po 30 pa 30 pc");
     await expect(journal).toContainText("Kaeldra Brisevent a déposé +50 po");
+    await expect(journal).toContainText("le jeu en montre 50");
+    await expect(journal).toContainText("Vex Ombrelame a retiré un montant inconnu");
   });
 
   await test.step("Accueil, Administration, téléphone", async () => {
