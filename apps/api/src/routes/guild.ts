@@ -36,7 +36,7 @@ import { currentUser, requireAuth } from "../lib/session";
  *   GET  /:id/guild/link                  → GuildLinkResponse : guilde du jeu liée, guildes proposées (officiers), réglage des annonces
  *   GET  /:id/guild/bank                  → GuildBankResponse : banque relevée par l'addon (or, onglets et cases, objets du catalogue,
  *                                           deux derniers mouvements d'or) ; linked false et bank null si la guilde n'est pas liée
- *   GET  /:id/guild/bank/log              → GuildBankLogResponse : ?kind=items|money&before=<ISO>&limit=50 (1 à 200), le plus récent d'abord
+ *   GET  /:id/guild/bank/log              → GuildBankLogResponse : ?kind=items|money&before=<ISO>&beforeId=<id>&limit=50 (1 à 200), le plus récent d'abord
  * Officiers :
  *   POST   /:id/guild/link                { key }            → GuildLinkResponse : lier une guilde du jeu proposée
  *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux, banque ; les rattachements restent)
@@ -138,9 +138,12 @@ export async function guildRoutes(app: FastifyInstance) {
   app.get("/:id/guild/bank/log", async (req): Promise<GuildBankLogResponse> => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
-    const q = parse(z.object({ kind: z.enum(["items", "money"]).default("items"), before: z.iso.datetime({ offset: true }).optional(), limit: z.coerce.number().int().min(1).max(200).default(50) }), req.query);
+    const q = parse(z.object({
+      kind: z.enum(["items", "money"]).default("items"), before: z.iso.datetime({ offset: true }).optional(), beforeId: z.coerce.number().int().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(50),
+    }).refine(v => v.beforeId === undefined || v.before !== undefined, { message: "beforeId demande before", path: ["beforeId"] }), req.query);
     await ctx(id, u.id);
-    return bankLog(db, id, { kind: q.kind, before: q.before ? new Date(q.before) : undefined, limit: q.limit });
+    return bankLog(db, id, { kind: q.kind, before: q.before ? new Date(q.before) : undefined, beforeId: q.beforeId, limit: q.limit });
   });
 
   app.get("/:id/guild/race", async (req): Promise<GuildRaceResponse> => {

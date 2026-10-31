@@ -24,7 +24,10 @@ export function gameLogDate(readAt: number, hoursAgo: number): Date | null {
  */
 export function matchGameLog<I extends { key: string; at: Date }>(incoming: readonly I[], stored: readonly { id: number; key: string; at: Date }[]) {
   const byKey = new Map<string, { id: number; at: Date }[]>();
-  for (const s of stored) byKey.set(s.key, [...(byKey.get(s.key) ?? []), s]);
+  for (const s of stored) {
+    const same = byKey.get(s.key);
+    if (same) same.push(s); else byKey.set(s.key, [s]);
+  }
   const used = new Set<number>();
   const fresh: I[] = [], earlier: { id: number; at: Date }[] = [];
   for (const e of [...incoming].sort((a, b) => a.at.getTime() - b.at.getTime())) {

@@ -35,6 +35,9 @@ async function linked(name: string, others: string[] = []) {
 const send = (who: Signed, at: number, bank: string[]) => paste(who, frl({ at, bank }));
 const bankOf = (s: Awaited<ReturnType<typeof linked>>, who: Signed) => s.get<GuildBankResponse>(who, "/guild/bank");
 const logOf = (s: Awaited<ReturnType<typeof linked>>, who: Signed, query: string) => s.get<GuildBankLogResponse>(who, `/guild/bank/log?${query}`);
+/** Page suivante d'un journal : le curseur est la date et l'identifiant de la dernière ligne reçue. */
+const nextOf = (s: Awaited<ReturnType<typeof linked>>, who: Signed, query: string, last: { id: number; at: string }) =>
+  logOf(s, who, `${query}&before=${encodeURIComponent(last.at)}&beforeId=${last.id}`);
 
 describe("banque de guilde : enregistrement par onglet", () => {
   it("un membre envoie la banque : or, noms d'onglets, cases dans l'ordre, objets du catalogue seulement", async () => {
@@ -104,18 +107,61 @@ describe("banque de guilde : enregistrement par onglet", () => {
     expect(v.bank!.tabs[1]).toMatchObject({ name: "Officiers", at: iso(T0), slots: [{ slot: 5, id: 13444, n: 9 }] });
   });
 
-  it("moins d'onglets dans un relevé plus récent : les onglets en trop sont effacés, un relevé plus ancien ne les remet pas", async () => {
+  it("jamais moins d'onglets qu'avant : un relevé qui en voit moins (ou aucun) n'en efface pas, un qui en voit plus en ajoute, même plus ancien", async () => {
     const s = await linked("Les Rangeurs", ["Pikou"]);
-    const T = NOW() - 5 * HOUR;
+    const T = NOW() - 8 * HOUR;
+    const count = () => db().$count(guildBankTabs, eq(guildBankTabs.groupId, s.g.id));
     await send(s.p.Pikou!, T, [B(T, 10, 3), "T;1;Un;1;1", "T;2;Deux;1;1", "T;3;Trois;1;1", "I;3;1;13446;1"]);
     expect((await bankOf(s, s.owner)).bank!.tabs).toHaveLength(3);
-    await send(s.p.Pikou!, T + HOUR, [B(T + HOUR, 10, 2), "T;1;Un;1;1", "T;2;Deux;1;1"]);
-    expect((await bankOf(s, s.owner)).bank!.tabs.map(t => t.name)).toEqual(["Un", "Deux"]);
-    expect(await db().$count(guildBankTabs, eq(guildBankTabs.groupId, s.g.id))).toBe(2);
-    // Un relevé d'avant, qui avait trois onglets : le troisième n'existe plus
-    await send(s.p.Pikou!, T - HOUR, [B(T - HOUR, 10, 3), "T;1;Un;1;1", "T;2;Deux;1;1", "T;3;Trois;1;1", "I;3;1;13446;1"]);
-    expect((await bankOf(s, s.owner)).bank!.tabs).toHaveLength(2);
-    expect(await db().$count(guildBankTabs, eq(guildBankTabs.groupId, s.g.id))).toBe(2);
+    // Plus récent, deux onglets vus seulement : le troisième reste avec son contenu
+    await send(s.p.Pikou!, T + HOUR, [B(T + HOUR, 11, 2), "T;1;Un;1;1", "T;2;Deux (bis);1;1"]);
+    let v = await bankOf(s, s.owner);
+    expect(v.bank!.tabs.map(t => t.name)).toEqual(["Un", "Deux (bis)", "Trois"]);
+    expect(v.bank!.tabs[2]).toMatchObject({ at: iso(T), slots: [{ slot: 1, id: 13446, n: 1 }] });
+    expect(await count()).toBe(3);
+    // L'addon lit GetNumGuildBankTabs() à l'ouverture et peut répondre 0 : la banque garde ses onglets, l'or suit
+    await send(s.p.Pikou!, T + 2 * HOUR, [B(T + 2 * HOUR, 12, 0)]);
+    v = await bankOf(s, s.owner);
+    expect(v.bank!.tabs).toHaveLength(3);
+    expect(v.bank).toMatchObject({ at: iso(T + 2 * HOUR), money: 12 });
+    expect(await count()).toBe(3);
+    // Un relevé plus ancien qui en voit quatre : le quatrième existe, il le lit
+    await send(s.p.Pikou!, T - HOUR, [B(T - HOUR, 1, 4), "T;4;Quatre;1;1", "I;4;2;13446;4"]);
+    v = await bankOf(s, s.owner);
+    expect(v.bank!.tabs.map(t => t.name)).toEqual(["Un", "Deux (bis)", "Trois", "Quatre"]);
+    expect(v.bank!.tabs[3]).toMatchObject({ at: iso(T - HOUR), slots: [{ slot: 2, id: 13446, n: 4 }] });
+    expect(v.bank).toMatchObject({ at: iso(T + 2 * HOUR), money: 12 });
+    // Plus récent avec cinq onglets : cinq
+    await send(s.p.Pikou!, T + 3 * HOUR, [B(T + 3 * HOUR, 13, 5), "T;5;Cinq;1;0"]);
+    expect((await bankOf(s, s.owner)).bank!.tabs.map(t => t.name)).toEqual(["Un", "Deux (bis)", "Trois", "Quatre", "Cinq"]);
+    expect(await count()).toBe(5);
+  });
+
+  it("le relevé de banque que l'addon rejoint à chaque relevé de guilde : relu à l'identique, rien à dire ; plus récent, seulement ce qui a changé", async () => {
+    const s = await linked("Les Echos", ["Pikou"]);
+    const T = NOW() - 6 * HOUR;
+    const bank = (at: number, money: number, read: 0 | 1, n = 4) => [B(at, money, 1), `T;1;Soins;1;${read}`, ...(read ? [`I;1;1;13446;${n}`] : [])];
+    const first = await send(s.p.Pikou!, T, bank(T, 1000, 1));
+    expect(first.results[0]!.message).toContain("banque : 1 onglet relevé");
+    // Même relevé (même heure B) rejoint à un autre relevé de guilde : ni « plus ancienne », ni « or »
+    const again = await send(s.p.Pikou!, T, bank(T, 1000, 1));
+    expect(again.results[0]!.message).not.toContain("banque");
+    const other = await send(s.owner, T, bank(T, 1000, 1));
+    expect(other.results[0]!.message).not.toContain("banque");
+    // Plus récent, seul l'or a changé
+    const gold = await send(s.p.Pikou!, T + HOUR, bank(T + HOUR, 1500, 0));
+    expect(gold.results[0]!.message).toContain("banque : or");
+    // Plus récent, rien de nouveau (même or, onglet pas relu)
+    const same = await send(s.p.Pikou!, T + 2 * HOUR, bank(T + 2 * HOUR, 1500, 0));
+    expect(same.results[0]!.message).not.toContain("banque");
+    expect(await bankOf(s, s.owner)).toMatchObject({ bank: { at: iso(T + 2 * HOUR), money: 1500, moneyAt: iso(T + 2 * HOUR) } });
+    // Plus ancien : c'est le seul cas qui le dit
+    const older = await send(s.p.Pikou!, T - HOUR, bank(T - HOUR, 100, 0));
+    expect(older.results[0]!.message).toContain("banque plus ancienne que celle du site (gardée)");
+    // Onglet relu, or inchangé : l'onglet seulement
+    const tab = await send(s.p.Pikou!, T + 3 * HOUR, bank(T + 3 * HOUR, 1500, 1, 9));
+    expect(tab.results[0]!.message).toContain("banque : 1 onglet relevé");
+    expect(tab.results[0]!.message).not.toContain("banque : or");
   });
 
   it("heure dans le futur (horloge du PC) : ramenée à maintenant, le relevé suivant passe quand même", async () => {
@@ -158,6 +204,21 @@ describe("banque de guilde : enregistrement par onglet", () => {
     const T1 = T + HOUR;
     await send(s.p.Pikou!, T1, [B(T1, 9007199254740991, 1), "T;1;Soins;1;1"]);
     expect((await bankOf(s, s.owner)).bank!.money).toBe(9007199254740991);
+  });
+});
+
+describe("banque de guilde : relevé abîmé", () => {
+  it("un rang démesuré dans le journal de guilde (ligne E) ne fait pas échouer le relevé : la banque est enregistrée", async () => {
+    const s = await linked("Les Rangs", ["Pikou"]);
+    const T = NOW() - 2 * HOUR;
+    const r = await paste(s.p.Pikou!, frl({
+      at: T, journal: { at: T, events: [["promote", "Kaeldra Brisevent", "Pikou", 99999999999, 3]] },
+      bank: [B(T, 77, 1), "T;1;Soins;1;1", "I;1;1;13446;0"],
+    }));
+    expect(r.results[0]).toMatchObject({ status: "updated", message: expect.stringContaining("banque : 1 onglet relevé") });
+    expect(r.results[0]!.message).toContain("journal : 1 nouvel événement");
+    // Une case occupée a au moins un objet
+    expect((await bankOf(s, s.owner)).bank!.tabs[0]!.slots).toEqual([{ slot: 1, id: 13446, n: 1 }]);
   });
 });
 
@@ -213,31 +274,63 @@ describe("banque de guilde : journaux", () => {
     expect(first.money).toHaveLength(50);
     expect(first.more).toBe(true);
     expect(first.money.map(x => x.amount)).toEqual(Array.from({ length: 50 }, (_, k) => 1000 + k));
-    const rest = await logOf(s, s.owner, `kind=money&limit=50&before=${encodeURIComponent(first.money.at(-1)!.at)}`);
+    const rest = await nextOf(s, s.owner, "kind=money&limit=50", first.money.at(-1)!);
     expect(rest.money.map(x => x.amount)).toEqual(Array.from({ length: 10 }, (_, k) => 1050 + k));
     expect(rest.more).toBe(false);
     expect((await logOf(s, s.owner, "kind=money&limit=7")).money).toHaveLength(7);
     // Les deux derniers mouvements d'or accompagnent la banque, le plus récent d'abord
     expect((await bankOf(s, s.owner)).lastMoney.map(x => [x.amount, x.who])).toEqual([[1000, "Pikou"], [1001, "Pikou"]]);
     // Bornes de la demande
-    for (const q of ["kind=money&limit=0", "kind=money&limit=201", "kind=autre", "kind=money&before=hier"]) expect((await s.owner.c.get(`/api/groups/${s.g.id}/guild/bank/log?${q}`)).statusCode, q).toBe(400);
+    for (const q of ["kind=money&limit=0", "kind=money&limit=201", "kind=autre", "kind=money&before=hier", "kind=money&beforeId=3", "kind=money&before=2026-01-01T00:00:00Z&beforeId=x", "kind=money&before=2026-01-01T00:00:00Z&beforeId=0"]) expect((await s.owner.c.get(`/api/groups/${s.g.id}/guild/bank/log?${q}`)).statusCode, q).toBe(400);
     expect((await s.owner.c.get(`/api/groups/${s.g.id}/guild/bank/log`)).statusCode).toBe(200);
   });
 
-  it("journal paginé : les lignes de la même heure restent ensemble (« avant » est exclusif)", async () => {
+  it("journal paginé par curseur (date, identifiant) : des pages de `limit` lignes même quand plusieurs lignes ont la même heure", async () => {
     const s = await linked("Les Horlogers", ["Pikou"]);
     const T = NOW() - HOUR;
-    // Trois dépôts la même heure, de part et d'autre de la limite de 2 lignes, puis un plus ancien
+    // Une heure 1, trois dépôts de l'heure 2 (de part et d'autre de la limite de 2 lignes), puis un de l'heure 3
     await send(s.p.Pikou!, T, [B(T, 1, 1), "T;1;Soins;1;0", "X;1;deposit;Aa;13446;1;;;1", "X;1;deposit;Bb;13446;2;;;2", "X;1;deposit;Cc;13446;3;;;2", "X;1;deposit;Dd;13446;4;;;2", "X;1;deposit;Ee;13446;5;;;3"]);
     const first = await logOf(s, s.owner, "kind=items&limit=2");
-    expect(first.moves.map(x => x.who).sort()).toEqual(["Aa", "Bb", "Cc", "Dd"]);
+    expect(first.moves.map(x => x.who)).toEqual(["Aa", "Dd"]);
     expect(first.more).toBe(true);
-    const rest = await logOf(s, s.owner, `kind=items&limit=2&before=${encodeURIComponent(first.moves.at(-1)!.at)}`);
-    expect(rest.moves.map(x => x.who)).toEqual(["Ee"]);
-    expect(rest.more).toBe(false);
-    // La limite est atteinte pile sur la dernière heure : rien de plus à montrer
+    const second = await nextOf(s, s.owner, "kind=items&limit=2", first.moves.at(-1)!);
+    expect(second.moves.map(x => x.who)).toEqual(["Cc", "Bb"]);
+    expect(second.more).toBe(true);
+    const third = await nextOf(s, s.owner, "kind=items&limit=2", second.moves.at(-1)!);
+    expect(third.moves.map(x => x.who)).toEqual(["Ee"]);
+    expect(third.more).toBe(false);
+    // Sans l'identifiant, « avant » reste exclusif : toute l'heure de la dernière ligne est sautée
+    const bare = await logOf(s, s.owner, `kind=items&limit=2&before=${encodeURIComponent(first.moves.at(-1)!.at)}`);
+    expect(bare.moves.map(x => x.who)).toEqual(["Ee"]);
+    // La limite est atteinte pile sur la dernière ligne : rien de plus à montrer
     expect((await logOf(s, s.owner, "kind=items&limit=4")).more).toBe(true);
     expect((await logOf(s, s.owner, "kind=items&limit=5")).more).toBe(false);
+  });
+
+  it("un flot de lignes de la même heure ne fait pas une page géante : pages de `limit` lignes, sans perte ni doublon", async () => {
+    const s = await linked("Les Inondes", ["Pikou"]);
+    const T = NOW() - HOUR;
+    // 3 onglets × 50 dépôts, tous « il y a 2 heures » : 150 lignes de la même heure
+    const tabs = [1, 2, 3];
+    const lines = tabs.flatMap(t => Array.from({ length: 50 }, (_, i) => `X;${t};deposit;J${t}x${i};13446;1;;;2`));
+    await send(s.p.Pikou!, T, [B(T, 1, 3), ...tabs.map(t => `T;${t};Onglet ${t};1;0`), ...lines]);
+    expect(await db().$count(guildBankLog, eq(guildBankLog.groupId, s.g.id))).toBe(150);
+    for (const limit of [50, 7]) {
+      const ids: number[] = [];
+      let page = await logOf(s, s.owner, `kind=items&limit=${limit}`);
+      for (let n = 0; ; n++) {
+        expect(page.moves.length, `page ${n}`).toBe(page.more ? limit : 150 - ids.length);
+        expect(page.moves.length).toBeLessThanOrEqual(limit);
+        ids.push(...page.moves.map(x => x.id));
+        if (!page.more) break;
+        page = await nextOf(s, s.owner, `kind=items&limit=${limit}`, page.moves.at(-1)!);
+      }
+      expect(ids).toHaveLength(150);
+      expect(new Set(ids).size).toBe(150);
+      expect(ids).toEqual([...ids].sort((a, b) => b - a)); // même heure : identifiant décroissant
+    }
+    // La première page ne charge que `limit` objets
+    expect((await logOf(s, s.owner, "kind=items&limit=1")).moves).toHaveLength(1);
   });
 });
 

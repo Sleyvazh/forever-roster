@@ -1,5 +1,5 @@
 import { nameKey, type GuildBankExport, type GuildBankLogResponse, type GuildBankMove, type GuildBankMoneyMove, type GuildBankResponse, type GuildBankTab } from "@forever/game-data";
-import { and, desc, eq, gt, gte, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { guildBank, guildBankLog, guildBankTabs } from "../db/schema";
 import { itemsById } from "../routes/gamedata";
@@ -8,7 +8,10 @@ import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 /**
  * Banque de la guilde du jeu (lignes B, T, I, X, O du relevé FRL, lot « Banque »), appliquée dans la transaction du relevé
  * de guilde (guild-import.ts). Règles (spec du 31/10) :
- * - tout membre peut envoyer le relevé ; le plus récent (heure de la ligne B) l'emporte pour l'or et les noms d'onglets ;
+ * - tout membre peut envoyer le relevé ; le plus récent (heure de la ligne B) l'emporte pour les noms d'onglets, et pour l'or
+ *   quand il le donne ;
+ * - le nombre d'onglets ne baisse jamais (le jeu n'en retire pas, et l'addon peut en voir 0 si la banque n'est pas encore ouverte) :
+ *   aucun onglet n'est effacé par un relevé, seul « Délier » efface tout ;
  * - chaque onglet garde son dernier relevé lu : un onglet que l'envoyeur ne voit pas (0;0) ou pas encore lu (1;0) garde
  *   le contenu d'avant, et un relevé plus ancien apporte un onglet que le site n'avait jamais lu ;
  * - journaux dédoublonnés comme le journal de guilde (game-log.ts : « il y a N heures », marge de 2 h), gardés 12 mois (purges) ;
@@ -20,7 +23,12 @@ type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
 type LogRow = typeof guildBankLog.$inferInsert;
 type KeyRow = Pick<typeof guildBankLog.$inferSelect, "kind" | "tab" | "type" | "who" | "itemId" | "count" | "tab1" | "tab2" | "amount">;
 
-export interface BankApplySummary { bank: "applied" | "older" | null; tabs: number; moves: number }
+/**
+ * Ce que le relevé a changé. `bank` : "applied" (relevé plus récent, ou qui apporte un onglet ou l'or), "older" (plus ancien que
+ * celui du site et rien apporté), null (même relevé relu : l'addon joint son dernier relevé de banque à chaque relevé de guilde).
+ * `tabs` : onglets dont les cases sont enregistrées ; `money` : l'or a changé de valeur.
+ */
+export interface BankApplySummary { bank: "applied" | "older" | null; tabs: number; money: boolean; moves: number }
 
 /** Plus grand entier d'une colonne integer. */
 const INT4_MAX = 2147483647;
@@ -37,13 +45,14 @@ const logKey = (r: KeyRow) => (r.kind === "item"
 /** Applique la banque d'un relevé (dans la transaction du relevé de guilde). */
 export async function applyBank(tx: Tx, groupId: string, b: GuildBankExport, o: { when: (unix: number) => Date; sentBy: string | null }): Promise<BankApplySummary> {
   const at = o.when(b.at);
-  const sum: BankApplySummary = { bank: null, tabs: 0, moves: 0 };
+  const sum: BankApplySummary = { bank: null, tabs: 0, money: false, moves: 0 };
   const [row] = await tx.select().from(guildBank).where(eq(guildBank.groupId, groupId));
   const stored = new Map((await tx.select().from(guildBankTabs).where(eq(guildBankTabs.groupId, groupId))).map(t => [t.tab, t]));
 
-  // Relevé le plus récent : le nombre d'onglets et leurs noms le suivent
+  // Relevé le plus récent : les noms d'onglets le suivent ; le nombre d'onglets ne fait que monter
   const newest = !row || at.getTime() > row.at.getTime();
-  const ntabs = newest ? b.ntabs : row!.tabs;
+  const ntabs = Math.max(row?.tabs ?? 0, b.ntabs);
+  const grew = !!row && ntabs > row.tabs;
 
   // Onglets : le contenu d'un onglet lu remplace le sien s'il est plus récent que son dernier relevé
   const slotsOf = new Map<number, { slot: number; id: number; n: number }[]>();
@@ -65,18 +74,19 @@ export async function applyBank(tx: Tx, groupId: string, b: GuildBankExport, o: 
     } else if (!e) await tx.insert(guildBankTabs).values({ groupId, tab: t.tab, name });
     else if (name !== e.name) await tx.update(guildBankTabs).set({ name }).where(and(eq(guildBankTabs.groupId, groupId), eq(guildBankTabs.tab, t.tab)));
   }
-  if (newest && [...stored.keys()].some(t => t > ntabs)) await tx.delete(guildBankTabs).where(and(eq(guildBankTabs.groupId, groupId), gt(guildBankTabs.tab, ntabs)));
 
   // Or : le relevé le plus récent qui le donne
   const money = safe(b.money);
   const moneyNew = money !== null && (!row?.moneyAt || at.getTime() > row.moneyAt.getTime());
   if (!row) await tx.insert(guildBank).values({ groupId, at, by: b.by, money: moneyNew ? money : null, moneyAt: moneyNew ? at : null, tabs: ntabs, sentBy: o.sentBy });
-  else if (newest || moneyNew) {
+  else if (newest || moneyNew || grew) {
     await tx.update(guildBank).set({
-      ...(newest && { at, by: b.by, tabs: ntabs, sentBy: o.sentBy }), ...(moneyNew && { money, moneyAt: at }), updatedAt: sql`now()`,
+      ...(newest && { at, by: b.by, sentBy: o.sentBy }), ...(grew && { tabs: ntabs }), ...(moneyNew && { money, moneyAt: at }), updatedAt: sql`now()`,
     }).where(eq(guildBank.groupId, groupId));
   }
-  sum.bank = newest || sum.tabs > 0 || moneyNew ? "applied" : "older";
+  sum.money = moneyNew && money !== row?.money;
+  // Ni plus récent ni rien d'apporté : le même relevé relu (null), ou un plus ancien que celui du site
+  sum.bank = newest || grew || sum.tabs > 0 || moneyNew ? "applied" : at.getTime() < row!.at.getTime() ? "older" : null;
 
   // Journaux des objets et de l'or
   const incoming: (LogRow & { key: string })[] = [];
@@ -132,20 +142,18 @@ export async function bankView(db: Db, groupId: string, linked: boolean): Promis
 }
 
 /**
- * Journal des objets ou de l'or, le plus récent d'abord. `before` est exclusif et le journal du jeu n'est daté qu'à l'heure
- * près : une page qui s'arrêterait au milieu d'une heure perdrait le reste de l'heure, elle la finit (plus de `limit` lignes).
+ * Journal des objets ou de l'or, le plus récent d'abord, par pages de `limit` lignes exactement. Le journal du jeu n'est daté
+ * qu'à l'heure près, beaucoup de lignes ont la même date : la page suivante reprend après la dernière ligne reçue, repérée par
+ * sa date et son identifiant (`before`, `beforeId`) ; sans `beforeId`, `before` est exclusif.
  */
-export async function bankLog(db: Db, groupId: string, q: { kind: "items" | "money"; before?: Date; limit: number }): Promise<GuildBankLogResponse> {
+export async function bankLog(db: Db, groupId: string, q: { kind: "items" | "money"; before?: Date; beforeId?: number; limit: number }): Promise<GuildBankLogResponse> {
   const base = and(eq(guildBankLog.groupId, groupId), eq(guildBankLog.kind, q.kind === "items" ? "item" : "money"));
-  const rows = await db.select().from(guildBankLog).where(q.before ? and(base, lt(guildBankLog.at, q.before)) : base)
+  const after = !q.before ? undefined
+    : q.beforeId === undefined ? lt(guildBankLog.at, q.before)
+      : or(lt(guildBankLog.at, q.before), and(eq(guildBankLog.at, q.before), lt(guildBankLog.id, q.beforeId)));
+  const rows = await db.select().from(guildBankLog).where(after ? and(base, after) : base)
     .orderBy(desc(guildBankLog.at), desc(guildBankLog.id)).limit(q.limit + 1);
-  let page = rows.slice(0, q.limit), more = rows.length > q.limit;
-  const last = page.at(-1);
-  if (more && last && rows[q.limit]!.at.getTime() === last.at.getTime()) {
-    const rest = await db.select().from(guildBankLog).where(and(base, eq(guildBankLog.at, last.at), lt(guildBankLog.id, last.id))).orderBy(desc(guildBankLog.id));
-    page = [...page, ...rest];
-    more = (await db.select({ id: guildBankLog.id }).from(guildBankLog).where(and(base, lt(guildBankLog.at, last.at))).limit(1)).length > 0;
-  }
+  const page = rows.slice(0, q.limit), more = rows.length > q.limit;
   return q.kind === "items"
     ? { moves: page.map(itemMove), money: [], objects: await itemsById(db, page.flatMap(r => (r.itemId ? [r.itemId] : []))), more }
     : { moves: [], money: page.map(moneyMove), objects: {}, more };

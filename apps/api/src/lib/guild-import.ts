@@ -277,8 +277,11 @@ function summaryText(s: GuildApplySummary) {
   if (s.events) parts.push(`journal : ${plural(s.events, "nouvel événement", "nouveaux événements")}`);
   if (s.levels) parts.push(plural(s.levels, "niveau noté", "niveaux notés"));
   if (s.xp) parts.push(`XP de ${plural(s.xp, "perso")}`);
-  if (s.bank?.bank === "applied") parts.push(s.bank.tabs ? `banque : ${plural(s.bank.tabs, "onglet")} ${s.bank.tabs > 1 ? "relevés" : "relevé"}` : "banque : or");
-  else if (s.bank?.bank === "older") parts.push("banque plus ancienne que celle du site (gardée)");
+  // Ni onglet relu ni or changé : rien à dire (l'addon rejoint son dernier relevé de banque à chaque relevé de guilde)
+  if (s.bank?.bank === "applied") {
+    if (s.bank.tabs) parts.push(`banque : ${plural(s.bank.tabs, "onglet")} ${s.bank.tabs > 1 ? "relevés" : "relevé"}`);
+    else if (s.bank.money) parts.push("banque : or");
+  } else if (s.bank?.bank === "older") parts.push("banque plus ancienne que celle du site (gardée)");
   if (s.bank?.moves) parts.push(`journal de la banque : ${plural(s.bank.moves, "nouveau mouvement", "nouveaux mouvements")}`);
   return parts.join(", ") || "rien de nouveau";
 }
