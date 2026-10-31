@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 54, date: "2026-10-31", kind: "site", title: "La banque de guilde sur le site",
+    text: "Nouvel onglet Guilde › Banque : le contenu de chaque onglet de la banque de guilde, l'or et le journal des dépôts et des retraits, visibles par tous les membres. Cherche un objet dans tous les onglets d'un coup. La banque arrive quand un membre qui a l'addon à jour l'ouvre en jeu, puis fait sa synchro. Et dans Guilde › Membres, la vue Par perso s'ouvre d'abord ; tes choix (par perso ou par joueur, liste du jeu ou fiches du site) sont retenus." },
   { n: 53, date: "2026-10-28", kind: "addon", version: "1.6", title: "Inscriptions en jeu sans copier-coller",
     text: "Il suffit de quelques joueurs avec Roster Companion pour que toute la guilde reçoive en jeu les données du site, avec sa propre inscription. Une inscription faite en jeu sans l'appli part au site par un officier de ta guilde qui l'a : le réglage est dans Compte & sécurité. Avec l'addon 1.6.3, /fr partage montre ce qui est passé." },
   { n: 52, date: "2026-10-26", kind: "site", title: "Range tes persos en les glissant",

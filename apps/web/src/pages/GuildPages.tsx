@@ -13,6 +13,7 @@ import { GroupRaids, type RaidSummary } from "../components/GroupRaids";
 import { GroupOutings } from "../components/Outings";
 import { AttendanceTab } from "../components/RaidLog";
 import { GuildMembersTab, type GuildView } from "../components/GuildMembers";
+import { GuildBank } from "../components/GuildBank";
 import { GuildLinkSection, RaceAnnounces } from "../components/GuildAdmin";
 import { GroupFeedback } from "../components/GroupFeedback";
 import { LootSettingsPanel } from "../components/Loot";
@@ -24,8 +25,9 @@ import {
 
 /**
  * Pages d'une guilde de Forever Roster (refonte du 23/10) : Accueil (/groups/:id), Sorties, Raids (À venir · Passés ·
- * Présence), Guilde (Membres · Course au 60 · Artisans · Historique) et Administration (6 sections). Les anciennes adresses
- * d'onglets redirigent ; /groups/:id/membres/course (lien du bot) mène à la Course au 60. Roster garde sa page à onglets.
+ * Présence), Guilde (Membres · Course au 60 · Artisans · Banque · Historique) et Administration (6 sections). Les anciennes
+ * adresses d'onglets redirigent ; /groups/:id/membres/course (lien du bot) mène à la Course au 60 et /membres/banque à la
+ * banque de guilde (components/GuildBank.tsx). Roster garde sa page à onglets.
  */
 
 /** /groups/:groupId/… : Roster (WoW Retail) garde GroupPage, Forever Roster passe par la nouvelle navigation. */
@@ -64,7 +66,7 @@ function ForeverGroupPage({ tab: fixedTab, sub: fixedSub }: { tab?: string; sub?
   if (!tab) page = <HomePage groupId={groupId} detail={d} />;
   else if (tab === "sorties") page = <OutingsPage groupId={groupId} d={d} creating={sub === "nouvelle"} guard={guard} />;
   else if (tab === "raids") page = <RaidsPage groupId={groupId} d={d} view={sub === "passes" ? "past" : sub === "presence" ? "presence" : "next"} guard={guard} />;
-  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "joueurs", "course", "artisans", "historique"].includes(sub ?? "") ? sub : "membres") as GuildPageView} guard={guard} />;
+  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "joueurs", "course", "artisans", "banque", "historique"].includes(sub ?? "") ? sub : "membres") as GuildPageView} guard={guard} />;
   else if (tab === "admin" && d.role !== "member") page = <AdminPage groupId={groupId} d={d} guard={guard} />;
   else return <Navigate to={base} replace />;
   return <>{err}{page}</>;
@@ -122,11 +124,12 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   );
 }
 
-/* ---------- Guilde : Membres · Course au 60 · Artisans · Historique ---------- */
+/* ---------- Guilde : Membres · Course au 60 · Artisans · Banque · Historique ---------- */
 
-type GuildPageView = GuildView | "artisans";
+type GuildPageView = GuildView | "artisans" | "banque";
 const GUILD_TABS: [GuildPageView, ReactNode, string][] = [
-  ["membres", "Membres", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"], ["historique", "Historique", "/historique"],
+  ["membres", "Membres", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"],
+  ["banque", "Banque", "/banque"], ["historique", "Historique", "/historique"],
 ];
 
 function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetail; view: GuildPageView; guard: Guard }) {
@@ -153,11 +156,12 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
     <div className="stack" style={{ gap: 16 }}>
       <GuildHead groupId={groupId} name={group.name} title="Guilde" meta={meta} actions={actions} />
       <div className="panel lift">
-        <div className="tabs" role="tablist">
+        <div className="tabs bk-five" role="tablist">
           {GUILD_TABS.map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{l}</button>)}
         </div>
         <div className="pane">
           {view === "artisans" ? <Crafters groupId={groupId} myId={myId} />
+            : view === "banque" ? <GuildBank groupId={groupId} officer={officer} onAdmin={officer ? () => nav(`/groups/${groupId}/admin?section=guilde`) : undefined} />
             : <GuildMembersTab groupId={groupId} groupName={group.name} view={view} members={members} myRole={role} myId={myId} guard={guard}
                 onAdmin={officer ? () => nav(`/groups/${groupId}/admin?section=guilde`) : undefined} />}
         </div>

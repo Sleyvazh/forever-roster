@@ -1,13 +1,15 @@
 import {
   zonedParts,
-  type GuildChar, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse, type RaceDate,
+  type GuildBankLogResponse, type GuildBankResponse, type GuildChar, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse,
+  type GuildRaceResponse, type RaceDate,
 } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "./api";
 
 /**
  * Guilde du jeu (Forever, lot « Guilde ») : requêtes de l'API (routes /api/groups/:id/guild…, /home) et petits textes
- * de dates, à l'heure de Paris. Les écrans sont dans pages/HomePage.tsx, components/GuildMembers.tsx et GuildRace.tsx.
+ * de dates, à l'heure de Paris. Les écrans sont dans pages/HomePage.tsx, components/GuildMembers.tsx, GuildRace.tsx
+ * et GuildBank.tsx (la banque, lot « Banque »).
  */
 
 /** Clés des requêtes : rechargées par l'événement en direct « guild » (live.ts). */
@@ -17,8 +19,10 @@ export const guildKeys = {
   history: (g: string, kind: string) => ["guild-history", g, kind] as const,
   home: (g: string) => ["guild-home", g] as const,
   link: (g: string) => ["guild-link", g] as const,
+  bank: (g: string) => ["guild-bank", g] as const,
+  bankLog: (g: string, kind: string) => ["guild-bank-log", g, kind] as const,
 };
-export const GUILD_QUERY_ROOTS = ["guild", "guild-race", "guild-history", "guild-home", "guild-link"] as const;
+export const GUILD_QUERY_ROOTS = ["guild", "guild-race", "guild-history", "guild-home", "guild-link", "guild-bank", "guild-bank-log"] as const;
 
 export const useGuildMembers = (g: string) => useQuery({ queryKey: guildKeys.members(g), queryFn: () => get<GuildMembersResponse>(`/groups/${g}/guild`) });
 export const useGuildRace = (g: string) => useQuery({ queryKey: guildKeys.race(g), queryFn: () => get<GuildRaceResponse>(`/groups/${g}/guild/race`) });
@@ -26,6 +30,10 @@ export const useGuildHome = (g: string) => useQuery({ queryKey: guildKeys.home(g
 export const useGuildLink = (g: string, enabled = true) => useQuery({ queryKey: guildKeys.link(g), queryFn: () => get<GuildLinkResponse>(`/groups/${g}/guild/link`), enabled });
 export const fetchHistory = (g: string, kind: string, before?: string) =>
   get<GuildHistoryResponse>(`/groups/${g}/guild/history?kind=${kind}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
+export const useGuildBank = (g: string) => useQuery({ queryKey: guildKeys.bank(g), queryFn: () => get<GuildBankResponse>(`/groups/${g}/guild/bank`) });
+/** Journal de la banque, 50 lignes par page ou plus (l'heure en cours est finie) ; before : date de la dernière ligne déjà reçue (exclue). */
+export const fetchBankLog = (g: string, kind: "items" | "money", before?: string) =>
+  get<GuildBankLogResponse>(`/groups/${g}/guild/bank/log?kind=${kind}${before ? `&before=${encodeURIComponent(before)}` : ""}`);
 
 /* ---------- Dates (heure de Paris) ---------- */
 

@@ -1692,6 +1692,49 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .gh .t small { display: block; font-size: 12.5px; color: var(--ink-3); }
 .gh time { font: 500 12.5px var(--f-mono); color: var(--ink-3); white-space: nowrap; }
 
+/* Banque de guilde : en-tête et or, puces d'onglets, grille 14 × 7 (ordinateur), liste (téléphone, Tout, recherche), journal */
+:root { --bk-g: #7a5200; --bk-s: #585e6b; --bk-c: #85521f; }
+:root[data-theme="dark"] { --bk-g: #e6bf57; --bk-s: #c7ccd6; --bk-c: #c9874b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bk-g: #e6bf57; --bk-s: #c7ccd6; --bk-c: #c9874b; } }
+.bk-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.bk-head b { color: var(--ink); }
+.bk-gold { display: inline-flex; gap: 10px; align-items: baseline; font: 600 18px/1 var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bk-gold i { font: 600 11px/1 var(--f-mono); }
+.bk-gold.none { font: 500 13px var(--f-body); }
+.bk-g { color: var(--bk-g); } .bk-s { color: var(--bk-s); } .bk-c { color: var(--bk-c); }
+.bk-tabs { max-width: 100%; }
+.bk-tabs .seg { max-width: 100%; overflow-x: auto; }
+.bk-tabs .seg button { white-space: nowrap; }
+.bk-tabs .seg button small { font: 500 11px/1 var(--f-mono); color: var(--ink-3); }
+.bk-main { display: grid; grid-template-columns: minmax(0, 640px) minmax(300px, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 1080px) { .bk-main { grid-template-columns: minmax(0, 1fr); } }
+.bk-body { display: grid; gap: 10px; min-width: 0; }
+.bk-grid { --bk-cell: 40px; display: grid; gap: 4px; padding: 10px; width: max-content; max-width: 100%; overflow-x: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; }
+.bk-slot { position: relative; width: var(--bk-cell); height: var(--bk-cell); border-radius: 5px; background: color-mix(in srgb, var(--bg) 60%, var(--panel)); box-shadow: inset 0 0 0 1px var(--line); }
+.bk-slot .bk-hv { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 5px; }
+.bk-slot b { position: absolute; right: 2px; bottom: 1px; font: 700 11px/1 var(--f-body); color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; pointer-events: none; }
+.bk-list, .bk-log { list-style: none; margin: 0; padding: 0; display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.bk-list > li, .bk-log > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--line); background: var(--panel); }
+.bk-list > li:first-child, .bk-log > li:first-child { border-top: 0; }
+.bk-list .ihover { min-width: 0; max-width: 100%; justify-self: start; }
+.bk-it { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.bk-n { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.bk-n small { display: block; color: var(--ink-3); font-weight: 400; font-size: 12.5px; }
+.bk-q { font: 600 14px/1 var(--f-mono); white-space: nowrap; }
+.bk-journal.stack { gap: 10px; align-content: start; }
+.bk-journal .gm-sec { margin: 0; }
+.bk-log > li { align-items: baseline; padding: 8px 12px; font-size: 14px; }
+.bk-log > li > span { min-width: 0; overflow-wrap: anywhere; }
+.bk-log small, .bk-log time { color: var(--ink-3); font-size: 12.5px; white-space: nowrap; }
+.bk-log small { white-space: normal; }
+.bk-log .in, .bk-last .in { color: var(--ok); } .bk-log .out, .bk-last .out { color: var(--bad); }
+.bk-last { margin: 0; }
+/* Guilde : cinq onglets, tous visibles dès 360 px (sans le fondu des onglets qui défilent) */
+@media (min-width: 360px) and (max-width: 720px) {
+  .tabs.bk-five { -webkit-mask-image: none; mask-image: none; padding-right: 4px; }
+  .panel > .tabs.bk-five .tab { padding-inline: 5px; }
+}
+
 /* Course au 60 */
 .c60-top { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
 @media (max-width: 860px) { .c60-top { grid-template-columns: minmax(0, 1fr); } }

@@ -7,8 +7,8 @@ import pg from "pg";
  * Guilde du jeu (Forever, lot « Guilde ») : le relevé FRL collé sur le site (Ctrl+V) lie la guilde, Membres s'ouvre sur
  * « Par perso » (liste du jeu) et retient le choix « Par joueur » / « Par perso » et « Liste du jeu » / « Fiches du site »,
  * Par joueur montre les joueurs (main et alts, compte du site), la bande « À rattacher » accepte une suggestion de note,
- * « Rattacher à… » range un perso sous un joueur ; Course au 60, Historique, Accueil et Administration s'affichent.
- * Noms inventés.
+ * « Rattacher à… » range un perso sous un joueur ; Course au 60, Historique, Banque (onglets, grille, recherche, or, journal),
+ * Accueil et Administration s'affichent. Noms inventés.
  */
 const test = base.extend<{ page: Page }>({
   page: async ({ page }, use) => {
@@ -49,6 +49,15 @@ function frl(now: number) {
     "E;invite;Kaeldra Brisevent;Zirta Pellerouge;;6",
     "E;join;Zirta Pellerouge;;;5",
     "E;promote;Kaeldra Brisevent;Brindille Feuillevive;1;30",
+    // Banque : or, deux onglets (le 2e que le releveur ne voit pas), trois cases (dont un objet inconnu du catalogue), un dépôt, une réparation
+    `B;${now};Brindille Feuillevive;1234567;2`,
+    "T;1;Consommables;1;1",
+    "T;2;Officiers;0;0",
+    "I;1;1;8170;20",
+    "I;1;8;10940;5",
+    "I;1;2;999999;1",
+    "X;1;deposit;Pikou Patacuivre;8170;20;;;3",
+    "O;repair;Vex Ombrelame;123030;5",
   ];
   return [`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
 }
@@ -204,6 +213,58 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(page.locator(".gh li").filter({ hasText: "Brindille Feuillevive" })).toContainText("passe Officier");
   });
 
+  await test.step("Guilde › Banque : onglets, grille, recherche, or et journal", async () => {
+    await page.getByRole("tab", { name: "Banque" }).click();
+    await expect(page).toHaveURL(new RegExp(`/groups/${group}/membres/banque$`));
+    await expect(page.getByRole("tab", { name: "Banque" })).toHaveAttribute("aria-selected", "true");
+    // En-tête : qui a relevé, onglet jamais relevé, nombre d'onglets, or en po / pa / pc
+    const head = page.locator(".bk-head");
+    await expect(head).toContainText("Relevée par Brindille Feuillevive");
+    await expect(head).toContainText("onglet Officiers jamais relevé");
+    await expect(head).toContainText("2 onglets");
+    await expect(page.getByRole("group", { name: "Or de la banque" })).toContainText("123 po 45 pa 67 pc");
+    // Le premier onglet est choisi : grille 14 × 7, les cases rangées colonne par colonne (case 1, puis 2 dessous, la 8 à côté)
+    const chips = page.getByRole("group", { name: "Onglets de la banque" });
+    await expect(chips.getByRole("button")).toHaveText(["Tout 3", "Consommables 3", "Officiers 0"]);
+    await expect(chips.getByRole("button", { name: /^Consommables/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".bk-slot")).toHaveCount(98);
+    const leather = page.getByLabel("Rugged Leather × 20"), unknown = page.getByLabel("Objet n° 999999 × 1"), dust = page.getByLabel("Strange Dust × 5");
+    await expect(leather).toBeVisible();
+    await expect(unknown).toBeVisible();
+    const [a, b, c] = [(await leather.boundingBox())!, (await unknown.boundingBox())!, (await dust.boundingBox())!];
+    expect(b.x, "case 2 sous la case 1").toBeCloseTo(a.x, 0);
+    expect(b.y).toBeGreaterThan(a.y + 20);
+    expect(c.y, "case 8 en haut, une colonne plus loin").toBeCloseTo(a.y, 0);
+    expect(c.x).toBeGreaterThan(a.x + 20);
+    // Onglet jamais relevé
+    await chips.getByRole("button", { name: /^Officiers/ }).click();
+    await expect(page.getByText("Personne n'a encore relevé cet onglet : il faut qu'un membre dont le rang le voit ouvre la banque avec l'addon.")).toBeVisible();
+    await expect(page.locator(".bk-grid")).toHaveCount(0);
+    // « Tout » : la liste, une ligne par objet et par onglet, triée par nom
+    await chips.getByRole("button", { name: /^Tout/ }).click();
+    await expect(page.locator(".bk-list > li")).toHaveText([/Objet n° 999999.*× 1/, /Rugged Leather.*Consommables.*× 20/, /Strange Dust.*Consommables.*× 5/]);
+    // Recherche dans tous les onglets, sans tenir compte de la casse
+    const search = page.getByRole("searchbox", { name: "Chercher un objet dans la banque" });
+    await expect(search).toHaveAttribute("placeholder", "Chercher un objet dans tous les onglets…");
+    await search.fill("DUST");
+    await expect(page.locator(".bk-list > li")).toHaveCount(1);
+    await expect(page.locator(".bk-list > li")).toContainText("Strange Dust");
+    await expect(page.locator(".bk-list > li")).toContainText("× 5");
+    await expect(page.getByText("1 objet trouvé · 5 au total")).toBeVisible();
+    await search.fill("zzz");
+    await expect(page.getByText("Aucun objet ne correspond.")).toBeVisible();
+    await search.fill("");
+    // Journal : objets (dépôt), or en dessous, puis le journal de l'or
+    const journal = page.locator(".bk-journal");
+    await expect(journal.getByRole("heading", { name: "Journal" })).toBeVisible();
+    await expect(journal).toContainText("50 derniers mouvements par onglet");
+    await expect(journal).toContainText("Pikou Patacuivre a déposé 20 × Rugged Leather");
+    await expect(journal).toContainText("Consommables");
+    await expect(page.locator(".bk-last")).toContainText("réparations de Vex Ombrelame");
+    await journal.getByRole("group", { name: "Journal de la banque" }).getByRole("button", { name: "Or" }).click();
+    await expect(journal).toContainText("Vex Ombrelame réparations −12 po 30 pa 30 pc");
+  });
+
   await test.step("Accueil, Administration, téléphone", async () => {
     await page.locator(".topnav .nav").getByRole("link", { name: "Accueil" }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${group}$`));
@@ -221,6 +282,12 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
       await page.waitForLoadState("networkidle");
       expect(await page.evaluate(() => document.documentElement.scrollWidth), url).toBeLessThanOrEqual(390);
     }
+    // Banque : la liste de l'onglet (pas la grille), rien ne déborde
+    await page.goto(`/groups/${group}/membres/banque`);
+    await expect(page.locator(".bk-list > li").first()).toBeVisible();
+    await expect(page.locator(".bk-grid")).toHaveCount(0);
+    await expect(page.locator(".bk-journal")).toContainText("Pikou Patacuivre a déposé 20 × Rugged Leather");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), "banque").toBeLessThanOrEqual(390);
     // Par perso (par défaut) : deux lignes par perso, sans les notes ni l'en-tête, rien ne déborde du cadre
     await page.goto(`/groups/${group}/membres`);
     const row = page.locator(".gx-table tbody tr").filter({ hasText: "Pikou Patacuivre" });

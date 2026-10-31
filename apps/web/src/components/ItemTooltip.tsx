@@ -143,9 +143,10 @@ export function FloatingTip({ rect, children }: { rect: DOMRect; children: React
 /**
  * Enveloppe : affiche l'infobulle de l'objet au survol ou au focus clavier.
  * Avec `link`, l'objet entier est un lien vers sa fiche Wowhead (nouvel onglet).
+ * Avec `label`, l'enveloppe porte ce nom pour les lecteurs d'écran (case dont le contenu n'est qu'une icône).
  */
-export function ItemHover({ item, compare, compareLabel, children, className, link }: {
-  item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string; link?: boolean;
+export function ItemHover({ item, compare, compareLabel, children, className, link, label }: {
+  item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string; link?: boolean; label?: string;
 }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   if (!item) return <>{children}</>;
@@ -162,5 +163,5 @@ export function ItemHover({ item, compare, compareLabel, children, className, li
       </ExternalLink>
     );
   }
-  return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...events}>{children}{tip}</span>;
+  return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...(label ? { role: "group", "aria-label": label } : {})} {...events}>{children}{tip}</span>;
 }
