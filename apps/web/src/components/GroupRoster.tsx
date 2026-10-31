@@ -92,7 +92,13 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
 
 /* ---------- Liste du groupe ---------- */
 
-export function GroupCharacters({ groupId, groupName, members, myId, myRole }: { groupId: string; groupName: string; members: Member[]; myId?: string; myRole: GroupRole }) {
+/**
+ * byPlayer : propose l'affichage « Par joueur » des fiches (Roster). Forever l'enlève : la barre de Guilde › Membres a déjà
+ * son « Par joueur » ; un choix « players » retenu se lit alors comme « Liste ».
+ */
+export function GroupCharacters({ groupId, groupName, members, myId, myRole, byPlayer = true }: {
+  groupId: string; groupName: string; members: Member[]; myId?: string; myRole: GroupRole; byPlayer?: boolean;
+}) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
   // ?perso=<id> : perso ouvert d'emblée (lien depuis la fiche d'un joueur, onglet Membres)
@@ -107,7 +113,9 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
   const [filter, setFilter] = useState("");
   const [role, setRole] = useState<"" | Role>("");
   const [scope, setScope] = useViewPref<Scope>("group-chars-scope", "all", ["mains", "all", "split"]);
-  const [view, setView] = useViewPref<View>("group-chars", "list", ["list", "tiles", "roles", "players"]);
+  const [savedView, setView] = useViewPref<View>("group-chars", "list", ["list", "tiles", "roles", "players"]);
+  const view: View = !byPlayer && savedView === "players" ? "list" : savedView;
+  const views = byPlayer ? VIEWS : VIEWS.filter(([k]) => k !== "players");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const gt = useGameText();
@@ -250,14 +258,19 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole }: {
                 <button key={r || "all"} type="button" className={role === r ? "on" : ""} aria-pressed={role === r} onClick={() => setRole(r)}>{r || "Tous"}</button>
               ))}
             </div>
-            <span className="gm-lab" id="gm-scope">Persos</span>
-            <div className="seg" role="group" aria-labelledby="gm-scope">
-              {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => setScope(k)}>{l}</button>)}
-            </div>
-            <span className="gm-lab" id="gm-view">Affichage</span>
-            <div className="seg" role="group" aria-labelledby="gm-view">
-              {VIEWS.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>)}
-            </div>
+            {/* Chaque libellé reste collé à ses boutons quand la ligne passe à la suivante (téléphone) */}
+            <span className="gm-labseg">
+              <span className="gm-lab" id="gm-scope">Persos</span>
+              <div className="seg" role="group" aria-labelledby="gm-scope">
+                {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => setScope(k)}>{l}</button>)}
+              </div>
+            </span>
+            <span className="gm-labseg">
+              <span className="gm-lab" id="gm-view">Affichage</span>
+              <div className="seg" role="group" aria-labelledby="gm-view">
+                {views.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>)}
+              </div>
+            </span>
           </div>
           {gt.game === "retail" && RANK[myRole] >= 1 && <BnetGroupRefresh groupId={groupId} onDone={() => void qc.invalidateQueries({ queryKey: ["group-chars", groupId] })} />}
           {!shown.length && <p className="muted">Aucun perso ne correspond.</p>}

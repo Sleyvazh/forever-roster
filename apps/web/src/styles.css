@@ -1588,6 +1588,11 @@ a.ag-t:hover { color: var(--gold); }
   .gm-bar .seg, .subnav .seg { width: 100%; }
   .gm-bar .seg button, .subnav .seg button { flex: 1 1 auto; padding-inline: 6px; min-height: 40px; }
 }
+/* Guilde pas encore liée : une ligne discrète sous la barre ; libellé collé à ses boutons dans les outils des fiches */
+.gm-note { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 9px 12px; border: 1px dashed var(--line-2); border-radius: 8px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.gm-note > i { flex: none; width: 18px; height: 18px; margin-top: 1px; border: 1.5px solid var(--gold); border-radius: 50%; color: var(--gold); font: 600 12px/15px Georgia, serif; font-style: normal; text-align: center; }
+.gm-note b { color: var(--ink); font-weight: 600; }
+.gm-labseg { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }
 .gp { display: grid; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .gp-h, .gp-r { display: grid; grid-template-columns: minmax(190px, 1.3fr) 128px minmax(0, 1.4fr) 128px 128px 40px; gap: 12px; align-items: center; padding: 8px 12px; }
 .gp-h { background: var(--panel-2); font: 600 10.5px/1.25 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }

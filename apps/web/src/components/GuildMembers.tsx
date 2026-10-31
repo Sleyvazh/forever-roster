@@ -60,10 +60,23 @@ const plural = (n: number, w: string, ws = `${w}s`) => `${n} ${n > 1 ? ws : w}`;
 
 /* ---------- Petits morceaux communs ---------- */
 
-/** Guilde du site pas encore liée à la guilde du jeu : ce qui la remplira, en une phrase. */
-export function NotLinked({ groupId, officer, onAdmin }: { groupId: string; officer: boolean; onAdmin?: () => void }) {
+/**
+ * Guilde du site pas encore liée à la guilde du jeu : ce qui la remplira, en une phrase. compact : une ligne discrète au-dessus
+ * de ce que Membres montre en attendant (« persos » : les fiches du site, « joueurs » : les membres du site).
+ */
+export function NotLinked({ groupId, officer, onAdmin, compact }: { groupId: string; officer: boolean; onAdmin?: () => void; compact?: "persos" | "joueurs" }) {
   const link = useGuildLink(groupId, officer);
   const proposals = link.data?.proposals ?? [];
+  if (compact) {
+    return (
+      <p className="gm-note">
+        <i aria-hidden="true">i</i>
+        <span><b>Liste du jeu pas encore reçue</b> : elle arrive à la première synchro d'un officier qui a l'addon à jour. En attendant, voici les {compact === "persos" ? "fiches" : "membres"} du site.
+          {officer && proposals.length > 0 && <> {proposals.length > 1 ? `${proposals.length} guildes du jeu sont proposées` : <>La guilde du jeu <b>{proposals[0]!.name}</b> est proposée</>} : {onAdmin ? <button type="button" className="link" onClick={onAdmin}>la lier dans l'Administration</button> : "la lier dans l'Administration"}.</>}
+        </span>
+      </p>
+    );
+  }
   return (
     <div className="so-empty">
       <h3>Pas encore de liste de guilde</h3>
@@ -310,11 +323,11 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
     <div className="stack">
       <MembersBar by={by} onBy={chooseBy} mode={by === "persos" && linked ? mode : undefined} onMode={chooseMode} />
       {!data ? <p className="muted">{q.error ? "Liste de guilde indisponible pour l'instant." : "Chargement…"}</p>
-        : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} empty={empty} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} />
+        : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} notLinked={<NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="persos" />} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} />
         : <>
           <QuestionBand groupId={groupId} questions={data.questions} />
           {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
-            : <>{empty}<h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
+            : <><NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="joueurs" /><h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
               <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} /></>}
         </>}
     </div>
@@ -494,8 +507,8 @@ const LEVELS: [string, number, number][] = [["Tous", 1, 60], ["1-29", 1, 29], ["
 const CHARS_PAGE = 100;
 
 /** Par perso : la liste de guilde du jeu, ou (sheets) les fiches du site. Le choix se fait dans la barre de Membres. */
-function Chars({ groupId, groupName, data, sheets, empty, members, myRole, myId, openDialog, guard }: {
-  groupId: string; groupName: string; data: GuildMembersResponse; sheets: boolean; empty: ReactNode; members: Member[]; myRole: GroupRole; myId?: string;
+function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, myId, openDialog, guard }: {
+  groupId: string; groupName: string; data: GuildMembersResponse; sheets: boolean; notLinked: ReactNode; members: Member[]; myRole: GroupRole; myId?: string;
   openDialog: (d: Dialog) => void; guard: Guard;
 }) {
   const qc = useQueryClient();
@@ -523,8 +536,8 @@ function Chars({ groupId, groupName, data, sheets, empty, members, myRole, myId,
   if (sheets) {
     return (
       <>
-        {!linked && empty}
-        <GroupCharacters groupId={groupId} groupName={groupName} members={members} myId={myId} myRole={myRole} />
+        {!linked && notLinked}
+        <GroupCharacters groupId={groupId} groupName={groupName} members={members} myId={myId} myRole={myRole} byPlayer={false} />
       </>
     );
   }
