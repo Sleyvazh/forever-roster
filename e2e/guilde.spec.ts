@@ -500,7 +500,8 @@ test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", a
     const mine = rowOf(member, "Rugged Leather");
     await expect(mine).toContainText("Préparée");
     await expect(mine).toContainText("par Sorelle");
-    await expect(mine).toContainText("à récupérer en jeu");
+    await expect(mine).toContainText("par Sorelle · à récupérer auprès de Sorelle");
+    await expect(rowOf(page, "Rugged Leather")).toContainText("par Sorelle · à récupérer auprès de Sorelle");
     await expect(mine.getByRole("button")).toHaveCount(0);
   });
 
@@ -591,7 +592,7 @@ test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", a
     await shot(page, "banque-demandes-officiere-pc.png");
     await theirs.getByRole("button", { name: "Préparer Strange Dust pour Sorelle Hautvent" }).click();
     await expect(theirs).toContainText("par Torvald");
-    await expect(rowOf(page, "Strange Dust")).toContainText("à récupérer en jeu");
+    await expect(rowOf(page, "Strange Dust")).toContainText("par Torvald · à récupérer auprès de Torvald");
     // Le retrait du rôle ferme l'accès tout de suite : les gestes disparaissent
     await page.goto(`/groups/${group}/membres/joueurs`);
     await page.getByRole("button", { name: "Actions pour Torvald Brumegris" }).click();

@@ -65,6 +65,10 @@ export const BANK_REQUEST_KEEP_DAYS = 90;
 /** Demandes closes montrées sous « Terminées ». */
 export const BANK_REQUEST_DONE_SHOWN = 20;
 
+/** « de » ou « d' » devant un nom : l'élision devant une voyelle ou un h (« de Kaeldra », « d'Offa », « d'Hélène »). */
+export const dePrefix = (name: string) => (/^[aeiouyhàâäéèêëîïôöùûüœ]/i.test(name) ? "d'" : "de ");
+export const deNom = (name: string) => dePrefix(name) + name;
+
 export type BankRequestStatus = "pending" | "prepared" | "done" | "refused" | "cancelled";
 /** Ouverte : pas encore close (le joueur en a 5 au plus, une par objet). */
 export const bankRequestOpen = (s: BankRequestStatus) => s === "pending" || s === "prepared";

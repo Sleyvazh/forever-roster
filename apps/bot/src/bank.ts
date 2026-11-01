@@ -1,3 +1,4 @@
+import { deNom } from "@forever/game-data";
 import { ButtonStyle, ComponentType } from "discord.js";
 import type { BankNotice, InternalApi } from "./api";
 import { escapeMd, type Row } from "./render";
@@ -10,14 +11,14 @@ import type { Logger } from "./sync";
  */
 
 const linkRow = (url: string): Row => ({ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir la banque", url }] });
-/** « de Kaeldra », « d'Offa » : l'élision devant une voyelle ou un h. */
-const deNom = (name: string) => (/^[aeiouyhàâäéèêëîïôöùûüœ]/i.test(name) ? `d'${name}` : `de ${name}`);
+/** Le motif sans ponctuation finale : le message se termine par son propre point (« Plus de stock. » donne « … : Plus de stock. », pas « stock.. »). */
+const reasonText = (reason: string) => reason.replace(/[\s.!?…]+$/u, "").trim();
 
 export function renderBankNotice(n: BankNotice): { content: string; components: Row[] } {
   const what = `${n.quantity} × ${escapeMd(n.item)}`;
   const content = n.kind === "prepared"
-    ? `Ta demande de ${what} est prête : à récupérer auprès ${n.by ? deNom(escapeMd(n.by)) : "d'un officier ou d'un banquier de la guilde"}.`
-    : `Ta demande de ${what} a été refusée${n.reason ? ` : ${escapeMd(n.reason)}` : ""}.`;
+    ? `Ta demande de ${what} est prête : à récupérer auprès ${n.by ? escapeMd(deNom(n.by)) : "d'un officier ou d'un banquier de la guilde"}.`
+    : `Ta demande de ${what} a été refusée${reasonText(n.reason) ? ` : ${escapeMd(reasonText(n.reason))}` : ""}.`;
   return { content: content.slice(0, 2000), components: [linkRow(n.url)] };
 }
 

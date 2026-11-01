@@ -27,6 +27,17 @@ describe("MP de la banque : textes", () => {
     expect(renderBankNotice(notice({ kind: "refused" })).content).toBe("Ta demande de 20 × Major Healing Potion a été refusée.");
   });
 
+  it("un motif qui finit par une ponctuation ne double pas le point final ; un motif fait de ponctuation seule n'en est plus un", () => {
+    const refused = (reason: string) => renderBankNotice(notice({ kind: "refused", reason })).content;
+    expect(refused("Plus de stock.")).toBe("Ta demande de 20 × Major Healing Potion a été refusée : Plus de stock.");
+    expect(refused("Réservé pour le raid !  ")).toBe("Ta demande de 20 × Major Healing Potion a été refusée : Réservé pour le raid.");
+    expect(refused("Pourquoi pas plus tard ?")).toContain("refusée : Pourquoi pas plus tard.");
+    expect(refused("on verra…")).toContain("refusée : on verra.");
+    expect(refused("Trop demandé...")).toContain("refusée : Trop demandé.");
+    expect(refused("...")).toBe("Ta demande de 20 × Major Healing Potion a été refusée.");
+    expect(refused("  ")).toBe("Ta demande de 20 × Major Healing Potion a été refusée.");
+  });
+
   it("noms et motifs sans mise en forme ni mention Discord", () => {
     const c = renderBankNotice(notice({ kind: "refused", item: "Oeil-de-tigre *rare*", reason: "demande @everyone _plus tard_" })).content;
     expect(c).toBe("Ta demande de 20 × Oeil\\-de\\-tigre \\*rare\\* a été refusée : demande @​everyone \\_plus tard\\_.");

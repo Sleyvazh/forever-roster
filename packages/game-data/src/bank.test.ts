@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BANK_COLS, BANK_ROWS, BANK_SLOTS, bankItemVerb, bankMoneyText, bankSlotPos, moneyParts } from "./bank";
+import { BANK_COLS, BANK_ROWS, BANK_SLOTS, bankItemVerb, bankMoneyText, bankSlotPos, deNom, dePrefix, moneyParts } from "./bank";
 
 /** Banque de guilde : disposition des cases, pièces, textes du journal. */
 
@@ -43,6 +43,15 @@ describe("or et textes du journal", () => {
       expect(bankItemVerb(type)).toBe(`(${type})`);
       expect(bankMoneyText(type)).toEqual({ verb: `(${type})`, sign: -1 });
     }
+  });
+  it("« de » ou « d' » devant un nom : élision devant une voyelle (accentuée ou non) ou un h", () => {
+    expect(deNom("Kaeldra")).toBe("de Kaeldra");
+    expect(deNom("Offa")).toBe("d'Offa");
+    expect(deNom("Hélène")).toBe("d'Hélène");
+    expect(deNom("Éowyn")).toBe("d'Éowyn");
+    expect(deNom("Œil-de-tigre")).toBe("d'Œil-de-tigre");
+    expect(dePrefix("Gorrak")).toBe("de ");
+    expect(dePrefix("Ysolde")).toBe("d'");
   });
   it("texte et sens d'un mouvement d'or", () => {
     expect(bankMoneyText("deposit")).toEqual({ verb: "a déposé", sign: 1 });

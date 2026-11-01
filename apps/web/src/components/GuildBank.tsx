@@ -1,5 +1,5 @@
 import {
-  bankItemVerb, bankMoneyText, bankRequestOpen, bankSlotPos, BANK_COLS, BANK_REQUEST_MAX_OPEN, BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, BANK_REQUEST_STATUS_LABEL, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
+  bankItemVerb, bankMoneyText, bankRequestOpen, dePrefix, bankSlotPos, BANK_COLS, BANK_REQUEST_MAX_OPEN, BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, BANK_REQUEST_STATUS_LABEL, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
   type BankItem, type BankRequest, type BankRequestAction, type BankRequests, type GuildBankMove, type GuildBankMoneyMove, type GuildBankResponse, type GuildBankTab,
 } from "@forever/game-data";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -379,7 +379,7 @@ function RequestRow({ groupId, r, item, canHandle }: { groupId: string; r: BankR
         {r.status === "pending" && <span className="tag warn">{BANK_REQUEST_STATUS_LABEL.pending}</span>}
         {r.status === "prepared" && <>
           <span className="tag gold">{BANK_REQUEST_STATUS_LABEL.prepared}</span>
-          {by && <span className="why">par {by}{r.who.me && " · à récupérer en jeu"}</span>}
+          {by && <span className="why">par {by} · à récupérer auprès {dePrefix(r.handledBy!)}{by}</span>}
         </>}
         {r.status === "done" && <><span className="tag ok">{BANK_REQUEST_STATUS_LABEL.done}</span>{by && <span className="why">par {by}</span>}</>}
         {r.status === "refused" && <><span className="tag bad">{BANK_REQUEST_STATUS_LABEL.refused}</span><span className="why">{by && <>par {by}</>}{r.reason && <>{by && " · "}{r.reason}</>}</span></>}
