@@ -7,8 +7,10 @@ import { currentLines } from "../lib/professions";
 import { auditEvents, characterRecipes, characters, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
+import { cancelOpenRequests } from "../lib/bank-requests";
 import { linkCode, randomToken, sha256 } from "../lib/crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
+import { foreverGroup } from "../lib/guild";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { toApi } from "./characters";
@@ -121,7 +123,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const role = await membership(db, id, u.id);
     const [g] = await db.select().from(groups).where(eq(groups.id, id));
     const members = await db.select({
-      userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, joinedAt: groupMembers.joinedAt,
+      userId: users.id, displayName: users.displayName, battletag: users.battletag, avatarId: users.avatarId, role: groupMembers.role, banker: groupMembers.banker, joinedAt: groupMembers.joinedAt,
     }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
       .where(eq(groupMembers.groupId, id)).orderBy(asc(groupMembers.joinedAt));
     // game : un groupe de l'autre jeu ouvert sur cette adresse renvoie vers son site
@@ -136,7 +138,7 @@ export async function groupRoutes(app: FastifyInstance) {
     };
     // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
     const creators = { raids: g!.raidCreators, outings: g!.outingCreators, canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role) };
-    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, members, feedback };
+    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
   });
 
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
@@ -375,6 +377,28 @@ export async function groupRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /**
+   * Banquier (Forever) : les officiers et le propriétaire nomment ou retirent. Un banquier traite les demandes de retrait à la
+   * banque comme eux (lib/bank-requests.ts), rien d'autre. Le drapeau est relu à chaque geste : le retirer ferme l'accès tout de suite.
+   */
+  app.put("/:id/members/:userId/banker", async (req) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), userId: z.uuid() }), req.params);
+    const { banker } = parse(z.object({ banker: z.boolean() }), req.body);
+    await requireRole(db, p.id, u.id, "officer");
+    await foreverGroup(db, p.id);
+    const [target] = await db.select({ banker: groupMembers.banker, displayName: users.displayName }).from(groupMembers).innerJoin(users, eq(users.id, groupMembers.userId))
+      .where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
+    if (!target) throw notFound("Ce joueur n'est pas dans la guilde.");
+    if (target.banker !== banker) {
+      await db.update(groupMembers).set({ banker }).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
+      await audit(db, req, banker ? "banker_set" : "banker_unset", { userId: u.id, groupId: p.id, meta: { target: p.userId, name: target.displayName } });
+      bus.group({ t: "group", g: p.id });
+      bus.group({ t: "guild", g: p.id });
+    }
+    return { ok: true, banker };
+  });
+
   app.delete("/:id/members/:userId", async (req) => {
     const u = currentUser(req);
     const p = parse(z.object({ id: z.uuid(), userId: z.uuid() }), req.params);
@@ -389,9 +413,11 @@ export async function groupRoutes(app: FastifyInstance) {
     await db.delete(groupCharacters).where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.userId, p.userId)));
     await dropSignupsInGroup(db, p.id, p.userId);
     await dropOutingSignups(db, p.id, p.userId, siteOf(cfg, req).origin);
+    await cancelOpenRequests(db, p.id, p.userId, app.ctx.now?.() ?? new Date());
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
     bus.group({ t: "group", g: p.id });
     bus.group({ t: "chars", g: p.id });
+    bus.group({ t: "guild", g: p.id });
     await bus.membership(db, p.userId);
     return { ok: true };
   });

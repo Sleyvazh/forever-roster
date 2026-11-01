@@ -17,6 +17,7 @@ import { inheritPrep } from "./lib/prep";
 import { orderDiscordView, retireOrderMessages } from "./lib/orders";
 import { mayCreate, retireOutingMessages } from "./lib/outings";
 import { outingRoutes } from "./internal-outings";
+import { bankNoticeRoutes } from "./internal-bank";
 import { guildAnnounceRoutes } from "./internal-guild";
 import { fullNames } from "./lib/guild";
 import { bindReportsChannel, REPORT_DISCORD_FOLLOW_MS, reportDiscordView, reportsChannel } from "./lib/reports";
@@ -705,6 +706,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   feedbackRoutes(app, db, cfg);
   outingRoutes(app, db, cfg, { linkedMember, groupForChannel });
   guildAnnounceRoutes(app, ctx);
+  bankNoticeRoutes(app, ctx);
   return app;
 }
 

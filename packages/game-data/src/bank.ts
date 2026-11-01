@@ -1,10 +1,12 @@
+import type { ClassName } from "./core";
 import type { ItemDetails } from "./items";
 
 /**
  * Banque de guilde (Forever, lot « Banque ») : sur le site, on la consulte, tous les membres de la guilde la voient,
  * comme dans le jeu (onglets, cases, or, journaux), telle que l'addon l'a relevée à sa dernière ouverture (lignes B, T, I, X, O
  * du relevé FRL, docs/addon-format.md). Le site ne la modifie pas. Ce fichier : tailles et disposition de la fenêtre du jeu,
- * textes des journaux, et types des réponses de l'API (routes /api/groups/:id/guild/bank…), partagés tels quels avec le site.
+ * textes des journaux, demandes de retrait (limites, étapes), et types des réponses de l'API (routes /api/groups/:id/guild/bank…),
+ * partagés tels quels avec le site.
  */
 
 /* ---------- Tailles et disposition ---------- */
@@ -51,6 +53,27 @@ const MONEY_TEXTS: Record<string, { verb: string; sign: 1 | -1 }> = {
  */
 export const bankMoneyText = (type: string): { verb: string; sign: 1 | -1 } => (Object.hasOwn(MONEY_TEXTS, type) ? MONEY_TEXTS[type]! : { verb: `(${type})`, sign: -1 });
 
+/* ---------- Demandes de retrait ---------- */
+
+/** Demandes ouvertes (en attente ou préparées) au plus par joueur ; une seule par objet. */
+export const BANK_REQUEST_MAX_OPEN = 5;
+/** Mot du demandeur, motif d'un refus : caractères au plus. */
+export const BANK_REQUEST_NOTE_MAX = 80;
+export const BANK_REQUEST_REASON_MAX = 120;
+/** Une demande close est effacée 90 jours après sa clôture. */
+export const BANK_REQUEST_KEEP_DAYS = 90;
+/** Demandes closes montrées sous « Terminées ». */
+export const BANK_REQUEST_DONE_SHOWN = 20;
+
+export type BankRequestStatus = "pending" | "prepared" | "done" | "refused" | "cancelled";
+/** Ouverte : pas encore close (le joueur en a 5 au plus, une par objet). */
+export const bankRequestOpen = (s: BankRequestStatus) => s === "pending" || s === "prepared";
+export const BANK_REQUEST_STATUS_LABEL: Record<BankRequestStatus, string> = {
+  pending: "En attente", prepared: "Préparée", done: "Remise", refused: "Refusée", cancelled: "Annulée",
+};
+/** Gestes d'une demande (PATCH /guild/bank/requests/:id) : les trois premiers pour ceux qui traitent, « cancel » pour le demandeur. */
+export type BankRequestAction = "prepare" | "done" | "refuse" | "cancel";
+
 /* ---------- Réponses de l'API (site) ---------- */
 
 /** Objet de la banque, comme les objets des autres pages (infobulle : details). */
@@ -77,6 +100,18 @@ export interface GuildBankMove {
 /** Ligne du journal de l'or (montant en cuivre ; null : le jeu ne l'a pas dit). */
 export interface GuildBankMoneyMove { id: number; type: string; who: string; amount: number | null; at: string }
 
+/**
+ * Demande de retrait. who.name : le perso main du demandeur dans la guilde (sinon son pseudo du site). handledBy : prénom du perso
+ * de celui qui l'a préparée ou close (null : personne encore, ou annulée). at : création ; updatedAt : dernier changement d'étape.
+ */
+export interface BankRequest {
+  id: string; itemId: number; quantity: number; note: string; status: BankRequestStatus;
+  who: { userId: string; name: string; cls: ClassName | null; me: boolean };
+  handledBy: string | null; reason: string; at: string; updatedAt: string;
+}
+/** Demandes de la banque : en cours (toutes, la plus ancienne d'abord), les 20 dernières closes, mes demandes ouvertes. */
+export interface BankRequests { open: BankRequest[]; done: BankRequest[]; canHandle: boolean; myOpen: number }
+
 /** Banque de la guilde (GET /api/groups/:id/guild/bank). */
 export interface GuildBankResponse {
   /** La guilde du site est liée à une guilde du jeu. */
@@ -87,6 +122,8 @@ export interface GuildBankResponse {
   objects: Record<number, BankItem>;
   /** Les 2 derniers mouvements d'or. */
   lastMoney: GuildBankMoneyMove[];
+  /** Demandes de retrait, visibles par tous les membres ; canHandle : je les traite (officier, propriétaire ou banquier). */
+  requests: BankRequests;
 }
 /** Journaux de la banque (GET /api/groups/:id/guild/bank/log) : more, s'il y a des lignes plus anciennes. */
 export interface GuildBankLogResponse { moves: GuildBankMove[]; money: GuildBankMoneyMove[]; objects: Record<number, BankItem>; more: boolean }

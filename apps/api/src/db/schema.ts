@@ -235,6 +235,8 @@ export const groupMembers = pgTable("group_members", {
   groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: text("role", { enum: ["owner", "officer", "member"] }).notNull(),
+  /** Banquier (Forever) : nommé par un officier, il traite les demandes de retrait à la banque comme eux. */
+  banker: boolean("banker").notNull().default(false),
   joinedAt: ts("joined_at").notNull().defaultNow(),
 }, t => [
   primaryKey({ columns: [t.groupId, t.userId] }),
@@ -921,6 +923,50 @@ export const guildBankLog = pgTable("guild_bank_log", {
   index("guild_bank_log_group_idx").on(t.groupId, t.kind, t.at),
   index("guild_bank_log_at_idx").on(t.at),
   check("guild_bank_log_kind_chk", sql`${t.kind} in ('item', 'money')`),
+]);
+
+export type BankRequestRowStatus = "pending" | "prepared" | "done" | "refused" | "cancelled";
+/**
+ * Demande de retrait à la banque de la guilde (Forever) : un membre demande une quantité d'un objet de la banque, un officier,
+ * le propriétaire ou un banquier la prépare, la remet ou la refuse. Visible par tous les membres de la guilde. Ouverte :
+ * pending ou prepared ; les demandes closes (done, refused, cancelled) sont effacées 90 jours après leur clôture (purges).
+ * handled_by_name : prénom du perso de celui qui a traité (« à récupérer auprès de Kaeldra »), gardé s'il quitte la guilde.
+ */
+export const bankRequests = pgTable("bank_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  note: text("note").notNull().default(""),
+  status: text("status").$type<BankRequestRowStatus>().notNull().default("pending"),
+  handledBy: uuid("handled_by").references(() => users.id, { onDelete: "set null" }),
+  handledByName: text("handled_by_name").notNull().default(""),
+  reason: text("reason").notNull().default(""),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+  closedAt: ts("closed_at"),
+}, t => [
+  index("bank_requests_group_status_idx").on(t.groupId, t.status),
+  check("bank_requests_status_chk", sql`${t.status} IN ('pending', 'prepared', 'done', 'refused', 'cancelled')`),
+  check("bank_requests_quantity_chk", sql`${t.quantity} >= 1`),
+]);
+
+/**
+ * MP du bot au demandeur quand sa demande devient « préparée » ou « refusée » : le bot les prend une fois (claimed_at),
+ * les envoie si le joueur a lié son Discord et gardé les messages du bot, et confirme l'envoi (sent_at). Effacés avec la demande.
+ */
+export const bankRequestNotices = pgTable("bank_request_notices", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  requestId: uuid("request_id").notNull().references(() => bankRequests.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"prepared" | "refused">().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  claimedAt: ts("claimed_at"),
+  sentAt: ts("sent_at"),
+}, t => [
+  index("bank_request_notices_pending_idx").on(t.id).where(sql`${t.claimedAt} IS NULL`),
+  index("bank_request_notices_request_idx").on(t.requestId),
+  check("bank_request_notices_kind", sql`${t.kind} IN ('prepared', 'refused')`),
 ]);
 
 /**

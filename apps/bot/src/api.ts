@@ -81,6 +81,14 @@ export interface OutingNotice {
     oldDay?: string; oldAt?: string | null; isCreator?: boolean; role?: string; character?: string; count?: number; waiting?: number;
   };
 }
+/**
+ * Demandes de retrait à la banque (Forever) : MP à envoyer au demandeur quand sa demande est préparée ou refusée (le texte est rendu par le bot).
+ * by : prénom de celui qui l'a traitée ; reason : motif du refus (vide : aucun).
+ */
+export interface BankNotice {
+  id: number; discordUserId: string; kind: "prepared" | "refused";
+  item: string; quantity: number; by: string; reason: string; groupName: string; url: string;
+}
 /** Course au 60 (Forever) : montée de niveau à annoncer dans le salon de la guilde (une seule fois, remise par le site). */
 export interface LevelAnnounce {
   id: string; channelId: string; group: { id: string; name: string }; url: string;
@@ -246,6 +254,9 @@ export class InternalApi {
     return this.req<{ choices: DungeonChoice[] }>("GET", `/internal/discord/outings/dungeons?${qs}`);
   }
   claimOutingNotices() { return this.req<{ notices: OutingNotice[] }>("POST", "/internal/discord/outings/notices/claim", {}); }
+  /* Demandes de retrait à la banque (Forever) */
+  claimBankNotices() { return this.req<{ notices: BankNotice[] }>("POST", "/internal/discord/bank/notices/claim", {}); }
+  bankNoticeSent(id: number) { return this.req<{ ok: true }>("POST", `/internal/discord/bank/notices/${id}/sent`, {}); }
   /* Course au 60 (Forever) */
   claimLevelAnnounces() { return this.req<{ announces: LevelAnnounce[] }>("POST", "/internal/discord/guild/levels/claim", {}); }
   unsign(raidId: string, discordUserId: string) {

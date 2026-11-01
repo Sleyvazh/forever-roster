@@ -6,6 +6,7 @@ import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { gameGuilds, groupMembers, groups, guildEvents, guildLevels, guildLinkProposals, guildMembers, type FrozenPodiumPlace } from "../db/schema";
 import { audit } from "./audit";
+import { dropGuildRequests } from "./bank-requests";
 import { bus } from "./events";
 import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 import type { GroupRole } from "./groups";
@@ -55,9 +56,10 @@ function byNameIndex(members: readonly Pick<MemberRow, "guid" | "name" | "leftAt
   };
 }
 
-/** Lien guilde du site ↔ guilde du jeu (le lien précédent, de la bêta, est effacé avec ses données). */
+/** Lien guilde du site ↔ guilde du jeu (le lien précédent, de la bêta, est effacé avec ses données, banque et demandes de retrait comprises). */
 export async function linkGameGuild(db: Tx, groupId: string, g: Pick<GuildExport, "name" | "realm" | "faction">, user: User, auto: boolean) {
   await db.delete(gameGuilds).where(eq(gameGuilds.groupId, groupId));
+  await dropGuildRequests(db, groupId);
   const [row] = await db.insert(gameGuilds).values({
     groupId, key: guildKeyOf(g), name: g.name, realm: g.realm, faction: g.faction, linkedBy: user.id, linkedByName: user.displayName, auto,
   }).returning();

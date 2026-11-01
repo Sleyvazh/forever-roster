@@ -1,6 +1,6 @@
 import {
-  characterRoles, classRoles, endOfDay, hasDungeonLevel, LEVEL_ANNOUNCES, levelsText, normalizeGuid, OUTING_ROLES, outingDays, RACE_START, roleOf,
-  type GuildBankLogResponse, type GuildBankResponse, type GuildCharsResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse,
+  BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, characterRoles, classRoles, endOfDay, hasDungeonLevel, LEVEL_ANNOUNCES, levelsText, normalizeGuid, OUTING_ROLES, outingDays, RACE_START, roleOf,
+  type BankRequest, type GuildBankLogResponse, type GuildBankResponse, type GuildCharsResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse,
   type HomeAgendaItem, type SignupStatus,
 } from "@forever/game-data";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Db } from "../db/client";
 import { characters, gameGuilds, groupCharacters, groups, guildEvents, raids, raidSignups } from "../db/schema";
 import { audit } from "../lib/audit";
+import { actOnRequest, createRequest, dropGuildRequests, pendingCount, standing } from "../lib/bank-requests";
 import { bus } from "../lib/events";
 import { membership, requireRole, type GroupRole } from "../lib/groups";
 import {
@@ -37,9 +38,13 @@ import { currentUser, requireAuth } from "../lib/session";
  *   GET  /:id/guild/bank                  → GuildBankResponse : banque relevée par l'addon (or, onglets et cases, objets du catalogue,
  *                                           deux derniers mouvements d'or) ; linked false et bank null si la guilde n'est pas liée
  *   GET  /:id/guild/bank/log              → GuildBankLogResponse : ?kind=items|money&before=<ISO>&beforeId=<id>&limit=50 (1 à 200), le plus récent d'abord
+ * Demandes de retrait à la banque (lib/bank-requests.ts) : lues avec la banque (`requests`) et dans l'accueil (`bankRequests`).
+ *   POST   /:id/guild/bank/requests       { itemId, quantity, note? } → { request } : demander (tout membre ; 5 ouvertes au plus, une par objet)
+ *   PATCH  /:id/guild/bank/requests/:rid  { action, reason? }  → { request } : prepare | done | refuse (officiers, propriétaire, banquiers),
+ *                                           cancel (le demandeur, en attente)
  * Officiers :
  *   POST   /:id/guild/link                { key }            → GuildLinkResponse : lier une guilde du jeu proposée
- *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux, banque ; les rattachements restent)
+ *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux, banque, demandes de retrait ; les rattachements restent)
  *   PUT    /:id/guild/announces           { announce }       → { announce } : annonces Discord des niveaux (none | sixty | tens)
  *   PUT    /:id/guild/members/:guid/link  { to }             → { player } : « Rattacher à… » (clé d'un joueur ou d'un perso, ou « new »)
  *   POST   /:id/guild/members/:guid/accept { guid? }         → { player } : accepter la suggestion d'une note (candidat si ambiguë)
@@ -131,8 +136,35 @@ export async function guildRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await ctx(id, u.id);
+    const { handler } = await standing(db, id, u.id);
     const [gg] = await db.select({ groupId: gameGuilds.groupId }).from(gameGuilds).where(eq(gameGuilds.groupId, id));
-    return bankView(db, id, !!gg);
+    return bankView(db, id, !!gg, { id: u.id, handler }, now());
+  });
+
+  /* ----- Demandes de retrait à la banque ----- */
+
+  const requestParam = gid.extend({ rid: z.uuid() });
+
+  app.post("/:id/guild/bank/requests", async (req, reply) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    const body = parse(z.object({
+      itemId: z.number().int().min(1).max(2147483647), quantity: z.number().int().min(1).max(2147483647), note: z.string().trim().max(BANK_REQUEST_NOTE_MAX).default(""),
+    }), req.body);
+    await ctx(id, u.id);
+    const request = await createRequest(db, id, u, body, now());
+    changed(id);
+    return reply.code(201).send({ request });
+  });
+
+  app.patch("/:id/guild/bank/requests/:rid", async (req): Promise<{ request: BankRequest }> => {
+    const u = currentUser(req);
+    const p = parse(requestParam, req.params);
+    const { action, reason } = parse(z.object({ action: z.enum(["prepare", "done", "refuse", "cancel"]), reason: z.string().trim().max(BANK_REQUEST_REASON_MAX).default("") }), req.body);
+    await ctx(p.id, u.id);
+    const request = await actOnRequest(db, p.id, u, p.rid, action, reason, now());
+    changed(p.id);
+    return { request };
   });
 
   app.get("/:id/guild/bank/log", async (req): Promise<GuildBankLogResponse> => {
@@ -190,6 +222,7 @@ export async function guildRoutes(app: FastifyInstance) {
     await ctx(id, u.id, "officer");
     const [gone] = await db.delete(gameGuilds).where(eq(gameGuilds.groupId, id)).returning({ name: gameGuilds.name });
     if (!gone) throw notFound("Cette guilde n'est liée à aucune guilde du jeu.");
+    await dropGuildRequests(db, id);
     await audit(db, req, "guild_unlinked", { userId: u.id, groupId: id, meta: { guild: gone.name } });
     changed(id);
     return { ok: true };
@@ -277,10 +310,12 @@ export async function guildRoutes(app: FastifyInstance) {
 /**
  * Accueil (Forever) : raids et sorties d'aujourd'hui et demain (heure de Paris) avec mon inscription et, pour une sortie
  * où il manque du monde, mon perso qui a le niveau ; mini-course ; arrivées, départs et rangs des 7 derniers jours ;
- * « Trouver quoi faire » (donjons et joueurs à mon niveau : lib/guild.ts, homeFind).
+ * « Trouver quoi faire » (donjons et joueurs à mon niveau : lib/guild.ts, homeFind) ; pour ceux qui traitent les demandes de retrait
+ * (officiers, propriétaire, banquiers), le nombre de demandes en attente (« À traiter »).
  */
 async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string, u: string) => Promise<{ role: GroupRole; g: typeof groups.$inferSelect }>): Promise<GuildHomeResponse> {
   const { g } = await ctx(id, me);
+  const { handler } = await standing(db, id, me);
   const { today, tomorrow } = outingDays(t);
   const agenda: (HomeAgendaItem & { sort: number })[] = [];
 
@@ -356,5 +391,6 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
     guild: { linked: !!data.gg, name: data.gg?.name ?? null, rosterAt: data.gg?.rosterAt?.toISOString() ?? null },
     questions: questionsFor(plain, me),
     find: await homeFind(db, id, me, plain, outs),
+    bankRequests: handler ? await pendingCount(db, id) : null,
   };
 }

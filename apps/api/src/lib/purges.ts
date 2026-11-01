@@ -1,6 +1,7 @@
+import { BANK_REQUEST_KEEP_DAYS } from "@forever/game-data";
 import { and, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { auditEvents, bnetImports, devices, emailTokens, guildBankLog, guildEvents, guildLinkProposals, sessions } from "../db/schema";
+import { auditEvents, bankRequests, bnetImports, devices, emailTokens, guildBankLog, guildEvents, guildLinkProposals, sessions } from "../db/schema";
 import { SESSION_IDLE_MS } from "./session";
 
 /**
@@ -12,6 +13,7 @@ import { SESSION_IDLE_MS } from "./session";
  * Guilde du jeu (Forever) : membres partis depuis 90 jours (avec leurs niveaux et leurs rattachements), journal de guilde
  * et journal de la banque au bout de 12 mois, guildes du jeu proposées au bout de 30 jours. Contenu des onglets et or de
  * la banque : remplacés à chaque relevé, effacés avec la guilde du jeu quand elle est déliée (jamais purgés ici).
+ * Demandes de retrait à la banque : closes (remises, refusées, annulées) depuis 90 jours ; les ouvertes ne sont jamais purgées ici.
  */
 const DAY_MS = 86400e3;
 /** Journal de sécurité : 12 mois. */
@@ -26,6 +28,8 @@ export const GUILD_EVENTS_KEEP_MS = 365 * DAY_MS;
 export const GUILD_BANK_LOG_KEEP_MS = 365 * DAY_MS;
 /** Guilde du jeu proposée (relevé gardé) : 30 jours. */
 export const GUILD_PROPOSAL_KEEP_MS = 30 * DAY_MS;
+/** Demande de retrait à la banque close (remise, refusée, annulée) : 90 jours. */
+export const BANK_REQUEST_KEEP_MS = BANK_REQUEST_KEEP_DAYS * DAY_MS;
 export const PURGE_BATCH = 1000;
 const MAX_BATCHES = 20;
 
@@ -104,8 +108,12 @@ export async function purgeOldData(db: Db, now = new Date()) {
   // Guildes du jeu proposées depuis 30 jours (avec le relevé gardé)
   const guildProposalsGone = (await db.delete(guildLinkProposals).where(lt(guildLinkProposals.createdAt, new Date(now.getTime() - GUILD_PROPOSAL_KEEP_MS)))).rowCount ?? 0;
 
+  // Demandes de retrait à la banque closes depuis 90 jours (avec leurs MP)
+  const bankRequestsGone = await inBatches(() => db.delete(bankRequests).where(inArray(bankRequests.id,
+    db.select({ id: bankRequests.id }).from(bankRequests).where(lt(bankRequests.closedAt, new Date(now.getTime() - BANK_REQUEST_KEEP_MS))).limit(PURGE_BATCH))));
+
   return {
     audit, auditStripped, sessions: sessionsGone, devices: devicesGone, emailTokens: emailTokensGone, bnetImports: bnetImportsGone,
-    guildMembers: guildMembersGone, guildEvents: guildEventsGone, guildBankLog: guildBankLogGone, guildProposals: guildProposalsGone,
+    guildMembers: guildMembersGone, guildEvents: guildEventsGone, guildBankLog: guildBankLogGone, guildProposals: guildProposalsGone, bankRequests: bankRequestsGone,
   };
 }

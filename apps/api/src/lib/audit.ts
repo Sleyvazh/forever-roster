@@ -18,7 +18,8 @@ export type AuditType =
   | "reports_channel_linked"
   | "group_feedback_linked" | "group_feedback_unlinked"
   | "guild_linked" | "guild_unlinked" | "guild_announces" | "guild_member_linked" | "guild_member_unlinked"
-  | "signup_relayed";
+  | "signup_relayed"
+  | "banker_set" | "banker_unset";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

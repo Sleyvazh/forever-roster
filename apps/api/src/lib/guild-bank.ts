@@ -3,6 +3,7 @@ import { and, desc, eq, gte, lt, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { guildBank, guildBankLog, guildBankTabs } from "../db/schema";
 import { itemsById } from "../routes/gamedata";
+import { requestsView } from "./bank-requests";
 import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 
 /**
@@ -120,9 +121,13 @@ const itemMove = (r: typeof guildBankLog.$inferSelect): GuildBankMove => ({
   id: r.id, tab: r.tab ?? 0, type: r.type, who: r.who, itemId: r.itemId, n: r.count, tab1: r.tab1, tab2: r.tab2, at: r.at.toISOString(),
 });
 
-/** Banque de la guilde : onglets de 1 à `tabs` (un onglet sans ligne est « jamais relevé »), objets du catalogue, deux derniers mouvements d'or. */
-export async function bankView(db: Db, groupId: string, linked: boolean): Promise<GuildBankResponse> {
-  const none: GuildBankResponse = { linked, bank: null, objects: {}, lastMoney: [] };
+/**
+ * Banque de la guilde : onglets de 1 à `tabs` (un onglet sans ligne est « jamais relevé »), objets du catalogue (ceux des cases
+ * et ceux des demandes de retrait), deux derniers mouvements d'or, demandes de retrait (lot « Demandes de retrait » : me = le lecteur,
+ * handler : il les traite).
+ */
+export async function bankView(db: Db, groupId: string, linked: boolean, me: { id: string; handler: boolean }, now: Date): Promise<GuildBankResponse> {
+  const none: GuildBankResponse = { linked, bank: null, objects: {}, lastMoney: [], requests: { open: [], done: [], canHandle: me.handler, myOpen: 0 } };
   if (!linked) return none;
   const [row] = await db.select().from(guildBank).where(eq(guildBank.groupId, groupId));
   if (!row) return none;
@@ -133,11 +138,13 @@ export async function bankView(db: Db, groupId: string, linked: boolean): Promis
   });
   const lastMoney = await db.select().from(guildBankLog).where(and(eq(guildBankLog.groupId, groupId), eq(guildBankLog.kind, "money")))
     .orderBy(desc(guildBankLog.at), desc(guildBankLog.id)).limit(2);
+  const requests = await requestsView(db, groupId, me, now);
   return {
     linked: true,
     bank: { at: row.at.toISOString(), by: row.by, money: row.money, moneyAt: row.moneyAt?.toISOString() ?? null, tabs },
-    objects: await itemsById(db, tabs.flatMap(t => t.slots.map(s => s.id))),
+    objects: await itemsById(db, [...tabs.flatMap(t => t.slots.map(s => s.id)), ...requests.open.map(r => r.itemId), ...requests.done.map(r => r.itemId)]),
     lastMoney: lastMoney.map(moneyMove),
+    requests,
   };
 }
 

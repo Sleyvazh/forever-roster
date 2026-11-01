@@ -488,6 +488,8 @@ export interface GuildHomeResponse {
   questions: GuildQuestion[];
   /** Null : aucun perso à moi dans la guilde, pas de carte. */
   find: HomeFind | null;
+  /** « À traiter » : demandes de retrait à la banque encore en attente. Null : je ne les traite pas (ni officier, ni banquier). */
+  bankRequests: number | null;
 }
 
 /** Lien de la guilde (Administration) : guilde liée, guildes proposées (officiers), réglage des annonces. */

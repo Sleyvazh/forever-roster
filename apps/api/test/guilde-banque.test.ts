@@ -20,6 +20,8 @@ afterAll(async () => { await env.close(); });
 afterEach(() => { env.app.ctx.now = undefined; });
 
 const db = () => env.app.ctx.db;
+/** Pas de demande de retrait (le propriétaire de la guilde les traite) : voir bank-requests.test.ts. */
+const NO_REQUESTS = { open: [], done: [], canHandle: true, myOpen: 0 };
 const setNow = (unix: number) => { env.app.ctx.now = () => new Date(unix * 1000); };
 const iso = (unix: number) => new Date(unix * 1000).toISOString();
 
@@ -351,10 +353,10 @@ describe("banque de guilde : accès et lien", () => {
     expect((await s.p.Pikou!.c.get(`${base}/bank`)).statusCode).toBe(200);
     // Guilde liée, banque pas encore relevée
     const empty = await linked("Les Vides");
-    expect(await bankOf(empty, empty.owner)).toEqual({ linked: true, bank: null, objects: {}, lastMoney: [] });
+    expect(await bankOf(empty, empty.owner)).toEqual({ linked: true, bank: null, objects: {}, lastMoney: [], requests: NO_REQUESTS });
     // Guilde pas liée
     const free = await sceneOf(env, "Les Libres");
-    expect(await free.get<GuildBankResponse>(free.owner, "/guild/bank")).toEqual({ linked: false, bank: null, objects: {}, lastMoney: [] });
+    expect(await free.get<GuildBankResponse>(free.owner, "/guild/bank")).toEqual({ linked: false, bank: null, objects: {}, lastMoney: [], requests: NO_REQUESTS });
     expect(await free.get<GuildBankLogResponse>(free.owner, "/guild/bank/log?kind=items")).toEqual({ moves: [], money: [], objects: {}, more: false });
     // Roster (Retail)
     await db().update(groups).set({ game: "retail" }).where(eq(groups.id, s.g.id));
@@ -373,7 +375,7 @@ describe("banque de guilde : accès et lien", () => {
     expect(await db().$count(guildBankLog, eq(guildBankLog.groupId, s.g.id))).toBe(2);
     const del = await s.owner.c.del(`/api/groups/${s.g.id}/guild/link`);
     expect(del.statusCode, del.body).toBe(200);
-    expect(await bankOf(s, s.owner)).toEqual({ linked: false, bank: null, objects: {}, lastMoney: [] });
+    expect(await bankOf(s, s.owner)).toEqual({ linked: false, bank: null, objects: {}, lastMoney: [], requests: NO_REQUESTS });
     expect(await db().$count(guildBank, eq(guildBank.groupId, s.g.id))).toBe(0);
     expect(await db().$count(guildBankTabs, eq(guildBankTabs.groupId, s.g.id))).toBe(0);
     expect(await db().$count(guildBankLog, eq(guildBankLog.groupId, s.g.id))).toBe(0);

@@ -17,6 +17,7 @@ import { createLevelAnnouncer } from "./race";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
 import { CAPTURE_NAME, createReportSync, renderReport } from "./reports";
+import { createBankNotices } from "./bank";
 import { createSiteAlertSync, renderSiteAlert } from "./site-alerts";
 import { outingWhenText, resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
@@ -217,6 +218,9 @@ async function start() {
     for (const n of notices) await dm(n.discordUserId, renderNotice(n), "MP de sortie");
   };
 
+  /** MP de la banque : demande de retrait préparée ou refusée (le site ne remet que ceux que le joueur accepte). */
+  const bankNotices = createBankNotices(api, dm, log);
+
   client.once(Events.ClientReady, async c => {
     log.info(`Connecté en tant que ${c.user.tag}`);
     await c.application.commands.set(COMMANDS);
@@ -226,6 +230,7 @@ async function start() {
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { outings.tick().catch(e => log.warn("Relève des sorties impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { sendOutingNotices().catch(e => log.warn("MP des sorties impossibles", e?.message)); }, 30e3);
+    setInterval(() => { bankNotices.tick().catch(e => log.warn("MP de la banque impossibles", e?.message)); }, 30e3);
     setInterval(() => { levels.tick().catch(e => log.warn("Annonces de niveau impossibles", e?.message)); }, 60e3);
     setInterval(() => { reports.tick().catch(e => log.warn("Relève des signalements impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { feedback.tick().catch(e => log.warn("Relève des avis impossible", e?.message)); }, cfg.pollMs);
