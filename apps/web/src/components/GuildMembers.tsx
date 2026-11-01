@@ -120,12 +120,12 @@ export function QuestionBand({ groupId, questions }: { groupId: string; question
 }
 
 /** Fenêtre modale native (focus piégé, Échap) ; la retirer de la page suffit à la fermer. */
-function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
+export function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { const d = ref.current; if (d && !d.open) d.showModal(); }, []);
   return <dialog ref={ref} className="sg-dialog gd" aria-labelledby={label} onClose={onClose}>{children}</dialog>;
 }
-function DialogHead({ id, title, sub, onClose }: { id: string; title: ReactNode; sub?: ReactNode; onClose: () => void }) {
+export function DialogHead({ id, title, sub, onClose }: { id: string; title: ReactNode; sub?: ReactNode; onClose: () => void }) {
   return (
     <div className="row between sg-head">
       <div style={{ minWidth: 0 }}><h2 id={id}>{title}</h2>{sub && <p className="gd-sub">{sub}</p>}</div>
@@ -328,7 +328,7 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
           <QuestionBand groupId={groupId} questions={data.questions} />
           {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
             : <><NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="joueurs" /><h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
-              <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} /></>}
+              <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} bankers /></>}
         </>}
     </div>
   );
@@ -367,6 +367,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
   const refreshSite = () => Promise.all([qc.invalidateQueries({ queryKey: ["group", groupId] }), refreshGuild(qc, groupId)]);
   const setRole = (m: Member, role: GroupRole) => guard(async () => { await patch(`/groups/${groupId}/members/${m.userId}`, { role }); setAsk(null); await refreshSite(); });
   const remove = (m: Member) => guard(async () => { await del(`/groups/${groupId}/members/${m.userId}`); setAsk(null); setSheet(null); await refreshSite(); });
+  const setBanker = (m: Member, banker: boolean) => guard(async () => { await put(`/groups/${groupId}/members/${m.userId}/banker`, { banker }); await refreshSite(); });
 
   return (
     <>
@@ -382,7 +383,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
           const chars = [main, ...alts];
           const seen = seenText(p.online, p.lastOnlineAt);
           const m = p.account ? memberOf.get(p.account.userId) : undefined;
-          const can = m ? siteRights(myRole, myId, m) : { role: false, remove: false };
+          const can = m ? siteRights(myRole, myId, m) : { role: false, remove: false, banker: false };
           const asking = m && ask?.userId === m.userId ? ask.action : null;
           const actions = (close: () => void) => {
             const out: ReactNode[] = [];
@@ -393,6 +394,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
             if (!p.account && claimable(main)) item("claim", "C'est mon perso", () => openDialog({ kind: "claim", guid: main.guid }));
             if (m && can.role && m.role === "member") item("off", "Nommer officier", () => void setRole(m, "officer"));
             if (m && can.role && m.role === "officer") item("mem", "Repasser membre", () => void setRole(m, "member"));
+            if (m && can.banker) item("bq", m.banker ? "Retirer banquier" : "Nommer banquier", () => void setBanker(m, !m.banker));
             if (m && can.role) item("own", "Transférer la propriété…", () => setAsk({ userId: m.userId, action: "owner" }));
             if (m && can.remove) item("rm", "Retirer de la guilde…", () => setAsk({ userId: m.userId, action: "remove" }), true);
             return out;
@@ -403,7 +405,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
                 <span className="gp-who" role="cell">
                   <ClassDot cls={main.cls} size="md" />
                   <span className="t">
-                    <span className="nm"><CharName name={main.name} cls={main.cls} /><span className="lvn">{main.level}</span>{p.me && <span className="tag gold">Toi</span>}</span>
+                    <span className="nm"><CharName name={main.name} cls={main.cls} /><span className="lvn">{main.level}</span>{p.me && <span className="tag gold">Toi</span>}{m?.banker && m.role === "member" && <span className="tag">Banquier</span>}</span>
                     <small>{[main.cls ? gt.cls(main.cls) : null, main.race].filter(Boolean).join(" · ") || "Classe inconnue"}</small>
                   </span>
                 </span>
@@ -442,7 +444,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
       {siteOnly.length > 0 && (
         <section className="stack" style={{ gap: 8 }} aria-labelledby="gp-site">
           <h4 className="gm-sec" id="gp-site">Sur le site, sans perso dans la liste du jeu <span className="num">{siteOnly.length}</span></h4>
-          <SiteMembers groupId={groupId} members={members} only={new Set(siteOnly.map(m => m.userId))} myRole={myRole} myId={myId} guard={guard}
+          <SiteMembers groupId={groupId} members={members} only={new Set(siteOnly.map(m => m.userId))} myRole={myRole} myId={myId} guard={guard} bankers
             hint="Leurs persos n'ont pas encore été reconnus : l'addon à jour les rattache à leur prochaine synchro." />
         </section>
       )}

@@ -35,6 +35,8 @@ export const EVENT_LABEL: Record<string, string> = {
   // Lot « Guilde » (Forever) : guilde du jeu, annonces de la course, mains et alts
   guild_linked: "a lié la guilde du jeu", guild_unlinked: "a délié la guilde du jeu", guild_announces: "a changé les annonces de la Course au 60",
   guild_member_linked: "a rattaché un perso", guild_member_unlinked: "a détaché un perso",
+  // Banque de la guilde : un banquier traite les demandes de retrait
+  banker_set: "a nommé un banquier", banker_unset: "a retiré un banquier",
   // Copier-coller facultatif : inscription faite en jeu par un joueur, transmise par un officier (l'acteur est l'officier)
   signup_relayed: "a transmis une inscription faite en jeu",
 };

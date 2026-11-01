@@ -19,7 +19,8 @@ import type { Reach } from "../components/RaidReach";
 /**
  * Accueil d'une guilde de Forever (refonte du 23/10) : la page d'arrivée. « À faire » (ce qui bloque, corrigé sur place),
  * aujourd'hui et demain (raids et sorties, inscription en un clic) et les raids de la semaine, mes persos et mes absences,
- * la Course au 60 et ma place, les arrivées et départs ; pour les officiers, « À traiter » et « Inviter ».
+ * la Course au 60 et ma place, les arrivées et départs ; pour les officiers, « À traiter » (dont les demandes de retrait à la banque,
+ * aussi pour les banquiers) et « Inviter ».
  * « Trouver quoi faire » (maquette du 31/10, écran 4) : les donjons à mon niveau et les persos de la guilde à 3 niveaux près.
  * Données : GET /groups/:id/home (lot Guilde, dont `find`), GET /week, GET /characters.
  */
@@ -194,16 +195,22 @@ function TodoList({ groupId, groupName, chars }: { groupId: string; groupName: s
 
 /* ---------- Officiers : À traiter ---------- */
 
-function ToHandle({ groupId, nextRaid, feedback }: { groupId: string; nextRaid: RaidLine | null; feedback: number }) {
-  const members = useGuildMembers(groupId);
-  const orders = useQuery({ queryKey: ["orders", groupId], queryFn: () => get<{ orders: { status: string; recipeName: string; item: { name: string } | null; requester: { name: string } }[] }>(`/groups/${groupId}/orders`) });
-  const reach = useQuery({ queryKey: ["reach", nextRaid?.id], queryFn: () => get<Reach>(`/groups/${groupId}/raids/${nextRaid!.id}/reach`), enabled: !!nextRaid });
+function ToHandle({ groupId, officer, nextRaid, feedback, bankPending }: { groupId: string; officer: boolean; nextRaid: RaidLine | null; feedback: number; bankPending: number }) {
+  // Un banquier (qui n'est pas officier) ne voit que les demandes de retrait : le reste de la liste est réservé aux officiers
+  const members = useGuildMembers(groupId, officer);
+  const orders = useQuery({ queryKey: ["orders", groupId], queryFn: () => get<{ orders: { status: string; recipeName: string; item: { name: string } | null; requester: { name: string } }[] }>(`/groups/${groupId}/orders`), enabled: officer });
+  const reach = useQuery({ queryKey: ["reach", nextRaid?.id], queryFn: () => get<Reach>(`/groups/${groupId}/raids/${nextRaid!.id}/reach`), enabled: officer && !!nextRaid });
   const qc = useQueryClient();
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const items: { n: number; t: string; sub: string; action: ReactNode; key: string }[] = [];
   const r = reach.data;
-  if (nextRaid && r && r.pending.length) {
+  // Demandes de retrait à la banque (officiers et banquiers) : en tête, c'est ce qu'un joueur attend le plus
+  if (bankPending) {
+    items.push({ key: "bank", n: bankPending, t: bankPending > 1 ? "demandes de retrait" : "demande de retrait", sub: "Guilde › Banque",
+      action: <Link className="btn sm" to={`/groups/${groupId}/membres/banque`}>Voir</Link> });
+  }
+  if (officer && nextRaid && r && r.pending.length) {
     const auto = !r.discordLinked ? "pas de salon Discord lié" : r.auto.sentAt ? "relance automatique faite" : r.auto.at ? `relance automatique ${whenText(r.auto.at)}` : null;
     const can = r.discordLinked && !r.manual.queued && (!r.manual.nextAt || Date.parse(r.manual.nextAt) <= Date.now());
     items.push({ key: "reach", n: r.pending.length, t: `sans réponse pour ${nextRaid.name}`, sub: [whenText(nextRaid.at), auto].filter(Boolean).join(" · "),
@@ -215,13 +222,13 @@ function ToHandle({ groupId, nextRaid, feedback }: { groupId: string; nextRaid: 
           })()}>Relancer</button>
         : <Link className="btn sm" to={`/groups/${groupId}/raids/${nextRaid.id}`}>Voir</Link> });
   }
-  const un = members.data?.unattached ?? [];
+  const un = officer ? (members.data?.unattached ?? []) : [];
   if (un.length) {
     const sug = un.filter(u => u.suggestion?.target).length;
     items.push({ key: "attach", n: un.length, t: `${un.length > 1 ? "persos" : "perso"} de la guilde à rattacher`, sub: sug ? `${plural(sug, "suggestion")} par les notes de guilde` : "pas encore de joueur",
       action: <Link className="btn sm" to={`/groups/${groupId}/membres/joueurs`}>Voir</Link> });
   }
-  const open = (orders.data?.orders ?? []).filter(o => o.status === "open");
+  const open = officer ? (orders.data?.orders ?? []).filter(o => o.status === "open") : [];
   if (open.length) {
     const o = open[0]!;
     items.push({ key: "orders", n: open.length, t: `${open.length > 1 ? "commandes" : "commande"} sans artisan`, sub: `${o.item?.name ?? o.recipeName}, pour ${o.requester.name}`,
@@ -231,7 +238,7 @@ function ToHandle({ groupId, nextRaid, feedback }: { groupId: string; nextRaid: 
   if (!items.length) return null;
   return (
     <section className="hm-card off" style={{ ["--o" as string]: 0 } as CSSProperties} aria-labelledby="hm-tt">
-      <div className="hm-h"><h3 id="hm-tt">À traiter <small>officiers</small></h3></div>
+      <div className="hm-h"><h3 id="hm-tt">À traiter <small>{officer ? "officiers" : "banquiers"}</small></h3></div>
       <ul className="tt-list">{items.map(i => (
         <li key={i.key}><span className="tt-n">{i.n}</span><span className="t">{i.t}<small>{i.sub}</small></span>{i.action}</li>
       ))}</ul>
@@ -422,7 +429,7 @@ export function HomePage({ groupId, detail }: { groupId: string; detail: GroupDe
       <div className="hm">
         <div className="hm-col">{agenda}{d.find && <FindCard groupId={groupId} find={d.find} canCreate={group.creators.canCreateOuting} />}{moves}</div>
         <div className="hm-col">
-          {officer && <ToHandle groupId={groupId} nextRaid={nextRaid} feedback={detail.feedback?.unseen ?? 0} />}
+          {(officer || detail.banker) && <ToHandle groupId={groupId} officer={officer} nextRaid={nextRaid} feedback={detail.feedback?.unseen ?? 0} bankPending={d.bankRequests ?? 0} />}
           <MyCharsCard groupId={groupId} chars={chars} />
           {race}
         </div>

@@ -144,9 +144,12 @@ export function FloatingTip({ rect, children }: { rect: DOMRect; children: React
  * Enveloppe : affiche l'infobulle de l'objet au survol ou au focus clavier.
  * Avec `link`, l'objet entier est un lien vers sa fiche Wowhead (nouvel onglet).
  * Avec `label`, l'enveloppe porte ce nom pour les lecteurs d'écran (case dont le contenu n'est qu'une icône).
+ * Avec `onActivate`, un clic (ou Entrée, Espace) déclenche l'action : la case de la banque ouvre « Demander ».
  */
-export function ItemHover({ item, compare, compareLabel, children, className, link, label }: {
+export function ItemHover({ item, compare, compareLabel, children, className, link, label, onActivate }: {
   item?: GameItem | null; compare?: GameItem | null; compareLabel?: string; children: ReactNode; className?: string; link?: boolean; label?: string;
+  /** Clic, Entrée ou Espace sur l'objet (la case de la banque ouvre « Demander ») : l'enveloppe devient un bouton nommé par `label`. */
+  onActivate?: (el: HTMLElement) => void;
 }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
   if (!item) return <>{children}</>;
@@ -163,5 +166,9 @@ export function ItemHover({ item, compare, compareLabel, children, className, li
       </ExternalLink>
     );
   }
-  return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...(label ? { role: "group", "aria-label": label } : {})} {...events}>{children}{tip}</span>;
+  const act = onActivate && {
+    onClick: (e: React.MouseEvent<HTMLElement>) => onActivate(e.currentTarget),
+    onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(e.currentTarget); } },
+  };
+  return <span className={`ihover ${className ?? ""}`} tabIndex={0} {...(label ? { role: onActivate ? "button" : "group", "aria-label": label } : {})} {...act} {...events}>{children}{tip}</span>;
 }

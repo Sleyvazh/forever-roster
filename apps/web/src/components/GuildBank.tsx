@@ -1,12 +1,14 @@
 import {
-  bankItemVerb, bankMoneyText, bankSlotPos, BANK_COLS, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
-  type BankItem, type GuildBankMove, type GuildBankMoneyMove, type GuildBankResponse, type GuildBankTab,
+  bankItemVerb, bankMoneyText, bankRequestOpen, bankSlotPos, BANK_COLS, BANK_REQUEST_MAX_OPEN, BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, BANK_REQUEST_STATUS_LABEL, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
+  type BankItem, type BankRequest, type BankRequestAction, type BankRequests, type GuildBankMove, type GuildBankMoneyMove, type GuildBankResponse, type GuildBankTab,
 } from "@forever/game-data";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { Fragment, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { Fragment, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { ApiError, patch, post } from "../api";
 import { agoText, fetchBankLog, guildKeys, shortDay, useGuildBank, type BankLogCursor } from "../guild";
-import { NotLinked } from "./GuildMembers";
+import { DialogHead, Modal, NotLinked, refreshGuild } from "./GuildMembers";
 import { ItemHover, ItemIcon } from "./ItemTooltip";
+import { NumberField } from "./NumberField";
 
 /**
  * Guilde › Banque (lot « Banque », /groups/:id/membres/banque) : la banque de la guilde du jeu telle que l'addon l'a relevée
@@ -14,7 +16,12 @@ import { ItemHover, ItemIcon } from "./ItemTooltip";
  * jamais relevés, or), recherche dans tous les onglets, puces d'onglets (« Tout » + un onglet), puis la grille 14 × 7 de
  * l'onglet sur ordinateur (cases rangées comme la fenêtre du jeu, infobulle de l'objet) ou une liste (téléphone, « Tout »,
  * recherche), et le journal (objets, or) à droite ou dessous.
- * Données : GET /api/groups/:id/guild/bank et /bank/log (types et textes des journaux dans packages/game-data/src/bank.ts).
+ * Demandes de retrait (patch du 5/11, maquette « Prêts pour la sortie ») : un clic sur une case ouvre un petit menu (objet,
+ * quantité en banque, « Demander »), un bouton « Demander » par ligne de la liste ; la fenêtre « Demander à la banque » (quantité,
+ * un mot) ; l'encadré « Demandes en cours » au-dessus du journal, visible par toute la guilde, avec les gestes de chacun
+ * (officiers, propriétaire, banquiers : Préparer, Remise, Refuser ; le demandeur : Annuler) et « Terminées » (les 20 dernières).
+ * Données : GET /api/groups/:id/guild/bank et /bank/log (types et textes des journaux dans packages/game-data/src/bank.ts),
+ * POST /guild/bank/requests et PATCH /guild/bank/requests/:id.
  */
 
 /** Même seuil que la mise en page : au plus 720 px, la liste remplace la grille. */
@@ -46,6 +53,10 @@ function signed(m: GuildBankMoneyMove) {
 /** Un objet dans un onglet (cases du même objet additionnées). */
 interface Row { key: string; id: number; n: number; tab: number; item?: BankItem; name: string }
 
+/** Ce qu'il faut pour « Demander » : mes demandes ouvertes par objet, si j'en ai déjà 5, et l'ouverture de la fenêtre. */
+interface AskCtx { mine: Map<number, BankRequest>; full: boolean; open: (itemId: number) => void }
+const errorOf = (e: unknown, def = "Action impossible.") => (e instanceof ApiError ? e.message : def);
+
 function tabRows(t: GuildBankTab, objects: Record<number, BankItem>): Row[] {
   const rows = new Map<number, Row>();
   for (const s of [...t.slots].sort((a, b) => a.slot - b.slot)) {
@@ -70,14 +81,23 @@ export function GuildBank({ groupId, officer, onAdmin }: { groupId: string; offi
       </div>
     );
   }
-  return <Bank groupId={groupId} bank={data.bank} objects={data.objects} lastMoney={data.lastMoney} />;
+  return <Bank groupId={groupId} bank={data.bank} objects={data.objects} lastMoney={data.lastMoney} requests={data.requests} />;
 }
 
 type TabSel = "all" | number;
 
-function Bank({ groupId, bank, objects, lastMoney }: { groupId: string; bank: NonNullable<GuildBankResponse["bank"]>; objects: Record<number, BankItem>; lastMoney: GuildBankMoneyMove[] }) {
+/** Case choisie dans la grille : son onglet, son numéro, son objet, et où poser le petit menu dans le corps de la banque. */
+interface PickedSlot { tab: number; slot: number; itemId: number; left: number; top: number }
+const POP_WIDTH = 262;
+
+function Bank({ groupId, bank, objects, lastMoney, requests }: {
+  groupId: string; bank: NonNullable<GuildBankResponse["bank"]>; objects: Record<number, BankItem>; lastMoney: GuildBankMoneyMove[]; requests: BankRequests;
+}) {
   const phone = usePhone();
   const { tabs } = bank;
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [pick, setPick] = useState<PickedSlot | null>(null);
+  const [asking, setAsking] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   // null : le premier onglet (choisi par défaut, et si l'onglet choisi n'existe plus)
   const [sel, setSel] = useState<TabSel | null>(null);
@@ -91,14 +111,43 @@ function Bank({ groupId, bank, objects, lastMoney }: { groupId: string; bank: No
   const all = useMemo(() => tabs.flatMap(t => tabRows(t, objects)).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.tab - b.tab), [tabs, objects]);
   const found = useMemo(() => (wanted ? all.filter(r => nameKey(r.name).includes(wanted)) : all), [all, wanted]);
 
-  const pick = (k: TabSel) => { setSel(k); if (k !== "all") setQuery(""); };
+  // Demandes : combien il y en a de chaque objet dans la banque (tous onglets), mes demandes ouvertes par objet
+  const totals = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const t of tabs) for (const s of t.slots) m.set(s.id, (m.get(s.id) ?? 0) + s.n);
+    return m;
+  }, [tabs]);
+  const ask: AskCtx = useMemo(() => ({
+    mine: new Map(requests.open.filter(r => r.who.me).map(r => [r.itemId, r])), full: requests.myOpen >= BANK_REQUEST_MAX_OPEN, open: id => { setPick(null); setAsking(id); },
+  }), [requests]);
+  // Le petit menu d'une case : il disparaît si la grille n'est plus là (recherche, « Tout », téléphone) ou si la page change de taille
+  useEffect(() => {
+    if (!pick) return;
+    const close = () => setPick(null);
+    window.addEventListener("resize", close);
+    return () => window.removeEventListener("resize", close);
+  }, [pick]);
+  const onPick = (p: Omit<PickedSlot, "left" | "top">, el: HTMLElement) => {
+    const body = bodyRef.current?.getBoundingClientRect(), r = el.getBoundingClientRect();
+    if (!body) return;
+    setPick(cur => (cur && cur.tab === p.tab && cur.slot === p.slot ? null : {
+      ...p, left: Math.max(0, Math.min(Math.round(r.left - body.left + 8), body.width - POP_WIDTH)), top: Math.round(r.bottom - body.top + 8),
+    }));
+  };
+  const closePop = (refocus: boolean) => {
+    const el = refocus ? bodyRef.current?.querySelector<HTMLElement>(".bk-slot.sel .bk-hv") : null;
+    setPick(null);
+    if (el) requestAnimationFrame(() => el.focus({ preventScroll: true }));
+  };
+
+  const choose = (k: TabSel) => { setSel(k); setPick(null); if (k !== "all") setQuery(""); };
   const stale = tabs.filter(t => t.at !== null && Date.parse(bank.at) - Date.parse(t.at) > 3600e3);
   const never = tabs.filter(t => t.at === null);
 
   let body: ReactNode;
   if (searching || cur === "all") {
     body = <>
-      {found.length ? <ItemList rows={found} tabName={tabName} /> : <p className="muted" style={{ margin: 0 }}>{searching ? "Aucun objet ne correspond." : "Aucun objet relevé pour l'instant."}</p>}
+      {found.length ? <ItemList rows={found} tabName={tabName} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>{searching ? "Aucun objet ne correspond." : "Aucun objet relevé pour l'instant."}</p>}
       {searching && !!found.length && <SearchFoot rows={found} />}
     </>;
   } else {
@@ -106,8 +155,8 @@ function Bank({ groupId, bank, objects, lastMoney }: { groupId: string; bank: No
     body = t.at === null
       ? <div className="so-empty"><p>Personne n'a encore relevé cet onglet : il faut qu'un membre dont le rang le voit ouvre la banque avec l'addon.</p></div>
       : phone
-        ? (t.slots.length ? <ItemList rows={tabRows(t, objects)} /> : <p className="muted" style={{ margin: 0 }}>Cet onglet est vide.</p>)
-        : <SlotGrid tab={t} objects={objects} />;
+        ? (t.slots.length ? <ItemList rows={tabRows(t, objects)} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>Cet onglet est vide.</p>)
+        : <SlotGrid tab={t} objects={objects} onPick={onPick} picked={pick?.tab === t.tab ? pick.slot : null} />;
   }
 
   return (
@@ -124,17 +173,26 @@ function Bank({ groupId, bank, objects, lastMoney }: { groupId: string; bank: No
       <input type="search" placeholder="Chercher un objet dans tous les onglets…" aria-label="Chercher un objet dans la banque" value={query} onChange={e => setQuery(e.target.value)} />
       <div className="bk-tabs">
         <div className="seg" role="group" aria-label="Onglets de la banque">
-          <button type="button" className={searching || cur === "all" ? "on" : ""} aria-pressed={searching || cur === "all"} onClick={() => pick("all")}>Tout <small>{tabs.reduce((s, t) => s + t.slots.length, 0)}</small></button>
+          <button type="button" className={searching || cur === "all" ? "on" : ""} aria-pressed={searching || cur === "all"} onClick={() => choose("all")}>Tout <small>{tabs.reduce((s, t) => s + t.slots.length, 0)}</small></button>
           {tabs.map(t => {
             const on = !searching && cur === t.tab;
-            return <button key={t.tab} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => pick(t.tab)}>{tabLabel(t)} <small>{t.slots.length}</small></button>;
+            return <button key={t.tab} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => choose(t.tab)}>{tabLabel(t)} <small>{t.slots.length}</small></button>;
           })}
         </div>
       </div>
       <div className="bk-main">
-        <div className="bk-body">{body}</div>
-        <Journal groupId={groupId} tabs={tabs} objects={objects} lastMoney={lastMoney} />
+        <div className="bk-body" ref={bodyRef}>
+          {body}
+          {pick && !searching && !phone && cur === pick.tab && (
+            <AskPop at={pick} item={objects[pick.itemId]} id={pick.itemId} total={totals.get(pick.itemId) ?? 0} ask={ask} onClose={closePop} />
+          )}
+        </div>
+        <div className="bk-side">
+          <RequestsBox groupId={groupId} requests={requests} objects={objects} />
+          <Journal groupId={groupId} tabs={tabs} objects={objects} lastMoney={lastMoney} />
+        </div>
       </div>
+      {asking !== null && <AskDialog groupId={groupId} id={asking} item={objects[asking]} total={totals.get(asking) ?? 0} onClose={() => setAsking(null)} />}
     </div>
   );
 }
@@ -154,11 +212,11 @@ function Gold({ copper, at }: { copper: number | null; at: string | null }) {
 /* ---------- Liste et grille ---------- */
 
 /** Une ligne par objet (et par onglet quand tabName est donné) : icône, nom à la couleur de qualité, quantité. */
-function ItemList({ rows, tabName }: { rows: Row[]; tabName?: (n: number) => string }) {
+function ItemList({ rows, tabName, ask }: { rows: Row[]; tabName?: (n: number) => string; ask: AskCtx }) {
   return (
     <ul className="bk-list" aria-label="Objets">
       {rows.map(r => (
-        <li key={r.key}>
+        <li key={r.key} className="ask">
           <ItemHover item={r.item}>
             <span className="bk-it">
               <ItemIcon item={r.item} size={32} />
@@ -166,9 +224,50 @@ function ItemList({ rows, tabName }: { rows: Row[]; tabName?: (n: number) => str
             </span>
           </ItemHover>
           <span className="bk-q num">× {r.n}</span>
+          <AskButton id={r.id} name={r.name} ask={ask} />
         </li>
       ))}
     </ul>
+  );
+}
+
+/** « Demander » d'une ligne : grisé quand j'ai déjà une demande ouverte pour cet objet, ou 5 demandes ouvertes. */
+function AskButton({ id, name, ask }: { id: number; name: string; ask: AskCtx }) {
+  const have = ask.mine.get(id);
+  if (have) return <button type="button" className="btn sm" disabled title="Tu as déjà une demande ouverte pour cet objet" aria-label={`Demande en cours pour ${name}`}>Demandé</button>;
+  return (
+    <button type="button" className="btn sm" disabled={ask.full} title={ask.full ? `${BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus : attends qu'elles soient traitées` : undefined}
+      aria-label={`Demander ${name}`} onClick={() => ask.open(id)}>Demander</button>
+  );
+}
+
+/** Petit menu d'une case de la grille (bureau) : l'objet, ce qu'il y en a dans la banque, « Demander ». */
+function AskPop({ at, item, id, total, ask, onClose }: { at: PickedSlot; item?: BankItem; id: number; total: number; ask: AskCtx; onClose: (refocus: boolean) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  const name = itemName(id, item);
+  const have = ask.mine.get(id);
+  // Le focus passe au menu (et l'infobulle de la case s'efface) ; Échap le ferme, un clic ailleurs aussi
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+    const down = (e: PointerEvent) => { const t = e.target as Element; if (!ref.current?.contains(t) && !t.closest(".bk-slot")) close.current(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close.current(true); } };
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
+  }, []);
+  return (
+    <div className="bk-pop" ref={ref} role="dialog" aria-label={name} style={{ left: at.left, top: at.top }}>
+      <div className="top">
+        <ItemIcon item={item} size={36} />
+        <span className="nm"><span className={item ? `q${item.quality}` : undefined}>{name}</span><small><b className="num">{fmt.format(total)}</b> dans la banque</small></span>
+      </div>
+      <button type="button" className="btn primary sm" disabled={!!have || ask.full} onClick={() => ask.open(id)}
+        title={have ? "Tu as déjà une demande ouverte pour cet objet" : ask.full ? `${BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus` : undefined}>
+        {have ? "Demande en cours" : "Demander"}
+      </button>
+    </div>
   );
 }
 
@@ -186,7 +285,7 @@ function SearchFoot({ rows }: { rows: Row[] }) {
 }
 
 /** La fenêtre du jeu : 14 colonnes de 7 cases, rangées par groupes de deux colonnes (bankSlotPos). */
-function SlotGrid({ tab, objects }: { tab: GuildBankTab; objects: Record<number, BankItem> }) {
+function SlotGrid({ tab, objects, onPick, picked }: { tab: GuildBankTab; objects: Record<number, BankItem>; onPick: (p: { tab: number; slot: number; itemId: number }, el: HTMLElement) => void; picked: number | null }) {
   const bySlot = new Map(tab.slots.map(s => [s.slot, s]));
   return (
     <div className="bk-grid" role="group" aria-label={tab.name ? `Onglet ${tab.name}` : tabLabel(tab)}
@@ -197,15 +296,157 @@ function SlotGrid({ tab, objects }: { tab: GuildBankTab; objects: Record<number,
         if (!s) return <span key={slot} className="bk-slot" style={at} />;
         const item = objects[s.id], label = `${itemName(s.id, item)} × ${s.n}`;
         const inner = <><ItemIcon item={item} size={36} />{s.n > 1 && <b aria-hidden="true">{s.n}</b>}</>;
+        const choose = (el: HTMLElement) => onPick({ tab: tab.tab, slot, itemId: s.id }, el);
         return (
-          <span key={slot} className="bk-slot" style={at}>
+          <span key={slot} className={`bk-slot${picked === slot ? " sel" : ""}`} style={at}>
             {item
-              ? <ItemHover item={item} className="bk-hv" label={label}>{inner}</ItemHover>
-              : <span className="bk-hv" tabIndex={0} role="group" aria-label={label} title={label}>{inner}</span>}
+              ? <ItemHover item={item} className="bk-hv" label={label} onActivate={choose}>{inner}</ItemHover>
+              : <span className="bk-hv" tabIndex={0} role="button" aria-label={label} title={label} onClick={e => choose(e.currentTarget)}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(e.currentTarget); } }}>{inner}</span>}
           </span>
         );
       })}
     </div>
+  );
+}
+
+/* ---------- Demandes de retrait ---------- */
+
+const requestUrl = (groupId: string, id?: string) => `/groups/${groupId}/guild/bank/requests${id ? `/${id}` : ""}`;
+
+/** « Demandes en cours (3) » : visibles par toute la guilde, avec les gestes de chacun ; en dessous « Terminées » (les 20 dernières). */
+function RequestsBox({ groupId, requests, objects }: { groupId: string; requests: BankRequests; objects: Record<number, BankItem> }) {
+  const { open, done, canHandle } = requests;
+  const [fold, setFold] = useState(false);
+  return (
+    <section className="hm-card rq-box" aria-labelledby="rq-t">
+      <div className="hm-h">
+        <h3 id="rq-t">Demandes en cours ({open.length})</h3>
+        <span className="hint">visibles par toute la guilde</span>
+      </div>
+      {open.length
+        ? <ul className="rq-list" aria-label="Demandes en cours">{open.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={canHandle} />)}</ul>
+        : <p className="hm-none">Aucune demande en cours. Pour en faire une, choisis un objet de la banque.</p>}
+      {done.length > 0 && (
+        <>
+          <button type="button" className="gm-fold rq-fold" aria-expanded={fold} aria-controls="rq-done" onClick={() => setFold(f => !f)}>
+            <span className="car" aria-hidden="true">{fold ? "▾" : "▸"}</span><b>Terminées ({done.length})</b>
+          </button>
+          {fold && <ul className="rq-list" id="rq-done" aria-label="Demandes terminées">{done.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={false} />)}</ul>}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Une demande : qui, combien de quoi, le mot du demandeur, l'étape et les gestes. Ceux qui traitent : Préparer (en attente),
+ * Remise (en attente ou préparée), Refuser (avec un motif facultatif) ; le demandeur : Annuler tant qu'elle n'est pas préparée.
+ * Sa propre demande en attente n'a que « Annuler ». Les droits sont revérifiés par l'API à chaque geste.
+ */
+function RequestRow({ groupId, r, item, canHandle }: { groupId: string; r: BankRequest; item?: BankItem; canHandle: boolean }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [refusing, setRefusing] = useState(false);
+  const [reason, setReason] = useState("");
+  const name = itemName(r.itemId, item);
+  const isOpen = bankRequestOpen(r.status);
+  // Sa propre demande en attente : seulement « Annuler » (un officier ou un banquier se sert lui-même, ou la fait traiter par un autre)
+  const handle = canHandle && isOpen && !(r.who.me && r.status === "pending");
+  const cancel = r.who.me && r.status === "pending";
+  const run = async (action: BankRequestAction, why = "") => {
+    setBusy(true); setErr(null);
+    try { await patch(requestUrl(groupId, r.id), { action, reason: why }); await refreshGuild(qc, groupId); setRefusing(false); }
+    catch (e) { setErr(errorOf(e)); void refreshGuild(qc, groupId); }
+    finally { setBusy(false); }
+  };
+  const when = <time dateTime={r.at} title={shortDay(r.at)}>{agoText(r.at)}</time>;
+  const by = r.handledBy ? <b>{r.handledBy}</b> : null;
+  // L'heure en haut à droite d'une demande préparée (la ligne du bas est déjà pleine), sinon en bas
+  const timeTop = r.status === "prepared";
+  return (
+    <li className={r.who.me ? "mine" : undefined}>
+      <ItemIcon item={item} size={32} />
+      <div className="rq-l1">
+        <b>{r.who.name}</b>
+        {r.who.me && <span className="tag gold">Toi</span>}
+        <span className={`bk-n${item ? ` q${item.quality}` : ""}`}><span className="num">{fmt.format(r.quantity)} ×</span> {name}</span>
+        {timeTop && when}
+      </div>
+      {r.note ? <p className="rq-n">« {r.note} »</p> : <span />}
+      <div className="rq-l3">
+        {r.status === "pending" && <span className="tag warn">{BANK_REQUEST_STATUS_LABEL.pending}</span>}
+        {r.status === "prepared" && <>
+          <span className="tag gold">{BANK_REQUEST_STATUS_LABEL.prepared}</span>
+          {by && <span className="why">par {by}{r.who.me && " · à récupérer en jeu"}</span>}
+        </>}
+        {r.status === "done" && <><span className="tag ok">{BANK_REQUEST_STATUS_LABEL.done}</span>{by && <span className="why">par {by}</span>}</>}
+        {r.status === "refused" && <><span className="tag bad">{BANK_REQUEST_STATUS_LABEL.refused}</span><span className="why">{by && <>par {by}</>}{r.reason && <>{by && " · "}{r.reason}</>}</span></>}
+        {r.status === "cancelled" && <span className="tag">{BANK_REQUEST_STATUS_LABEL.cancelled}</span>}
+        {!timeTop && <span className="why">· {agoText(isOpen ? r.at : r.updatedAt)}</span>}
+        {(handle || cancel) && !refusing && (
+          <span className="rq-btns">
+            {handle && r.status === "pending" && <button type="button" className="btn sm primary" disabled={busy} aria-label={`Préparer ${name} pour ${r.who.name}`} onClick={() => void run("prepare")}>Préparer</button>}
+            {handle && <button type="button" className={`btn sm${r.status === "prepared" ? " primary" : ""}`} disabled={busy} aria-label={`Marquer ${name} remis à ${r.who.name}`} onClick={() => void run("done")}>Remise</button>}
+            {handle && <button type="button" className="btn sm danger" disabled={busy} aria-label={`Refuser ${name} à ${r.who.name}`} onClick={() => setRefusing(true)}>Refuser</button>}
+            {cancel && <button type="button" className="btn sm ghost" disabled={busy} aria-label={`Annuler ma demande de ${name}`} onClick={() => void run("cancel")}>Annuler</button>}
+          </span>
+        )}
+      </div>
+      {refusing && (
+        <form className="rq-refuse" onSubmit={e => { e.preventDefault(); void run("refuse", reason.trim()); }}>
+          <input type="text" value={reason} maxLength={BANK_REQUEST_REASON_MAX} placeholder="Motif (facultatif)" aria-label={`Motif du refus (facultatif) pour ${r.who.name}`} autoFocus onChange={e => setReason(e.target.value)} />
+          <button type="submit" className="btn sm danger" disabled={busy}>Refuser la demande</button>
+          <button type="button" className="btn sm ghost" disabled={busy} onClick={() => { setRefusing(false); setReason(""); }}>Retour</button>
+        </form>
+      )}
+      {err && <div className="alert error rq-err" role="alert">{err}</div>}
+    </li>
+  );
+}
+
+/** « Demander à la banque » : combien (de 1 au total en banque, tous onglets) et un mot facultatif. */
+function AskDialog({ groupId, id, item, total, onClose }: { groupId: string; id: number; item?: BankItem; total: number; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [n, setN] = useState(1);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const name = itemName(id, item);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (total < 1) return;
+    setBusy(true); setErr(null);
+    try { await post(requestUrl(groupId), { itemId: id, quantity: n, note: note.trim() }); await refreshGuild(qc, groupId); onClose(); }
+    catch (x) { setErr(errorOf(x)); void refreshGuild(qc, groupId); setBusy(false); }
+  };
+  return (
+    <Modal label="rq-dt" onClose={onClose}>
+      <form className="rq-form" onSubmit={e => void submit(e)}>
+        <DialogHead id="rq-dt" title="Demander à la banque" onClose={onClose}
+          sub={<><ItemIcon item={item} size={30} /><span><b className={item ? `q${item.quality}` : undefined}>{name}</b> · {fmt.format(total)} dans la banque</span></>} />
+        <div className="fld">
+          <label htmlFor="rq-n">Quantité</label>
+          <div className="rq-q">
+            <NumberField id="rq-n" value={Math.min(n, Math.max(total, 1))} min={1} max={Math.max(total, 1)} onChange={setN} label="Quantité" />
+            <span className="hint">de 1 à {fmt.format(total)} (tous les onglets)</span>
+          </div>
+        </div>
+        <div className="fld">
+          <label htmlFor="rq-m">Un mot (facultatif)</label>
+          <input id="rq-m" type="text" maxLength={BANK_REQUEST_NOTE_MAX} value={note} placeholder="À quoi ça sert, qui doit récupérer…" onChange={e => setNote(e.target.value)} />
+          <span className="hint">{BANK_REQUEST_NOTE_MAX} caractères au plus</span>
+        </div>
+        <p className="gm-note"><i>i</i><span>Un officier ou un banquier prépare ta demande. Le bot te prévient en message privé quand elle est prête.</span></p>
+        <p className="hint" style={{ margin: 0 }}>{BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus, une seule par objet.</p>
+        {err && <div className="alert error" role="alert">{err}</div>}
+        <div className="row sg-actions">
+          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
+          <button type="submit" className="btn primary" disabled={busy || total < 1}>Envoyer la demande</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

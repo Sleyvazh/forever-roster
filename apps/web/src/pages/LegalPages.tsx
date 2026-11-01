@@ -234,6 +234,14 @@ const ROWS: Row[] = [
     who: "Les membres de la guilde ; notes d'officier : les officiers ; annonces de niveaux : le salon Discord de la guilde.",
   },
   {
+    title: "Demandes de retrait à la banque (Forever)",
+    data: "Objet et quantité demandés, le petit mot du demandeur (80 caractères au plus), l'étape (en attente, préparée, remise, refusée, annulée), le perso de celui qui l'a traitée, le motif d'un refus ; le rôle « banquier » donné à un membre par un officier ; messages privés du bot à envoyer (demande prête ou refusée).",
+    why: "Laisser un joueur demander un objet de la banque de la guilde, et les officiers et banquiers le préparer puis le remettre.",
+    basis: "Contrat",
+    keep: "Demande en cours : tant qu'elle n'est pas close. Demande close (remise, refusée, annulée) : effacée 90 jours après sa clôture, avec ses messages privés. Tes demandes en cours sont annulées quand tu quittes la guilde ou qu'un officier te retire ; toutes les demandes sont effacées quand la guilde est déliée de la guilde du jeu.",
+    who: "Les membres de la guilde voient les demandes en cours et les 20 dernières closes, avec le perso main du demandeur et de celui qui les traite. Le demandeur reçoit un message privé du bot s'il a lié Discord et gardé les rappels.",
+  },
+  {
     title: "Signalements",
     data: "Type, titre, texte, page concernée, navigateur et système (lus dans ton navigateur), version de l'addon, capture d'écran facultative (réduite, métadonnées supprimées), ton pseudo, la réponse.",
     why: "Corriger les bugs et te répondre.",

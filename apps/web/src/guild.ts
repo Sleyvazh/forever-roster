@@ -24,7 +24,7 @@ export const guildKeys = {
 };
 export const GUILD_QUERY_ROOTS = ["guild", "guild-race", "guild-history", "guild-home", "guild-link", "guild-bank", "guild-bank-log"] as const;
 
-export const useGuildMembers = (g: string) => useQuery({ queryKey: guildKeys.members(g), queryFn: () => get<GuildMembersResponse>(`/groups/${g}/guild`) });
+export const useGuildMembers = (g: string, enabled = true) => useQuery({ queryKey: guildKeys.members(g), queryFn: () => get<GuildMembersResponse>(`/groups/${g}/guild`), enabled });
 export const useGuildRace = (g: string) => useQuery({ queryKey: guildKeys.race(g), queryFn: () => get<GuildRaceResponse>(`/groups/${g}/guild/race`) });
 export const useGuildHome = (g: string) => useQuery({ queryKey: guildKeys.home(g), queryFn: () => get<GuildHomeResponse>(`/groups/${g}/home`) });
 export const useGuildLink = (g: string, enabled = true) => useQuery({ queryKey: guildKeys.link(g), queryFn: () => get<GuildLinkResponse>(`/groups/${g}/guild/link`), enabled });

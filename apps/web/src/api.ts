@@ -123,7 +123,7 @@ export interface GroupSummary {
   nextRaid: { id: string; name: string; scheduledAt: string; coming: number; mine: SignupStatus | null } | null;
   roles: { tank: number; heal: number; dps: number };
 }
-export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string }
+export interface Member { userId: string; displayName: string; battletag: string | null; avatarId: string | null; role: GroupRole; joinedAt: string; banker: boolean }
 /** Qui crée les raids et les sorties (réglage des officiers). */
 export type Creators = "officers" | "members";
 /** Une guilde du site (GET /groups/:id). */
@@ -136,7 +136,10 @@ export interface GroupDetail {
     /** Qui crée les raids et les sorties, et si je le peux. */
     creators: { raids: Creators; outings: Creators; canCreateRaid: boolean; canCreateOuting: boolean };
   };
-  role: GroupRole; members: Member[];
+  role: GroupRole;
+  /** Je suis banquier (Forever) : je traite les demandes de retrait à la banque, comme les officiers. */
+  banker: boolean;
+  members: Member[];
   /** Chef et officiers : avis Discord suivis par la guilde (null pour un membre). */
   feedback: { linked: boolean; unseen: number } | null;
 }
