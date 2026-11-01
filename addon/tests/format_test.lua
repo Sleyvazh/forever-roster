@@ -118,6 +118,17 @@ if siteFRG then
     -- Sorties donjon (1.6.1) : si le site en met dans l'exemple, chaque ligne X est lue
     local xs = select(2, ("\n" .. (grp.text or "")):gsub("\nX;", ""))
     check(#grp.outings == xs, "sample.frg : lignes X lues (" .. grp.id .. ")")
+    -- Demandes de retrait (1.6.4) : chaque ligne Q est lue, et la ligne H (banquiers)
+    local qs = select(2, ("\n" .. (grp.text or "")):gsub("\nQ;", ""))
+    local hs = ("\n" .. (grp.text or "")):match("\nH;([^\n]*)")
+    check(#grp.requests == qs, "sample.frg : lignes Q lues (" .. grp.id .. ")")
+    check(#grp.bankers == (hs and select(2, hs:gsub("[^,]+", "")) or 0), "sample.frg : ligne H lue (" .. grp.id .. ")")
+    if grp.id == "4f1e2d3c-b4a5-4697-8a7b-6c5d4e3f2a1b" then
+      local a, b = grp.requests[1], grp.requests[2]
+      check(#grp.requests == 2 and a and a.who == "Nessa" and a.itemId == 8170 and a.n == 10 and a.status == "pending" and a.by == ""
+        and b and b.who == "Vex" and b.itemId == 10940 and b.n == 5 and b.status == "prepared" and b.by == "Kaeldra"
+        and #grp.bankers == 1 and grp.bankers[1] == "Gorrak", "sample.frg : demandes de retrait et banquier du site")
+    end
     if grp.text and SNS.Crypto and SNS.Crypto.VerifyRSA then
       local ok, why = SNS.Share.Verify(grp.text, "FRG")
       check(ok, "signature du site de sample.frg (" .. grp.id .. ") : " .. tostring(why))
@@ -200,6 +211,62 @@ local ymany = F.ParseFRG("FRG;1;g;1;G\nR;r1;0;X;;;journal\nY;r1;" .. table.conca
 check(ymany and #ymany[1].signups.r1 == 60 and ymany[1].signups.r1[60].name == "P60", "60 inscrits au plus par raid")
 local yafter = F.ParseFRG("FRG;1;g;1;G\nR;r1;0;X;;;journal\nEND;1\nY;r1;Greta:present:100")
 check(yafter and next(yafter[1].signups) == nil, "ligne Y après END ignorée")
+
+-- Demandes de retrait à la banque (1.6.4) : lignes Q (une par demande ouverte) et H (prénoms des banquiers), après X et avant Y
+-- et M, hors du compte de END (un addon plus ancien les ignore), signées, les mêmes pour tous les membres (aucun champ personnel).
+-- g.requests = { { id, who, itemId, n, status, by } } (la plus ancienne d'abord, 40 au plus), g.bankers = { prénoms }.
+local Q1 = "Q;0b5a1c2d-0000-4000-8000-000000000001;Nessa;8170;10;pending;"
+local Q2 = "Q;0b5a1c2d-0000-4000-8000-000000000002;Vex;10940;5;prepared;Kaeldra"
+local H1 = "H;Gorrak,Kaeldra"
+local QBLOCK = table.concat({ "FRG;1;g1;1794000000;Les Lanternes", "R;r1;1794086400;Molten Core;present;Greta;journal", "P;15090;Warbear Woolies;Greta;",
+  X1, Q1, Q2, H1, Y1, "M;Gorrak,Greta,Kaeldra", "Z;a3de5db8;c2lnbmF0dXJl", "END;2" }, "\n")
+local qg = F.ParseFRG(QBLOCK)
+local qa, qb = qg and qg[1].requests[1], qg and qg[1].requests[2]
+check(qg and #qg == 1 and #qg[1].raids == 1 and #qg[1].requests == 2 and #qg[1].bankers == 2, "lignes Q et H lues, hors du compte de END")
+check(qa and qa.id == "0b5a1c2d-0000-4000-8000-000000000001" and qa.who == "Nessa" and qa.itemId == 8170 and qa.n == 10 and qa.status == "pending" and qa.by == "",
+  "demande en attente : qui, objet, quantité, étape, personne n'a préparé")
+check(qb and qb.who == "Vex" and qb.itemId == 10940 and qb.n == 5 and qb.status == "prepared" and qb.by == "Kaeldra", "demande préparée par Kaeldra")
+check(qg and qg[1].bankers[1] == "Gorrak" and qg[1].bankers[2] == "Kaeldra", "banquiers")
+check(qg and qg[1].text and qg[1].text:find("\n" .. X1 .. "\n" .. Q1 .. "\n" .. Q2 .. "\n" .. H1 .. "\n" .. Y1 .. "\n", 1, true), "lignes Q et H dans le texte signé gardé, entre X et Y")
+local qcanon = SNS.Share and SNS.Share.Canonical(QBLOCK, "FRG")
+check(qcanon and qcanon:find("\n" .. Q1 .. "\n" .. Q2 .. "\n" .. H1 .. "\n", 1, true), "lignes Q et H dans le texte canonique")
+local qchanged = SNS.Share and SNS.Share.Canonical((QBLOCK:gsub("prepared;Kaeldra", "prepared;Intrus")), "FRG")
+check(qcanon and qchanged and qchanged ~= qcanon, "demande changée : autre texte canonique")
+-- Un lecteur d'avant (1.6.3) ne connaît que R, P et B : END compte ces lignes-là, et Q et H n'y changent rien
+local function legacyCount(text)
+  local n = 0
+  for line in text:gmatch("[^\n]+") do local kind = line:match("^(%a+);") if kind == "R" or kind == "P" or kind == "B" then n = n + 1 end end
+  return n
+end
+check(legacyCount(QBLOCK) == tonumber(QBLOCK:match("\nEND;(%d+)$")) and legacyCount(QBLOCK) == legacyCount((QBLOCK:gsub("\nQ;[^\n]*", ""):gsub("\nH;[^\n]*", ""))),
+  "un lecteur d'avant ne compte ni Q ni H dans END")
+check(qg and qg[1].raids[1].status == "present" and #qg[1].outings == 1 and next(qg[1].signups) ~= nil, "les autres lignes du bloc sont lues comme avant")
+-- Bloc sans ligne Q ni H (site plus ancien, aucune demande) : listes vides
+check(gs and type(gs[1].requests) == "table" and #gs[1].requests == 0 and type(gs[1].bankers) == "table" and #gs[1].bankers == 0, "bloc sans Q ni H : aucune demande, aucun banquier")
+-- Lignes abîmées : étape inconnue, objet ou quantité illisibles, identifiant manquant ou répété sautés ; codes du jeu retirés ;
+-- étape « en attente » : préparée par ignoré ; H seule (aucune demande en cours)
+local qm = F.ParseFRG(table.concat({ "FRG;1;g;1;G",
+  "Q;a1;|cffff0000Nessa|r;8170;10;pending;Intrus", "Q;a2;Vex;10940;5;done;Kaeldra", "Q;a3;Vex;0;5;pending;", "Q;a4;Vex;10940;0;pending;", "Q;a5;Vex;abc;5;pending;",
+  "Q;;Vex;10940;5;pending;", "Q;a7;;10940;5;pending;", "Q;a1;Doublon;8170;1;pending;", "Q;a8;Zed;2589;1;prepared;", "Q;a9;Ana;2592;3.7;prepared;|cff00ff00Bob|r", "Q;b0;Cid;2592",
+  "H;Gorrak,,|cffff0000Kael|r, Brakka ", "END;0" }, "\n"))
+local ql = qm and qm[1].requests
+check(ql and #ql == 3, "lignes Q abîmées sautées (" .. tostring(ql and #ql) .. ")")
+check(ql and ql[1].id == "a1" and ql[1].who == "cffff0000Nessar" and not ql[1].who:find("|", 1, true) and ql[1].status == "pending" and ql[1].by == "", "codes du jeu retirés, en attente : pas de préparée par")
+check(ql and ql[2].id == "a8" and ql[2].status == "prepared" and ql[2].by == "", "préparée sans nom de préparateur : champ vide")
+check(ql and ql[3].id == "a9" and ql[3].n == 3 and ql[3].by == "cff00ff00Bobr", "quantité entière, préparée par sans code du jeu")
+check(qm and table.concat(qm[1].bankers, ",") == "Gorrak,cffff0000Kaelr,Brakka", "H : prénoms sans code du jeu, vides sautés, espaces retirés")
+-- 40 demandes au plus par bloc, 40 banquiers au plus
+local lots = { "FRG;1;g;1;G" }
+for i = 1, 45 do lots[#lots + 1] = "Q;id" .. i .. ";P" .. i .. ";" .. (1000 + i) .. ";" .. i .. ";pending;" end
+local names40 = {}
+for i = 1, 50 do names40[i] = "B" .. i end
+lots[#lots + 1] = "H;" .. table.concat(names40, ",")
+lots[#lots + 1] = "END;0"
+local ql40 = F.ParseFRG(table.concat(lots, "\n"))
+check(ql40 and #ql40[1].requests == 40 and ql40[1].requests[1].id == "id1" and ql40[1].requests[40].id == "id40" and #ql40[1].bankers == 40, "40 demandes et 40 banquiers au plus")
+-- Lignes Q et H après END (hors du bloc) : ignorées
+local qafter = F.ParseFRG("FRG;1;g;1;G\nEND;0\nQ;a;Nessa;8170;10;pending;\nH;Gorrak")
+check(qafter and #qafter[1].requests == 0 and #qafter[1].bankers == 0, "lignes Q et H après END ignorées")
 
 -- FRL v1 (relève de la guilde, 1.6.0, en essai) : chaque partie, échappement, notes d'officier, forme stable, parties absentes
 local function frlData()

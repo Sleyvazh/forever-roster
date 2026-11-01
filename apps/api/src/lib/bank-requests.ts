@@ -1,6 +1,6 @@
 import {
-  BANK_REQUEST_DONE_SHOWN, BANK_REQUEST_MAX_OPEN, bankRequestOpen, firstNameOf,
-  type BankRequest, type BankRequestAction, type BankRequests, type BankRequestStatus, type ClassName,
+  BANK_REQUEST_DONE_SHOWN, BANK_REQUEST_MAX_OPEN, bankRequestOpen, firstNameOf, MAX_BANK_REQUESTS,
+  type BankRequest, type BankRequestAction, type BankRequests, type BankRequestStatus, type ClassName, type GroupExportBank,
 } from "@forever/game-data";
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
@@ -84,6 +84,32 @@ export async function requestsView(db: Tx, groupId: string, me: { id: string; ha
   return {
     open: views.slice(0, open.length), done: views.slice(open.length), canHandle: me.handler,
     myOpen: open.filter(r => r.userId === me.id).length,
+  };
+}
+
+/**
+ * Demandes ouvertes et banquiers d'une guilde pour le FRG de l'addon (lignes Q et H, 1.6.4) : les 40 plus anciennes demandes en cours
+ * (en attente ou préparées), avec le perso main du demandeur dans la guilde (sinon son pseudo du site) et le prénom de celui qui l'a
+ * préparée ; les banquiers par le prénom de leur perso main dans la guilde (un banquier sans perso dans la guilde n'a pas de prénom
+ * en jeu : omis). Même contenu pour tous les membres (le bloc est signé et partagé entre joueurs), dans un ordre fixe.
+ */
+export async function bankExport(db: Tx, groupId: string, now: Date): Promise<GroupExportBank> {
+  const open = await db.select().from(bankRequests).where(and(eq(bankRequests.groupId, groupId), inArray(bankRequests.status, OPEN)))
+    .orderBy(asc(bankRequests.createdAt), asc(bankRequests.id)).limit(MAX_BANK_REQUESTS);
+  const bankerIds = (await db.select({ userId: groupMembers.userId }).from(groupMembers)
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.banker, true))).orderBy(asc(groupMembers.userId))).map(b => b.userId);
+  if (!open.length && !bankerIds.length) return { requests: [], bankers: [] };
+  const ids = [...new Set([...open.map(r => r.userId), ...bankerIds])];
+  const mains = await mainsOf(db, groupId, ids, now);
+  const names = open.length
+    ? new Map((await db.select({ id: users.id, displayName: users.displayName }).from(users).where(inArray(users.id, [...new Set(open.map(r => r.userId))]))).map(u => [u.id, u.displayName]))
+    : new Map<string, string>();
+  return {
+    requests: open.map(r => ({
+      id: r.id, who: mains.get(r.userId)?.name ?? names.get(r.userId) ?? "", itemId: r.itemId, quantity: r.quantity,
+      status: r.status === "prepared" ? "prepared" : "pending", by: r.status === "prepared" ? r.handledByName : "",
+    })),
+    bankers: bankerIds.flatMap(id => { const main = mains.get(id); return main ? [firstNameOf(main.name)] : []; }),
   };
 }
 

@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.4
+
+- **Withdrawal requests at the guild bank**: when you open the guild bank and you are an officer or a banker of a group that has open withdrawal requests on the website, a small read-only window "Withdrawal requests (N)" opens next to the bank. One line per request: who asked, the item (hover for its tooltip, Shift+click to link it in chat), the quantity, the bank tab where the item is according to the current bank scan ("—" if it isn't there) and the step ("Pending" or "Prepared by Kaeldra"). It is read-only: you mark a request "Prepared" or "Handed over" on the website. It closes with the bank (or with its Close button, and then stays closed until you open the bank again), it never shows in combat or during an encounter, and it updates when the bank is read again or when new website data arrives. Nothing is sent to anyone.
+- The website's data now carries the open withdrawal requests and the bankers of the guild (two new lines in the signed block, the same for every member). Older versions of the addon ignore them.
+
+Français :
+
+- **Demandes de retrait à la banque de guilde** : quand tu ouvres la banque de guilde et que tu es officier ou banquier d'un groupe qui a des demandes de retrait en cours sur le site, une petite fenêtre en lecture seule « Demandes de retrait (N) » s'ouvre à côté de la banque. Une ligne par demande : qui a demandé, l'objet (infobulle au survol, Maj+clic pour le mettre dans le chat), la quantité, l'onglet de la banque où se trouve l'objet d'après le relevé de la banque en cours (« — » s'il n'y est pas) et l'étape (« En attente » ou « Préparée par Kaeldra »). C'est en lecture seule : on marque une demande « Préparée » ou « Remise » sur le site. Elle se ferme avec la banque (ou avec son bouton Fermer, et reste alors fermée jusqu'à la prochaine ouverture de la banque), ne s'affiche jamais en combat ni pendant une rencontre, et se met à jour quand la banque est relue ou que de nouvelles données du site arrivent. Rien n'est envoyé à personne.
+- Les données du site portent maintenant les demandes de retrait en cours et les banquiers de la guilde (deux nouvelles lignes du bloc signé, les mêmes pour tous les membres). Les versions plus anciennes de l'addon les ignorent.
+
 ## 1.6.3
 
 - **In-game sign-ups reach the website without copy-paste**: if you don't have Roster Companion, the sign-up you make in game (Raids tab, raid reminder) is handed to a guild officer who has the app, and it goes to the website at their next /reload. The Raids tab says who took it ("handed to Brakka"), or that no officer with the app is online yet (it goes as soon as one is, or with your export). Copy-paste still works. Setting: "Hand my in-game sign-ups to an officer who has Roster Companion" (Options tab, on by default).

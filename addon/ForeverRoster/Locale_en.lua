@@ -741,3 +741,21 @@ T["Le relevé est déjà sélectionné : Ctrl+C pour le copier (Ctrl+A pour tout
 T["%d lignes. Sur le site : Ctrl+V sur n'importe quelle page."] = "%d lines. On the website: Ctrl+V on any page."
 T["relevé de la guilde %s"] = "%s guild scan"
 T["relevé de la guilde « %s »"] = "\"%s\" guild scan"
+
+-- ==============================================================================================================
+-- BankRequests (demandes de retrait à la banque, 1.6.4) : fenêtre à côté de la banque de guilde, lecture seule
+-- ==============================================================================================================
+T["demandes de retrait"] = "withdrawal requests"
+T["Demandes de retrait (%d)"] = "Withdrawal requests (%d)"
+T["%s · données du site reçues le %s à %s"] = "%s · website data received on %s at %s"
+T["Qui"] = "Who"
+T["Objet"] = "Item"
+T["Qté"] = "Qty"
+T["Onglet"] = "Tab"
+T["Étape"] = "Step"
+T["×%d"] = "×%d"
+T["Onglet %d"] = "Tab %d"
+T["En attente"] = "Pending"
+T["Préparée"] = "Prepared"
+T["Préparée par %s"] = "Prepared by %s"
+T["Lecture seule : on marque « Préparée » ou « Remise » sur le site."] = "Read only: requests are marked \"Prepared\" or \"Handed over\" on the website."

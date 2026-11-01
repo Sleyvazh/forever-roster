@@ -3278,6 +3278,278 @@ local function diagnostic()
 end
 diagnostic()
 
+-- 8 decies. Demandes de retrait à la banque (BankRequests.lua, addon 1.6.4) : lignes Q (demandes en cours) et H (banquiers) du
+-- FRG. Quand la banque de guilde s'ouvre et que mon perso est dans la ligne O (officiers) ou H (banquiers) d'un groupe qui a
+-- des demandes, une petite fenêtre « Demandes de retrait (N) » s'ouvre à côté : qui, objet (lien), quantité, onglet (d'après
+-- le relevé de la banque en cours), étape ; lecture seule. Un simple membre n'a rien ; en combat ou pendant une rencontre,
+-- la fenêtre attend la fin ; fermée avec la banque, ou par le joueur (pas rouverte avant la prochaine ouverture). Guilde,
+-- banque et groupe simulés ; la fiche de guilde de la section 8 quinquies est mise de côté et remise en place à la fin.
+local function bankRequests()
+  local B = ns.BankRequests
+  assert(B and B.Window and B.Check, "BankRequests.lua chargé")
+  local c0 = ns.charDB()
+  local keep = { time = time, UnitName = UnitName, InCombatLockdown = InCombatLockdown, IsInGuild = IsInGuild, GetGuildInfo = GetGuildInfo, C_Timer = C_Timer,
+    groups = ForeverRosterDB.groups, guilds = ForeverRosterDB.guilds, guild = c0.guild, skin = ForeverRosterDB.skin, lastLoad = ForeverRosterDB.lastLoad,
+    tab = ForeverRosterDB.tab, raidLogs = ForeverRosterDB.raidLogs }
+  ForeverRosterDB.groups, ForeverRosterDB.guilds, ForeverRosterDB.raidLogs = {}, {}, {}
+  local before, sentBefore, saidBefore = errors(), #sent, #said
+  local function quiet(what) assert(errors() == before and failures == 0, what .. " : " .. tostring(printed[#printed])) end
+
+  local base = os.time({ year = 2026, month = 11, day = 5, hour = 21, min = 0 })
+  time = function() return base end
+  local S = { combat = false, me = "Tournicoti", silent = false }
+  UnitName = function() return S.me end
+  InCombatLockdown = function() return S.combat end
+  IsInGuild = function() return true end
+  GetGuildInfo = function(unit) if unit == "player" then return "Les Lanternes", "Officier", 1 end end
+  -- Banque : « Consommables » et « Matériaux » visibles, « Officiers » non (rang)
+  local function link(id) return "|cffffffff|Hitem:" .. id .. "::::::::60:::::|h[Objet " .. id .. "]|h|r" end
+  local TABS = { { "Consommables", true }, { "Matériaux", true }, { "Officiers", false } }
+  local BANK = {
+    { [1] = { 13446, 20 } },                                   -- Consommables : Major Healing Potion ×20
+    { [2] = { 13446, 14 }, [3] = { 8170, 14 }, [5] = { 10940, 20 } }, -- Matériaux : potions ×14, Rugged Leather, Strange Dust
+    { [1] = { 2589, 5 } },                                     -- Officiers (pas visible) : Linen Cloth
+  }
+  GetNumGuildBankTabs = function() return #TABS end
+  GetGuildBankTabInfo = function(tab) local t = TABS[tab] if t then return t[1], 134400, t[2], t[2], 0, 0, false end end
+  QueryGuildBankTab = function() if not S.silent then fire("GUILDBANKBAGSLOTS_CHANGED") end end
+  GetGuildBankItemLink = function(tab, slot) local x = BANK[tab] and BANK[tab][slot] return x and link(x[1]) end
+  GetGuildBankItemInfo = function(tab, slot) local x = BANK[tab] and BANK[tab][slot] if x then return 133000, x[2], false, false, 1 end end
+  GetGuildBankMoney = function() return 1000 end
+  QueryGuildBankLog = function() if not S.silent then fire("GUILDBANKLOG_UPDATE") end end
+  GetNumGuildBankTransactions, GetNumGuildBankMoneyTransactions = function() return 0 end, function() return 0 end
+  Enum.PlayerInteractionType = { GuildBanker = 10 }
+
+  local GID = "4f1e2d3c-b4a5-4697-8a7b-6c5d4e3f2a1b"
+  local Q = {
+    "Q;0b5a1c2d-0000-4000-8000-000000000001;Nessa;8170;10;pending;",
+    "Q;0b5a1c2d-0000-4000-8000-000000000002;Vex;10940;5;prepared;Kaeldra",
+    "Q;0b5a1c2d-0000-4000-8000-000000000003;Pikou;13446;20;pending;",
+    "Q;0b5a1c2d-0000-4000-8000-000000000004;Zed;2589;1;pending;",
+    "Q;0b5a1c2d-0000-4000-8000-000000000005;Tilda;19019;2;pending;",
+  }
+  local function frg(o)
+    o = o or {}
+    local lines = { "FRG;1;" .. GID .. ";" .. (o.at or (base - 780)) .. ";Les Lanternes", "R;r-mc;" .. (base + 86400) .. ";Molten Core;;;journal" }
+    if o.officers ~= false then lines[#lines + 1] = "O;" .. (o.officers or "Tournicoti,Offa") end
+    for i = 1, o.requests or #Q do lines[#lines + 1] = Q[i] end
+    if o.bankers ~= false then lines[#lines + 1] = "H;" .. (o.bankers or "Gorrak") end
+    lines[#lines + 1] = "M;Tournicoti,Offa,Gorrak,Pikou"
+    lines[#lines + 1] = "END;1"
+    return table.concat(lines, "\n")
+  end
+  local function load(o) assert(ns.UI.LoadFromSite(frg(o)), "bloc FRG avec des demandes chargé") end
+  local function open() fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 10) end
+  local function close() fire("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", 10) end
+  local function shown() local w = B.Window() return w ~= nil and w:IsShown() end
+  local function rows()
+    local w, out = B.Window(), {}
+    for k = 1, w.grid.n do
+      local r = w.grid.rows[k]
+      local row = {}
+      for i = 1, 5 do row[i] = rawget(r.cells[i], "text") end
+      out[k] = row
+    end
+    return out
+  end
+  local function plain(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")) end
+
+  -- Un simple membre (ni dans O, ni dans H) : la banque s'ouvre, rien de plus
+  S.me = "Brindille"
+  load()
+  open()
+  assert(not shown(), "membre : pas de fenêtre")
+  close()
+  -- Perso inconnu des groupes (aucun groupe chargé) : rien non plus
+  S.me = "Tournicoti"
+  ForeverRosterDB.groups = {}
+  open()
+  assert(not shown(), "aucun groupe chargé : pas de fenêtre")
+  close()
+  -- Groupe sans demande en cours (seulement la ligne H) : pas de fenêtre vide
+  load({ requests = 0 })
+  open()
+  assert(not shown(), "aucune demande en cours : pas de fenêtre")
+  close()
+  quiet("membre, sans groupe, sans demande")
+
+  -- Officier (ma ligne O) : en combat, la fenêtre attend ; à la fin du combat elle s'ouvre
+  load()
+  S.combat = true
+  open()
+  assert(not shown(), "banque ouverte en combat : pas de fenêtre")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  local w = B.Window()
+  assert(shown() and not w.skin, "fin du combat : fenêtre ouverte (habillage Forever)")
+  assert(w.heading == "Demandes de retrait (5)", "titre avec le nombre de demandes : " .. tostring(w.heading))
+  assert(w.sub:GetText():find("Les Lanternes", 1, true) and w.sub:GetText():find("données du site reçues le 05/11 à 20:47", 1, true), "groupe et date des données : " .. w.sub:GetText())
+  assert(w.foot:GetText():find("Lecture seule : on marque « Préparée » ou « Remise » sur le site.", 1, true), "pied : lecture seule")
+  assert(w.close:GetText() == "Fermer", "bouton Fermer")
+  local r = rows()
+  assert(#r == 5, "une ligne par demande : " .. #r)
+  assert(plain(r[1][1]) == "Nessa" and plain(r[1][2]) == "[Objet 8170]" and r[1][2]:find("|Hitem:8170:", 1, true) and plain(r[1][3]) == "×10" and plain(r[1][4]) == "Matériaux"
+    and plain(r[1][5]) == "En attente", "ligne 1 : " .. table.concat(r[1], " / "))
+  assert(plain(r[2][1]) == "Vex" and plain(r[2][2]) == "[Objet 10940]" and plain(r[2][3]) == "×5" and plain(r[2][4]) == "Matériaux" and plain(r[2][5]) == "Préparée par Kaeldra",
+    "ligne 2 : " .. table.concat(r[2], " / "))
+  assert(plain(r[3][1]) == "Pikou" and plain(r[3][3]) == "×20" and plain(r[3][4]) == "Consommables, Matériaux", "objet dans deux onglets : " .. plain(r[3][4]))
+  assert(plain(r[4][1]) == "Zed" and plain(r[4][4]) == "—", "objet dans un onglet que mon rang ne voit pas : « — »")
+  assert(plain(r[5][1]) == "Tilda" and plain(r[5][4]) == "—", "objet absent de la banque : « — »")
+  assert(r[1][5]:find("^|c") and r[2][5]:find("^|c") and r[1][5] ~= r[2][5]:gsub("Préparée par Kaeldra", "En attente"), "étape en attente et préparée : couleurs propres")
+  assert(rawget(w.grid.rows[1], "scripts").OnHyperlinkEnter and rawget(w.grid.rows[1], "scripts").OnHyperlinkClick, "liens d'objets actifs (infobulle, Maj+clic)")
+  quiet("fenêtre de l'officier")
+  -- Rien d'envoyé : ni aux autres joueurs, ni au chat, ni de relevé de plus que d'habitude
+  assert(#sent == sentBefore and #said == saidBefore, "rien envoyé")
+
+  -- Combat : la fenêtre se cache, revient à la fin ; rencontre de boss : pareil
+  S.combat = true
+  fire("PLAYER_REGEN_DISABLED")
+  assert(not shown(), "combat : fenêtre cachée")
+  S.combat = false
+  fire("PLAYER_REGEN_ENABLED")
+  assert(shown(), "fin du combat : fenêtre revenue")
+  fire("ENCOUNTER_START", 1, "Mekgineer Thermaplugg", 1, 5)
+  assert(not shown(), "rencontre : fenêtre cachée")
+  fire("PLAYER_REGEN_ENABLED")
+  assert(not shown(), "rencontre en cours (hors combat) : toujours cachée")
+  fire("ENCOUNTER_END", 1, "Mekgineer Thermaplugg", 1, 5, 1)
+  assert(shown(), "fin de la rencontre : fenêtre revenue")
+  quiet("combat et rencontre")
+
+  -- Nouvelles données du site pendant que la banque est ouverte : la fenêtre se met à jour (plus que 2 demandes)
+  load({ requests = 2 })
+  assert(shown() and B.Window().heading == "Demandes de retrait (2)" and #rows() == 2, "données rechargées : fenêtre à jour")
+  -- Plus de demande : la fenêtre se ferme toute seule (rien à montrer)
+  load({ requests = 0 })
+  assert(not shown(), "plus aucune demande en cours : fenêtre fermée")
+  load()
+  assert(shown() and #rows() == 5, "de nouvelles demandes arrivent : fenêtre rouverte")
+
+  -- Fermer : la fenêtre reste fermée jusqu'à la prochaine ouverture de la banque, même quand le relevé ou les données bougent
+  rawget(B.Window().close, "scripts").OnClick(B.Window().close)
+  assert(not shown(), "Fermer")
+  load()
+  BANK[1][2] = { 13458, 1 }
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  assert(not shown(), "fermée par le joueur : pas rouverte par une mise à jour")
+  fire("PLAYER_REGEN_ENABLED")
+  assert(not shown(), "fermée par le joueur : pas rouverte après un combat")
+  -- Banque fermée : plus rien ; rouverte : la fenêtre revient
+  close()
+  assert(not shown(), "banque fermée")
+  open()
+  assert(shown() and #rows() == 5, "banque rouverte : fenêtre rouverte")
+  -- Fermée avec la banque (même événement annoncé deux fois)
+  fire("GUILDBANKFRAME_CLOSED")
+  assert(not shown(), "banque fermée (ancien événement) : fenêtre fermée avec elle")
+  fire("GUILDBANKFRAME_OPENED")
+  fire("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", 10)
+  assert(shown(), "même ouverture annoncée deux fois : une fenêtre")
+  quiet("fermer, rouvrir")
+
+  -- À côté de la banque : sans son cadre (pas encore créé à l'ouverture), en haut de l'écran, puis à côté dès qu'il existe ;
+  -- déplacée par le joueur, elle reste où il l'a mise
+  assert(B.Window().beside == false, "cadre de la banque absent : fenêtre en haut de l'écran")
+  GuildBankFrame = CreateFrame("Frame")
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  assert(B.Window().beside == true, "cadre de la banque créé depuis : fenêtre à côté")
+  close()
+  GuildBankFrame = nil
+  open()
+  B.Window().moved = true
+  GuildBankFrame = CreateFrame("Frame")
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  assert(B.Window().beside == false, "fenêtre déplacée par le joueur : elle reste où il l'a mise")
+  close()
+  open()
+  assert(B.Window().beside == true and B.Window().moved == false, "rouverte : à côté du cadre de la banque")
+  GuildBankFrame = nil
+
+  -- Relevé en cours : tant que tous les onglets visibles ne sont pas lus, « … » ; ensuite le nom des onglets (ou « — »)
+  close()
+  local timers = {}
+  C_Timer = { After = function(_, fn) timers[#timers + 1] = fn end, NewTicker = keep.C_Timer.NewTicker }
+  local function flush() local n = 0 while #timers > 0 and n < 100 do n = n + 1 table.remove(timers, 1)() end end
+  S.silent = true
+  open()
+  assert(shown(), "fenêtre ouverte dès l'ouverture de la banque, avant la fin du relevé")
+  local waiting = rows()
+  assert(plain(waiting[1][4]) == "…" and plain(waiting[4][4]) == "…" and plain(waiting[5][4]) == "…", "relevé en cours : « … » : " .. plain(waiting[1][4]))
+  S.silent = false
+  flush()
+  C_Timer = keep.C_Timer
+  local done = rows()
+  assert(plain(done[1][4]) == "Matériaux" and plain(done[3][4]) == "Consommables, Matériaux" and plain(done[4][4]) == "—" and plain(done[5][4]) == "—",
+    "relevé fini : onglets d'après le relevé")
+  -- Un dépôt pendant que la banque est ouverte (relevé relu) : l'onglet suit
+  BANK[1][7] = { 8170, 2 }
+  fire("GUILDBANKBAGSLOTS_CHANGED")
+  assert(plain(rows()[1][4]) == "Consommables, Matériaux", "dépôt relu : onglet ajouté : " .. plain(rows()[1][4]))
+  quiet("relevé en cours")
+
+  -- Banquier (ma ligne H, pas officier) : même fenêtre
+  close()
+  S.me = "Gorrak"
+  load({ officers = "Offa" })
+  open()
+  assert(shown() and #rows() == 5, "banquier : fenêtre")
+  close()
+  -- Ni officier ni banquier dans ce groupe (je suis dans M seulement) : rien
+  S.me = "Pikou"
+  open()
+  assert(not shown(), "membre dans M seulement : rien")
+  close()
+  -- Prénoms comparés sans casse ni nom de famille (le jeu peut donner « Gorrak Fendroc » ou « Gorrak-ForeverEU »)
+  S.me = "Gorrak-Forever EU"
+  open()
+  assert(shown(), "prénom du jeu avec royaume")
+  close()
+  S.me = "Tournicoti"
+  quiet("banquier et simple membre")
+
+  -- Deux groupes ayant des demandes : celui dont le nom est celui de ma guilde du jeu
+  local other = frg({ at = base - 600 }):gsub((GID:gsub("%-", "%%-")), "6f1c2a10-0000-4000-8000-0000000000aa"):gsub(";Les Lanternes", ";Les Autres"):gsub("Q;[^\n]*\n", "", 4)
+  assert(ns.UI.LoadFromSite(other .. "\n" .. frg()), "deux groupes chargés")
+  open()
+  assert(shown() and B.Window().heading == "Demandes de retrait (5)" and B.Window().sub:GetText():find("Les Lanternes", 1, true), "plusieurs groupes : celui de ma guilde")
+  close()
+  GetGuildInfo = function(unit) if unit == "player" then return "Les Autres", "Officier", 1 end end
+  open()
+  assert(shown() and B.Window().heading == "Demandes de retrait (1)" and B.Window().sub:GetText():find("Les Autres", 1, true), "plusieurs groupes : guilde « Les Autres »")
+  close()
+  GetGuildInfo = function(unit) if unit == "player" then return "Les Lanternes", "Officier", 1 end end
+
+  -- Habillage du site : fenêtre reconstruite
+  load()
+  ForeverRosterDB.skin = "site"
+  assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
+  open()
+  local w2 = B.Window()
+  assert(w2 ~= w and w2.skin and shown() and #rows() == 5 and w2.heading == "Demandes de retrait (5)", "habillage du site : fenêtre reconstruite")
+  assert(not w:IsShown(), "l'ancienne fenêtre est cachée")
+  close()
+  ForeverRosterDB.skin = keep.skin
+  assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
+
+  -- Anciennes données sans les champs requests et bankers (groupe enregistré avant 1.6.4) : rien, sans erreur
+  ForeverRosterDB.groups = { vieux = { id = "vieux", at = 1, name = "Vieux", raids = {}, patterns = {}, bis = {}, officers = { "Tournicoti" } } }
+  open()
+  assert(not shown() and B.Check() == false, "ancien groupe sans demandes : rien")
+  close()
+  quiet("plusieurs groupes, habillage du site, anciennes données")
+  assert(#sent == sentBefore and #said == saidBefore, "rien envoyé aux autres joueurs ni au chat")
+
+  -- Remise en place (la fiche de guilde de la section 8 quinquies reste dans la sauvegarde)
+  time, UnitName, InCombatLockdown, IsInGuild, GetGuildInfo, C_Timer = keep.time, keep.UnitName, keep.InCombatLockdown, keep.IsInGuild, keep.GetGuildInfo, keep.C_Timer
+  GetNumGuildBankTabs, GetGuildBankTabInfo, QueryGuildBankTab, GetGuildBankItemLink, GetGuildBankItemInfo, GetGuildBankMoney = nil, nil, nil, nil, nil, nil
+  QueryGuildBankLog, GetNumGuildBankTransactions, GetNumGuildBankMoneyTransactions, Enum.PlayerInteractionType = nil, nil, nil, nil
+  ForeverRosterDB.groups, ForeverRosterDB.guilds, ForeverRosterDB.lastLoad, ForeverRosterDB.tab, ForeverRosterDB.raidLogs = keep.groups, keep.guilds, keep.lastLoad, keep.tab, keep.raidLogs
+  c0.guild = keep.guild
+  ForeverRosterDB.chars["Brindille-Forever EU"], ForeverRosterDB.chars["Gorrak-Forever EU"], ForeverRosterDB.chars["Pikou-Forever EU"] = nil, nil, nil
+  ForeverRosterDB.chars["Gorrak-Forever EU"] = nil
+end
+bankRequests()
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")
@@ -3487,7 +3759,8 @@ assert(export:find("\nR;Leatherworking;s2152\n"), "patron dans l'export")
 -- Données des tests affichées telles quelles : noms de groupes et de raids, textes collés, joueurs fictifs du raid d'essai,
 -- groupes écrits par Roster Companion dans l'aller-retour de la section 9 (test Rust de l'appli : RC_HELPER)
 local FIXTURES = { "Raid du soir", "Autre groupe", "Groupe rapide", "Les Veilleurs", "Relevé", "present;site", "Nyssaël", "Sylvaë", "Groupes 3 et 4",
-  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé", "Élite de la Vallée", "Toutes les quêtes : prenez-les avant d'entrer.", "Les Autres" }
+  "Les Retardataires", "Soirée", "Soft reserve cachée", "Greta Coulé", "Élite de la Vallée", "Toutes les quêtes : prenez-les avant d'entrer.", "Les Autres",
+  "Les Lanternes", "Matériaux" }
 LOCALE_AUDIT.check("ForeverRoster", FIXTURES)
 print = function(...) io.stdout:write(table.concat({ ... }, " ") .. "\n") end
 print("wow_sim : tout est bon ; partage : vraie signature du site vérifiée (" .. shareChecks .. " fois)")

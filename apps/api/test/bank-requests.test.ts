@@ -1,4 +1,8 @@
-import type { BankRequest, GuildBankResponse, GuildHomeResponse } from "@forever/game-data";
+import { createVerify } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { canonicalGroupBlock, gameName, groupBlockSignature, type BankRequest, type GuildBankResponse, type GuildHomeResponse } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -6,6 +10,8 @@ import { auditEvents, bankRequestNotices, bankRequests, gameItems, groupMembers,
 import { buildInternalApp } from "../src/internal";
 import { bus, type LiveEvent } from "../src/lib/events";
 import { purgeOldData } from "../src/lib/purges";
+import { parseSigningKey } from "../src/lib/sync-signing";
+import { groupExport } from "../src/routes/addon";
 import { frc, frl, HOUR, m, NOW, paste, scene as sceneOf, type Signed } from "./guild-helpers";
 import { setup, type TestEnv } from "./helpers";
 
@@ -537,5 +543,124 @@ describe("purge des demandes closes", () => {
     expect(await db().$count(bankRequestNotices, eq(bankRequestNotices.requestId, recent))).toBe(1);
     // Au passage suivant, rien à effacer
     expect(await purgeOldData(db())).toMatchObject({ bankRequests: 0 });
+  });
+});
+
+describe("addon : lignes Q (demandes en cours) et H (banquiers) du FRG", () => {
+  /** Fixtures de l'addon : clé de TEST du site (la même que le test du partage entre joueurs). */
+  const FIXTURES = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../addon/tests/fixtures");
+  const KEY = Buffer.from(readFileSync(path.join(FIXTURES, "site-test-key.pem"), "utf8")).toString("base64");
+  const PUBLIC_PEM = readFileSync(path.join(FIXTURES, "site-test-key.pub.pem"), "utf8");
+
+  const frg = async (s: World, who: Signed = s.owner) => {
+    const r = await who.c.get(`/api/groups/${s.g.id}/addon-export`);
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json().text as string;
+  };
+  const lines = (text: string, type: string) => text.split("\n").filter(l => l.startsWith(`${type};`));
+  const at = (t0: number, i: number) => { env.app.ctx.now = () => new Date(t0 + i * 60_000); };
+
+  it("Q : demandes ouvertes, la plus ancienne d'abord, prénom du perso main du demandeur ; préparée par ; closes absentes. H : prénom du perso main des banquiers", async () => {
+    const s = await world("Les Preneurs");
+    // Un banquier sans perso dans la liste du jeu n'a pas de prénom en jeu : omis de H
+    expect((await setBanker(s, s.owner, s.p.Zed!, true)).statusCode).toBe(200);
+    const t0 = Date.now() - 3600_000;
+    at(t0, 1); const a = await make(s, s.p.Pikou!, ITEM, 20, "pour monter Alchimie");
+    at(t0, 2); const b = await make(s, s.p.Vexou!, CLOTH, 5);
+    at(t0, 3); const c = await make(s, s.p.Zed!, 2592, 1);
+    at(t0, 4); const d = await make(s, s.p.Pikou!, 4306, 2);
+    at(t0, 5); expect((await act(s, s.p.Banq!, b.id, "prepare")).statusCode).toBe(200);
+    at(t0, 6); expect((await act(s, s.p.Pikou!, d.id, "cancel")).statusCode).toBe(200);
+    at(t0, 7); const e = await make(s, s.p.Vexou!, 4338, 3);
+    at(t0, 8); expect((await act(s, s.p.Off!, e.id, "done")).statusCode).toBe(200);
+    at(t0, 9); const f = await make(s, s.p.Vexou!, 14047, 3);
+    at(t0, 10); expect((await act(s, s.owner, f.id, "refuse", "gardé pour le raid")).statusCode).toBe(200);
+    env.app.ctx.now = undefined;
+
+    const text = await frg(s);
+    // Le demandeur sans perso dans la guilde : son pseudo du site (premier mot)
+    expect(lines(text, "Q")).toEqual([
+      `Q;${a.id};Pikou;${ITEM};20;pending;`,
+      `Q;${b.id};Vex;${CLOTH};5;prepared;Gorrak`,
+      `Q;${c.id};${gameName(s.p.Zed!.user.displayName)};2592;1;pending;`,
+    ]);
+    expect(lines(text, "H")).toEqual(["H;Gorrak"]);
+    // Hors du compte de END, après les lignes d'avant (la liste de guilde ne change rien aux autres lignes), avant la ligne M
+    const rows = text.split("\n").map(l => l.split(";")[0]);
+    expect(rows.indexOf("Q")).toBeGreaterThan(-1);
+    expect(rows.lastIndexOf("H")).toBeLessThan(rows.indexOf("M"));
+    expect(rows.at(-1)).toBe("END");
+  });
+
+  it("banquier retiré : plus de ligne H ; plus de demande ouverte : plus de ligne Q ; la banque d'une guilde sans demande ni banquier ne change rien au texte", async () => {
+    const s = await world("Les Rangs Vides");
+    await make(s, s.p.Pikou!, ITEM, 1);
+    expect(lines(await frg(s), "H")).toEqual(["H;Gorrak"]);
+    expect((await setBanker(s, s.owner, s.p.Banq!, false)).statusCode).toBe(200);
+    const sansBanquier = await frg(s);
+    expect(lines(sansBanquier, "H")).toEqual([]);
+    expect(lines(sansBanquier, "Q")).toHaveLength(1);
+    const q = (await bankOf(s)).requests.open[0]!;
+    expect((await act(s, s.owner, q.id, "done")).statusCode).toBe(200);
+    const vide = await frg(s);
+    expect(lines(vide, "Q")).toEqual([]);
+    expect(vide).not.toMatch(/\n[QH];/);
+    // Une guilde du site sans banque ni banquier : aucune ligne Q ou H
+    const plain = await sceneOf(env, "Les Sans Banque", ["Pikou"]);
+    expect((await plain.p.Pikou!.c.get(`/api/groups/${plain.g.id}/addon-export`)).json().text).not.toMatch(/\n[QH];/);
+  });
+
+  it("40 demandes au plus : les plus anciennes", async () => {
+    const s = await world("Les Files");
+    const base = Date.now() - 86400e3;
+    await db().insert(bankRequests).values(Array.from({ length: 45 }, (_, i) => ({
+      groupId: s.g.id, userId: s.p.Pikou!.user.id, itemId: 1000 + i, quantity: i + 1, createdAt: new Date(base + i * 1000), updatedAt: new Date(base + i * 1000),
+    })));
+    const q = lines(await frg(s), "Q");
+    expect(q).toHaveLength(40);
+    expect(q[0]).toMatch(/^Q;[0-9a-f-]{36};Pikou;1000;1;pending;$/);
+    expect(q[39]).toMatch(/;1039;40;pending;$/);
+  });
+
+  it("le même texte, octet pour octet, pour tous les membres : aucun champ personnel dans Q et H", async () => {
+    const s = await world("Les Jumeaux");
+    await make(s, s.p.Pikou!, ITEM, 3);
+    const v = await make(s, s.p.Vexou!, CLOTH, 2);
+    expect((await act(s, s.p.Banq!, v.id, "prepare")).statusCode).toBe(200);
+    const everyone = [s.owner, s.p.Off!, s.p.Banq!, s.p.Pikou!, s.p.Vexou!, s.p.Zed!];
+    // La date de génération est dans l'en-tête : les textes sont demandés dans la même seconde
+    for (let tries = 0; tries < 5; tries++) {
+      const texts = [];
+      for (const who of everyone) texts.push(await frg(s, who));
+      if (new Set(texts.map(t => t.split("\n")[0])).size > 1) continue;
+      expect(new Set(texts).size).toBe(1);
+      expect(lines(texts[0]!, "Q")).toHaveLength(2);
+      expect(lines(texts[0]!, "H")).toEqual(["H;Gorrak"]);
+      return;
+    }
+    throw new Error("dates de génération toujours différentes");
+  });
+
+  it("bloc signé : même signature pour deux membres, valide sur la forme canonique qui contient Q et H ; une demande changée en route : plus valide", async () => {
+    const s = await world("Les Signataires");
+    const q = await make(s, s.p.Pikou!, ITEM, 3);
+    const signer = parseSigningKey(KEY);
+    const verified = (block: string) => {
+      const sig = groupBlockSignature(block);
+      return !!sig && sig.keyId === "a3de5db8" && createVerify("sha256").update(Buffer.from(canonicalGroupBlock(block, "FRG"), "utf8")).verify(PUBLIC_PEM, sig.signature, "base64");
+    };
+    let pair: [string, string] | null = null;
+    for (let tries = 0; tries < 5 && !pair; tries++) {
+      const a = (await groupExport(db(), s.g.id, s.p.Pikou!.user.id, signer)).text, b = (await groupExport(db(), s.g.id, s.p.Zed!.user.id, signer)).text;
+      if (a.split("\n")[0] === b.split("\n")[0]) pair = [a, b];
+    }
+    expect(pair).not.toBeNull();
+    const [a, b] = pair!;
+    expect(a).toBe(b);
+    expect(lines(a, "Q")).toEqual([`Q;${q.id};Pikou;${ITEM};3;pending;`]);
+    expect(groupBlockSignature(a)).toEqual(groupBlockSignature(b));
+    expect(canonicalGroupBlock(a, "FRG")).toContain(`\nQ;${q.id};Pikou;${ITEM};3;pending;\nH;Gorrak\n`);
+    expect(verified(a)).toBe(true);
+    expect(verified(a.replace(`;${ITEM};3;pending;`, `;${ITEM};30;pending;`))).toBe(false);
   });
 });

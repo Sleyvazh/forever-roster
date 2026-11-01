@@ -280,6 +280,13 @@ local function slots() return num(MAX_GUILDBANK_SLOTS_PER_TAB) or 98 end
 local function moneyTab() return (num(MAX_GUILDBANK_TABS) or 8) + 1 end
 local function itemId(link) return link and tonumber(link:match("item:(%d+)")) end
 
+-- Fenêtre « Demandes de retrait » (BankRequests.lua, chargé après ce fichier, 1.6.4) prévenue de l'ouverture de la banque,
+-- de sa fermeture et de chaque étape du relevé (ce qu'elle montre des onglets vient du relevé en cours)
+local function bankHook(what)
+  local W = ns.BankRequests
+  if W and W[what] then ns.safe(W.Label, W[what]) end
+end
+
 -- Relevé en cours écrit dans la sauvegarde
 local function save()
   local items, log = {}, {}
@@ -289,6 +296,24 @@ local function save()
   end
   scan.g.bank = { at = scan.at, by = scan.by, money = scan.money, ntabs = scan.ntabs, tabs = scan.tabs, items = items, log = log, moneyLog = scan.moneyLog }
   refresh()
+  bankHook("Check")
+end
+
+-- Onglets lus du relevé en cours qui contiennent l'objet : { { tab, name }, … } dans l'ordre des onglets, et vrai quand tous
+-- les onglets visibles sont lus (sinon la liste peut être incomplète) ; nil sans relevé en cours (banque fermée, rien relevé)
+function G.BankTabsOf(id)
+  if not (scan and bankOpen) then return nil, false end
+  local list, complete = {}, true
+  for tab = 1, scan.ntabs do
+    local t = scan.tabs[tab]
+    if t.visible and not t.read then complete = false end
+    if t.read then
+      for _, it in ipairs(scan.items[tab] or {}) do
+        if it.id == id then list[#list + 1] = { tab = tab, name = t.name } break end
+      end
+    end
+  end
+  return list, complete
 end
 
 local function readTab(tab)
@@ -372,6 +397,7 @@ function G.BankOpened()
   end
   for tab = 1, ntabs do if scan.tabs[tab].visible then scan.queue[#scan.queue + 1] = { kind = "log", tab = tab } end end
   scan.queue[#scan.queue + 1] = { kind = "log", tab = moneyTab() }
+  bankHook("Opened")
   save()
   step()
   return true
@@ -379,6 +405,7 @@ end
 
 function G.BankClosed()
   bankOpen, scan, pending.bank = false, nil, nil
+  bankHook("Closed")
 end
 
 -- Objets déplacés, déposés ou retirés après la relève, banque toujours ouverte : onglets lus relus (sans nouvelle demande)

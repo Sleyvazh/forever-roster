@@ -9,10 +9,13 @@ L;7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e;Brindille,Thalwen
 N;saison;depuis le 05/10/2026;Greta+Brindille:2,Thalwen:1
 X;0f6c1d2e-0000-4000-8000-000000000001;1792105200;gnomeregan;Gnomeregan;29;38;Pikou;1/1/3;Bramm;Kaelys;Pikou,Tiblou,@mirka;Heal:Brindille;Toutes les quêtes : prenez-les avant d'entrer.
 X;0f6c1d2e-0000-4000-8000-000000000002;0;other;Élite de la Vallée;;;Torvin;1/1/3;Torvin;;;;
+Q;0b5a1c2d-0000-4000-8000-000000000001;Nessa;8170;10;pending;
+Q;0b5a1c2d-0000-4000-8000-000000000002;Vex;10940;5;prepared;Kaeldra
+H;Gorrak
 Y;6b3a4f5e-d6c7-48b9-ac9d-8e7f6a5b4c3d;Greta:present:1793996400,Thalwen?:late:1793998200,Brindille:tentative:1793999400
 Y;7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e;Greta:present:1793996400,Thalwen?:late:1793998200,Brindille:tentative:1793999400
 M;Brindille,Greta,Thalwen,Tournicoti
-Z;a3de5db8;S7rBcIvzGgIN92drIxXL1Ps+u+CYHpY4M4s+cwesEo39RUC+Mhxt/Mmnr5642xopshQN80TkQjUzj4t6Lun2i6U02cAf92MxEyo65JWlIDqv2Mv+BKL8j6WEJRmE6/FWMVxdAfDH1oymAKBYbakjtvGbp/Tb4//CIk+zGncp5Vdf/O9x1CMZkimOPyYdlpVydMgsST9XJ1i9L7yiTz7Zf2LfEi7bUwBQX3H5LdJtX/JJSSUvkvVykk8UWs11Dy3FuFy2S23ZKhjwnC5FnX4BLVbWtiW/bl2amdWD40qcvXSeZZSX8c+qMJVcn9uChyH1wpsmGpbyFdK/peZiWdUO3g==
+Z;a3de5db8;f80F7e5heluhZG9+ipLWhMmxxKE8NAJBvh2JLIdgEBOmjRNpKUncu5SjSKzFQN+L/kGGI6LTtrFDQKipf/snq3gP5qWqF9CquSLufszOoKPcbjnh5VNHFYjLohHwesw5jBNw0+3cKj2hSTmkyzNuIiOwmY1MTxXxuQp39ZQ8Se0zaugn9QQxc/YLeXIuyO+liYHBTZZtetVwgMr+0iCazxen+BDUi9EyfyA71qjYv+ZcRqgkUigFW6icMrqziVvDFFE4VFjnT+HTjj1aOyOw9zLHVVslytzGC+9F4caUcZPkSz4lBsA4zu/xJVPeXxkHAfKOvyhXhJ+yV9XofAYdzw==
 END;4
 FRG;1;5a2f3e4d-c5b6-47a8-9b8c-7d6e5f4a3b2c;1794000000;Les Retardataires
 R;7c4b5a6f-e7d8-49ca-bdae-9f8a7b6c5d4e;0;Onyxia;;;journal

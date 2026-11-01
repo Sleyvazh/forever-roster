@@ -185,11 +185,41 @@ export function outingLine(o: GroupExportOuting): string {
 }
 
 /**
- * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
- * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; partage entre joueurs : liste des inscrits (Y),
- * persos du groupe (M) et signature du site (Z). Spécification : docs/addon-format.md.
+ * Demande de retrait en cours à la banque de la guilde (ligne Q, addon 1.6.4) : rien de personnel, le même texte pour tous les
+ * membres. `who` : le perso main du demandeur dans la guilde (prénom en jeu, `gameName`) ; `by` : le prénom de celui qui l'a
+ * préparée (vide tant qu'elle est en attente).
  */
-export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}, outings: GroupExportOuting[] = []): string {
+export interface GroupExportBankRequest { id: string; who: string; itemId: number; quantity: number; status: "pending" | "prepared"; by: string }
+/** Banque de la guilde pour l'addon : demandes en cours (la plus ancienne d'abord) et banquiers (prénom de leur perso main dans la guilde). */
+export interface GroupExportBank { requests: GroupExportBankRequest[]; bankers: string[] }
+
+/** Demandes de retrait écrites au plus dans un bloc (les plus anciennes) : le texte partagé entre joueurs reste sous la limite de l'addon. */
+export const MAX_BANK_REQUESTS = 40;
+
+/** Nom d'un perso dans une ligne Q ou H : prénom en jeu, sans « , » (séparateur de la liste H). */
+const bankName = (name: string) => gameName(name).replace(/,/g, "");
+
+/**
+ * Lignes Q (une par demande ouverte) et H (les banquiers) : `Q;<demande>;<prénom du demandeur>;<objet>;<quantité>;<pending|prepared>;<préparée par>`,
+ * `H;<prénom>,<prénom>…` (docs/addon-format.md, section FRG). Une demande sans nom, sans objet, sans quantité ou déjà close n'est pas écrite ;
+ * 40 au plus, dans l'ordre reçu ; H est omise sans banquier.
+ */
+export function bankLines(bank: GroupExportBank): string[] {
+  const q = bank.requests
+    .filter(r => (r.status === "pending" || r.status === "prepared") && clean(r.id) && bankName(r.who) && r.itemId > 0 && r.quantity > 0)
+    .slice(0, MAX_BANK_REQUESTS)
+    .map(r => ["Q", clean(r.id), bankName(r.who), Math.floor(r.itemId), Math.floor(r.quantity), r.status, r.status === "prepared" ? bankName(r.by) : ""].join(";"));
+  const bankers = list(bank.bankers.map(bankName));
+  return [...q, ...(bankers ? [`H;${bankers}`] : [])];
+}
+
+/**
+ * Export d'un groupe pour l'addon : raids à venir (pour s'inscrire en jeu), patrons recherchés ou connus
+ * et objets BiS recherchés (infobulles, sacs, alerte au butin) ; sorties donjon (X) ; demandes de retrait à la banque (Q)
+ * et banquiers (H) ; partage entre joueurs : liste des inscrits (Y), persos du groupe (M) et signature du site (Z).
+ * Spécification : docs/addon-format.md.
+ */
+export function groupAddonExport(group: { id: string; name: string }, generatedAt: number, raids: GroupExportRaid[], patterns: GroupExportPattern[], bis: GroupExportBis[] = [], council: string[] = [], counts?: GroupExportCounts, share: GroupExportShare = {}, outings: GroupExportOuting[] = [], bank?: GroupExportBank): string {
   const lines = [
     ...raids.map(r => ["R", r.id, r.at, clean(r.name), r.status ?? "", r.character ? gameName(r.character) : "", r.lootMode ?? ""].join(";")),
     ...patterns.filter(p => p.wanted.length || p.known.length)
@@ -217,6 +247,8 @@ export function groupAddonExport(group: { id: string; name: string }, generatedA
       counts.entries.map(e => [...new Set(e.names.map(gameName).filter(Boolean))].join("+") + ":" + Math.round(e.n)).filter(x => !x.startsWith(":")).join(",")].join(";")] : []),
     // Sorties donjon : X, une par sortie du jour ou de demain (addon 1.6.1), après les autres lignes non comptées
     ...outings.map(outingLine),
+    // Demandes de retrait à la banque (Q) et banquiers (H), addon 1.6.4 : après les X, avant les Y ; signées, les mêmes pour tous
+    ...(bank ? bankLines(bank) : []),
     // Liste des inscrits : Y, une par raid dont `signups` est un tableau (même vide), après les X, avant M ; signée, hors de END ;
     // 16 000 octets au plus (signupsLines)
     ...signupsLines(raids),

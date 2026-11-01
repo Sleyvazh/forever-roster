@@ -59,6 +59,8 @@ local function store(groups, replace)
   ns.safe(N("inscriptions"), G.Reconcile)
   -- Sorties donjon (lignes X, 1.6.1) : bandeau dû peut-être tout de suite (Outings.lua)
   if ns.Outings and ns.Outings.Check then ns.safe(N("sorties"), ns.Outings.Check) end
+  -- Demandes de retrait (lignes Q, 1.6.4) : la fenêtre de la banque, si elle est ouverte, prend les nouvelles données
+  if ns.BankRequests and ns.BankRequests.Check then ns.safe(ns.BankRequests.Label, ns.BankRequests.Check) end
 end
 
 -- Plusieurs groupes (page Addon du site) : ils remplacent ceux déjà chargés. Un seul groupe : il est ajouté ou mis à jour.

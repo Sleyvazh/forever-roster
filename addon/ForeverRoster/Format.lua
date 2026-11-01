@@ -69,7 +69,8 @@ end
 -- Hors du compte de END (un addon plus ancien les ignore) : S réservations (soft reserve, avec bonus SR+),
 -- O persos des officiers ; lot G : C consommable demandé, F fiche de boss, T tâche de la fiche, L conseil du raid,
 -- I inscrit (rôle et type de DPS, pour les consommables) ; lot I : N objets reçus sur la période (« Nom+Alt:3,Autre:0 ») ;
--- 1.6.1 : X sortie donjon du jour ou de demain (outings, plus haut) ; 1.6.3 : Y liste des inscrits d'un raid (signups).
+-- 1.6.1 : X sortie donjon du jour ou de demain (outings, plus haut) ; 1.6.3 : Y liste des inscrits d'un raid (signups) ;
+-- 1.6.4 : Q demande de retrait à la banque de la guilde (requests) et H banquiers (bankers).
 -- Partage entre joueurs (1.6) : M (persos du groupe : members) et Z (signature du site : sig = { key }) juste avant END ;
 -- un bloc signé garde son texte (text : lignes de l'en-tête à END), relayé tel quel aux autres joueurs (Share.lua). Un
 -- bloc sans Z (ancien site, pas de clé, soft reserve cachée) n'a pas de texte : il ne se partage pas.
@@ -141,6 +142,19 @@ local function signupList(field)
   end
   return out
 end
+-- Demandes de retrait à la banque (ligne Q, 1.6.4), hors du compte de END, une par demande ouverte (la plus ancienne d'abord) :
+--   Q;<demande>;<prénom du demandeur>;<objet>;<quantité>;<pending | prepared>;<prénom de celui qui l'a préparée>
+-- et banquiers (ligne H) : H;<prénom>,<prénom>… Aucun champ personnel : le même texte pour tous les membres, signé. Ligne sans
+-- identifiant ni demandeur, objet ou quantité illisibles, étape inconnue (close : le site ne l'écrit pas) : sautée.
+local REQUEST_STATUS = { pending = true, prepared = true }
+local MAX_REQUESTS = 40
+local function request(f)
+  local id, who = utf8txt(f[2], 40), utf8txt(f[3], 40)
+  local itemId, qty = tonumber(f[4]), tonumber(f[5])
+  local status = plain(f[6]):gsub("^%s+", ""):gsub("%s+$", "")
+  if id == "" or who == "" or not (itemId and itemId >= 1) or not (qty and qty >= 1) or not REQUEST_STATUS[status] then return nil end
+  return { id = id, who = who, itemId = math.floor(itemId), n = math.floor(qty), status = status, by = status == "prepared" and utf8txt(f[7], 40) or "" }
+end
 function F.ParseFRG(text)
   local groups, cur, count, n, lines = {}, nil, nil, 0, nil
   local function close()
@@ -158,7 +172,8 @@ function F.ParseFRG(text)
       if not close() then return nil, L["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] end
       if tonumber(f[2]) ~= 1 then return nil, L("Version non gérée (%s) : mets l'addon à jour.", tostring(f[2])) end
       cur, count, n, lines = { id = txt(f[3], 40), at = tonumber(f[4]) or 0, name = txt(f[5], 60), raids = {}, patterns = {}, bis = {},
-        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil, outings = {}, signups = {} }, nil, 0, { line }
+        reserves = {}, officers = {}, consumables = {}, bosses = {}, council = {}, roster = {}, counts = nil, outings = {}, signups = {},
+        requests = {}, bankers = {} }, nil, 0, { line }
     elseif cur and f[1] == "M" and count == nil then
       cur.members = names(f[2], 1000)
     elseif cur and f[1] == "Z" and count == nil then
@@ -215,6 +230,17 @@ function F.ParseFRG(text)
       -- Inscrits d'un raid (1.6.3), hors du compte de END : une liste (même vide) = « liste connue »
       local raidId = txt(f[2], 40)
       if raidId ~= "" then cur.signups[raidId] = signupList(f[3]) end
+    elseif cur and f[1] == "Q" and count == nil then
+      -- Demande de retrait à la banque (1.6.4), hors du compte de END : 40 au plus, un identifiant une seule fois
+      local r = #cur.requests < MAX_REQUESTS and request(f)
+      if r then
+        local again = false
+        for _, x in ipairs(cur.requests) do if x.id == r.id then again = true break end end
+        if not again then cur.requests[#cur.requests + 1] = r end
+      end
+    elseif cur and f[1] == "H" and count == nil then
+      -- Banquiers (1.6.4), hors du compte de END : prénoms
+      cur.bankers = people(f[2], 40)
     elseif cur and f[1] == "P" then
       n = n + 1
       local id = tonumber(f[2])

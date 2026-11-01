@@ -8,6 +8,7 @@ import { signupName, signupsOf } from "../lib/outings";
 import { groupLootSettings, srBonuses } from "../lib/loot";
 import { groupLootCounts } from "../lib/loot-count";
 import { groupNames } from "../lib/prep";
+import { bankExport } from "../lib/bank-requests";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import { currentLines } from "../lib/professions";
@@ -141,7 +142,9 @@ export async function groupExport(db: Db, groupId: string, userId: string, signe
     // Soft reserve cachée : chacun reçoit des réservations différentes (un membre, les siennes ; un officier, toutes),
     // qui ne doivent pas passer à d'autres joueurs. Bloc non signé : l'addon ne le partage pas (chacun colle le sien).
     { members: played.map(c => c.name), sign: signer && !raidRows.some(r => r.lootMode === "softres" && r.srHidden) ? signer.sign : undefined },
-    await outingsExport(db, groupId, new Date(now)));
+    await outingsExport(db, groupId, new Date(now)),
+    // Demandes de retrait à la banque (Q) et banquiers (H), addon 1.6.4 : les mêmes pour tous les membres, signées
+    await bankExport(db, groupId, new Date(now)));
   return { text, name: g.name, raids: raidRows.length, patterns: byItem.size, bis: bis.size };
 }
 
