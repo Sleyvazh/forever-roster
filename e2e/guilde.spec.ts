@@ -9,6 +9,8 @@ import pg from "pg";
  * Par joueur montre les joueurs (main et alts, compte du site), la bande « À rattacher » accepte une suggestion de note,
  * « Rattacher à… » range un perso sous un joueur ; Course au 60, Historique, Banque (onglets, grille, recherche, or, journal),
  * Accueil et Administration s'affichent. Noms inventés.
+ * Demandes de retrait (patch du 5/11) : un membre demande un objet depuis la grille, l'officier prépare puis remet, le
+ * demandeur suit l'étape, l'officier nomme un banquier qui traite à son tour ; rien ne déborde à 360 et 390 px.
  */
 const test = base.extend<{ page: Page }>({
   page: async ({ page }, use) => {
@@ -71,6 +73,43 @@ const paste = (page: Page, text: string) => page.evaluate(t => {
   (document.activeElement as HTMLElement | null)?.blur();
   document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
 }, text);
+
+/** Compte vérifié et connecté : inscription, lien reçu par e-mail (journal de l'API), connexion. */
+async function signUp(page: Page, name: string) {
+  const email = `${name.toLowerCase()}-${Date.now()}@example.test`;
+  await page.goto("/register");
+  await page.fill("#dn", name);
+  await page.fill("#em", email);
+  await page.fill("#pw", PASSWORD);
+  await page.fill("#pw2", PASSWORD);
+  await page.getByRole("button", { name: /créer/i }).click();
+  await expect.poll(() => lastVerifyToken(email)).not.toBe("");
+  await page.goto(`/verify-email#${lastVerifyToken(email)}`);
+  await expect(page.getByText("Adresse confirmée")).toBeVisible();
+  await page.goto("/login");
+  await page.fill("#email", email);
+  await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: /se connecter/i }).click();
+  await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
+  return email;
+}
+
+/** Relevé d'une autre guilde (Les Veilleurs) : deux membres, la banque du test ci-dessus (3 cases, 2 onglets). */
+function frlVeilleurs(now: number) {
+  const lines = [
+    ["M", "Sorelle Hautvent", "PRIEST", 30, "Officier", 1, 1, 0, "", "", guid(11)].join(";"),
+    ["M", "Torvald Brumegris", "WARRIOR", 24, "Membre", 3, 0, 3, "", "", guid(12)].join(";"),
+    `J;${now};Sorelle Hautvent`,
+    `B;${now};Sorelle Hautvent;1234567;2`,
+    "T;1;Consommables;1;1",
+    "T;2;Officiers;0;0",
+    "I;1;1;8170;20",
+    "I;1;8;10940;5",
+    "I;1;2;999999;1",
+    "X;1;deposit;Torvald Brumegris;8170;20;;;3",
+  ];
+  return [`FRL;1;Les Veilleurs;Horde;${now};Sorelle Hautvent;1;Officier;2;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+}
 
 test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Accueil", async ({ page }) => {
   test.setTimeout(90_000);
@@ -349,4 +388,234 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
       }
     }
   });
+});
+
+test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", async ({ page, browser }) => {
+  test.setTimeout(150_000);
+  // Captures pour la documentation et la relecture : SHOTS_DIR=/chemin npx playwright test guilde
+  const shot = async (p: Page, name: string) => {
+    if (!process.env.SHOTS_DIR) return;
+    // Barre du bas du téléphone : fixe, elle recouvrirait le bas de la page entière
+    await p.evaluate(() => document.querySelectorAll<HTMLElement>("body *").forEach(e => { if (getComputedStyle(e).position === "fixed" && e.getBoundingClientRect().top > 300) e.style.display = "none"; }));
+    await p.screenshot({ path: path.join(process.env.SHOTS_DIR, name), fullPage: true });
+  };
+
+  // Deux navigateurs : l'officière (page) et le membre (autre contexte)
+  const ctx = await browser.newContext({ locale: "fr-FR", timezoneId: "Europe/Paris", viewport: { width: 1280, height: 900 } });
+  await ctx.route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  const member = await ctx.newPage();
+  const problems: string[] = [];
+  member.on("pageerror", e => problems.push(`Erreur JS : ${e.message}`));
+  member.on("console", m => { if (m.type() === "error" && !(m.location().url ?? "").includes("/icons/")) problems.push(`Console : ${m.text().slice(0, 200)}`); });
+
+  const officerEmail = await signUp(page, "Sorelle");
+  const memberEmail = await signUp(member, "Torvald");
+
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const idOf = async (email: string) => (await db.query("SELECT id FROM users WHERE email = $1", [email])).rows[0].id as string;
+  const [officer, torvald] = [await idOf(officerEmail), await idOf(memberEmail)];
+  const group = (await db.query("INSERT INTO groups (name) VALUES ('Les Veilleurs') RETURNING id")).rows[0].id as string;
+  const owner = (await db.query("INSERT INTO users (email, email_verified_at, password_hash, display_name) VALUES ($1, now(), 'demo', 'Maelys') RETURNING id",
+    [`maelys-${Date.now()}@example.test`])).rows[0].id as string;
+  for (const [user, role] of [[owner, "owner"], [officer, "officer"], [torvald, "member"]]) {
+    await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, $3)", [group, user, role]);
+  }
+  for (const [user, name, cls, race, spec, level, g] of [[officer, "Sorelle Hautvent", "Priest", "Troll", "Holy", 30, 11], [torvald, "Torvald Brumegris", "Warrior", "Orc", "Arms", 24, 12]] as const) {
+    const id = (await db.query("INSERT INTO characters (user_id, name, race, cls, spec1, level, professions, guid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+      [user, name, race, cls, spec, level, PROFS, guid(g)])).rows[0].id as string;
+    await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, true)", [group, id, user]);
+  }
+  await db.end();
+
+  await test.step("le relevé de l'officière lie la guilde du jeu et sa banque", async () => {
+    await paste(page, frlVeilleurs(Math.floor(Date.now() / 1000) - 60));
+    await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Veilleurs (liée) : liste de 2 membres (complète)");
+  });
+
+  const bank = `/groups/${group}/membres/banque`;
+  const boxOf = (p: Page) => p.getByRole("region", { name: /^Demandes en cours/ });
+  // Une demande en cours (les terminées, dépliées, sont une autre liste)
+  const rowOf = (p: Page, text: string) => boxOf(p).getByRole("list", { name: "Demandes en cours" }).getByRole("listitem").filter({ hasText: text });
+  await page.goto(bank);
+  await member.goto(bank);
+
+  await test.step("sans demande : l'encadré le dit, personne ne traite sauf l'officière", async () => {
+    for (const p of [page, member]) {
+      await expect(boxOf(p)).toContainText("Demandes en cours (0)");
+      await expect(boxOf(p)).toContainText("visibles par toute la guilde");
+      await expect(boxOf(p)).toContainText("Aucune demande en cours. Pour en faire une, choisis un objet de la banque.");
+      await expect(p.getByRole("button", { name: /^Terminées/ })).toHaveCount(0);
+    }
+  });
+
+  await test.step("le membre clique une case : petit menu, puis la fenêtre « Demander à la banque »", async () => {
+    await member.getByLabel("Rugged Leather × 20").click();
+    const pop = member.getByRole("dialog", { name: "Rugged Leather" });
+    await expect(pop).toContainText("20 dans la banque");
+    await expect(member.locator(".bk-slot.sel")).toHaveCount(1);
+    await shot(member, "demander-menu-pc.png");
+    // Échap referme le menu et rend le focus à la case
+    await member.keyboard.press("Escape");
+    await expect(pop).toHaveCount(0);
+    await expect(member.getByLabel("Rugged Leather × 20")).toBeFocused();
+    await member.getByLabel("Rugged Leather × 20").click();
+    await pop.getByRole("button", { name: "Demander" }).click();
+    const dlg = member.getByRole("dialog", { name: "Demander à la banque" });
+    await expect(dlg).toContainText("Rugged Leather · 20 dans la banque");
+    await expect(dlg).toContainText("de 1 à 20 (tous les onglets)");
+    await dlg.getByRole("spinbutton", { name: "Quantité" }).fill("10");
+    await dlg.getByRole("textbox", { name: "Un mot (facultatif)" }).fill("pour monter Travail du cuir");
+    await shot(member, "demander-fenetre-pc.png");
+    await dlg.getByRole("button", { name: "Envoyer la demande" }).click();
+    await expect(dlg).toHaveCount(0);
+  });
+
+  await test.step("la demande est en attente chez le membre, et chez l'officière sans recharger", async () => {
+    const mine = rowOf(member, "Rugged Leather");
+    await expect(boxOf(member)).toContainText("Demandes en cours (1)");
+    await expect(mine).toContainText("Torvald Brumegris");
+    await expect(mine).toContainText("Toi");
+    await expect(mine).toContainText("10 × Rugged Leather");
+    await expect(mine).toContainText("« pour monter Travail du cuir »");
+    await expect(mine).toContainText("En attente");
+    await expect(mine.getByRole("button")).toHaveText(["Annuler"]);
+    // Une seule demande ouverte par objet : la case propose « Demande en cours »
+    await member.getByLabel("Rugged Leather × 20").click();
+    await expect(member.getByRole("dialog", { name: "Rugged Leather" }).getByRole("button", { name: "Demande en cours" })).toBeDisabled();
+    await member.keyboard.press("Escape");
+    const theirs = rowOf(page, "Rugged Leather");
+    await expect(boxOf(page)).toContainText("Demandes en cours (1)");
+    await expect(theirs).toContainText("Torvald Brumegris");
+    await expect(theirs).not.toContainText("Toi");
+    await expect(theirs.getByRole("button")).toHaveText(["Préparer", "Remise", "Refuser"]);
+  });
+
+  await test.step("l'officière prépare : le membre voit « Préparée par … » tout de suite", async () => {
+    await rowOf(page, "Rugged Leather").getByRole("button", { name: "Préparer Rugged Leather pour Torvald Brumegris" }).click();
+    const theirs = rowOf(page, "Rugged Leather");
+    await expect(theirs).toContainText("Préparée");
+    await expect(theirs).toContainText("par Sorelle");
+    await expect(theirs.getByRole("button")).toHaveText(["Remise", "Refuser"]);
+    const mine = rowOf(member, "Rugged Leather");
+    await expect(mine).toContainText("Préparée");
+    await expect(mine).toContainText("par Sorelle");
+    await expect(mine).toContainText("à récupérer en jeu");
+    await expect(mine.getByRole("button")).toHaveCount(0);
+  });
+
+  await test.step("l'officière remet : la demande passe dans « Terminées »", async () => {
+    await rowOf(page, "Rugged Leather").getByRole("button", { name: "Marquer Rugged Leather remis à Torvald Brumegris" }).click();
+    for (const p of [page, member]) {
+      await expect(boxOf(p)).toContainText("Demandes en cours (0)");
+      const fold = p.getByRole("button", { name: /^Terminées \(1\)/ });
+      await expect(fold).toHaveAttribute("aria-expanded", "false");
+      await fold.click();
+      const done = boxOf(p).getByRole("list", { name: "Demandes terminées" });
+      await expect(done).toContainText("10 × Rugged Leather");
+      await expect(done).toContainText("Remise");
+      await expect(done.getByRole("button")).toHaveCount(0);
+    }
+  });
+
+  await test.step("refuser demande un motif facultatif ; annuler est le geste du demandeur", async () => {
+    await member.getByLabel("Strange Dust × 5").click();
+    await member.getByRole("dialog", { name: "Strange Dust" }).getByRole("button", { name: "Demander" }).click();
+    const dlg = member.getByRole("dialog", { name: "Demander à la banque" });
+    await dlg.getByRole("button", { name: "Envoyer la demande" }).click();
+    await expect(dlg).toHaveCount(0);
+    const theirs = rowOf(page, "Strange Dust");
+    await theirs.getByRole("button", { name: "Refuser Strange Dust à Torvald Brumegris" }).click();
+    await theirs.getByRole("textbox", { name: /Motif du refus/ }).fill("réservé pour le raid");
+    await theirs.getByRole("button", { name: "Refuser la demande" }).click();
+    await expect(boxOf(page)).toContainText("Demandes en cours (0)");
+    await expect(boxOf(member)).toContainText("Demandes en cours (0)");
+    await expect(member.getByRole("button", { name: /^Terminées \(2\)/ })).toHaveAttribute("aria-expanded", "true");
+    await expect(boxOf(member).getByRole("list", { name: "Demandes terminées" })).toContainText("réservé pour le raid");
+    // Une demande en attente s'annule
+    await member.getByLabel("Strange Dust × 5").click();
+    await member.getByRole("dialog", { name: "Strange Dust" }).getByRole("button", { name: "Demander" }).click();
+    await member.getByRole("dialog", { name: "Demander à la banque" }).getByRole("button", { name: "Envoyer la demande" }).click();
+    await rowOf(member, "Strange Dust").getByRole("button", { name: "Annuler ma demande de Strange Dust" }).click();
+    await expect(boxOf(member)).toContainText("Demandes en cours (0)");
+    await expect(boxOf(page)).toContainText("Demandes en cours (0)");
+  });
+
+  await test.step("Membres › Par joueur : l'officière nomme Torvald banquier (tag), puis le retire et le renomme", async () => {
+    await page.goto(`/groups/${group}/membres/joueurs`);
+    const players = page.getByRole("table", { name: "Joueurs de la guilde" });
+    const row = players.getByRole("row").filter({ hasText: "Torvald Brumegris" });
+    await expect(row).not.toContainText("Banquier");
+    await players.getByRole("button", { name: "Actions pour Torvald Brumegris" }).click();
+    await page.getByRole("menuitem", { name: "Nommer banquier" }).click();
+    await expect(row.locator(".tag", { hasText: "Banquier" })).toBeVisible();
+    await players.getByRole("button", { name: "Actions pour Torvald Brumegris" }).click();
+    await page.getByRole("menuitem", { name: "Retirer banquier" }).click();
+    await expect(row).not.toContainText("Banquier");
+    await players.getByRole("button", { name: "Actions pour Torvald Brumegris" }).click();
+    await page.getByRole("menuitem", { name: "Nommer banquier" }).click();
+    await expect(row.locator(".tag", { hasText: "Banquier" })).toBeVisible();
+    await shot(page, "membres-banquier-pc.png");
+  });
+
+  await test.step("le banquier voit « À traiter » sur l'accueil et traite la demande de l'officière", async () => {
+    // L'officière demande à son tour (Annuler seulement sur sa propre demande en attente)
+    await page.goto(bank);
+    await page.getByLabel("Strange Dust × 5").click();
+    await page.getByRole("dialog", { name: "Strange Dust" }).getByRole("button", { name: "Demander" }).click();
+    await page.getByRole("dialog", { name: "Demander à la banque" }).getByRole("button", { name: "Envoyer la demande" }).click();
+    await expect(rowOf(page, "Strange Dust").getByRole("button")).toHaveText(["Annuler"]);
+    // Torvald est banquier : un membre simple n'avait pas « À traiter », lui l'a, avec les demandes en attente
+    await member.goto(`/groups/${group}`);
+    const todo = member.getByRole("region", { name: /À traiter/ });
+    await expect(todo).toContainText("banquiers");
+    await expect(todo.getByRole("listitem")).toHaveCount(1);
+    await expect(todo.locator(".tt-n")).toHaveText("1");
+    await expect(todo.getByRole("listitem")).toContainText("demande de retrait");
+    await expect(todo.getByRole("listitem")).toContainText("Guilde › Banque");
+    await todo.getByRole("link", { name: "Voir" }).click();
+    await expect(member).toHaveURL(new RegExp(`/groups/${group}/membres/banque$`));
+    const theirs = rowOf(member, "Strange Dust");
+    await expect(theirs).toContainText("Sorelle Hautvent");
+    await expect(theirs.getByRole("button")).toHaveText(["Préparer", "Remise", "Refuser"]);
+    // Sa propre demande à lui : « Annuler » seulement ; l'officière voit la sienne avec ses trois gestes
+    await member.getByLabel("Rugged Leather × 20").click();
+    await member.getByRole("dialog", { name: "Rugged Leather" }).getByRole("button", { name: "Demander" }).click();
+    const own = member.getByRole("dialog", { name: "Demander à la banque" });
+    await own.getByRole("spinbutton", { name: "Quantité" }).fill("5");
+    await own.getByRole("textbox", { name: "Un mot (facultatif)" }).fill("pour Nessa, à son retour");
+    await own.getByRole("button", { name: "Envoyer la demande" }).click();
+    await expect(rowOf(member, "Rugged Leather").getByRole("button")).toHaveText(["Annuler"]);
+    await expect(rowOf(page, "Rugged Leather").getByRole("button")).toHaveText(["Préparer", "Remise", "Refuser"]);
+    await shot(member, "banque-demandes-banquier-pc.png");
+    await shot(page, "banque-demandes-officiere-pc.png");
+    await theirs.getByRole("button", { name: "Préparer Strange Dust pour Sorelle Hautvent" }).click();
+    await expect(theirs).toContainText("par Torvald");
+    await expect(rowOf(page, "Strange Dust")).toContainText("à récupérer en jeu");
+    // Le retrait du rôle ferme l'accès tout de suite : les gestes disparaissent
+    await page.goto(`/groups/${group}/membres/joueurs`);
+    await page.getByRole("button", { name: "Actions pour Torvald Brumegris" }).click();
+    await page.getByRole("menuitem", { name: "Retirer banquier" }).click();
+    await expect(member.getByRole("region", { name: /^Demandes en cours/ }).getByRole("button", { name: /Remise/ })).toHaveCount(0);
+  });
+
+  await test.step("grand écran : encadré et journal côte à côte ; téléphone : liste « Demander », rien ne déborde", async () => {
+    await member.setViewportSize({ width: 1360, height: 900 });
+    await member.goto(bank);
+    await expect(rowOf(member, "Strange Dust")).toBeVisible();
+    for (const width of [390, 360]) {
+      await member.setViewportSize({ width, height: 844 });
+      await member.goto(bank);
+      await expect(member.locator(".bk-list > li").first()).toBeVisible();
+      await expect(rowOf(member, "Strange Dust")).toBeVisible();
+      await expect(rowOf(member, "Rugged Leather")).toContainText("Toi");
+      await expect(member.getByRole("button", { name: "Demander Strange Dust" })).toBeEnabled();
+      await expect(member.getByRole("button", { name: "Demande en cours pour Rugged Leather" })).toBeDisabled();
+      expect(await member.evaluate(() => document.documentElement.scrollWidth), `banque à ${width} px`).toBeLessThanOrEqual(width);
+      if (width === 390) await shot(member, "banque-demandes-390.png");
+    }
+  });
+
+  expect(problems, "erreurs ou violations CSP chez le membre").toEqual([]);
+  await ctx.close();
 });
