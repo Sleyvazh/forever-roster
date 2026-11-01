@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { siteAlerts, siteSettings, users } from "../src/db/schema";
 import { buildInternalApp } from "../src/internal";
 import { bindReportsChannel } from "../src/lib/reports";
-import { checkSiteStatus, noteBotSeen, recordBackup, siteStatusView } from "../src/lib/site-status";
+import { checkSiteStatus, noteBotSeen, outageSpan, recordBackup, siteStatusView } from "../src/lib/site-status";
 import { ORIGIN, setup, signedIn, type TestEnv } from "./helpers";
 
 /**
@@ -123,6 +123,20 @@ describe("surveillance du bot Discord", () => {
     expect(await kinds()).toEqual(["bot_down", "bot_up", "bot_down"]);
   });
 
+  it("coupure longue : « coupure de N min » sous une heure, « 3 h 05 » à partir d'une heure (alerte, salon et e-mail)", async () => {
+    await check(min(11));
+    await botCall(min(185));
+    await check(min(185));
+    expect((await alerts()).map(a => a.text)).toEqual([BOT_DOWN, "Le bot Discord répond à nouveau (coupure de 3 h 05)"]);
+    expect(env.mailer.outbox.at(-1)!.subject).toBe("[Forever Roster] Le bot Discord répond à nouveau (coupure de 3 h 05)");
+    expect(env.mailer.outbox.at(-1)!.text).toContain("Le bot Discord répond à nouveau (coupure de 3 h 05).");
+  });
+
+  it("durée d'une coupure : minutes sous une heure, puis heures et minutes sur deux chiffres (« 1 h » quand les minutes sont à 0)", () => {
+    expect([10, 23, 59, 60, 61, 65, 125, 185, 600, 605, 1500].map(outageSpan)).toEqual(
+      ["10 min", "23 min", "59 min", "1 h", "1 h 01", "1 h 05", "2 h 05", "3 h 05", "10 h", "10 h 05", "25 h"]);
+  });
+
   it("un appel sans le secret interne n'est pas un signe de vie", async () => {
     await check(min(11));
     clock(min(12));
@@ -148,7 +162,7 @@ describe("surveillance du bot Discord", () => {
     await fresh.checkSiteStatus(env.app.ctx, min(45));
     expect(await kinds()).toEqual(["bot_down"]);
     // La page garde le vrai dernier signe de vie, pas l'heure de démarrage
-    expect((await fresh.siteStatusView(db(), min(45))).bot).toEqual({ lastSeenAt: T0.toISOString(), down: true, downSince: T0.toISOString() });
+    expect((await fresh.siteStatusView(db(), min(45), env.cfg)).bot).toEqual({ watched: true, lastSeenAt: T0.toISOString(), down: true, downSince: T0.toISOString() });
 
     fresh.noteBotSeen(min(50));
     await fresh.checkSiteStatus(env.app.ctx, min(50));
@@ -217,7 +231,9 @@ describe("surveillance de la sauvegarde de nuit", () => {
     expect(await alerts()).toEqual([]);
     await healthy(hour(27));
     expect(await kinds()).toEqual(["backup_late"]);
-    expect(env.mailer.outbox.at(-1)!.text).toContain("aucune sauvegarde réussie n'a été signalée depuis le début de la surveillance (lun. 02/11 à 11:00)");
+    // Une seule parenthèse : la date de début de la surveillance suit une virgule, elle n'en ouvre pas une deuxième
+    expect(env.mailer.outbox.at(-1)!.text).toContain(
+      "Pas de sauvegarde réussie depuis 26 h (aucune sauvegarde réussie n'a été signalée depuis le début de la surveillance, le lun. 02/11 à 11:00).");
   });
 });
 
@@ -231,22 +247,44 @@ describe("État du site (admins)", () => {
     const ok = await admin.c.get("/api/admin/site-status");
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toEqual({
-      bot: { lastSeenAt: T0.toISOString(), down: false, downSince: null },
+      bot: { watched: true, lastSeenAt: T0.toISOString(), down: false, downSince: null },
       backup: { at: null, bytes: null, late: false },
       alerts: [],
     });
+  });
+
+  it("sans secret interne (pas de bot sur ce serveur) : « bot non surveillé », jamais « ne répond plus », quelle que soit l'heure ; la sauvegarde l'est toujours", async () => {
+    const real = env.app.ctx.cfg;
+    const noBot = { INTERNAL_API_SECRET: "" };
+    // Un bot jamais vu depuis 6 h : surveillé, il serait tombé ; sans bot sur le serveur, rien à dire
+    const unwatched = { watched: false, lastSeenAt: null, down: false, downSince: null };
+    expect((await siteStatusView(db(), hour(6), env.cfg)).bot).toMatchObject({ watched: true, down: true });
+    expect((await siteStatusView(db(), hour(6), noBot)).bot).toEqual(unwatched);
+    // Même avec une coupure restée dans la base (le secret a été retiré depuis)
+    await check(min(11));
+    expect(await kinds()).toEqual(["bot_down"]);
+    expect((await siteStatusView(db(), hour(6), noBot)).bot).toEqual(unwatched);
+
+    // Par la route des admins, avec la configuration du serveur sans secret
+    env.app.ctx.cfg = { ...real, INTERNAL_API_SECRET: "" };
+    try {
+      clock(hour(6));
+      const v = (await admin.c.get("/api/admin/site-status")).json();
+      expect(v.bot).toEqual(unwatched);
+      expect(v.backup).toEqual({ at: null, bytes: null, late: false });
+    } finally { env.app.ctx.cfg = real; }
   });
 
   it("bot tombé, sauvegarde en retard : « ne répond plus », « en retard » et les 5 dernières alertes, la plus récente en premier", async () => {
     await recordBackup(db(), 48_100_000, T0);
     await check(min(14));
     // Pas encore de sauvegarde en retard à 14 min
-    expect((await siteStatusView(db(), min(14))).backup).toEqual({ at: T0.toISOString(), bytes: 48_100_000, late: false });
+    expect((await siteStatusView(db(), min(14), env.cfg)).backup).toEqual({ at: T0.toISOString(), bytes: 48_100_000, late: false });
 
     await check(hour(27));
     clock(hour(27));
     const v = (await admin.c.get("/api/admin/site-status")).json();
-    expect(v.bot).toEqual({ lastSeenAt: T0.toISOString(), down: true, downSince: T0.toISOString() });
+    expect(v.bot).toEqual({ watched: true, lastSeenAt: T0.toISOString(), down: true, downSince: T0.toISOString() });
     expect(v.backup).toEqual({ at: T0.toISOString(), bytes: 48_100_000, late: true });
     expect(v.alerts).toEqual([
       { at: hour(27).toISOString(), kind: "backup_late", text: BACKUP_LATE },
@@ -255,7 +293,7 @@ describe("État du site (admins)", () => {
 
     // Plus de 5 alertes : les 5 dernières seulement
     for (let i = 0; i < 6; i++) await db().insert(siteAlerts).values({ kind: "backup_ok", text: `Sauvegarde rétablie ${i}`, createdAt: hour(28 + i) });
-    const last = (await siteStatusView(db(), hour(40))).alerts;
+    const last = (await siteStatusView(db(), hour(40), env.cfg)).alerts;
     expect(last.map(a => a.text)).toEqual([5, 4, 3, 2, 1].map(i => `Sauvegarde rétablie ${i}`));
   });
 });

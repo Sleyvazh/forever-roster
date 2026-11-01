@@ -170,7 +170,8 @@ export interface GroupFeedbackItem {
 }
 /** « État du site » (admins) : le bot Discord, la dernière sauvegarde de nuit, les 5 dernières alertes (la plus récente d'abord). */
 export interface SiteStatus {
-  bot: { lastSeenAt: string; down: boolean; downSince: string | null };
+  /** watched : false quand il n'y a pas de bot sur ce serveur (ni dernier signe de vie, ni coupure). */
+  bot: { watched: boolean; lastSeenAt: string | null; down: boolean; downSince: string | null };
   backup: { at: string | null; bytes: number | null; late: boolean };
   alerts: { at: string; kind: "bot_down" | "bot_up" | "backup_late" | "backup_ok"; text: string }[];
 }

@@ -31,6 +31,16 @@ const PASSWORD = "une phrase de passe pour la guilde";
 const PROFS = JSON.stringify({ prof1: { name: "", skill: 0 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 });
 const lastVerifyToken = (email: string) => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n")
   .filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
+/** Demain (heure de Paris) : « AAAA-MM-JJ » et l'instant d'une heure ce jour-là. */
+function tomorrow(time: string) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date(Date.now() + 86400e3));
+  const [h, m] = time.split(":").map(Number) as [number, number];
+  // Décalage de Paris ce jour-là (heure d'été ou d'hiver)
+  const guess = new Date(`${day}T${time}:00Z`);
+  const local = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(guess);
+  const [lh, lm] = local.split(":").map(Number) as [number, number];
+  return { day, at: new Date(guess.getTime() - ((lh * 60 + lm) - (h * 60 + m)) * 60e3) };
+}
 const guid = (n: number) => `Player-4620-${(0xA000 + n).toString(16).toUpperCase().padStart(8, "0")}`;
 
 /** Relevé de la guilde comme l'addon 1.6.2 l'écrit (docs/addon-format.md, FRL v1). */
@@ -343,12 +353,35 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     // Même dernière connexion : le plus proche de son niveau d'abord
     await expect(find.locator(".tf-who li")).toHaveText([/Vex Ombrelame\s*27/, /Kaeldra Brisevent\s*30/]);
     // « Proposer » ouvre « + Sortie » avec le donjon et le perso déjà choisis
-    await find.getByRole("link", { name: "Proposer une sortie à Excavation Site: Wetlands" }).click();
+    const proposer = find.getByRole("link", { name: "Proposer une sortie à Excavation Site: Wetlands" });
+    const perso = new URL((await proposer.getAttribute("href"))!, "http://site.test").searchParams.get("perso")!;
+    await proposer.click();
     await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties/nouvelle\\?donjon=excavation-site&perso=`));
     await expect(page.locator(".dg-chosen")).toContainText("Excavation Site: Wetlands");
     await expect(page.getByRole("button", { name: /Brindille Feuillevive/ })).toHaveAttribute("aria-pressed", "true");
     await page.goBack();
     await expect(find).toBeVisible();
+    // Une sortie prévue : « demain à 21:00 » pour celle de demain (qui ne se lit pas comme ce soir), l'heure seule pour celle d'aujourd'hui
+    const outing = (body: object) => page.evaluate(async ({ g, body }) => {
+      const { csrfToken } = await (await fetch("/api/auth/me")).json();
+      const r = await fetch(`/api/groups/${g}/outings`, { method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify(body) });
+      return r.status;
+    }, { g: group, body });
+    const demain = tomorrow("21:00");
+    expect(await outing({ dungeon: "excavation-site", day: demain.day, at: demain.at.toISOString(), characterId: perso, role: "Heal" })).toBe(201);
+    // Aujourd'hui : dans deux minutes, sauf à la veille de minuit (l'heure serait demain)
+    const soon = new Date(Date.now() + 120e3);
+    const parisDay = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(d);
+    const parisHm = (d: Date) => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+    const todayToo = parisDay(soon) === parisDay(new Date());
+    if (todayToo) expect(await outing({ dungeon: "city-of-dalaran", day: parisDay(soon), at: soon.toISOString(), characterId: perso, role: "Heal" })).toBe(201);
+    await page.reload();
+    await expect(find.locator(".tf-d").filter({ hasText: "Excavation Site: Wetlands" })).toContainText("Sortie prévue demain à 21:00 →");
+    if (todayToo) {
+      const dalaran = find.locator(".tf-d").filter({ hasText: "City of Dalaran" });
+      await expect(dalaran).toContainText(`Sortie prévue à ${parisHm(soon)} →`);
+      await expect(dalaran).not.toContainText("demain");
+    }
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
     await page.getByRole("link", { name: "Administration" }).click();
     await page.locator(".adm-nav").getByRole("button", { name: /^Guilde/ }).click();

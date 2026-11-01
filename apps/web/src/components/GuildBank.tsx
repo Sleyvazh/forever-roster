@@ -19,7 +19,7 @@ import { NumberField } from "./NumberField";
  * Demandes de retrait (patch du 5/11, maquette « Prêts pour la sortie ») : un clic sur une case ouvre un petit menu (objet,
  * quantité en banque, « Demander »), un bouton « Demander » par ligne de la liste ; la fenêtre « Demander à la banque » (quantité,
  * un mot) ; l'encadré « Demandes en cours » au-dessus du journal, visible par toute la guilde, avec les gestes de chacun
- * (officiers, propriétaire, banquiers : Préparer, Remise, Refuser ; le demandeur : Annuler) et « Terminées » (les 20 dernières).
+ * (officiers, propriétaire, banquiers : Préparer, Remise, Refuser ; le demandeur : Annuler) et « Terminées » (les 20 dernières remises ou refusées).
  * Données : GET /api/groups/:id/guild/bank et /bank/log (types et textes des journaux dans packages/game-data/src/bank.ts),
  * POST /guild/bank/requests et PATCH /guild/bank/requests/:id.
  */
@@ -314,7 +314,7 @@ function SlotGrid({ tab, objects, onPick, picked }: { tab: GuildBankTab; objects
 
 const requestUrl = (groupId: string, id?: string) => `/groups/${groupId}/guild/bank/requests${id ? `/${id}` : ""}`;
 
-/** « Demandes en cours (3) » : visibles par toute la guilde, avec les gestes de chacun ; en dessous « Terminées » (les 20 dernières). */
+/** « Demandes en cours (3) » : visibles par toute la guilde, avec les gestes de chacun ; en dessous « Terminées » (les 20 dernières remises ou refusées : une annulée n'y figure pas). */
 function RequestsBox({ groupId, requests, objects }: { groupId: string; requests: BankRequests; objects: Record<number, BankItem> }) {
   const { open, done, canHandle } = requests;
   const [fold, setFold] = useState(false);

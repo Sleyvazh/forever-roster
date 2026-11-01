@@ -74,11 +74,15 @@ async function viewsOf(db: Tx, groupId: string, rows: readonly Row[], me: string
 
 const OPEN = ["pending", "prepared"] as const satisfies readonly BankRequestStatus[];
 
-/** Demandes d'une guilde : en cours (la plus ancienne d'abord), les 20 dernières closes (la plus récente d'abord), mes ouvertes. */
+/**
+ * Demandes d'une guilde : en cours (la plus ancienne d'abord), les 20 dernières remises ou refusées (la plus récente d'abord), mes ouvertes.
+ * Une demande annulée n'est pas listée sous « Terminées » (demander puis annuler en boucle y chasserait les vraies) ; elle reste en base
+ * jusqu'à la purge des 90 jours.
+ */
 export async function requestsView(db: Tx, groupId: string, me: { id: string; handler: boolean }, now: Date): Promise<BankRequests> {
   const open = await db.select().from(bankRequests).where(and(eq(bankRequests.groupId, groupId), inArray(bankRequests.status, OPEN)))
     .orderBy(asc(bankRequests.createdAt), asc(bankRequests.id));
-  const done = await db.select().from(bankRequests).where(and(eq(bankRequests.groupId, groupId), inArray(bankRequests.status, ["done", "refused", "cancelled"])))
+  const done = await db.select().from(bankRequests).where(and(eq(bankRequests.groupId, groupId), inArray(bankRequests.status, ["done", "refused"])))
     .orderBy(desc(bankRequests.closedAt), desc(bankRequests.id)).limit(BANK_REQUEST_DONE_SHOWN);
   const views = await viewsOf(db, groupId, [...open, ...done], me.id, now);
   return {

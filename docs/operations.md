@@ -94,7 +94,7 @@ L'API vérifie **chaque minute** deux choses, et prévient les admins du site (v
 
 | Surveillé | Alerte | Retour à la normale |
 |---|---|---|
-| Le bot Discord : il interroge l'API toutes les quelques secondes, et l'API note chaque appel | « Le bot Discord ne répond plus depuis 10 min » | « Le bot Discord répond à nouveau (coupure de N min) » |
+| Le bot Discord : il interroge l'API toutes les quelques secondes, et l'API note chaque appel | « Le bot Discord ne répond plus depuis 10 min » | « Le bot Discord répond à nouveau (coupure de N min) » (à partir d'une heure : « coupure de 3 h 05 », « de 1 h » pile) |
 | La sauvegarde de nuit : `forever-backup.sh` signale chaque sauvegarde réussie | « Pas de sauvegarde réussie depuis 26 h » | « Sauvegarde rétablie » |
 
 Une seule alerte par coupure ou par retard, puis un seul message de retour. Elles partent par deux canaux :
@@ -102,23 +102,25 @@ Une seule alerte par coupure ou par retard, puis un seul message de retour. Elle
 - **par e-mail**, tout de suite, à chaque admin du site dont l'adresse est confirmée, même si le bot est tombé (objet « [Forever Roster] » suivi du texte de l'alerte) ;
 - **dans le salon des signalements** (`/signalements-lier`), par le bot, **quand il répond** : un bot tombé ne peut pas écrire, la coupure est donc postée à son retour, suivie du message de retour.
 
-L'encadré **État du site**, en haut de la page `/admin/signalements` (« Administration du site »), montre le dernier signe de vie du bot, la dernière sauvegarde (date, taille, « En retard ») et les 5 dernières alertes.
+L'encadré **État du site**, en haut de la page `/admin/signalements` (« Administration du site »), montre le dernier signe de vie du bot (ou « Pas de bot sur ce serveur » quand `INTERNAL_API_SECRET` est vide), la dernière sauvegarde (date, taille, « En retard ») et les 5 dernières alertes.
 
 À savoir :
 
 - Après un redémarrage de l'API (un déploiement), le démarrage compte comme signe de vie : pas de fausse alerte avant 10 minutes. Une coupure déjà signalée le reste : pas de deuxième alerte.
 - Tant que la sauvegarde n'a jamais été signalée (script pas réinstallé), l'alerte part 26 h après le premier démarrage de l'API avec cette surveillance, pas avant.
-- Sans `INTERNAL_API_SECRET` (pas de bot sur ce serveur), le bot n'est pas surveillé ; la sauvegarde l'est toujours.
+- Sans `INTERNAL_API_SECRET` (pas de bot sur ce serveur : développement, tests), le bot n'est pas surveillé, jamais déclaré « Ne répond plus » et l'encadré écrit « Pas de bot sur ce serveur » ; la sauvegarde l'est toujours.
 
 **Réinstaller le script de sauvegarde (une fois, après le déploiement de cette version).** Le script installé sur le serveur est une copie : sans cette commande, il ne signale rien et l'alerte « Pas de sauvegarde réussie depuis 26 h » part le lendemain.
 
 ```bash
 cd ~/forever-roster
 sudo install -m 700 infra/backup/forever-backup.sh /usr/local/sbin/forever-backup.sh
-sudo /usr/local/sbin/forever-backup.sh    # facultatif : une sauvegarde tout de suite, sinon la prochaine nuit
+sudo /usr/local/sbin/forever-backup.sh    # OBLIGATOIRE : une sauvegarde tout de suite, à la main
 ```
 
-Bon si : l'encadré « État du site » montre la sauvegarde du jour (« OK »). Pour signaler une sauvegarde à la main : `sudo docker compose exec api node dist/site-status.js backup-ok <octets>`.
+Lancer le script à la main est une **étape obligatoire** de la mise en service : c'est le seul test de bout en bout du signal (script → conteneur `api` → base → encadré). Sans lui, un script mal copié ou un signal qui n'arrive pas ne se verrait que 26 h plus tard, par l'alerte. Attendu dans la sortie : « Sauvegarde signalée à l'API (… octets). », puis « Sauvegarde OK : … ». Le signal est « au mieux » (il n'est pas fatal au script) : si la ligne « Sauvegarde signalée à l'API » manque, lire le message d'erreur juste au-dessus avant de continuer.
+
+Bon si : l'encadré « État du site » (en haut de `/admin/signalements`) montre la sauvegarde du jour avec l'étiquette « OK ». Pour signaler une sauvegarde à la main : `sudo docker compose exec api node dist/site-status.js backup-ok <octets>`.
 
 ### Le site entier : un moniteur externe
 
@@ -140,6 +142,7 @@ sudo install -m 700 infra/backup/forever-backup.sh /usr/local/sbin/forever-backu
 sudo install -m 644 infra/backup/forever-backup.service infra/backup/forever-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now forever-backup.timer
+sudo /usr/local/sbin/forever-backup.sh    # obligatoire : la première sauvegarde, et le test du signal à l'API (voir Surveillance)
 ```
 
 ### Fonctionnement
@@ -150,7 +153,7 @@ sudo systemctl enable --now forever-backup.timer
 - Rotation : 14 jours.
 - Journal des exécutions : `journalctl -u forever-backup.service`.
 - À la fin de chaque sauvegarde réussie, le script la signale à l'API (`node dist/site-status.js backup-ok <octets>`) : page « État du site » et alerte au bout de 26 h sans signal, voir [Surveillance](#surveillance). Au mieux : une API arrêtée ne fait pas échouer la sauvegarde.
-- Le script installé est une copie : après une mise à jour du dépôt, le réinstaller avec la première commande de l'installation ci-dessus.
+- Le script installé est une copie : après une mise à jour du dépôt, le réinstaller avec la première commande de l'installation ci-dessus, puis le lancer une fois à la main (« Sauvegarde signalée à l'API » dans la sortie, sauvegarde « OK » dans l'encadré « État du site »).
 
 ### Test de restauration (à faire régulièrement)
 
@@ -549,7 +552,7 @@ Le bot publie les raids dans un salon Discord, avec des boutons d'inscription su
 
 Sur <https://discord.com/developers/applications>, **New Application** (« Forever Roster ») :
 
-1. **Installation** : *Install Link* → **None**. Discord refuse sinon l'étape 3.
+1. **Installation** : *Install Link* → **None** (l'invitation passe par le lien de l'étape 4 ou par le bouton du site, pas par un lien fourni par Discord). Si Discord répond ensuite que l'application ne peut pas être ajoutée à des serveurs, revenir ici : *Installation* › *Guild Install* doit être cochée.
 2. **OAuth2** : ajouter la redirection `https://forever-roster.sleyvazh.fr/api/auth/discord/callback`. Noter le **Client ID** (public). **Reset Secret** donne le **Client Secret** : ne le coller que dans le terminal du serveur (étape suivante).
 3. **Bot** : **cocher Public Bot**. Sans cette case, Discord refuse l'invitation sur tout serveur qui n'est pas celui du propriétaire de l'application : le bouton « Ajouter le bot » du site (étape 4) ne marcherait que pour toi. Laisser les trois *Privileged Gateway Intents* **désactivés**. **Reset Token** donne le jeton du bot : même règle que le secret.
 4. Inviter le bot sur le serveur Discord, en remplaçant `CLIENT_ID` :

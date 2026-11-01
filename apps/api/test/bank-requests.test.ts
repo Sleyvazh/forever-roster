@@ -313,7 +313,9 @@ describe("étapes et droits", () => {
     expect(await rowOf(pending.id)).toMatchObject({ status: "pending" });
     const v = await bankOf(s, s.p.Pikou!);
     expect(v.requests.open.map(r => r.id)).toEqual([pending.id]);
-    expect(v.requests.done.map(r => r.id).sort()).toEqual([open.id, prepared.id, done.id].sort());
+    // Annulées (par le départ) : ni listées sous « Terminées », ni effacées ; seule la remise y est
+    expect(v.requests.done.map(r => r.id)).toEqual([done.id]);
+    expect(await db().$count(bankRequests, and(eq(bankRequests.groupId, s.g.id), eq(bankRequests.status, "cancelled")))).toBe(2);
     // Le banquier parti : 404 et plus de drapeau s'il revient (le drapeau part avec l'appartenance)
     expect((await s.p.Banq!.c.del(`/api/groups/${s.g.id}/members/${s.p.Banq!.user.id}`)).statusCode).toBe(200);
     expect((await act(s, s.p.Banq!, pending.id, "prepare")).statusCode).toBe(404);
@@ -385,7 +387,7 @@ describe("banquiers", () => {
 });
 
 describe("liste des demandes dans la banque, accueil", () => {
-  it("en cours : toutes, la plus ancienne d'abord, nom de l'objet ; terminées : les 20 dernières closes, la plus récente d'abord ; canHandle pour ceux qui traitent", async () => {
+  it("en cours : toutes, la plus ancienne d'abord, nom de l'objet ; terminées : les 20 dernières remises ou refusées, la plus récente d'abord ; canHandle pour ceux qui traitent", async () => {
     const s = await world("Les Listes");
     const t0 = Date.now();
     const a = await make(s, s.p.Pikou!, ITEM, 10, "pour monter Alchimie");
@@ -421,6 +423,25 @@ describe("liste des demandes dans la banque, accueil", () => {
     expect(empty).toMatchObject({ linked: false, bank: null, requests: { open: [], done: [], canHandle: false, myOpen: 0 } });
     const nobank = await none.get<GuildBankResponse>(none.owner, "/guild/bank");
     expect(nobank.requests).toMatchObject({ canHandle: true });
+  });
+
+  it("terminées : les demandes annulées n'y sont pas (demander puis annuler en boucle ne chasse pas les remises ni les refusées) mais restent en base", async () => {
+    const s = await world("Les Annulees");
+    const given = await make(s, s.p.Pikou!, ITEM, 2);
+    expect((await act(s, s.owner, given.id, "done")).statusCode).toBe(200);
+    const refused = await make(s, s.p.Pikou!, CLOTH, 1);
+    expect((await act(s, s.p.Off!, refused.id, "refuse", "réservé pour le raid")).statusCode).toBe(200);
+    // 25 demandes annulées par un autre membre : plus que les 20 places de « Terminées »
+    for (let i = 0; i < 25; i++) {
+      const r = await make(s, s.p.Vexou!, ITEM, 1);
+      expect((await act(s, s.p.Vexou!, r.id, "cancel")).statusCode).toBe(200);
+    }
+    const v = (await bankOf(s, s.p.Zed!)).requests;
+    expect(v.done.map(r => [r.id, r.status])).toEqual([[refused.id, "refused"], [given.id, "done"]]);
+    expect(v.open).toEqual([]);
+    expect(v.myOpen).toBe(0);
+    // Elles ne sont que cachées : la purge des 90 jours les efface comme les autres
+    expect(await db().$count(bankRequests, and(eq(bankRequests.groupId, s.g.id), eq(bankRequests.status, "cancelled")))).toBe(25);
   });
 
   it("« À traiter » de l'accueil : le nombre de demandes en attente pour les officiers, le propriétaire et les banquiers ; null pour les autres", async () => {

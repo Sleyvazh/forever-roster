@@ -19,10 +19,17 @@ const BOT_SILENCE_MS = 10 * 60e3;
 const BACKUP_LATE_MS = 26 * 3600e3;
 const BACKUP_KEY = "backup_status";
 
+/** « 23 min » sous une heure, puis « 3 h 05 » (heures, minutes sur deux chiffres) et « 2 h » pile. */
+export function outageSpan(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60), m = minutes % 60;
+  return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
+}
+
 /** Textes des alertes (ceux de la maquette : 10 min = BOT_SILENCE_MS, 26 h = BACKUP_LATE_MS). */
 const TEXT = {
   botDown: "Le bot Discord ne répond plus depuis 10 min",
-  botUp: (minutes: number) => `Le bot Discord répond à nouveau (coupure de ${minutes} min)`,
+  botUp: (minutes: number) => `Le bot Discord répond à nouveau (coupure de ${outageSpan(minutes)})`,
   backupLate: "Pas de sauvegarde réussie depuis 26 h",
   backupOk: "Sauvegarde rétablie",
 };
@@ -110,9 +117,11 @@ async function checkBackup(db: Db, now: Date) {
 
 export interface SiteStatusContext { db: Db; mailer: Mailer; cfg: Config }
 
+/** Sans secret interne, il n'y a pas de bot sur ce serveur (développement, tests, serveur sans Discord) : rien à surveiller de ce côté. */
+const botWatched = (cfg: Pick<Config, "INTERNAL_API_SECRET">) => !!cfg.INTERNAL_API_SECRET;
+
 export async function checkSiteStatus(ctx: SiteStatusContext, now: Date): Promise<void> {
-  // Sans secret interne, il n'y a pas de bot sur ce serveur : rien à surveiller de ce côté
-  if (ctx.cfg.INTERNAL_API_SECRET) await checkBot(ctx.db, now);
+  if (botWatched(ctx.cfg)) await checkBot(ctx.db, now);
   await checkBackup(ctx.db, now);
   await mailPending(ctx, now);
 }
@@ -142,7 +151,7 @@ async function details(db: Db, a: typeof siteAlerts.$inferSelect): Promise<strin
     case "backup_late": {
       const st = await readBackup(db);
       const since = st?.at ? `dernière sauvegarde réussie : ${when(st.at)}`
-        : `aucune sauvegarde réussie n'a été signalée depuis le début de la surveillance${st ? ` (${when(st.watchSince)})` : ""}`;
+        : `aucune sauvegarde réussie n'a été signalée depuis le début de la surveillance${st ? `, le ${when(st.watchSince)}` : ""}`;
       return [
         `${a.text} (${since}).`,
         "Tant qu'aucune sauvegarde ne réussit, la base n'est plus copiée : si le serveur tombait, on repartirait d'une copie de plus en plus ancienne.",
@@ -181,22 +190,28 @@ async function mailPending({ db, mailer, cfg }: SiteStatusContext, now: Date) {
 /* ----- Pour la page des admins et pour le bot ----- */
 
 export interface SiteStatusView {
-  bot: { lastSeenAt: string; down: boolean; downSince: string | null };
+  /** watched : false quand il n'y a pas de bot sur ce serveur (ni dernier signe de vie, ni coupure à montrer). */
+  bot: { watched: boolean; lastSeenAt: string | null; down: boolean; downSince: string | null };
   backup: { at: string | null; bytes: number | null; late: boolean };
   /** Les 5 dernières, la plus récente d'abord. */
   alerts: { at: string; kind: string; text: string }[];
 }
 
-export async function siteStatusView(db: Db, now: Date): Promise<SiteStatusView> {
+async function botView(db: Db, now: Date, cfg: Pick<Config, "INTERNAL_API_SECRET">): Promise<SiteStatusView["bot"]> {
+  if (!botWatched(cfg)) return { watched: false, lastSeenAt: null, down: false, downSince: null };
   const incident = await botIncident(db);
   // Coupure signalée et le bot n'a pas rappelé : le dernier signe de vie est celui d'avant la coupure (même après un redémarrage de l'API)
   const ongoing = incident && !returnedAt(incident) ? incident : null;
   const lastSeen = ongoing ? ongoing.since : botSeenAt();
   const down = !!ongoing || now.getTime() - lastSeen.getTime() > BOT_SILENCE_MS;
+  return { watched: true, lastSeenAt: lastSeen.toISOString(), down, downSince: down ? lastSeen.toISOString() : null };
+}
+
+export async function siteStatusView(db: Db, now: Date, cfg: Pick<Config, "INTERNAL_API_SECRET">): Promise<SiteStatusView> {
   const st = await readBackup(db);
   const alerts = await db.select().from(siteAlerts).orderBy(desc(siteAlerts.id)).limit(5);
   return {
-    bot: { lastSeenAt: lastSeen.toISOString(), down, downSince: down ? lastSeen.toISOString() : null },
+    bot: await botView(db, now, cfg),
     backup: { at: st?.at ?? null, bytes: st?.bytes ?? null, late: !!st && isLate(st, now) },
     alerts: alerts.map(a => ({ at: a.createdAt.toISOString(), kind: a.kind, text: a.text })),
   };

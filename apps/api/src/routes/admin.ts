@@ -11,6 +11,6 @@ export async function adminRoutes(app: FastifyInstance) {
   /** « État du site » : le bot Discord, la dernière sauvegarde, les 5 dernières alertes (lib/site-status.ts). */
   app.get("/site-status", async req => {
     if (!currentUser(req).siteAdmin) throw forbidden("Réservé aux admins du site.");
-    return siteStatusView(db, app.ctx.now?.() ?? new Date());
+    return siteStatusView(db, app.ctx.now?.() ?? new Date(), app.ctx.cfg);
   });
 }

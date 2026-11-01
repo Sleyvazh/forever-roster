@@ -62,7 +62,7 @@ export const BANK_REQUEST_NOTE_MAX = 80;
 export const BANK_REQUEST_REASON_MAX = 120;
 /** Une demande close est effacée 90 jours après sa clôture. */
 export const BANK_REQUEST_KEEP_DAYS = 90;
-/** Demandes closes montrées sous « Terminées ». */
+/** Demandes remises ou refusées montrées sous « Terminées » (les annulées n'y sont pas). */
 export const BANK_REQUEST_DONE_SHOWN = 20;
 
 /** « de » ou « d' » devant un nom : l'élision devant une voyelle ou un h (« de Kaeldra », « d'Offa », « d'Hélène »). */

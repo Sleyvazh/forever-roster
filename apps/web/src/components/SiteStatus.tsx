@@ -31,6 +31,27 @@ function size(bytes: number) {
 
 const isAlert = (kind: Status["alerts"][number]["kind"]) => kind === "bot_down" || kind === "backup_late";
 
+/** Le bot Discord : son état, ou « Pas de bot sur ce serveur » quand l'API n'en surveille aucun (pas de secret interne). */
+function BotCard({ bot, now }: { bot: Status["bot"]; now: number }) {
+  const seen = bot.watched ? bot.lastSeenAt : null;
+  return (
+    <div className="ss-card">
+      <h3 className="ss-k">Bot Discord</h3>
+      {seen === null ? <>
+        <b className="ss-v"><i className="ss-dot" aria-hidden="true" />Pas de bot sur ce serveur</b>
+        <span className="small muted">Ce serveur n'a pas de bot Discord : rien n'est surveillé de ce côté.</span>
+      </> : <>
+        <b className="ss-v"><i className={`ss-dot ${bot.down ? "bad" : "ok"}`} aria-hidden="true" />{bot.down ? "Ne répond plus" : "Répond"}</b>
+        <span className="small muted">
+          {bot.down
+            ? `depuis ${span(now - Date.parse(bot.downSince ?? seen))} · dernier signe de vie ${day(seen) === day(new Date(now).toISOString()) ? "à" : `le ${day(seen)} à`} ${hm(seen)}`
+            : `dernier signe de vie il y a ${span(now - Date.parse(seen))}`}
+        </span>
+      </>}
+    </div>
+  );
+}
+
 export function SiteStatus() {
   const q = useQuery({ queryKey: ["site-status"], queryFn: () => get<Status>("/admin/site-status"), refetchInterval: 30_000 });
   // « il y a 40 s » se met à jour sans recharger les données
@@ -51,15 +72,7 @@ export function SiteStatus() {
       {q.error && <div className="alert error">Impossible de charger l'état du site.</div>}
       {s && <>
         <div className="ss-cards">
-          <div className="ss-card">
-            <h3 className="ss-k">Bot Discord</h3>
-            <b className="ss-v"><i className={`ss-dot ${s.bot.down ? "bad" : "ok"}`} aria-hidden="true" />{s.bot.down ? "Ne répond plus" : "Répond"}</b>
-            <span className="small muted">
-              {s.bot.down
-                ? `depuis ${span(now - Date.parse(s.bot.downSince ?? s.bot.lastSeenAt))} · dernier signe de vie ${day(s.bot.lastSeenAt) === day(new Date(now).toISOString()) ? "à" : `le ${day(s.bot.lastSeenAt)} à`} ${hm(s.bot.lastSeenAt)}`
-                : `dernier signe de vie il y a ${span(now - Date.parse(s.bot.lastSeenAt))}`}
-            </span>
-          </div>
+          <BotCard bot={s.bot} now={now} />
           <div className="ss-card">
             <h3 className="ss-k">Dernière sauvegarde</h3>
             {s.backup.at ? <>
@@ -73,7 +86,7 @@ export function SiteStatus() {
                 <i className={`ss-dot ${s.backup.late ? "warn" : ""}`} aria-hidden="true" />Pas encore signalée
                 {s.backup.late && <span className="tag warn">En retard</span>}
               </b>
-              <span className="small muted">Le script de la sauvegarde de nuit n'a encore rien signalé : il se réinstalle sur le serveur (docs/operations.md, Sauvegardes).</span>
+              <span className="small muted">Le script de la sauvegarde de nuit n'a encore rien signalé : il est à réinstaller sur le serveur (docs/operations.md, section Surveillance).</span>
             </>}
           </div>
         </div>

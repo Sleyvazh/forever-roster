@@ -290,7 +290,7 @@ function MyCharsCard({ groupId, chars }: { groupId: string; chars: Character[] }
 
 /* ---------- Trouver quoi faire : donjons à mon niveau, persos de la guilde à mon niveau ---------- */
 
-function FindCard({ groupId, find, canCreate }: { groupId: string; find: HomeFind; canCreate: boolean }) {
+function FindCard({ groupId, find, tomorrow, canCreate }: { groupId: string; find: HomeFind; tomorrow: string; canCreate: boolean }) {
   const base = `/groups/${groupId}`;
   const { char, dungeons, mates } = find;
   const who = (n: number) => (n === 0 ? "aucun autre perso de la guilde n'a le niveau" : `${plural(n, "perso")} de la guilde ${n > 1 ? "ont" : "a"} le niveau`);
@@ -306,7 +306,7 @@ function FindCard({ groupId, find, canCreate }: { groupId: string; find: HomeFin
               <span className="ag-s">{who(d.guildCount)}</span>
             </div>
             <div className="ag-end">
-              {d.planned ? <Link className="link" to={`${base}/sorties`}>Sortie prévue {d.planned.at ? `à ${hm(d.planned.at)}` : "(dès que complet)"} →</Link>
+              {d.planned ? <Link className="link" to={`${base}/sorties`}>Sortie prévue {d.planned.at ? `${parisDay(d.planned.at) === tomorrow ? "demain " : ""}à ${hm(d.planned.at)}` : "(dès que complet)"} →</Link>
                 : canCreate ? <Link className="btn sm" to={`${base}/sorties/nouvelle?donjon=${encodeURIComponent(d.key)}&perso=${encodeURIComponent(char.id)}`} aria-label={`Proposer une sortie à ${d.name}`}>Proposer</Link> : null}
             </div>
           </li>
@@ -427,7 +427,7 @@ export function HomePage({ groupId, detail }: { groupId: string; detail: GroupDe
       <QuestionBand groupId={groupId} questions={d.questions} />
       <TodoList groupId={groupId} groupName={group.name} chars={chars} />
       <div className="hm">
-        <div className="hm-col">{agenda}{d.find && <FindCard groupId={groupId} find={d.find} canCreate={group.creators.canCreateOuting} />}{moves}</div>
+        <div className="hm-col">{agenda}{d.find && <FindCard groupId={groupId} find={d.find} tomorrow={d.tomorrow} canCreate={group.creators.canCreateOuting} />}{moves}</div>
         <div className="hm-col">
           {(officer || detail.banker) && <ToHandle groupId={groupId} officer={officer} nextRaid={nextRaid} feedback={detail.feedback?.unseen ?? 0} bankPending={d.bankRequests ?? 0} />}
           <MyCharsCard groupId={groupId} chars={chars} />
