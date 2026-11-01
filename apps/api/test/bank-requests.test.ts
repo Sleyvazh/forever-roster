@@ -578,11 +578,12 @@ describe("addon : lignes Q (demandes en cours) et H (banquiers) du FRG", () => {
     env.app.ctx.now = undefined;
 
     const text = await frg(s);
+    const [zed] = await db().select({ displayName: users.displayName }).from(users).where(eq(users.id, s.p.Zed!.user.id));
     // Le demandeur sans perso dans la guilde : son pseudo du site (premier mot)
     expect(lines(text, "Q")).toEqual([
       `Q;${a.id};Pikou;${ITEM};20;pending;`,
       `Q;${b.id};Vex;${CLOTH};5;prepared;Gorrak`,
-      `Q;${c.id};${gameName(s.p.Zed!.user.displayName)};2592;1;pending;`,
+      `Q;${c.id};${gameName(zed!.displayName)};2592;1;pending;`,
     ]);
     expect(lines(text, "H")).toEqual(["H;Gorrak"]);
     // Hors du compte de END, après les lignes d'avant (la liste de guilde ne change rien aux autres lignes), avant la ligne M

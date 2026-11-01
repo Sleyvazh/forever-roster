@@ -232,14 +232,23 @@ local qcanon = SNS.Share and SNS.Share.Canonical(QBLOCK, "FRG")
 check(qcanon and qcanon:find("\n" .. Q1 .. "\n" .. Q2 .. "\n" .. H1 .. "\n", 1, true), "lignes Q et H dans le texte canonique")
 local qchanged = SNS.Share and SNS.Share.Canonical((QBLOCK:gsub("prepared;Kaeldra", "prepared;Intrus")), "FRG")
 check(qcanon and qchanged and qchanged ~= qcanon, "demande changée : autre texte canonique")
--- Un lecteur d'avant (1.6.3) ne connaît que R, P et B : END compte ces lignes-là, et Q et H n'y changent rien
-local function legacyCount(text)
-  local n = 0
-  for line in text:gmatch("[^\n]+") do local kind = line:match("^(%a+);") if kind == "R" or kind == "P" or kind == "B" then n = n + 1 end end
-  return n
-end
-check(legacyCount(QBLOCK) == tonumber(QBLOCK:match("\nEND;(%d+)$")) and legacyCount(QBLOCK) == legacyCount((QBLOCK:gsub("\nQ;[^\n]*", ""):gsub("\nH;[^\n]*", ""))),
-  "un lecteur d'avant ne compte ni Q ni H dans END")
+-- Un lecteur d'avant (1.6.3) ne connaît pas les types Q et H : pour lui ce sont des lignes inconnues. Émulé avec le vrai
+-- analyseur, en donnant à ces lignes un type que personne ne connaît : le bloc est lu comme avant (END accepté, mêmes raids,
+-- sorties et inscrits), sans demande ni banquier, et le texte signé gardé garde ces lignes telles quelles (signature valide).
+local OLD = (QBLOCK:gsub("\nQ;", "\nJ;"):gsub("\nH;", "\nJ;"))
+check(OLD ~= QBLOCK and select(2, OLD:gsub("\nJ;", "")) == 3, "bloc d'avant : Q et H renommés en type inconnu (3 lignes)")
+local og, oerr = F.ParseFRG(OLD)
+check(og and #og == 1 and #og[1].raids == 1 and #og[1].outings == 1 and next(og[1].signups) ~= nil and og[1].raids[1].status == "present" and og[1].sig,
+  "lecteur d'avant : lignes inconnues ignorées, END accepté, reste du bloc lu (" .. tostring(oerr) .. ")")
+check(og and #og[1].requests == 0 and #og[1].bankers == 0, "lecteur d'avant : aucune demande ni banquier")
+check(og and og[1].text and og[1].text:find("\nJ;0b5a1c2d-0000-4000-8000-000000000001;Nessa;8170;10;pending;\nJ;0b5a1c2d-0000-4000-8000-000000000002;Vex;10940;5;prepared;Kaeldra\nJ;Gorrak,Kaeldra\n", 1, true),
+  "lecteur d'avant : le texte signé garde les lignes inconnues, dans l'ordre")
+local ocanon = SNS.Share and SNS.Share.Canonical(OLD, "FRG")
+check(ocanon and qcanon and ocanon == (qcanon:gsub("\nQ;", "\nJ;"):gsub("\nH;", "\nJ;")), "lecteur d'avant : même forme canonique (la signature reste valide)")
+-- Et ce que END compte n'a pas changé : seul R, P et B, avec ou sans Q et H
+local NOQH = (QBLOCK:gsub("\nQ;[^\n]*", ""):gsub("\nH;[^\n]*", ""))
+local ng = F.ParseFRG(NOQH)
+check(ng and #ng[1].raids == 1 and #ng[1].requests == 0 and #ng[1].bankers == 0, "même bloc sans Q ni H : END;2 accepté aussi")
 check(qg and qg[1].raids[1].status == "present" and #qg[1].outings == 1 and next(qg[1].signups) ~= nil, "les autres lignes du bloc sont lues comme avant")
 -- Bloc sans ligne Q ni H (site plus ancien, aucune demande) : listes vides
 check(gs and type(gs[1].requests) == "table" and #gs[1].requests == 0 and type(gs[1].bankers) == "table" and #gs[1].bankers == 0, "bloc sans Q ni H : aucune demande, aucun banquier")

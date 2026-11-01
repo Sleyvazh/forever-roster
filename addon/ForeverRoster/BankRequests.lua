@@ -1,7 +1,8 @@
 -- Demandes de retrait à la banque (1.6.4) : le site met dans le bloc FRG les demandes de retrait en cours (lignes Q) et les
 -- banquiers de la guilde (ligne H) ; les mêmes pour tous les membres (Format.lua, docs/addon-format.md). Quand la banque de
--- guilde s'ouvre et que mon perso est officier (ligne O) ou banquier (ligne H) d'un groupe qui a des demandes en cours, une
--- petite fenêtre « Demandes de retrait (N) » s'ouvre à côté de la banque : qui, objet (lien : infobulle au survol, Maj+clic
+-- guilde s'ouvre et que l'un de mes persos est officier (ligne O) ou banquier (ligne H) d'un groupe qui a des demandes en cours
+-- (la ligne H ne porte que le perso main du banquier : il ouvre la banque avec n'importe quel perso du compte, comme le relais
+-- des inscriptions, Relay.lua), une petite fenêtre « Demandes de retrait (N) » s'ouvre à côté de la banque : qui, objet (lien : infobulle au survol, Maj+clic
 -- dans le chat), quantité, onglet où l'objet se trouve d'après le relevé de la banque en cours (Guild.lua, G.BankTabsOf ;
 -- « … » tant que le relevé n'est pas fini, « — » si l'objet n'y est pas), étape (« En attente », « Préparée par X »).
 -- Lecture seule : on marque « Préparée » ou « Remise » sur le site. Rien n'est envoyé, ni au site ni aux autres joueurs.
@@ -17,17 +18,18 @@ ns.BankRequests = B
 local LABEL = N("demandes de retrait")
 B.Label = LABEL
 local GOLD, GREY, GREEN = K.GOLD, K.GREY, K.GREEN
-local WIDTH = 720        -- largeur de la fenêtre
-local ROW = 28           -- hauteur d'une ligne
+local WIDTH = 560        -- largeur de la fenêtre : une petite fenêtre, qui tient à côté de la banque (770 px) sur un écran de 1366
+local ROW = 28           -- hauteur d'une ligne (deux lignes de petit texte)
 local MAX_ROWS = 8       -- lignes visibles sans défiler (la fenêtre grandit jusque-là)
 local NONE, LATER = "—", "…"
 -- Intitulés traduits à l'affichage (Check)
+-- Les textes longs (objet, onglets, « Préparée par X ») passent à la ligne ou sont coupés plutôt que d'élargir la fenêtre
 local COLS = {
-  { title = N("Qui"), w = 76 },
-  { title = N("Objet"), flex = 1, min = 170 },
-  { title = N("Qté"), w = 44, justify = "RIGHT" },
-  { title = N("Onglet"), flex = 1, min = 130 },
-  { title = N("Étape"), w = 150 },
+  { title = N("Qui"), w = 68 },
+  { title = N("Objet"), flex = 1, min = 140, small = true, lines = 2 },
+  { title = N("Qté"), w = 38, justify = "RIGHT" },
+  { title = N("Onglet"), flex = 0.8, min = 100, small = true, lines = 2 },
+  { title = N("Étape"), w = 120, small = true, lines = 2 },
 }
 
 --------------------------------------------------------------------------------------------------------------------
@@ -39,10 +41,10 @@ local function call(fn, ...)
   if type(fn) ~= "function" then return end
   return back(pcall(fn, ...))
 end
--- Prénom seul, en minuscules (« Gorrak Fendroc », « Gorrak-Forever EU » → gorrak)
-local function key(name) return ((ns.text(name):gsub("^%s+", "")):match("^[^%-%s]+") or ""):lower() end
-local function has(list, k)
-  for _, name in ipairs(list or {}) do if key(name) == k then return true end end
+-- Un de mes persos est dans cette liste de prénoms (mine : Group.MyChars, prénoms seuls en minuscules ; Group.First compare
+-- sans royaume, sans nom de famille de Forever ni casse : « Gorrak Fendroc », « Gorrak-Forever EU » → gorrak)
+local function has(list, mine)
+  for _, name in ipairs(list or {}) do if mine[ns.Group.First(name)] then return true end end
   return false
 end
 -- Combat ou rencontre en cours (Guild.lua suit ENCOUNTER_START / ENCOUNTER_END) : pas de fenêtre
@@ -60,15 +62,15 @@ local linked = setmetatable({}, { __mode = "k" }) -- lignes du tableau dont le l
 --------------------------------------------------------------------------------------------------------------------
 -- Quel groupe, quelles lignes
 --------------------------------------------------------------------------------------------------------------------
--- Groupe dont j'affiche les demandes : un groupe où mon perso est officier (ligne O) ou banquier (ligne H) et qui a des
--- demandes en cours. Plusieurs : celui qui porte le nom de ma guilde du jeu, sinon le premier par nom.
+-- Groupe dont j'affiche les demandes : un groupe où l'un de mes persos (celui connecté, ceux du compte déjà vus par l'addon,
+-- Group.MyChars) est officier (ligne O) ou banquier (ligne H) et qui a des demandes en cours. Plusieurs : celui qui porte le
+-- nom de ma guilde du jeu, sinon le premier par nom.
 local function pick()
-  local me = key((call(UnitName, "player")))
-  if me == "" then return nil end
+  local mine = ns.Group.MyChars()
   local guild = ns.str((call(GetGuildInfo, "player")))
   local found
   for _, g in ipairs(ns.Group.List()) do
-    if #(g.requests or {}) > 0 and (has(g.officers, me) or has(g.bankers, me)) then
+    if #(g.requests or {}) > 0 and (has(g.officers, mine) or has(g.bankers, mine)) then
       if guild and g.name == guild then return g end
       found = found or g
     end
@@ -107,9 +109,10 @@ local function build()
   p:SetPoint("TOPLEFT", 14, K.site() and -36 or -28) p:SetPoint("BOTTOMRIGHT", -12, 10)
   win.sub = K.hint(p, "")
   win.sub:SetWidth(WIDTH - 14 - 12 - (K.site() and 6 or 52) - 6)
+  if win.sub.SetMaxLines then win.sub:SetMaxLines(1) end
   win.grid = K.grid(p, -22, 44, COLS)
   win.foot = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  win.foot:SetPoint("BOTTOMLEFT", 8, 14) win.foot:SetWidth(WIDTH - 14 - 12 - 120) win.foot:SetJustifyH("LEFT")
+  win.foot:SetPoint("BOTTOMLEFT", 8, 10) win.foot:SetWidth(WIDTH - 14 - 12 - 110) win.foot:SetJustifyH("LEFT")
   win.close = K.button(p, L["Fermer"], 90, function() win:Hide() end)
   win.close:SetPoint("BOTTOMRIGHT", -4, 8)
   win:SetScript("OnHide", function(self)

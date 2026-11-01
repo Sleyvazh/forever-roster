@@ -3290,8 +3290,11 @@ local function bankRequests()
   local c0 = ns.charDB()
   local keep = { time = time, UnitName = UnitName, InCombatLockdown = InCombatLockdown, IsInGuild = IsInGuild, GetGuildInfo = GetGuildInfo, C_Timer = C_Timer,
     groups = ForeverRosterDB.groups, guilds = ForeverRosterDB.guilds, guild = c0.guild, skin = ForeverRosterDB.skin, lastLoad = ForeverRosterDB.lastLoad,
-    tab = ForeverRosterDB.tab, raidLogs = ForeverRosterDB.raidLogs }
+    tab = ForeverRosterDB.tab, raidLogs = ForeverRosterDB.raidLogs, chars = ForeverRosterDB.chars }
   ForeverRosterDB.groups, ForeverRosterDB.guilds, ForeverRosterDB.raidLogs = {}, {}, {}
+  local charKeys = {}
+  for k in pairs(keep.chars) do charKeys[#charKeys + 1] = k end
+  table.sort(charKeys)
   local before, sentBefore, saidBefore = errors(), #sent, #said
   local function quiet(what) assert(errors() == before and failures == 0, what .. " : " .. tostring(printed[#printed])) end
 
@@ -3299,6 +3302,15 @@ local function bankRequests()
   time = function() return base end
   local S = { combat = false, me = "Tournicoti", silent = false }
   UnitName = function() return S.me end
+  -- Joueur connecté : un autre perso du compte compte aussi (Group.MyChars lit les persos relevés par l'addon, ForeverRosterDB.chars).
+  -- Chaque joueur simulé a donc son propre compte, avec seulement les persos donnés ; Tournicoti garde les fiches de la sauvegarde.
+  -- La sauvegarde de départ est remise en place à la fin : aucun perso simulé n'y reste.
+  local function as(name, ...)
+    S.me = name
+    if name == "Tournicoti" and select("#", ...) == 0 then ForeverRosterDB.chars = keep.chars return end
+    ForeverRosterDB.chars = {}
+    for _, other in ipairs({ name, ... }) do ForeverRosterDB.chars[other .. "-Forever EU"] = { recipes = {} } end
+  end
   InCombatLockdown = function() return S.combat end
   IsInGuild = function() return true end
   GetGuildInfo = function(unit) if unit == "player" then return "Les Lanternes", "Officier", 1 end end
@@ -3355,13 +3367,13 @@ local function bankRequests()
   local function plain(t) return (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")) end
 
   -- Un simple membre (ni dans O, ni dans H) : la banque s'ouvre, rien de plus
-  S.me = "Brindille"
+  as("Brindille")
   load()
   open()
   assert(not shown(), "membre : pas de fenêtre")
   close()
   -- Perso inconnu des groupes (aucun groupe chargé) : rien non plus
-  S.me = "Tournicoti"
+  as("Tournicoti")
   ForeverRosterDB.groups = {}
   open()
   assert(not shown(), "aucun groupe chargé : pas de fenêtre")
@@ -3489,22 +3501,37 @@ local function bankRequests()
 
   -- Banquier (ma ligne H, pas officier) : même fenêtre
   close()
-  S.me = "Gorrak"
+  as("Gorrak")
   load({ officers = "Offa" })
   open()
   assert(shown() and #rows() == 5, "banquier : fenêtre")
   close()
   -- Ni officier ni banquier dans ce groupe (je suis dans M seulement) : rien
-  S.me = "Pikou"
+  as("Pikou")
   open()
   assert(not shown(), "membre dans M seulement : rien")
   close()
   -- Prénoms comparés sans casse ni nom de famille (le jeu peut donner « Gorrak Fendroc » ou « Gorrak-ForeverEU »)
-  S.me = "Gorrak-Forever EU"
+  as("Gorrak-Forever EU")
   open()
   assert(shown(), "prénom du jeu avec royaume")
   close()
-  S.me = "Tournicoti"
+  -- Le banquier ouvre la banque avec un autre perso du compte (la ligne H ne porte que son main) : la fenêtre s'ouvre aussi.
+  -- Le main est connu de l'addon (fiche de ForeverRosterDB.chars) ; sans lui, l'autre perso est un simple membre.
+  as("Banquiere", "Gorrak")
+  open()
+  assert(shown() and #rows() == 5 and B.Window().heading == "Demandes de retrait (5)", "banquier sur un autre perso du compte : fenêtre")
+  close()
+  as("Banquiere")
+  open()
+  assert(not shown(), "autre perso d'un compte sans le main du banquier : rien")
+  close()
+  -- Officier sur un autre perso de son compte (ligne O)
+  as("Banquiere", "Offa")
+  open()
+  assert(shown(), "officier sur un autre perso du compte : fenêtre")
+  close()
+  as("Tournicoti")
   quiet("banquier et simple membre")
 
   -- Deux groupes ayant des demandes : celui dont le nom est celui de ma guilde du jeu
@@ -3545,8 +3572,11 @@ local function bankRequests()
   QueryGuildBankLog, GetNumGuildBankTransactions, GetNumGuildBankMoneyTransactions, Enum.PlayerInteractionType = nil, nil, nil, nil
   ForeverRosterDB.groups, ForeverRosterDB.guilds, ForeverRosterDB.lastLoad, ForeverRosterDB.tab, ForeverRosterDB.raidLogs = keep.groups, keep.guilds, keep.lastLoad, keep.tab, keep.raidLogs
   c0.guild = keep.guild
-  ForeverRosterDB.chars["Brindille-Forever EU"], ForeverRosterDB.chars["Gorrak-Forever EU"], ForeverRosterDB.chars["Pikou-Forever EU"] = nil, nil, nil
-  ForeverRosterDB.chars["Gorrak-Forever EU"] = nil
+  ForeverRosterDB.chars = keep.chars
+  local after = {}
+  for k in pairs(ForeverRosterDB.chars) do after[#after + 1] = k end
+  table.sort(after)
+  assert(table.concat(after, "|") == table.concat(charKeys, "|"), "aucun perso simulé ne reste dans la sauvegarde : " .. table.concat(after, ", "))
 end
 bankRequests()
 
