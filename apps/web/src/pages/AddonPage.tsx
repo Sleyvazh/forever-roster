@@ -25,7 +25,7 @@ export function AddonPage() {
           <p><a className="btn primary" href="/downloads/ForeverRoster.zip" download>Télécharger l'addon {__ADDON_VERSION__}</a></p>
           <p>Un zip de fichiers texte, pour WoW Forever.</p></li>
         <li className="ad-step"><h2><span className="n">2</span>Installer</h2>
-          <p>Copie le dossier <code>ForeverRoster</code> dans <code>World of Warcraft\_classic_\Interface\AddOns</code>, puis relance le jeu.</p></li>
+          <p>Copie le dossier <code>ForeverRoster</code> dans <code>World of Warcraft\_forever_\Interface\AddOns</code>, puis relance le jeu.</p></li>
         <li className="ad-step"><h2><span className="n">3</span>Choisir ta touche</h2>
           <p>En jeu : <code>/fr options</code>, « Choisir une touche ». Elle sert à la synchro, dans les deux sens.</p></li>
       </ol>

@@ -13,7 +13,7 @@ import { decodeBlp, fetchBlp } from "./blp";
 import { cropBox, findRoleAtlases, ROLE_ATLAS, type RoleKey } from "./roles";
 import { downloadDb2, latestBuild } from "./source";
 
-const BRANCHES = (process.env.WAGO_BRANCHES ?? "wow_classic_beta,wow_classic,wow_classic_era,wow").split(",");
+const BRANCHES = (process.env.WAGO_BRANCHES ?? "wowf,wow_classic_beta,wow_classic,wow_classic_era,wow").split(",");
 const out = process.argv[2];
 if (!out) throw new Error("dossier de destination manquant");
 

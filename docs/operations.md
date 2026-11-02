@@ -343,11 +343,11 @@ Environ 40 % des objets de Forever ne sont pas dans les fichiers du jeu : le ser
 1. Fermer le jeu, puis copier le fichier sur le serveur (depuis le PC, PowerShell) :
    ```powershell
    ssh forever "mkdir -p ~/forever-roster/gamedata"
-   scp "C:\Games\World of Warcraft\_classic_beta_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
+   scp "C:\Games\World of Warcraft\_forever_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
    ```
 2. Sur le serveur : `bash scripts/import-gamedata.sh`. Le script utilise `gamedata/DBCache.bin` s'il existe (dossier ignoré par Git).
 
-Les objets du cache complètent les fichiers du jeu sans jamais les remplacer, et passent avant le complément Classic Era. Plus le client a joué, plus il en contient : recommencer de temps en temps (après la sortie : `_classic_` au lieu de `_classic_beta_`). Si Blizzard change le format, l'import s'arrête sans rien écrire (« le format du client a changé »).
+Les objets du cache complètent les fichiers du jeu sans jamais les remplacer, et passent avant le complément Classic Era. Plus le client a joué, plus il en contient : recommencer de temps en temps (depuis la sortie : dossier `_forever_`). Si Blizzard change le format, l'import s'arrête sans rien écrire (« le format du client a changé »).
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 
@@ -408,7 +408,7 @@ bash scripts/fetch-item-icons.sh                 # relançable à tout moment
 SKIP_ICONS=1 bash scripts/import-gamedata.sh     # import sans téléchargement d'icônes
 ```
 
-Beaucoup d'objets (surtout ceux de Forever) n'ont pas d'icône propre dans la table Item : l'import prend alors celle de leur apparence (ItemModifiedAppearance → ItemAppearance), comme le jeu. Les icônes que le serveur d'images de Blizzard ne sert pas (récentes, propres à Forever) et celles dont le nom est inconnu (fichier nommé `f<identifiant>`) sont ensuite récupérées dans les fichiers du jeu par leur identifiant, sur wago.tools (format BLP), puis converties en JPEG 56×56 par `dist/blp-icons.js` dans un conteneur `api` temporaire. Branches essayées : `WAGO_BRANCHES` (par défaut `wow_classic_beta,wow_classic,wow_classic_era`).
+Beaucoup d'objets (surtout ceux de Forever) n'ont pas d'icône propre dans la table Item : l'import prend alors celle de leur apparence (ItemModifiedAppearance → ItemAppearance), comme le jeu. Les icônes que le serveur d'images de Blizzard ne sert pas (récentes, propres à Forever) et celles dont le nom est inconnu (fichier nommé `f<identifiant>`) sont ensuite récupérées dans les fichiers du jeu par leur identifiant, sur wago.tools (format BLP), puis converties en JPEG 56×56 par `dist/blp-icons.js` dans un conteneur `api` temporaire. Branches essayées : `WAGO_BRANCHES` (par défaut `wowf,wow_classic_beta,wow_classic,wow_classic_era` ; `wowf` = Forever depuis la sortie).
 
 Si une icône reste introuvable, le site affiche le pictogramme de son emplacement.
 

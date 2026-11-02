@@ -75,7 +75,7 @@ Une inscription faite en jeu part au site avec l'export (Ctrl+C, ou Roster Compa
 
 ## Installation
 
-Télécharger le zip sur la page **Addon** du site, puis copier le dossier `ForeverRoster` dans `World of Warcraft\_classic_beta_\Interface\AddOns\` (après la sortie : `_classic_`), puis relancer le jeu ou taper `/reload`.
+Télécharger le zip sur la page **Addon** du site, puis copier le dossier `ForeverRoster` dans `World of Warcraft\_forever_\Interface\AddOns\` (dossier du jeu de sortie ; c'était `_classic_beta_` pendant la bêta), puis relancer le jeu ou taper `/reload`.
 
 ## Notes
 

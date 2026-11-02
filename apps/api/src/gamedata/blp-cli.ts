@@ -11,7 +11,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { blpToJpeg, fetchBlp as fetchFrom } from "./blp";
 
-const BRANCHES = (process.env.WAGO_BRANCHES ?? "wow_classic_beta,wow_classic,wow_classic_era").split(",");
+const BRANCHES = (process.env.WAGO_BRANCHES ?? "wowf,wow_classic_beta,wow_classic,wow_classic_era").split(",");
 const out = process.argv[2];
 if (!out) throw new Error("dossier de destination manquant");
 

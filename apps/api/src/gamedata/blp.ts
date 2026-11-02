@@ -93,7 +93,7 @@ function dxt5Alpha(b: Buffer, px: Buffer) {
 
 /**
  * Fichier BLP du jeu par son identifiant, depuis wago.tools (branches essayées dans l'ordre : ce sont les produits,
- * « wow_classic_beta », « wow »…), ou null s'il n'y est pas. `fetchImpl` : remplacé par les tests.
+ * « wowf » pour Forever, « wow_classic_beta », « wow »…), ou null s'il n'y est pas. `fetchImpl` : remplacé par les tests.
  */
 export async function fetchBlp(fid: number, branches: string[], fetchImpl: typeof fetch = fetch) {
   for (const branch of branches) {

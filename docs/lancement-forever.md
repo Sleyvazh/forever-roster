@@ -45,12 +45,12 @@ Si Blizzard publie le client de sortie dès le 4 novembre, faire les étapes 1 �
   ```
   Bon si : `curl -s https://forever-roster.sleyvazh.fr/api/auth/me` contient `"battlenetEnabled":true`, et « Se connecter avec Battle.net » (page de connexion) ramène sur le site, connecté, avec son propre compte.
 - [ ] **Préparer le raid à blanc.** Site : créer le raid de la soirée de lancement (date, format, mode de butin, conseil choisi dans l'onglet Butin) ; il est publié dans le salon Discord du groupe. Discord : annoncer la soirée, demander à chacun de lier son Discord (Compte & sécurité) et de s'inscrire, une moitié par le site, l'autre par les boutons de l'annonce. Scénario détaillé : `raid-a-blanc.html` (hors dépôt, écrit pour l'addon 1.1). Bon si : l'annonce est dans le salon et les premières inscriptions apparaissent sur le site comme sur Discord.
-- [ ] **Prévenir les joueurs** (salon des raids du groupe) : le dossier du jeu change à la sortie (`_classic_` attendu au lieu de `_classic_beta_`, à confirmer le jour J) : recopier l'addon dans `World of Warcraft\_classic_\Interface\AddOns\` ; Roster Companion : Options > Dossier du jeu > Changer, si le dossier bêta avait été choisi à la main. L'addon pour le client de sortie arrive le jour J (page Addon du site, puis CurseForge).
+- [ ] **Prévenir les joueurs** (salon des raids du groupe) : le dossier du jeu change à la sortie : `_forever_` au lieu de `_classic_beta_` (vu à la préinstallation du 2/11, produit « wowf » du launcher, 1.60.1.70707) : recopier l'addon dans `World of Warcraft\_forever_\Interface\AddOns\` (l'appli CurseForge l'a peut-être déjà fait). Roster Companion : passer à la 0.3.2, qui trouve `_forever_` toute seule ; avec la 0.3.1, Options > Dossier du jeu > Changer et choisir le dossier `_forever_` lui-même. L'addon pour le client de sortie arrive le jour J (page Addon du site, puis CurseForge).
 - [ ] **J-1 : contrôle complet.** Serveur : `bash scripts/launch-check.sh`, aucun ✗. Copie hors serveur du jour. **Noter la version des données du jeu** (ligne « version … importée ») : c'est la version de repli si l'import du jour J tourne mal.
 
 ## Jour J (5 novembre)
 
-- [ ] **1. Relever les infos du client de sortie** (PC, en jeu) : `/run print(GetBuildInfo())` affiche la version, le build, la date et le numéro d'interface (4e valeur). Noter aussi le nom du dossier du jeu dans `C:\Games\World of Warcraft\`. Si l'addon actuel est refusé (« périmé »), cocher « Charger les AddOns périmés » dans la liste des AddOns en attendant l'étape 2.
+- [ ] **1. Relever les infos du client de sortie** (PC, en jeu) : `/run print(GetBuildInfo())` affiche la version, le build, la date et le numéro d'interface (4e valeur). Le dossier du jeu est `C:\Games\World of Warcraft\_forever_` (relevé le 2/11 ; l'interface 16001 de la bêta est aussi celle des autres addons de Forever en ligne). Si l'addon actuel est refusé (« périmé »), cocher « Charger les AddOns périmés » dans la liste des AddOns en attendant l'étape 2.
 - [ ] **2. Addon ForeverRoster pour le client de sortie.** PC :
   ```powershell
   cd C:\Dev\forever-roster
@@ -90,18 +90,18 @@ Si Blizzard publie le client de sortie dès le 4 novembre, faire les étapes 1 �
 - [ ] **Chaque jour** : serveur `bash scripts/launch-check.sh` (le bot surtout), bon si aucun ✗ ; signalements dans `/admin/signalements` ou le salon Discord des admins.
 - [ ] **Cache du client de sortie** ([Objets révélés en jeu](operations.md#objets-révélés-en-jeu-cache-du-client)), après quelques soirées de jeu, jeu fermé. PC :
   ```powershell
-  scp "C:\Games\World of Warcraft\_classic_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
+  scp "C:\Games\World of Warcraft\_forever_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
   ```
   Serveur : `bash scripts/import-gamedata.sh --build <version>.<build>`. Bon si : launch-check affiche « cache du client du même build (…) : N objets révélés en jeu ajoutés ». Recommencer en fin de semaine.
 - [ ] **CurseForge** : si la version de jeu manquait le jour J, revoir chaque jour et publier dès qu'elle est là (étape 3 du jour J). Après modération, vérifier que le projet apparaît dans l'appli CurseForge.
-- [ ] **Textes de la bêta** (PC, un seul patch) : le chemin `_classic_beta_` est encore écrit sur la page Addon du site (`apps/web/src/pages/AddonPage.tsx`), dans `addon/README.md` (Installation), dans Roster Companion (`apps/companion/src/Setup.tsx`) et dans la commande `scp` d'operations.md (Objets révélés en jeu). Passer au dossier de sortie relevé, et citer CurseForge sur la page Addon une fois le projet en ligne.
+- [x] **Textes de la bêta** : passés à `_forever_` le 2/11 (page Addon, `addon/README.md`, Roster Companion 0.3.2, `scp` d'operations.md). Reste : citer CurseForge sur la page Addon une fois le projet en ligne.
 - [ ] **J+7** : copie hors serveur ; espace disque sous 80 % dans launch-check (la première semaine remplit base et journaux).
 
 ## Vers J+30 (début décembre) : nouveaux raids
 
 D'ici là, les boss des nouveaux raids se saisissent à la main dans l'onglet Préparation.
 
-- [ ] **Relever leurs boss** dès l'ouverture. L'addon apprend chaque rencontre au premier combat et l'écrit (déconnexion ou `/reload`) dans `C:\Games\World of Warcraft\_classic_\WTF\Account\<COMPTE>\SavedVariables\ForeverRoster.lua` : tables `bossNames` (numéro de rencontre → nom) et `bossNpcs` (PNJ → numéro de rencontre). Relever, pour chaque boss : nom anglais, numéro de rencontre, PNJ.
+- [ ] **Relever leurs boss** dès l'ouverture. L'addon apprend chaque rencontre au premier combat et l'écrit (déconnexion ou `/reload`) dans `C:\Games\World of Warcraft\_forever_\WTF\Account\<COMPTE>\SavedVariables\ForeverRoster.lua` : tables `bossNames` (numéro de rencontre → nom) et `bossNpcs` (PNJ → numéro de rencontre). Relever, pour chaque boss : nom anglais, numéro de rencontre, PNJ.
 - [ ] **Les ajouter au site.** PC : nouvelle entrée de `RAID_INSTANCES` dans `packages/game-data/src/prep.ts` (clé, nom anglais, alias normalisés comme les autres : minuscules, sans accents ni apostrophes, nom français compris ; boss dans l'ordre, `b("Nom", rencontre, pnj…)`), `npm test -w packages/game-data`, commit, push ; serveur : `bash scripts/deploy.sh`. Bon si : l'onglet Préparation d'un raid qui porte le nom de l'instance propose ses boss.
 - [ ] **Patch des raids** : relever la nouvelle version (`/run print(GetBuildInfo())`), réimporter les données du jeu (étape 4 du jour J), recopier `DBCache.bin` après les premiers raids (le butin y est révélé). Si le numéro d'interface change : étapes 2 et 3 du jour J.
 
