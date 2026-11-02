@@ -99,7 +99,7 @@ export function Folders({ s, onDone }: { s: Status; onDone: () => void }) {
       <div><h3 style={{ fontSize: 20 }}>Dossiers du jeu</h3>
         <p className="hint" style={{ marginTop: 4 }}>Relié au compte <b>{s.device?.user || "?"}</b>. Vérifie les dossiers, puis termine.</p></div>
       {candidates.map(i => <InstallCard key={i.path} i={i} selected={i.path === chosen} onSelect={candidates.length > 1 ? () => void call("use_install", { game: "forever", path: i.path }) : undefined} />)}
-      {candidates.length === 0 && <div className="alert warn">Aucun dossier de Forever trouvé. Choisis le dossier « World of Warcraft » qui contient <code>_classic_beta_</code> (ou <code>_classic_</code>).</div>}
+      {candidates.length === 0 && <div className="alert warn">Aucun dossier de Forever trouvé. Choisis le dossier <code>_forever_</code>, dans « World of Warcraft ».</div>}
       {others.map(i => <InstallCard key={i.path} i={i} selected={false} />)}
       <div className="row">
         <button className="btn ghost sm" type="button" onClick={() => void pick("forever")}>+ Ajouter un autre dossier</button>

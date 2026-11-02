@@ -112,6 +112,23 @@ impl Settings {
     pub fn pull_interval_s(&self, game_running: bool) -> i64 {
         if game_running { 60 } else { self.sync_interval_s() }
     }
+
+    /// La bêta de Forever (`_classic_beta_`) est fermée depuis la sortie : un dossier de la bêta choisi à la main est
+    /// oublié, l'appli prend alors toute seule le jeu de sortie (`_forever_`). Vrai si un dossier a été oublié.
+    pub fn forget_closed_beta(&mut self) -> bool {
+        // Dernier élément du chemin, séparateurs de Windows comme d'ailleurs
+        let beta = self.folders.get(&Game::Forever).is_some_and(|p| {
+            let p = p.to_string_lossy();
+            p.trim_end_matches(['\\', '/'])
+                .rsplit(['\\', '/'])
+                .next()
+                .is_some_and(|n| n.eq_ignore_ascii_case("_classic_beta_"))
+        });
+        if beta {
+            self.folders.remove(&Game::Forever);
+        }
+        beta
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,7 +161,12 @@ impl AppState {
     pub fn load(path: &Path) -> AppState {
         match fs::read(path) {
             Ok(bytes) => match serde_json::from_slice::<AppState>(&bytes) {
-                Ok(s) => s,
+                Ok(mut s) => {
+                    if s.settings.forget_closed_beta() {
+                        tracing::info!("dossier de la bêta de Forever oublié : la bêta est fermée, le jeu de sortie est dans _forever_");
+                    }
+                    s
+                }
                 Err(e) => {
                     tracing::warn!("état illisible ({e}) : mis de côté, l'appli repart de zéro");
                     let _ = fs::rename(path, path.with_extension("json.abime"));
@@ -189,9 +211,7 @@ mod tests {
         assert_eq!(s.settings.pull_interval_s(false), 300);
         assert!(s.settings.notifications.fresh, "nouveautés prêtes : actif dès que les notifications le sont");
         s.settings.startup = Startup::Game;
-        s.settings
-            .folders
-            .insert(Game::Forever, PathBuf::from("C:/Games/World of Warcraft/_classic_beta_"));
+        s.settings.folders.insert(Game::Forever, PathBuf::from("C:/Games/World of Warcraft/_forever_"));
         s.game(Game::Forever).etag = Some("\"e\"".into());
         s.save(&path).unwrap();
         let back = AppState::load(&path);
@@ -212,6 +232,30 @@ mod tests {
         let s = AppState::load(&path);
         assert!(s.device.is_none());
         assert!(dir.path().join("state.json.abime").exists());
+    }
+
+    #[test]
+    fn dossier_de_la_beta_oublie_a_la_sortie() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = state_file(dir.path());
+        let mut s = AppState::default();
+        s.settings
+            .folders
+            .insert(Game::Forever, PathBuf::from("D:\\Jeux\\World of Warcraft\\_classic_beta_"));
+        s.settings.folders.insert(Game::Retail, PathBuf::from("D:\\Jeux\\World of Warcraft\\_retail_"));
+        s.save(&path).unwrap();
+        let back = AppState::load(&path);
+        assert_eq!(
+            back.settings.folders.get(&Game::Forever),
+            None,
+            "bêta fermée : le jeu de sortie est pris tout seul"
+        );
+        assert!(back.settings.folders.contains_key(&Game::Retail), "Retail inchangé");
+        // Tout autre dossier choisi est gardé (autre disque, _forever_, nom inconnu)
+        let mut set = Settings::default();
+        set.folders.insert(Game::Forever, PathBuf::from("/home/flo/Games/wow/_forever_"));
+        assert!(!set.forget_closed_beta());
+        assert!(set.folders.contains_key(&Game::Forever));
     }
 
     #[test]

@@ -2,6 +2,11 @@
 
 La section « ## <version> » de la version publiée devient le texte de la GitHub Release et des « notes » de la mise à jour que l'appli affiche (scripts/companion-release.mjs la lit sur un tag `companion-v<version>`). En français : l'appli n'est pas traduite.
 
+## 0.3.2
+
+- Jeu de sortie de Forever : l'appli trouve toute seule le dossier `_forever_` (produit « wowf » du launcher, vu à la préinstallation). Avant, elle ne cherchait que les dossiers de la bêta (`_classic_beta_`) et ne voyait plus Forever depuis que le launcher a retiré la bêta.
+- Un dossier de la bêta choisi à la main est oublié au démarrage : la bêta est fermée, l'appli prend le jeu de sortie. Après la mise à jour, l'appli installe `ForeverRoster_Data` dans `_forever_` à la première synchro.
+
 ## 0.3.1
 
 - Relevé de la guilde : avec l'addon Forever Roster 1.6.2, l'appli envoie aussi au site le relevé de ta guilde (liste des membres, journal, banque, niveaux de tes persos), seulement quand il a changé, comme les persos et les bilans. Un relevé trop gros pour le site (guilde immense) n'est pas envoyé : la raison s'affiche dans « Vers le site ».

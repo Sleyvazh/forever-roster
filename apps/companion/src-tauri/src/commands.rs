@@ -166,7 +166,7 @@ pub fn use_install(app: AppHandle, ctx: Ctxs<'_>, game: Game, path: String) -> R
     Ok(())
 }
 
-/// Choisir un dossier à la main (autre disque, Lutris…) : « World of Warcraft » ou directement « _classic_ ».
+/// Choisir un dossier à la main (autre disque, Lutris…) : « World of Warcraft » ou directement « _forever_ ».
 #[tauri::command]
 pub async fn pick_folder(app: AppHandle, ctx: Ctxs<'_>, game: Game) -> Result<bool, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
@@ -179,7 +179,7 @@ pub async fn pick_folder(app: AppHandle, ctx: Ctxs<'_>, game: Game) -> Result<bo
     let found = scan_root(&picked);
     let chosen = preferred(&found, game).or_else(|| found.first()).cloned();
     let Some(inst) = chosen else {
-        return Err("Aucun dossier de jeu ici : choisis le dossier « World of Warcraft » (celui qui contient _classic_ ou _retail_).".into());
+        return Err("Aucun dossier de jeu ici : choisis le dossier « World of Warcraft » (celui qui contient _forever_ ou _retail_).".into());
     };
     let root = inst.path.parent().map(PathBuf::from).unwrap_or_else(|| picked.clone());
     {

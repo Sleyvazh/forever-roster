@@ -57,7 +57,7 @@ async fn main() -> R<()> {
     // 2. Dossier de jeu factice : sauvegarde avec un perso et le bilan du raid relevé par le chef
     let tmp = tempfile::tempdir()?;
     let root = tmp.path().join("World of Warcraft");
-    let game_dir = root.join("_classic_beta_");
+    let game_dir = root.join("_forever_");
     let sv_dir = game_dir.join("WTF/Account/12345678#1/SavedVariables");
     std::fs::create_dir_all(&sv_dir)?;
     std::fs::create_dir_all(game_dir.join("Interface/AddOns/ForeverRoster"))?;

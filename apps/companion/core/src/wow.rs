@@ -1,7 +1,9 @@
-//! Installations de WoW sur le PC : dossiers de jeu (`_classic_beta_`, `_classic_`, `_retail_`…), produit et version
-//! (fichier `.build.info` du launcher), comptes de `WTF`, addons installés, et jeu lancé ou non.
+//! Installations de WoW sur le PC : dossiers de jeu (`_forever_`, `_classic_beta_`, `_retail_`…), produit et version
+//! (fichier `.build.info` du launcher, sinon `.flavor.info` du dossier), comptes de `WTF`, addons installés, et jeu
+//! lancé ou non.
 //!
-//! Forever : produit `wow_classic*` en version 1.60 ou plus (bêta : `_classic_beta_`, puis `_classic_` à la sortie).
+//! Forever : produit `wowf`, dossier `_forever_` (jeu de sortie, vu à la préinstallation du 2/11) ; la bêta était
+//! `wow_classic_beta` en version 1.60 (`_classic_beta_`).
 //! Retail : produit `wow` (et ses PTR / bêtas).
 
 use std::fs;
@@ -61,10 +63,11 @@ pub fn parse_build_info(text: &str) -> Vec<BuildInfoRow> {
         .collect()
 }
 
-/// Dossier d'un produit du launcher : wow → _retail_, wowt → _ptr_, wowxptr → _xptr_, wow_X → _X_.
+/// Dossier d'un produit du launcher : wow → _retail_, wowt → _ptr_, wowxptr → _xptr_, wowf → _forever_, wow_X → _X_.
 pub fn folder_of_product(product: &str) -> String {
     match product {
         "wow" => "_retail_".into(),
+        "wowf" => "_forever_".into(),
         "wowt" => "_ptr_".into(),
         "wowxptr" => "_xptr_".into(),
         p => format!("_{}_", p.strip_prefix("wow_").unwrap_or(p)),
@@ -73,6 +76,10 @@ pub fn folder_of_product(product: &str) -> String {
 
 /// Jeu d'un produit et de sa version ; None : jeu que l'appli ne gère pas (Classic Era, MoP Classic…).
 pub fn classify(product: &str, version: &str) -> Option<Game> {
+    // Forever en jeu de sortie : produit à lui (wowf), quelle que soit la version
+    if product.starts_with("wowf") {
+        return Some(Game::Forever);
+    }
     let mut v = version.split('.').map(|n| n.parse::<u32>().unwrap_or(0));
     let (major, minor) = (v.next().unwrap_or(0), v.next().unwrap_or(0));
     if product.starts_with("wow_classic") && major == 1 && minor >= 60 {
@@ -84,7 +91,22 @@ pub fn classify(product: &str, version: &str) -> Option<Game> {
     None
 }
 
-/// Un dossier de jeu (`…\World of Warcraft\_classic_beta_`).
+/// Produit écrit par le launcher dans le dossier du jeu (`_forever_\.flavor.info` : « Product Flavor!STRING:0 » puis
+/// « wowf ») : sert quand `.build.info` n'a pas de ligne pour ce dossier.
+pub fn flavor_of(game_dir: &Path) -> Option<String> {
+    let text = fs::read_to_string(game_dir.join(".flavor.info")).ok()?;
+    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty());
+    let head = lines.next()?;
+    if !head.to_ascii_lowercase().starts_with("product flavor") {
+        return None;
+    }
+    lines
+        .next()
+        .filter(|p| p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .map(str::to_string)
+}
+
+/// Un dossier de jeu (`…\World of Warcraft\_forever_`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Install {
@@ -101,7 +123,7 @@ impl Install {
     pub fn addons_dir(&self) -> PathBuf {
         self.path.join("Interface").join("AddOns")
     }
-    /// Rang de préférence quand plusieurs dossiers du même jeu existent : le jeu « normal » (`_classic_`,
+    /// Rang de préférence quand plusieurs dossiers du même jeu existent : le jeu « normal » (`_forever_`,
     /// `_retail_`) avant une bêta (`_classic_beta_`, `_beta_`), avant un serveur de test (`_ptr_`, `_xptr_`).
     pub fn preference(&self) -> u8 {
         let name = self.dir_name.to_ascii_lowercase();
@@ -163,7 +185,7 @@ pub struct Account {
 
 /// Dossiers de jeu sous un dossier « World of Warcraft » (ou le dossier de jeu lui-même).
 pub fn scan_root(root: &Path) -> Vec<Install> {
-    // Dossier de jeu donné directement (…\_classic_beta_) : on remonte à la racine
+    // Dossier de jeu donné directement (…\_forever_) : on remonte à la racine
     if let Some(name) = root.file_name().and_then(|n| n.to_str())
         && is_game_dir_name(name)
         && let Some(parent) = root.parent()
@@ -186,8 +208,10 @@ pub fn scan_root(root: &Path) -> Vec<Install> {
                 return None;
             }
             let row = rows.iter().find(|r| folder_of_product(&r.product).eq_ignore_ascii_case(&dir_name));
-            let game = row.and_then(|r| classify(&r.product, &r.version));
-            let product = row.map(|r| r.product.clone());
+            // Pas de ligne pour ce dossier (launcher d'une autre version, produit retiré) : produit du dossier
+            let product = row.map(|r| r.product.clone()).or_else(|| flavor_of(&path));
+            let version = row.map(|r| r.version.clone());
+            let game = product.as_deref().and_then(|p| classify(p, version.as_deref().unwrap_or("")));
             let test = product
                 .as_deref()
                 .is_some_and(|p| p.contains("beta") || p.contains("ptr") || p == "wowt" || p == "wowxptr");
@@ -195,7 +219,7 @@ pub fn scan_root(root: &Path) -> Vec<Install> {
                 path,
                 dir_name,
                 product,
-                version: row.map(|r| r.version.clone()),
+                version,
                 game,
                 test,
             })
@@ -329,6 +353,9 @@ eu|1|aa|bb|cc||tpr/wow|eu.cdn|http://eu.cdn|tags|||1.15.7.61000|dd|wow_classic_e
         assert_eq!(folder_of_product("wow"), "_retail_");
         assert_eq!(folder_of_product("wow_classic_beta"), "_classic_beta_");
         assert_eq!(folder_of_product("wowt"), "_ptr_");
+        assert_eq!(folder_of_product("wowf"), "_forever_");
+        assert_eq!(classify("wowf", "1.60.1.70707"), Some(Game::Forever));
+        assert_eq!(classify("wowf", ""), Some(Game::Forever), "version inconnue (produit lu dans .flavor.info)");
         assert_eq!(classify("wow_classic_beta", "1.60.1.70170"), Some(Game::Forever));
         assert_eq!(classify("wow_classic", "1.60.2.71000"), Some(Game::Forever));
         assert_eq!(classify("wow_classic", "5.5.1.60000"), None);
@@ -385,6 +412,52 @@ eu|1|aa|bb|cc||tpr/wow|eu.cdn|http://eu.cdn|tags|||1.15.7.61000|dd|wow_classic_e
         assert_eq!(detect(&[root.clone(), root.join("_retail_")]).len(), 3);
     }
 
+    /// `.build.info` relevé chez Flo à la préinstallation (2/11) : la ligne de la bêta a disparu, Forever est « wowf ».
+    const BUILD_INFO_SORTIE: &str = "Branch!STRING:0|Active!DEC:1|Build Key!HEX:16|CDN Key!HEX:16|Install Key!HEX:16|IM Size!DEC:4|CDN Path!STRING:0|CDN Hosts!STRING:0|CDN Servers!STRING:0|Tags!STRING:0|Armadillo!STRING:0|Last Activated!STRING:0|Version!STRING:0|KeyRing!HEX:16|Product!STRING:0\n\
+eu|1|aa|bb|cc||tpr/wow|eu.cdn|http://eu.cdn|tags|||12.1.5.70688|dd|wow\n\
+eu|1|aa|bb|cc||tpr/wow|eu.cdn|http://eu.cdn|tags|||1.60.1.70707|dd|wowf\n";
+
+    #[test]
+    fn jeu_de_sortie_dans_forever() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("World of Warcraft");
+        for d in [
+            "_forever_/Interface/AddOns/ForeverRoster",
+            "_classic_beta_/Interface/AddOns",
+            "_classic_/WTF",
+            "_retail_/Interface",
+        ] {
+            fs::create_dir_all(root.join(d)).unwrap();
+        }
+        fs::write(root.join(".build.info"), BUILD_INFO_SORTIE).unwrap();
+        fs::write(root.join("_forever_/.flavor.info"), "Product Flavor!STRING:0\nwowf\n").unwrap();
+        let all = scan_root(&root);
+        let forever = preferred(&all, Game::Forever).expect("_forever_ reconnu");
+        assert_eq!(forever.dir_name, "_forever_");
+        assert_eq!(forever.product.as_deref(), Some("wowf"));
+        assert_eq!(forever.version.as_deref(), Some("1.60.1.70707"));
+        assert!(!forever.test);
+        let beta = all.iter().find(|i| i.dir_name == "_classic_beta_").unwrap();
+        assert_eq!(beta.game, None, "plus de ligne pour la bêta : dossier laissé de côté");
+        let classic = all.iter().find(|i| i.dir_name == "_classic_").unwrap();
+        assert_eq!(classic.game, None, "_classic_ (Mists Classic) n'est pas Forever");
+        // Dossier « _forever_ » choisi à la main : c'est lui, pas un autre dossier de la racine
+        let direct = scan_root(&root.join("_forever_"));
+        assert_eq!(direct.len(), 1);
+        assert_eq!(direct[0].game, Some(Game::Forever));
+        // Sans ligne dans .build.info (autre launcher) : le produit du dossier suffit
+        fs::write(root.join(".build.info"), "").unwrap();
+        let all = scan_root(&root);
+        let forever = preferred(&all, Game::Forever).expect("reconnu par .flavor.info");
+        assert_eq!(
+            (forever.dir_name.as_str(), forever.product.as_deref(), forever.version.as_deref()),
+            ("_forever_", Some("wowf"), None)
+        );
+        assert_eq!(flavor_of(&root.join("_retail_")), None);
+        fs::write(root.join("_forever_/.flavor.info"), "autre chose\nwowf\n").unwrap();
+        assert_eq!(flavor_of(&root.join("_forever_")), None, "en-tête inconnu : ignoré");
+    }
+
     #[test]
     fn plusieurs_dossiers_du_meme_jeu_le_normal_d_abord() {
         let inst = |dir_name: &str, product: &str, game: Game| Install {
@@ -397,23 +470,23 @@ eu|1|aa|bb|cc||tpr/wow|eu.cdn|http://eu.cdn|tags|||1.15.7.61000|dd|wow_classic_e
         };
         let mut all = vec![
             inst("_classic_beta_", "wow_classic_beta", Game::Forever),
-            inst("_classic_", "wow_classic", Game::Forever),
+            inst("_forever_", "wowf", Game::Forever),
             inst("_ptr_", "wowt", Game::Retail),
             inst("_beta_", "wow_beta", Game::Retail),
             inst("_xptr_", "wowxptr", Game::Retail),
             inst("_retail_", "wow", Game::Retail),
         ];
-        assert_eq!(preferred(&all, Game::Forever).unwrap().dir_name, "_classic_");
+        assert_eq!(preferred(&all, Game::Forever).unwrap().dir_name, "_forever_");
         assert_eq!(preferred(&all, Game::Retail).unwrap().dir_name, "_retail_");
         sort_by_preference(&mut all);
         let names: Vec<&str> = all.iter().map(|i| i.dir_name.as_str()).collect();
-        assert_eq!(names, vec!["_classic_", "_retail_", "_beta_", "_classic_beta_", "_ptr_", "_xptr_"]);
+        assert_eq!(names, vec!["_forever_", "_retail_", "_beta_", "_classic_beta_", "_ptr_", "_xptr_"]);
         // Sans le jeu normal : la bêta avant le serveur de test
         all.retain(|i| i.dir_name != "_retail_");
         assert_eq!(preferred(&all, Game::Retail).unwrap().dir_name, "_beta_");
         all.retain(|i| i.dir_name != "_beta_");
         assert_eq!(preferred(&all, Game::Retail).unwrap().dir_name, "_ptr_");
-        assert_eq!(preferred(&all, Game::Forever).unwrap().dir_name, "_classic_");
+        assert_eq!(preferred(&all, Game::Forever).unwrap().dir_name, "_forever_");
         // Dossier choisi à la main, sans produit connu : le nom suffit
         let mut unknown = inst("_classic_ptr_", "", Game::Forever);
         unknown.product = None;

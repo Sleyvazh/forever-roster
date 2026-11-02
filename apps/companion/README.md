@@ -37,7 +37,7 @@ Ce qui change pour toi (fiabilité) :
 - **Sauvegarde illisible :** l'appli ne la relit plus toutes les 5 secondes. Une sauvegarde en cours d'écriture est relue au passage suivant sans rien dire ; une sauvegarde vraiment abîmée est signalée une fois (« Elle sera relue quand le jeu la réécrira ») et relue dès que le jeu l'écrit de nouveau. Avec plusieurs comptes WoW, la boîte Addon montre une ligne par compte (dernière sauvegarde lue, erreur éventuelle).
 - **« Synchroniser maintenant », « Ne plus ignorer », « Créer la fiche » ne sont plus perdus** quand une synchro est en cours : le bouton dit « En attente de la synchro en cours… » et la demande est prise juste après.
 - **Moins de fausses alertes :** un `Data.lua` verrouillé un instant par le jeu est simplement réessayé 5 s plus tard (erreur seulement après trois échecs de suite, effacée dès que l'écriture réussit). Si WoW se ferme sans avoir écrit sa sauvegarde (plantage), la boîte Addon le dit : ce qui a été fait en jeu partira à la prochaine déconnexion normale. « Jusqu'à demain » (pause) se termine à 6 h, heure du PC.
-- Plusieurs dossiers du même jeu : `_classic_` / `_retail_` sont préférés aux dossiers bêta et PTR tant que tu n'en as pas choisi un.
+- Plusieurs dossiers du même jeu : `_forever_` / `_retail_` sont préférés aux dossiers bêta et PTR tant que tu n'en as pas choisi un (0.3.2 : Forever est le produit `wowf` du launcher, dans `_forever_`).
 
 ## Tests
 

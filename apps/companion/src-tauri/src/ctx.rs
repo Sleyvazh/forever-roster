@@ -147,7 +147,7 @@ impl Ctx {
     }
 
     /// Dossier du jeu utilisé pour un jeu : celui choisi, sinon le premier trouvé par ordre de préférence
-    /// (`_classic_` ou `_retail_` avant une bêta ou un serveur de test).
+    /// (`_forever_` ou `_retail_` avant une bêta ou un serveur de test).
     pub fn install_for(&self, game: Game) -> Option<Install> {
         let chosen = self.state().settings.folders.get(&game).cloned();
         let live = self.live();
