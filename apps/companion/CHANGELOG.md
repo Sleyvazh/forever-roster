@@ -4,7 +4,7 @@ La section « ## <version> » de la version publiée devient le texte de la GitH
 
 ## 0.3.3
 
-- Mises à jour automatiques actives : première version qui contient la clé de signature. Elle s'installe une dernière fois à la main ; ensuite l'appli propose chaque nouvelle version toute seule (au démarrage, puis une fois par jour) et l'installe sur un clic, jamais pendant que le jeu tourne.
+- Mises à jour automatiques actives : première version qui contient la clé de signature (identifiant `40F7CF3E0E39DACB`). Elle s'installe une dernière fois à la main ; ensuite l'appli propose chaque nouvelle version toute seule (au démarrage, puis une fois par jour) et l'installe sur un clic, jamais pendant que le jeu tourne.
 - Téléchargement direct depuis la page Addon du site (« Télécharger Roster Companion »), sans passer par GitHub.
 
 ## 0.3.2
