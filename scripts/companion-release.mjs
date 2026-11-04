@@ -105,9 +105,12 @@ if (opt.check) {
 // Installateur et signature
 if (!opt.dir || !opt.out) fail("--dir (dossier de l'installateur) et --out (dossier de sortie) sont obligatoires avec --tag.");
 const files = readdirSync(opt.dir);
-const exeName = files.find(f => /-setup\.exe$/i.test(f));
-if (!exeName) fail(`Aucun « *-setup.exe » dans ${opt.dir} : l'installateur NSIS manque.`);
-if (!exeName.includes(`_${version}_`)) fail(`L'installateur ${exeName} n'est pas en version ${version}.`);
+// Le dossier peut contenir d'anciens installateurs (cache de target/ sur la CI, 4/11 : 0.1.0 pris à la place de 0.3.3) :
+// on prend celui de la version du tag, et seulement lui
+const installers = files.filter(f => /-setup\.exe$/i.test(f));
+if (!installers.length) fail(`Aucun « *-setup.exe » dans ${opt.dir} : l'installateur NSIS manque.`);
+const exeName = installers.find(f => f.endsWith(`_${version}_x64-setup.exe`));
+if (!exeName) fail(`Pas d'installateur en version ${version} dans ${opt.dir} (trouvés : ${installers.join(", ")}).`);
 const sigName = files.find(f => f === `${exeName}.sig`);
 if (!sigName) fail(`Pas de ${exeName}.sig : tauri build n'a pas signé l'installateur (secret TAURI_SIGNING_PRIVATE_KEY, et createUpdaterArtifacts dans la configuration du build).`);
 const exe = readFileSync(path.join(opt.dir, exeName));

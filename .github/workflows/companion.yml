@@ -105,6 +105,11 @@ jobs:
           restore-keys: companion-win-
       - run: npm ci
       - run: npx tsc --noEmit -p .
+      # Le cache garde target/ d'un run à l'autre, installateurs compris : sans ce ménage, l'artefact emportait aussi
+      # ceux des versions précédentes (4/11 : la Release de 0.3.3 a lu Roster Companion_0.1.0_x64-setup.exe)
+      - name: Anciens installateurs retirés
+        shell: pwsh
+        run: Remove-Item -Recurse -Force target/release/bundle -ErrorAction SilentlyContinue
       # Sans tag : installateur seul, rien n'est signé (createUpdaterArtifacts reste à false dans tauri.conf.json, le
       # build n'a pas besoin des secrets). Sur un tag : createUpdaterArtifacts ajouté à la configuration, tauri build
       # signe l'installateur avec la clé privée des secrets (fichier .exe.sig à côté, clé publique = tauri.conf.json)
