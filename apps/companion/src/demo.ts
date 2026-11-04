@@ -49,7 +49,7 @@ function retailGame(): GameView {
 }
 
 let state: Status = {
-  version: "0.3.2", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
+  version: "0.3.3", now: now(), overall: demoScreen === "probleme" ? "error" : "active", tooltip: "Roster Companion",
   device: demoScreen === "appairage" ? null : { id: "d1", name: "PC-FLO", user: "Flo", linkedAt: now() - 3600 },
   setupDone: !["appairage", "dossiers"].includes(demoScreen), pausedUntil: null, settings, games: [game(), retailGame()],
   installs: [forever, retail, { ...forever, path: "C:\\Games\\World of Warcraft\\_classic_era_", dirName: "_classic_era_", version: "1.15.7.61000", game: null, test: false, addonVersion: null }],
@@ -62,8 +62,8 @@ const push = () => { state = { ...state, now: now() }; listeners.forEach(f => f(
 
 // Mises à jour de l'appli : ?ecran=maj montre le bandeau (installation simulée)
 let update: UpdateView = {
-  keyConfigured: true, current: "0.3.2", lastCheck: now() - 7200, checking: false,
-  available: demoScreen === "maj" ? { version: "0.3.2", notes: "- Corrections de fiabilité.", date: now() - 86400 } : null,
+  keyConfigured: true, current: "0.3.3", lastCheck: now() - 7200, checking: false,
+  available: demoScreen === "maj" ? { version: "0.3.4", notes: "- Corrections de fiabilité.", date: now() - 86400 } : null,
   dismissed: false, installing: false, progress: null, error: null,
 };
 const updateListeners = new Set<(u: UpdateView) => void>();
@@ -74,7 +74,7 @@ export function demoListenUpdate(fn: (u: UpdateView) => void) {
 }
 
 const JOURNAL = [
-  "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.2 démarre (avec la session)",
+  "2026-10-06T19:40:02Z  INFO Roster Companion 0.3.3 démarre (avec la session)",
   "2026-10-06T19:40:03Z  INFO dossiers trouvés : _forever_ (Forever), _retail_ (Retail)",
   "2026-10-06T21:42:11Z  INFO sauvegarde lue (compte 12345678#1) : 4 blocs",
   "2026-10-06T21:42:12Z  INFO envoyé au site : Tournicoti, Brakka, bilan de « Vroum Vroum », relevé de la guilde « Les Veilleurs »",

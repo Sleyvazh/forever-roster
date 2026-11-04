@@ -242,9 +242,14 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".ad-step")).toHaveCount(3);
     await expect(page.locator("details.ad-more")).toHaveCount(3);
     await expect(page.locator(".ad").getByRole("button", { name: "Copier pour le jeu" })).toHaveCount(0);
+    // Roster Companion : le dernier installateur signé, au nom fixe de chaque Release (scripts/companion-release.mjs)
+    await expect(page.getByRole("link", { name: "Télécharger Roster Companion" }))
+      .toHaveAttribute("href", "https://github.com/Sleyvazh/forever-roster/releases/latest/download/Roster-Companion-setup.exe");
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/forever-addon.png", fullPage: true });
     // Téléphone : pas de défilement horizontal
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/forever-addon-390.png", fullPage: true });
     await page.setViewportSize({ width: 1360, height: 900 });
     // Export de deux persos collé n'importe où (Ctrl+V hors d'un champ) : Tournicoti (fiche existante), Greta (nouvelle fiche)
     const sample = readFileSync(path.resolve("addon/tests/sample.frc"), "utf8").trim();

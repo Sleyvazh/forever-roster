@@ -13,6 +13,8 @@
  *       (signature minisign écrite par tauri build quand TAURI_SIGNING_PRIVATE_KEY est présente), écrit dans <dossier> :
  *         assets/Roster-Companion_<version>_x64-setup.exe      l'installateur (nom sans espace : celui de l'adresse)
  *         assets/Roster-Companion_<version>_x64-setup.exe.sig  sa signature
+ *         assets/Roster-Companion-setup.exe                    le même installateur sous un nom fixe : le bouton de la
+ *                                                              page Addon du site mène à releases/latest/download/<ce nom>
  *         assets/latest.json                                   ce que l'appli lit pour savoir s'il y a du nouveau
  *         assets/SHA256SUMS.txt                                empreinte de l'installateur (vérification à la main)
  *         notes.md                                             texte de la Release (section du CHANGELOG)
@@ -119,7 +121,10 @@ if (!Buffer.from(signature, "base64").toString("utf8").startsWith("untrusted com
 const repo = opt.repo || process.env.GITHUB_REPOSITORY || DEFAULT_REPO;
 if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) fail(`Dépôt « ${repo} » : attendu propriétaire/dépôt.`);
 const asset = `Roster-Companion_${version}_x64-setup.exe`;
+/** Nom fixe de la dernière version (bouton « Télécharger Roster Companion » de la page Addon du site). */
+const STABLE = "Roster-Companion-setup.exe";
 const url = `https://github.com/${repo}/releases/download/${tag}/${asset}`;
+const stableUrl = `https://github.com/${repo}/releases/latest/download/${STABLE}`;
 const sha256 = createHash("sha256").update(exe).digest("hex");
 const pubDate = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const latest = { version, notes, pub_date: pubDate, platforms: { [TARGET]: { signature, url } } };
@@ -127,13 +132,16 @@ const latest = { version, notes, pub_date: pubDate, platforms: { [TARGET]: { sig
 const assets = path.join(opt.out, "assets");
 mkdirSync(assets, { recursive: true });
 copyFileSync(path.join(opt.dir, exeName), path.join(assets, asset));
+copyFileSync(path.join(opt.dir, exeName), path.join(assets, STABLE));
 writeFileSync(path.join(assets, `${asset}.sig`), `${signature}\n`);
 writeFileSync(path.join(assets, "latest.json"), `${JSON.stringify(latest, null, 2)}\n`);
-writeFileSync(path.join(assets, "SHA256SUMS.txt"), `${sha256}  ${asset}\n`);
+writeFileSync(path.join(assets, "SHA256SUMS.txt"), `${sha256}  ${asset}\n${sha256}  ${STABLE}\n`);
 const body = [
   notes,
   "",
-  `Installateur Windows : [${asset}](${url}) (${(exe.length / 1048576).toFixed(1)} Mo, SHA-256 \`${sha256}\`). Pendant la bêta, l'installateur n'est pas signé pour Windows : SmartScreen → « Informations complémentaires » → « Exécuter quand même ».`,
+  `Installateur Windows : [${asset}](${url}) (${(exe.length / 1048576).toFixed(1)} Mo, SHA-256 \`${sha256}\`) ; la dernière version est toujours à ${stableUrl} (bouton de la page Addon du site).`,
+  "",
+  `Pendant la bêta, l'installateur n'est pas signé pour Windows : SmartScreen → « Informations complémentaires » → « Exécuter quand même ».`,
   "",
   "Depuis Roster Companion 0.3.0, l'appli propose cette version toute seule (vérification au démarrage, puis une fois par jour) : « Installer » télécharge l'installateur, vérifie sa signature et relance l'appli.",
 ].join("\n");

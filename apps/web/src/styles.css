@@ -2153,6 +2153,12 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .ad-step p { margin: 0; font-size: 14px; color: var(--ink-2); }
 .ad-step code { font: 500 13px var(--f-mono); color: var(--ink); background: var(--panel-2); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
 .ad-more { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.ad-app { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.ad-app > .stack { flex: 1 1 320px; min-width: 0; }
+.ad-app h2 { font-size: 18px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ad-app p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.ad-app .hint { font-size: 13px; color: var(--ink-3); }
+.ad-opt { font: 500 12px var(--f-body); letter-spacing: 0; color: var(--ink-3); border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 8px; }
 .ad-more summary { padding: 10px 14px; cursor: pointer; color: var(--ink-2); font-weight: 500; }
 @media (max-width: 860px) { .ad-steps { grid-template-columns: minmax(0, 1fr); } }
 

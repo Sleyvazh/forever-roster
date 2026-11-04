@@ -2,6 +2,11 @@
 
 La section « ## <version> » de la version publiée devient le texte de la GitHub Release et des « notes » de la mise à jour que l'appli affiche (scripts/companion-release.mjs la lit sur un tag `companion-v<version>`). En français : l'appli n'est pas traduite.
 
+## 0.3.3
+
+- Mises à jour automatiques actives : première version qui contient la clé de signature. Elle s'installe une dernière fois à la main ; ensuite l'appli propose chaque nouvelle version toute seule (au démarrage, puis une fois par jour) et l'installe sur un clic, jamais pendant que le jeu tourne.
+- Téléchargement direct depuis la page Addon du site (« Télécharger Roster Companion »), sans passer par GitHub.
+
 ## 0.3.2
 
 - Jeu de sortie de Forever : l'appli trouve toute seule le dossier `_forever_` (produit « wowf » du launcher, vu à la préinstallation). Avant, elle ne cherchait que les dossiers de la bêta (`_classic_beta_`) et ne voyait plus Forever depuis que le launcher a retiré la bêta.

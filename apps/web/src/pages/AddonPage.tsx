@@ -6,6 +6,8 @@ declare const __ADDON_SHA256__: string;
 /** Addon Roster (WoW Retail, lot R3) : version et empreinte du zip, lues à la construction du site. */
 declare const __ROSTER_ADDON_VERSION__: string;
 declare const __ROSTER_ADDON_SHA256__: string;
+/** Dernier installateur de Roster Companion : copie au nom fixe dans chaque GitHub Release (scripts/companion-release.mjs). */
+const COMPANION_URL = "https://github.com/Sleyvazh/forever-roster/releases/latest/download/Roster-Companion-setup.exe";
 
 /**
  * Page Addon de Forever Roster (refonte du 23/10) : installer en trois étapes ; la synchro au quotidien, les commandes en jeu
@@ -29,6 +31,14 @@ export function AddonPage() {
         <li className="ad-step"><h2><span className="n">3</span>Choisir ta touche</h2>
           <p>En jeu : <code>/fr options</code>, « Choisir une touche ». Elle sert à la synchro, dans les deux sens.</p></li>
       </ol>
+      <section className="ad-app" aria-labelledby="ad-app-t">
+        <div className="stack" style={{ gap: 4 }}>
+          <h2 id="ad-app-t">Roster Companion <span className="ad-opt">facultatif</span></h2>
+          <p>L'appli Windows qui fait la synchro toute seule, sans copier-coller. Un ou deux officiers qui l'ont suffisent : l'addon transmet ensuite les données à toute la guilde. Elle se met à jour toute seule.</p>
+          <p className="hint">Windows peut afficher « Windows a protégé votre ordinateur » : « Informations complémentaires », puis « Exécuter quand même ». L'appli te donne ensuite un code à valider sur le site.</p>
+        </div>
+        <a className="btn" href={COMPANION_URL}>Télécharger Roster Companion</a>
+      </section>
       <details className="ad-more">
         <summary>Synchroniser au quotidien</summary>
         <div className="stack" style={{ padding: "0 14px 14px", gap: 6 }}>
