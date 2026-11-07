@@ -484,6 +484,12 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 .numfield:focus-within { outline: 2px solid var(--gold); outline-offset: 2px; }
 .numfield input[type=text] { flex: 1; min-width: 4ch; text-align: center; border: 0; background: transparent; border-radius: 0; padding: 8px 4px; box-shadow: none; outline: none; }
 .numfield.bare input[type=text] { padding: 8px 6px; }
+/* Niveau verrouillé d'une fiche (relevé en jeu, ou fixé par un officier) */
+.numfield.lv-locked { opacity: .8; }
+.numfield.lv-locked input[type=text] { cursor: default; }
+.lv-lock { display: grid; place-items: center; padding: 0 10px; color: var(--ink-3); }
+.lv-src { display: flex; gap: 6px; align-items: baseline; margin: 0; font-size: 13px; color: var(--ink-3); }
+.lv-src .lv-lock-i { flex: none; position: relative; top: 1px; }
 .numfield button { flex: 0 0 26px; border: 0; background: transparent; color: var(--ink-3); font: 600 16px/1 var(--f-mono); cursor: pointer; }
 .numfield button:first-child { border-right: 1px solid var(--line); border-radius: 3px 0 0 3px; }
 .numfield button:last-child { border-left: 1px solid var(--line); border-radius: 0 3px 3px 0; }
@@ -853,6 +859,9 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .gm-player header { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
 .gm-player header .tag { font-size: 10.5px; }
 .gm-act { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--frame); border-radius: 8px; background: var(--panel-2); }
+.gm-lv { flex-wrap: wrap; align-items: center; }
+.gm-lv > label { font-size: 14px; }
+.gm-lv .gm-lv-n { width: 110px; flex: none; }
 .gm-who { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .danger-t { color: var(--bad) !important; border-color: color-mix(in srgb, var(--bad) 50%, var(--line-2)) !important; }
 

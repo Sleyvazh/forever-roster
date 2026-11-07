@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, gt, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { applyUserAbsences } from "../lib/absences";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { GEAR_SLOTS, gearStats, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
+import { GEAR_SLOTS, gearStats, MAX_LEVEL, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
 import { auditEvents, characterRecipes, characters, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
@@ -10,6 +10,7 @@ import { audit } from "../lib/audit";
 import { cancelOpenRequests } from "../lib/bank-requests";
 import { linkCode, randomToken, sha256 } from "../lib/crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
+import { guildFicheMatches, levelLocks } from "../lib/fiche-levels";
 import { foreverGroup } from "../lib/guild";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -18,7 +19,7 @@ import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outings";
-import { bus } from "../lib/events";
+import { bus, charsChanged } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
 
@@ -198,7 +199,14 @@ export async function groupRoutes(app: FastifyInstance) {
     const levels = ids.length
       ? new Map((await db.select({ id: gameItems.id, lvl: gameItems.itemLevel }).from(gameItems).where(inArray(gameItems.id, ids))).map(x => [x.id, x.lvl]))
       : new Map<number, number>();
-    return { characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner, isMain: r.isMain, gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)) })) };
+    // Niveau verrouillé (fiche-levels.ts) : relevé en jeu, ou fixé par un officier ; « Corriger le niveau » pour les officiers
+    const locks = await levelLocks(db, rows.map(r => ({ id: r.c.id, groupId: id, levelFixedBy: r.c.levelFixedBy, levelFixedAt: r.c.levelFixedAt })));
+    const [gg] = await db.select({ at: gameGuilds.rosterAt }).from(gameGuilds).where(eq(gameGuilds.groupId, id));
+    return {
+      characters: rows.map(r => ({ ...toApi(r.c), owner: r.owner, isMain: r.isMain, gearStats: gearStats(r.c.gear, GEAR_SLOTS, id => levels.get(id)), levelLock: locks.get(r.c.id) ?? null })),
+      // Guilde liée au jeu (liste de guilde reçue) : le niveau des fiches peut y être relevé
+      gameLinked: !!gg?.at,
+    };
   });
 
   /**
@@ -237,6 +245,44 @@ export async function groupRoutes(app: FastifyInstance) {
     bus.group({ t: "chars", g: p.id });
     return { ok: true };
   });
+
+  /**
+   * Niveau d'une fiche introuvable dans la liste du jeu (fiche-levels.ts), fixé par un officier (Forever) : le joueur ne
+   * le change plus ; DELETE lui rend la main. Mêmes droits que les autres modifications des persos d'un membre ; refusé
+   * quand la liste du jeu connaît le perso (son niveau suit le jeu). Noté au journal de la guilde.
+   */
+  const fixLevel = async (req: FastifyRequest, level: number | null) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), characterId: z.uuid() }), req.params);
+    const myRole = await membership(db, p.id, u.id);
+    await foreverGroup(db, p.id);
+    if (myRole === "member") throw forbidden("Seuls les officiers corrigent le niveau des persos.");
+    const [c] = await db.select({ c: characters }).from(characters)
+      .innerJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, p.id)))
+      .where(eq(characters.id, p.characterId));
+    if (!c) throw notFound("Personnage introuvable.");
+    const ch = c.c;
+    const theirs = await membership(db, p.id, ch.userId).catch(() => null);
+    if (!theirs) throw notFound("Personnage introuvable.");
+    if (theirs === "owner" && myRole !== "owner" && ch.userId !== u.id) throw forbidden("Tu ne peux pas modifier les persos du propriétaire de la guilde.");
+    const m = (await guildFicheMatches(db, p.id)).matches.get(ch.id);
+    if (m) throw conflict(`${ch.name} est dans la liste de guilde du jeu (${m.member.name}) : son niveau suit le jeu.`);
+    if (level === null) {
+      if (!ch.levelFixedBy) return { ok: true };
+      await db.update(characters).set({ levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() }).where(eq(characters.id, ch.id));
+      await audit(db, req, "character_level_released", { userId: u.id, groupId: p.id, meta: { target: ch.userId, character: ch.name } });
+    } else {
+      await db.update(characters).set({ level, levelFixedBy: u.id, levelFixedAt: new Date(), levelSyncedAt: null, updatedAt: new Date() }).where(eq(characters.id, ch.id));
+      await audit(db, req, "character_level_fixed", { userId: u.id, groupId: p.id, meta: { target: ch.userId, character: ch.name, from: ch.level, to: level } });
+    }
+    await charsChanged(db, ch.userId);
+    return { ok: true };
+  };
+  app.put("/:id/characters/:characterId/level", async (req) => {
+    const { level } = parse(z.object({ level: z.int().min(1).max(MAX_LEVEL) }), req.body);
+    return fixLevel(req, level);
+  });
+  app.delete("/:id/characters/:characterId/level", async (req) => fixLevel(req, null));
 
   /** « Qui crafte quoi ? » : patrons connus et recherchés par les persos du groupe. */
   app.get("/:id/crafters", async (req) => {
@@ -410,7 +456,12 @@ export async function groupRoutes(app: FastifyInstance) {
       if (!outranks(myRole, target)) throw forbidden("Tu ne peux retirer que des membres de rang inférieur.");
     }
     await db.delete(groupMembers).where(and(eq(groupMembers.groupId, p.id), eq(groupMembers.userId, p.userId)));
-    await db.delete(groupCharacters).where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.userId, p.userId)));
+    const gone = await db.delete(groupCharacters).where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.userId, p.userId))).returning();
+    // Niveaux fixés par un officier de cette guilde (fiche-levels.ts) : ils ne valent plus
+    if (gone.length) {
+      await db.update(characters).set({ levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() })
+        .where(and(inArray(characters.id, gone.map(x => x.characterId)), isNotNull(characters.levelFixedBy)));
+    }
     await dropSignupsInGroup(db, p.id, p.userId);
     await dropOutingSignups(db, p.id, p.userId, siteOf(cfg, req).origin);
     await cancelOpenRequests(db, p.id, p.userId, app.ctx.now?.() ?? new Date());

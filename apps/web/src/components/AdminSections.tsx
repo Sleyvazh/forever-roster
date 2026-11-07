@@ -39,6 +39,8 @@ export const EVENT_LABEL: Record<string, string> = {
   banker_set: "a nommé un banquier", banker_unset: "a retiré un banquier",
   // Copier-coller facultatif : inscription faite en jeu par un joueur, transmise par un officier (l'acteur est l'officier)
   signup_relayed: "a transmis une inscription faite en jeu",
+  // Niveau des fiches : une fiche introuvable dans la liste du jeu, niveau fixé par un officier (ou rendu au joueur)
+  character_level_fixed: "a corrigé le niveau d'un perso", character_level_released: "a rendu la main sur le niveau d'un perso",
 };
 const ANNOUNCE_LABEL: Record<string, string> = { none: "rien", sixty: "les 60 seulement", tens: "tous les 10 niveaux" };
 /** Jour court d'un raid dans le journal (« ven. 14/11 »), à l'heure de Paris. */
@@ -53,6 +55,11 @@ export function eventDetail(e: GroupEvent) {
   if (e.type === "guild_announces") return ` · ${ANNOUNCE_LABEL[str("announce") ?? ""] ?? str("announce") ?? ""}`;
   if (e.type === "guild_member_linked") return ` · ${str("character") ?? "?"}${m.note === true ? " (note de guilde)" : str("to") === "new" ? " (joueur à part)" : ""}`;
   if (e.type === "guild_member_unlinked") return ` · ${str("character") ?? "?"}`;
+  if (e.type === "character_level_fixed") {
+    const from = typeof m.from === "number" ? m.from : null, to = typeof m.to === "number" ? m.to : null;
+    return ` · ${str("character") ?? "?"}${to !== null ? ` : ${from !== null ? `${from} → ` : ""}${to}` : ""}`;
+  }
+  if (e.type === "character_level_released") return ` · ${str("character") ?? "?"}`;
   if (e.type === "signup_relayed") {
     // « · Greta : Peut-être (Onyxia, ven. 14/11) » : prénom du perso, réponse, raid et sa date (absente si le raid n'en a pas)
     const status = str("status"), at = str("at");

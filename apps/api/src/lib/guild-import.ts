@@ -10,6 +10,7 @@ import { dropGuildRequests } from "./bank-requests";
 import { bus } from "./events";
 import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 import type { GroupRole } from "./groups";
+import { syncFicheLevels } from "./fiche-levels";
 import { applyBank, type BankApplySummary } from "./guild-bank";
 
 /**
@@ -73,6 +74,7 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
   // Heures du relevé (horloge du PC du joueur) : jamais dans le futur, sinon un relevé daté de 2099 bloquerait tous les suivants
   const when = (unix: number) => new Date(Math.min(unix * 1000, now.getTime()));
   const sum: GuildApplySummary = { roster: null, members: 0, complete: false, arrivals: 0, departures: 0, events: 0, levels: 0, xp: 0, bank: null };
+  let fiches = 0;
   await db.transaction(async tx => {
     // Un relevé à la fois par guilde (Roster Companion de plusieurs membres en même temps)
     const [gg] = await tx.select().from(gameGuilds).where(eq(gameGuilds.groupId, groupId)).for("update");
@@ -244,7 +246,10 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
 
     if (Object.keys(guildPatch).length) await tx.update(gameGuilds).set(guildPatch).where(eq(gameGuilds.groupId, groupId));
     await freezePodium(tx, groupId);
+    // 7. Niveau des fiches : celles rapprochées de la liste prennent le niveau du jeu (fiche-levels.ts)
+    if (sum.roster === "applied" || sum.levels > 0 || sum.xp > 0) fiches = await syncFicheLevels(tx, groupId);
   });
+  if (fiches) bus.group({ t: "chars", g: groupId });
   return sum;
 }
 

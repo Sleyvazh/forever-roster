@@ -2,9 +2,10 @@ import { classColor, CLASSES, RACES, roleOf, type ClassName, type Role } from "@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, get, put, type Character, type GroupRole, type Member } from "../api";
+import { ApiError, del, get, put, type Character, type GroupRole, type Member } from "../api";
 import { useViewPref } from "../prefs";
 import { CharacterEditor } from "./CharacterEditor";
+import { NumberField } from "./NumberField";
 import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { RoleIcon } from "./RoleIcon";
@@ -100,7 +101,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   groupId: string; groupName: string; members: Member[]; myId?: string; myRole: GroupRole; byPlayer?: boolean;
 }) {
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`) });
+  const { data } = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[]; gameLinked?: boolean }>(`/groups/${groupId}/characters`) });
   // ?perso=<id> : perso ouvert d'emblée (lien depuis la fiche d'un joueur, onglet Membres)
   const [params, setParams] = useSearchParams();
   const [open, setOpen] = useState<string | null>(() => params.get("perso"));
@@ -118,6 +119,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   const views = byPlayer ? VIEWS : VIEWS.filter(([k]) => k !== "players");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** « Corriger le niveau » d'une fiche ouverte (officier, Forever) : fiche et niveau en saisie. */
+  const [lvEdit, setLvEdit] = useState<{ id: string; level: number } | null>(null);
   const gt = useGameText();
   if (!data) return <p className="muted">Chargement…</p>;
 
@@ -146,6 +149,19 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
       await put(`/groups/${groupId}/characters/${c.id}`, body);
       if (!body.assigned) setOpen(null);
       await Promise.all([qc.invalidateQueries({ queryKey: ["group-chars", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Modification impossible."); }
+    finally { setBusy(false); }
+  };
+
+  // Niveau d'une fiche que la liste du jeu ne connaît pas (fiche-levels.ts) : un officier le fixe, ou rend la main au joueur
+  const fixable = (c: Character) => gt.game !== "retail" && c.userId !== myId && canManage(c) && c.levelLock?.by !== "game";
+  const fixLevel = async (c: Character, level: number | null) => {
+    setBusy(true); setError(null);
+    try {
+      if (level === null) await del(`/groups/${groupId}/characters/${c.id}/level`);
+      else await put(`/groups/${groupId}/characters/${c.id}/level`, { level });
+      setLvEdit(null);
+      await qc.invalidateQueries({ queryKey: ["group-chars", groupId] });
     } catch (e) { setError(e instanceof ApiError ? e.message : "Modification impossible."); }
     finally { setBusy(false); }
   };
@@ -290,12 +306,28 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
           {canManage(opened) && (
             <div className="gm-act">
               <span className="gm-who"><Face c={opened} size={22} /><b style={{ color: color(opened) }}>{opened.name}</b>
-                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans cette guilde</span></span>
-              <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
-                {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>★ En faire le main</button>}
-                <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer de la guilde</button>
-              </span>
-              {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.</span>}
+                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans cette guilde</span>
+                {opened.levelLock?.by === "game" && <span className="muted">· niveau {opened.levelLock.level} relevé en jeu ({opened.levelLock.name})</span>}
+                {opened.levelLock?.by === "officer" && <span className="muted">· niveau {opened.level} fixé par {opened.levelLock.userId === myId ? "toi" : opened.levelLock.name}</span>}</span>
+              {lvEdit?.id === opened.id ? (
+                <form className="row gm-lv" style={{ gap: 8, marginLeft: "auto" }} onSubmit={e => { e.preventDefault(); void fixLevel(opened, lvEdit.level); }}>
+                  <label className="muted" htmlFor="gm-lv">Niveau de {opened.name}</label>
+                  <NumberField id="gm-lv" min={1} max={60} value={lvEdit.level} onChange={level => setLvEdit({ id: opened.id, level })} className="gm-lv-n" />
+                  <button type="submit" className="btn sm primary" disabled={busy}>Enregistrer</button>
+                  <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setLvEdit(null)}>Annuler</button>
+                </form>
+              ) : (
+                <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
+                  {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>★ En faire le main</button>}
+                  {fixable(opened) && (opened.levelLock?.by === "officer"
+                    ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(opened, null)}>Rendre la main sur le niveau</button>
+                    : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: opened.id, level: opened.level })}>Corriger le niveau</button>)}
+                  <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer de la guilde</button>
+                </span>
+              )}
+              {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>{lvEdit?.id === opened.id
+                ? `${data.gameLinked ? `${opened.name} n'est pas dans la liste de guilde du jeu` : "La guilde n'est pas encore liée au jeu"} : son niveau ne peut pas être relevé. Une fois fixé, ${opened.owner ?? "le joueur"} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.`
+                : "Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos."}</span>}
             </div>
           )}
           {gt.game === "retail" ? <RetailCharacterView c={opened} /> : <CharacterEditor character={opened} editable={false} onChange={() => {}} />}

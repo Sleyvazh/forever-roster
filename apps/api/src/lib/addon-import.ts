@@ -299,6 +299,9 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       const consumables = Object.keys(d.consumables).length ? Object.fromEntries(Object.entries(d.consumables).slice(0, 60).map(([k, v]) => [k, Math.min(9999, v)])) : null;
       const [row] = await db.update(characters).set({
         ...patch, addonKey: key, ...(d.guid && { guid: d.guid }), addonSyncedAt: new Date(), updatedAt: new Date(),
+        // Niveau lu en jeu par l'addon du joueur : un niveau fixé par un officier (fiche-levels.ts) n'a plus lieu d'être, et
+        // un relevé de la guilde plus ancien ne le baissera pas
+        ...(parts.has("identity") && { levelFixedBy: null, levelFixedAt: null, levelSyncedAt: new Date() }),
         // Consommables comptés en jeu (lot G) : toujours repris, ils servent à l'onglet Préparation des raids
         ...(consumables && { consumables, consumablesAt: new Date() }),
       }).where(eq(characters.id, fiche.id)).returning();

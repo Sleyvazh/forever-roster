@@ -5,7 +5,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { characterRecipes, characters, gameRecipes, groupCharacters, groups, users } from "../db/schema";
 import { characterFields, crossCheck } from "../lib/character-schema";
-import { badRequest, notFound, parse } from "../lib/http";
+import { levelLockOf, levelLocks, syncFicheLevels } from "../lib/fiche-levels";
+import { badRequest, conflict, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { canSee } from "../lib/visibility";
 import { importKnownRecipes, MAX_RECIPES, recipeImportInput, setWantedPatterns } from "../lib/recipes";
@@ -42,8 +43,9 @@ export async function characterRoutes(app: FastifyInstance) {
     const rows = await db.select({ c: characters, groupId: groupCharacters.groupId, groupName: groups.name, isMain: groupCharacters.isMain }).from(characters)
       .leftJoin(groupCharacters, eq(groupCharacters.characterId, characters.id)).leftJoin(groups, eq(groups.id, groupCharacters.groupId))
       .where(and(eq(characters.userId, u.id), eq(characters.game, game))).orderBy(asc(characters.sortOrder), asc(characters.createdAt));
-    // Groupe où le perso est rangé (un seul, lot E) et s'il y est le main du joueur
-    return { characters: rows.map(r => ({ ...toApi(r.c), group: r.groupId ? { id: r.groupId, name: r.groupName!, isMain: !!r.isMain } : null })) };
+    // Groupe où le perso est rangé (un seul, lot E) et s'il y est le main du joueur ; niveau verrouillé (relevé en jeu, ou fixé par un officier)
+    const locks = await levelLocks(db, rows.map(r => ({ id: r.c.id, groupId: r.groupId, levelFixedBy: r.c.levelFixedBy, levelFixedAt: r.c.levelFixedAt })));
+    return { characters: rows.map(r => ({ ...toApi(r.c), group: r.groupId ? { id: r.groupId, name: r.groupName!, isMain: !!r.isMain } : null, levelLock: locks.get(r.c.id) ?? null })) };
   });
 
   app.post("/", async (req, reply) => {
@@ -79,7 +81,7 @@ export async function characterRoutes(app: FastifyInstance) {
       .innerJoin(users, eq(users.id, characters.userId)).where(eq(characters.id, id));
     // 404 aussi quand le perso existe mais n'est pas visible : on ne confirme pas son existence.
     if (!row || !(await canSee(db, u.id, row.c.userId))) throw notFound("Personnage introuvable.");
-    return { character: toApi(row.c), owner: row.owner, editable: row.c.userId === u.id };
+    return { character: { ...toApi(row.c), levelLock: await levelLockOf(db, row.c) }, owner: row.owner, editable: row.c.userId === u.id };
   });
 
   app.patch("/:id", async (req) => {
@@ -91,17 +93,35 @@ export async function characterRoutes(app: FastifyInstance) {
       addonSynced: z.literal(true).optional(),
       consumables: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).refine(r => Object.keys(r).length <= 60, "Trop de consommables.").optional(),
     }), req.body);
-    const [existing] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id)));
-    if (!existing) throw notFound("Personnage introuvable.");
-    const next = { ...existing, ...patch };
-    const err = crossCheck(next, existing.game); if (err) throw badRequest(err);
-    // Nom ou royaume changé à la main : ce n'est plus le perso lu chez Battle.net
-    const moved = (patch.name !== undefined && patch.name !== existing.name) || (patch.realm !== undefined && patch.realm !== existing.realm);
-    const [row] = await db.update(characters).set({
-      ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }),
-      ...(moved && existing.game === "retail" && { bnetId: null, realmSlug: "", ilvl: null, activeSpec: "", bnetSyncedAt: null }), ...(consumables && { consumables, consumablesAt: new Date() }),
-    }).where(eq(characters.id, id)).returning();
-    return { character: toApi(row!) };
+    // Fiche verrouillée le temps de la modification : un relevé de la guilde en cours (fiche-levels.ts) passe avant ou après
+    const after = await db.transaction(async tx => {
+      const [existing] = await tx.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id))).for("update");
+      if (!existing) throw notFound("Personnage introuvable.");
+      const next = { ...existing, ...patch };
+      const err = crossCheck(next, existing.game); if (err) throw badRequest(err);
+      // Niveau verrouillé (fiche-levels.ts) : relevé en jeu, ou fixé par un officier de sa guilde
+      if (patch.level !== undefined && patch.level !== existing.level) {
+        const lock = await levelLockOf(tx, existing);
+        if (lock?.by === "game") throw conflict(`Le niveau de ${existing.name} suit le jeu : ${lock.name} est niveau ${lock.level} dans la liste de guilde.`);
+        if (lock) throw conflict(`Le niveau de ${existing.name} a été fixé par ${lock.name}, officier de sa guilde.`);
+      }
+      // Nom ou royaume changé à la main : ce n'est plus le perso lu chez Battle.net
+      const moved = (patch.name !== undefined && patch.name !== existing.name) || (patch.realm !== undefined && patch.realm !== existing.realm);
+      await tx.update(characters).set({
+        ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }),
+        // Niveau changé à la main : ce n'est plus celui que l'addon a lu en jeu (fiche-levels.ts)
+        ...(patch.level !== undefined && patch.level !== existing.level && { levelSyncedAt: null }),
+        ...(moved && existing.game === "retail" && { bnetId: null, realmSlug: "", ilvl: null, activeSpec: "", bnetSyncedAt: null }), ...(consumables && { consumables, consumablesAt: new Date() }),
+      }).where(eq(characters.id, id));
+      // Nom changé : la fiche peut maintenant (ou ne plus) correspondre à un perso de la liste du jeu de sa guilde
+      if (existing.game === "forever" && patch.name !== undefined && patch.name !== existing.name) {
+        const [gc] = await tx.select({ g: groupCharacters.groupId }).from(groupCharacters).where(eq(groupCharacters.characterId, id));
+        if (gc) await syncFicheLevels(tx, gc.g);
+      }
+      const [row] = await tx.select().from(characters).where(eq(characters.id, id));
+      return row!;
+    });
+    return { character: { ...toApi(after), levelLock: await levelLockOf(db, after) } };
   });
 
   /* ----- Patrons connus / recherchés ----- */

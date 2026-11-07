@@ -27,6 +27,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   device_linked: ["Appareil relié", "warn"], device_pair_denied: ["Appairage refusé", "warn"], device_unlinked: ["Appareil délié", ""],
   // Copier-coller facultatif : un officier avec Roster Companion a transmis l'inscription faite en jeu d'un joueur
   signup_relayed: ["Inscription transmise pour un joueur", ""],
+  // Niveau d'un perso de la guilde fixé par un officier (fiche introuvable dans la liste du jeu), ou rendu au joueur
+  character_level_fixed: ["Niveau d'un perso corrigé", ""], character_level_released: ["Niveau d'un perso rendu au joueur", ""],
 };
 
 /** Résumé lisible d'un user-agent, sans bibliothèque. */

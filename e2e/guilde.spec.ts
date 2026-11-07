@@ -653,3 +653,86 @@ test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", a
   expect(problems, "erreurs ou violations CSP chez le membre").toEqual([]);
   await ctx.close();
 });
+
+test("guilde : niveau des fiches relevé en jeu, correction par un officier", async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  // Deux navigateurs : l'officière (page) et le joueur qui s'était mis 60 (autre contexte)
+  const ctx = await browser.newContext({ locale: "fr-FR", timezoneId: "Europe/Paris", viewport: { width: 1280, height: 900 } });
+  await ctx.route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
+  const player = await ctx.newPage();
+  const problems: string[] = [];
+  player.on("pageerror", e => problems.push(`Erreur JS : ${e.message}`));
+  player.on("console", m => { if (m.type() === "error" && !(m.location().url ?? "").includes("/icons/")) problems.push(`Console : ${m.text().slice(0, 200)}`); });
+
+  // Captures pour la relecture : SHOTS_DIR=/chemin npx playwright test guilde
+  const shot = (l: import("@playwright/test").Locator, name: string) => (process.env.SHOTS_DIR ? l.screenshot({ path: path.join(process.env.SHOTS_DIR, name) }) : Promise.resolve());
+  const officerEmail = await signUp(page, "Isolde");
+  const playerEmail = await signUp(player, "Necko");
+  const db = new pg.Client({ connectionString: DB });
+  await db.connect();
+  const idOf = async (email: string) => (await db.query("SELECT id FROM users WHERE email = $1", [email])).rows[0].id as string;
+  const [officer, necko] = [await idOf(officerEmail), await idOf(playerEmail)];
+  const group = (await db.query("INSERT INTO groups (name) VALUES ('Les Niveaux') RETURNING id")).rows[0].id as string;
+  await db.query("INSERT INTO group_members (group_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'member')", [group, officer, necko]);
+  const fiche = async (user: string, name: string, cls: string, race: string, spec: string, level: number, g: number | null, main: boolean) => {
+    const id = (await db.query("INSERT INTO characters (user_id, name, race, cls, spec1, level, professions, guid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+      [user, name, race, cls, spec, level, PROFS, g === null ? null : guid(g)])).rows[0].id as string;
+    await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, $4)", [group, id, user, main]);
+    return id;
+  };
+  await fiche(officer, "Isolde Clairval", "Priest", "Troll", "Holy", 40, 22, true);
+  // Necko s'est mis 60 à la main ; Grumz, son alt, n'est pas dans la guilde en jeu
+  const neckoId = await fiche(necko, "Necko", "Rogue", "Orc", "Combat", 60, null, true);
+  const grumzId = await fiche(necko, "Grumz", "Warrior", "Orc", "Arms", 60, null, false);
+  await db.end();
+
+  await test.step("le relevé de la guilde impose son niveau du jeu à la fiche de Necko (prénom seul)", async () => {
+    const now = Math.floor(Date.now() / 1000) - 60;
+    const lines = [["M", "Isolde Clairval", "PRIEST", 40, "Maître de guilde", 0, 1, 0, "", "", guid(22)].join(";"), ["M", "Necko Brisefer", "ROGUE", 34, "Membre", 3, 0, 3, "", "", guid(21)].join(";")];
+    await paste(page, [`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n"));
+    await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Niveaux (liée) : liste de 2 membres (complète)");
+    // Le joueur : niveau en lecture seule, et d'où il vient
+    await player.goto(`/persos/${neckoId}`);
+    await expect(player.locator("#f-level")).toHaveValue("34");
+    await expect(player.locator("#f-level")).toHaveAttribute("readonly", "");
+    await expect(player.locator("#f-level-src")).toContainText("Niveau relevé en jeu : Necko Brisefer est niveau 34 dans la liste de guilde du");
+    await expect(player.getByRole("spinbutton", { name: "Niveau" })).toHaveCount(0);
+    await shot(player.locator("section").filter({ has: player.locator("#f-level") }).first(), "niveau-joueur-jeu.png");
+    // L'officière : la fiche suit le jeu, pas de correction possible
+    await page.goto(`/groups/${group}/membres/persos?vue=fiches&perso=${neckoId}`);
+    await expect(page.locator(".gm-act")).toContainText("niveau 34 relevé en jeu (Necko Brisefer)");
+    await expect(page.locator(".gm-act").getByRole("button", { name: "Corriger le niveau" })).toHaveCount(0);
+  });
+
+  await test.step("fiche introuvable dans la liste : l'officière corrige le niveau, le joueur ne le change plus", async () => {
+    await page.goto(`/groups/${group}/membres/persos?vue=fiches&perso=${grumzId}`);
+    const bar = page.locator(".gm-act");
+    await bar.getByRole("button", { name: "Corriger le niveau" }).click();
+    await expect(bar).toContainText("Une fois fixé, Necko ne pourra plus le changer");
+    await page.setViewportSize({ width: 390, height: 800 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1360, height: 900 });
+    await page.locator("#gm-lv").fill("45");
+    await shot(bar, "niveau-officier-saisie.png");
+    await bar.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(bar).toContainText("niveau 45 fixé par toi");
+    await shot(bar, "niveau-officier-fixe.png");
+    await player.goto(`/persos/${grumzId}`);
+    await expect(player.locator("#f-level")).toHaveValue("45");
+    await expect(player.locator("#f-level-src")).toContainText(/Niveau fixé par Isolde, officier de ta guilde, le .+, tant que le jeu ne donne pas celui de Grumz\./);
+    await shot(player.locator("section").filter({ has: player.locator("#f-level") }).first(), "niveau-joueur-officier.png");
+    await page.goto(`/groups/${group}/admin?section=journal`);
+    await expect(page.getByRole("row").filter({ hasText: "a corrigé le niveau d'un perso · Grumz : 60 → 45" })).toBeVisible();
+  });
+
+  await test.step("« Rendre la main sur le niveau » : le joueur le change de nouveau", async () => {
+    await page.goto(`/groups/${group}/membres/persos?vue=fiches&perso=${grumzId}`);
+    await page.locator(".gm-act").getByRole("button", { name: "Rendre la main sur le niveau" }).click();
+    await expect(page.locator(".gm-act").getByRole("button", { name: "Corriger le niveau" })).toBeVisible();
+    await player.reload();
+    await expect(player.getByRole("spinbutton", { name: "Niveau" })).toHaveValue("45");
+    await expect(player.locator("#f-level-src")).toHaveCount(0);
+  });
+  expect(problems).toEqual([]);
+  await ctx.close();
+});

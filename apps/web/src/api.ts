@@ -88,6 +88,8 @@ export interface Character {
   group?: { id: string; name: string; isMain: boolean } | null;
   /** Dans la liste des persos d'un groupe : niveau d'objet moyen et BiS obtenus. */
   gearStats?: import("@forever/game-data").GearStats;
+  /** Niveau verrouillé (7/11) : relevé en jeu (liste de guilde), ou fixé par un officier ; absent ou null : libre. */
+  levelLock?: import("@forever/game-data").FicheLevelLock | null;
 }
 
 export interface GearEntry { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }

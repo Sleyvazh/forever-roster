@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 56, date: "2026-11-07", kind: "site", title: "Le niveau des fiches suit le jeu",
+    text: "Quand ta guilde est liée au jeu, le niveau de ta fiche vient de la liste de guilde, à chaque relevé : la fiche est retrouvée par l'addon, sinon par son nom (« Prénom Nom », ou son prénom seul, s'il est le seul de la guilde à le porter). Il n'est plus modifiable à la main tant que le perso est dans la liste. Pour un perso que la liste ne connaît pas, un officier peut corriger le niveau (Guilde › Membres › Fiches du site) ; c'est noté au journal de la guilde." },
   { n: 55, date: "2026-11-01", kind: "site", title: "Demandes de retrait à la banque, et quoi faire ce soir",
     text: "Dans Guilde › Banque, tout membre peut demander un objet de la banque de guilde ; les officiers et les banquiers que les officiers nomment le préparent puis le remettent, et le bot te prévient en MP quand c'est prêt (selon ton réglage). En jeu, avec l'addon 1.6.4, les officiers et les banquiers voient les demandes en cours dans une petite fenêtre qui s'ouvre à côté de la banque, avec l'onglet où se trouve chaque objet. Sur l'Accueil, « Trouver quoi faire » propose des donjons à ton niveau, et les persos de la guilde de ton niveau avec qui y aller. Et pour ton serveur Discord, « Ajouter le bot » (Administration › Discord et relances) t'amène droit à l'invitation du bot." },
   { n: 54, date: "2026-10-31", kind: "site", title: "La banque de guilde sur le site",

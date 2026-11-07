@@ -1,7 +1,8 @@
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, isNotNull, ne } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, groupCharacters, groups } from "../db/schema";
 import { bus } from "./events";
+import { syncFicheLevels } from "./fiche-levels";
 import { badRequest } from "./http";
 
 /**
@@ -30,9 +31,15 @@ export async function assignCharacter(db: Tx, groupId: string, characterId: stri
   }
   const [hasMain] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
     .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, userId), eq(groupCharacters.isMain, true)));
-  await db.insert(groupCharacters).values({ groupId, characterId, userId, isMain: !hasMain && !main })
-    .onConflictDoNothing();
+  const [added] = await db.insert(groupCharacters).values({ groupId, characterId, userId, isMain: !hasMain && !main })
+    .onConflictDoNothing().returning();
   if (main) await setMain(db, groupId, characterId, userId);
+  if (added) {
+    // Niveau des fiches (fiche-levels.ts) : un niveau fixé ailleurs ne suit pas la fiche ; si la liste du jeu de cette
+    // guilde la connaît, elle prend son niveau tout de suite (avant tout contrôle du niveau : sorties, raids)
+    await db.update(characters).set({ levelFixedBy: null, levelFixedAt: null }).where(and(eq(characters.id, characterId), isNotNull(characters.levelFixedBy)));
+    if (g?.game === "forever") await syncFicheLevels(db, groupId);
+  }
 }
 
 /** Fait de ce perso (déjà dans le groupe) le main du joueur. */
@@ -47,6 +54,8 @@ export async function setMain(db: Tx, groupId: string, characterId: string, user
 export async function unassignCharacter(db: Tx, groupId: string, characterId: string, userId: string) {
   const [gone] = await db.delete(groupCharacters)
     .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.characterId, characterId))).returning();
+  // Niveau fixé par un officier de cette guilde (fiche-levels.ts) : il ne vaut plus ailleurs
+  if (gone) await db.update(characters).set({ levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() }).where(and(eq(characters.id, characterId), isNotNull(characters.levelFixedBy)));
   if (gone?.isMain) await promoteMain(db, groupId, userId);
 }
 

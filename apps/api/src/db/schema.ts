@@ -153,6 +153,18 @@ export const characters = pgTable("characters", {
   addonKey: text("addon_key"),
   /** Lot « Guilde » : GUID du perso en jeu (en-tête FRC de l'addon 1.6.2) : le rapproche de la liste de guilde. */
   guid: text("guid"),
+  /**
+   * Niveau fixé par un officier de la guilde où la fiche est rangée (7/11) : fiche introuvable dans la liste du jeu, le
+   * joueur ne change plus son niveau. Levé par l'officier, quand la fiche quitte la guilde, quand l'addon du joueur envoie
+   * ce perso, ou quand la liste du jeu le retrouve (le jeu reprend la main).
+   */
+  levelFixedBy: uuid("level_fixed_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+  levelFixedAt: ts("level_fixed_at"),
+  /**
+   * Dernier niveau lu en jeu par l'addon du joueur (import de l'identité, Ctrl+V ou Roster Companion) : un relevé de la
+   * guilde plus ancien ne le baisse pas. Jamais posé par une modification faite sur le site.
+   */
+  levelSyncedAt: ts("level_synced_at"),
   /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
   consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
   consumablesAt: ts("consumables_at"),

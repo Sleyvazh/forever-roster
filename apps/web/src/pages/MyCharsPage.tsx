@@ -6,6 +6,7 @@ import { ApiError, del, get, post, put, uploadImage, type Character, type GroupS
 import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, Metiers, TalentsSection, type EditorTab } from "../components/CharacterEditor";
 import { ClassIcon, SpecIcon } from "../components/Icons";
 import { ImageUpload, Portrait } from "../components/ImageUpload";
+import { LockedLevel, LockIcon, levelLockText } from "../components/LevelLock";
 import { NumberField } from "../components/NumberField";
 import { Paperdoll } from "../components/Paperdoll";
 import { MyAbsences } from "../components/Absences";
@@ -32,8 +33,9 @@ export function MyCharsPage() {
   const { data, isLoading } = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters") });
   const groups = (useQuery({ queryKey: ["groups"], queryFn: () => get<{ groups: GroupSummary[] }>("/groups") }).data?.groups ?? []).map(g => ({ id: g.id, name: g.name }));
   const [local, setLocal] = useState<Character[]>([]);
-  // Copie locale en cours d'édition ; la guilde (main / alt) vient toujours du serveur ; une fiche modifiée ailleurs la remplace
-  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => { const p = prev.find(x => x.id === sc.id); return !p || p.updatedAt !== sc.updatedAt ? sc : { ...p, group: sc.group }; })); }, [data]);
+  // Copie locale en cours d'édition ; la guilde (main / alt) et le verrou du niveau (relevé en jeu, fixé par un officier)
+  // viennent toujours du serveur ; une fiche modifiée ailleurs la remplace
+  useEffect(() => { if (data) setLocal(prev => data.characters.map(sc => { const p = prev.find(x => x.id === sc.id); return !p || p.updatedAt !== sc.updatedAt ? sc : { ...p, group: sc.group, levelLock: sc.levelLock }; })); }, [data]);
   const creating = params.charId === "nouveau";
   const picked = !creating && params.charId && local.some(c => c.id === params.charId) ? params.charId : null;
   const sel = picked ?? local[0]?.id ?? null;
@@ -272,7 +274,9 @@ function Essentials({ c, groups, onChange, onGroup, onMain }: {
     <>
       <div className="fi-grid">
         <div className="fld"><label htmlFor="f-name">Nom</label><input id="f-name" type="text" maxLength={40} value={c.name} onChange={e => onChange({ name: e.target.value })} /></div>
-        <div className="fld"><label htmlFor="f-level">Niveau</label><NumberField id="f-level" min={1} max={60} value={c.level} onChange={level => onChange({ level })} /></div>
+        <div className="fld"><label htmlFor="f-level">Niveau</label>
+          {c.levelLock ? <LockedLevel id="f-level" value={c.level} describedBy="f-level-src" />
+            : <NumberField id="f-level" min={1} max={60} value={c.level} onChange={level => onChange({ level })} />}</div>
         <div className="fld"><label htmlFor="f-race">Race</label>
           <select id="f-race" value={c.race} onChange={e => setRace(e.target.value)}>
             <option value="">Choisir…</option>
@@ -297,6 +301,7 @@ function Essentials({ c, groups, onChange, onGroup, onMain }: {
               title={c.group?.isMain ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined}>Alt</button>
           </div></div>
       </div>
+      {c.levelLock && <p className="lv-src" id="f-level-src"><LockIcon /><span>{levelLockText(c.levelLock, c.name)}</span></p>}
       {bad && <p className="warnmsg" style={{ margin: 0 }}>{c.race} ne peut pas être {gt.cls(c.cls)} dans WoW Forever.</p>}
       {c.cls && !c.spec1 && <p className="hint warnmsg" style={{ margin: "-6px 0 0" }}>Il faut une spé pour s'inscrire aux raids et aux sorties.</p>}
     </>

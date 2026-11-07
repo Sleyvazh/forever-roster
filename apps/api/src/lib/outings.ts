@@ -112,11 +112,15 @@ async function pickCharacter(db: Tx, groupId: string, userId: string, characterI
   if (!c) throw badRequest("Ce personnage n'est pas à toi.");
   if (c.game !== "forever") throw badRequest("Ce perso n'est pas de WoW Forever.");
   if (!c.cls) throw badRequest("Choisis d'abord la classe de ce personnage.");
+  // Rangé dans le groupe d'abord : une fiche qui y entre prend le niveau du jeu (fiche-levels.ts) avant le contrôle du
+  // niveau ; un refus annule tout (les appelants sont dans une transaction)
+  const entered = await ensureInGroup(db, groupId, c.id, userId);
+  const level = entered ? (await db.select({ level: characters.level }).from(characters).where(eq(characters.id, c.id)))[0]?.level ?? c.level : c.level;
   const r = range(o);
-  if (r && !hasDungeonLevel(r, c.level)) throw badRequest(`${c.name} (niveau ${c.level}) n'a pas le niveau de ${o.title} (${levelsText(r.min, r.max)}).`);
+  if (r && !hasDungeonLevel(r, level)) throw badRequest(`${c.name} (niveau ${level}) n'a pas le niveau de ${o.title} (${levelsText(r.min, r.max)}).`);
   if (!classRoles(c.cls).includes(role)) throw badRequest(`${c.name} ne peut pas jouer ${ROLE_FR[role]}.`);
   const sp = spec && specDef(c.cls, spec)?.role === role ? spec : specForRole(c, role);
-  if (await ensureInGroup(db, groupId, c.id, userId)) bus.group({ t: "chars", g: groupId });
+  if (entered) bus.group({ t: "chars", g: groupId });
   return { id: c.id, name: c.name, cls: c.cls, spec: sp };
 }
 

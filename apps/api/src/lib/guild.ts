@@ -456,6 +456,7 @@ export async function homeFind(db: Tx, groupId: string, me: string, r: Resolved,
   const linked = !!r.data.gg;
   const roster = new Map(r.data.members.filter(m => !m.leftAt).map(m => [m.guid, m]));
   // Le niveau de la fiche, pas celui de la liste du jeu : « + Sortie » et le serveur (outings.ts, pickCharacter) comptent le niveau de la fiche
+  // (une fiche rapprochée de la liste prend son niveau à chaque relevé : fiche-levels.ts)
   const char = pickCharacterFor(null, fiches.filter(f => f.cls));
   if (!char) return null;
 
