@@ -1,3 +1,4 @@
+import { sealText } from "@forever/game-data";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { devicePairings } from "../src/db/schema";
@@ -9,7 +10,7 @@ beforeAll(async () => { env = await setup(); });
 afterAll(async () => { await env.close(); });
 
 const frc = (name: string, cls: string, race: string, level: number, extra: string[] = []) =>
-  [`FRC;2;${name};Forever EU;${cls};${race};${level};Horde;1790000000;1.3.0`, ...extra, `END;${extra.length}`].join("\n");
+  sealText([`FRC;2;${name};Forever EU;${cls};${race};${level};Horde;1790000000;1.3.0`, ...extra, `END;${extra.length}`].join("\n"));
 
 /** Appareil : requêtes sans cookie ni origine, avec le jeton Bearer (comme Roster Companion). */
 const device = (token: string | null) => ({
@@ -167,10 +168,10 @@ describe("Roster Companion : synchro", () => {
     await off.c.post("/api/groups/invites/accept", { token: tokenFrom(inv.url) });
     await lead.c.patch(`/api/groups/${g.id}/members/${off.user.id}`, { role: "officer" });
     const raid = (await lead.c.post(`/api/groups/${g.id}/raids`, { name: "Molten Core", scheduledAt: new Date(1_790_000_000_000).toISOString() })).json().raid;
-    const frb = (who: string, isLead: boolean, people: number) => [
+    const frb = (who: string, isLead: boolean, people: number) => sealText([
       `FRB;2;${raid.id};1790000000;1790010000;${who};Molten Core;Molten Core;${isLead ? 1 : 0}`,
       ...Array.from({ length: people }, (_, i) => `A;Joueur${i};1790000000;1790010000;100`), `END;${people}`,
-    ].join("\n");
+    ].join("\n"));
     const leadApp = device(await pair(lead.c)), offApp = device(await pair(off.c));
     expect((await leadApp.req("POST", "/api/sync/upload", { text: frb("Chef", true, 9) })).json().results[0]).toMatchObject({ kind: "raidlog", status: "updated" });
     expect((await offApp.req("POST", "/api/sync/upload", { text: frb("Officier", false, 7) })).json().results[0]).toMatchObject({ status: "kept" });

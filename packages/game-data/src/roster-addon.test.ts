@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseCharacterExports } from "./charexport";
 import { parseRaidLogs } from "./raidlog";
+import { sealText } from "./seal";
 import { RETAIL_CLASS_NAMES } from "./retail";
 import {
   buildRRG, buildRRR, encounterSummary, foreignAddonErrors, fullName, fullNameKey, normalizedRealm, parseRRB, RETAIL_CLASS_TOKENS,
@@ -266,9 +267,9 @@ describe("RRB : bilan d'un raid (jeu → site)", () => {
     expect(foreignAddonErrors(RRB, "forever")).toEqual(["Ce texte vient de l'addon Roster (WoW Retail) : colle-le sur roster.sleyvazh.fr."]);
     expect(foreignAddonErrors(frb, "forever")).toEqual([]);
     // Un bilan de Roster après un bilan ou un perso de Forever ne s'y mélange pas
-    const mixed = parseRaidLogs(`FRB;1;${RAID};1000;8200;Thalion;Molten Core\nA;Thalwen;1000;8200;121\nEND;1\n${RRB}`);
+    const mixed = parseRaidLogs(sealText(`FRB;1;${RAID};1000;8200;Thalion;Molten Core\nA;Thalwen;1000;8200;121\nEND;1\n${RRB}`));
     expect(mixed.data[0]!.attendees.map(a => a.name)).toEqual(["Thalwen"]);
-    const chars = parseCharacterExports(`${frc}\n${RRB}`);
+    const chars = parseCharacterExports(sealText(`${frc}\n${RRB}`));
     expect(chars.ok && chars.errors).toEqual([]);
   });
 });

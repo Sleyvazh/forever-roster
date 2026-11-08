@@ -1779,10 +1779,28 @@ do
   assert(text:find("\nP;Tournicoti;43;50;8000;%d+;\nU;Tournicoti;42;%d+;\nU;Tournicoti;43;" .. up43 .. ";\nEND;"), "XP et niveaux dans le relevé (GUID pas encore connu)")
   local count = 0
   for _ in text:gmatch("\n") do count = count + 1 end
-  assert(text:match("\nEND;(%d+)$") == tostring(count - 1) and not text:find("|", 1, true), "END compte les lignes, aucun « | »")
+  assert(text:match("\nEND;(%d+);%x+$") == tostring(count - 1) and not text:find("|", 1, true), "END compte les lignes et porte le sceau, aucun « | »")
   local stable = Gd.Text(KEY, true)
   clock = clock + 120
   assert(Gd.ReadRoster() and Gd.Text(KEY) ~= text and Gd.Text(KEY, true) == stable, "relue sans changement : même forme stable")
+  -- 1.6.5 : seul ce que le jeu a donné pendant cette session part au site. Niveaux du perso connecté jusqu'à celui du jeu ;
+  -- les autres persos du compte envoient les leurs à leur déconnexion ; une fiche de guilde chargée de la sauvegarde
+  -- (retouchée entre deux sessions) mais pas relue : ni liste, ni journal, ni banque
+  local keepB = ForeverRosterDB.chars["Brindille-Forever EU"]
+  c.levels[60] = clock
+  ForeverRosterDB.chars["Brindille-Forever EU"] = { recipes = {}, guild = KEY, xp = { level = 60, xp = 0, max = 0, at = clock }, levels = { [60] = clock } }
+  local withAlt = Gd.Text(KEY)
+  assert(withAlt:find("\nU;Tournicoti;43;", 1, true) and not withAlt:find("\nU;Tournicoti;60;", 1, true) and not withAlt:find("Brindille", 1, true),
+    "niveau au-dessus de celui du jeu, autre perso du compte : pas envoyés")
+  c.levels[60], ForeverRosterDB.chars["Brindille-Forever EU"] = nil, keepB
+  local real, copy = ForeverRosterDB.guilds[KEY], {}
+  for k, v in pairs(real) do copy[k] = v end
+  ForeverRosterDB.guilds[KEY] = copy
+  local stale = Gd.Text(KEY)
+  assert(not stale:find("\n[MJEBTIXO];") and stale:find("\nP;Tournicoti;43;", 1, true) and stale:match("\nEND;%d+;%x+$"),
+    "fiche de guilde pas relue pendant cette session : ni liste, ni journal, ni banque")
+  ForeverRosterDB.guilds[KEY] = real
+  assert(Gd.Text(KEY, true) == stable, "fiche relue remise : même relevé")
 
   -- /fr guilde (habillage Forever puis celui du site) et « Copier le relevé »
   run("guilde")
@@ -1848,8 +1866,8 @@ do
   run("synchro")
   local sp = ns.UI.pages.synchro
   local value = sp.text:GetText()
-  assert(value:match("^FRC;2;Tournicoti;[^\n]*;Player%-4321%-00000001;Tournicoti Tournicoton\n") and value:find("\nEND;%d+\nFRL;1;Les Veilleurs;Horde;")
-    and value:match("\nEND;%d+$") and sp.status:GetText():find("relevé de la guilde Les Veilleurs", 1, true), "onglet Synchro : le relevé après le perso")
+  assert(value:match("^FRC;2;Tournicoti;[^\n]*;Player%-4321%-00000001;Tournicoti Tournicoton\n") and value:find("\nEND;%d+;%x+\nFRL;1;Les Veilleurs;Horde;")
+    and value:match("\nEND;%d+;%x+$") and sp.status:GetText():find("relevé de la guilde Les Veilleurs", 1, true), "onglet Synchro : le relevé après le perso")
   rawget(sp.text, "scripts").OnKeyDown(sp.text, "C")
   assert(#Gd.Pending() == 0 and E.IsSent(c) and guild().sentSig == ns.Format.Hash(Gd.Text(KEY, true)), "Ctrl+C : perso et relevé envoyés")
   clock = clock + 120

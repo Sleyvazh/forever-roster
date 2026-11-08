@@ -132,6 +132,13 @@ local refresh -- fenêtre /fr guilde à jour après chaque lecture (plus bas)
 local asked = { roster = 0, events = 0 }        -- dernière demande de cette session
 local waiting = { roster = false, events = false }
 local pending = {}                              -- remis à la fin du combat : roster, events, xp, bank
+-- Relu pendant cette session (1.6.5) : fiche de guilde -> { roster, events, bank }. Seul ce que le jeu a donné depuis la
+-- connexion part au site : une sauvegarde retouchée entre deux sessions n'est pas scellée puis envoyée (G.Data)
+local fresh = setmetatable({}, { __mode = "k" })
+local function seen(g, what)
+  fresh[g] = fresh[g] or {}
+  fresh[g][what] = true
+end
 local function due(kind, at) return time() - math.max(asked[kind], at or 0) >= GAP end
 
 -- Plusieurs événements d'affilée : une seule lecture, une seconde après le premier
@@ -172,6 +179,7 @@ function G.ReadRoster()
   waiting.roster = false
   table.sort(members, function(a, b) return a.name < b.name end)
   g.roster = { at = time(), by = me(), officer = officer, rank = rank or "", rankIndex = rankIndex, total = total, members = members }
+  seen(g, "roster")
   refresh()
   return true
 end
@@ -211,6 +219,7 @@ function G.ReadEvents()
     end
   end
   g.events = { at = time(), by = me(), total = total, list = newest(list, MAX_EVENTS) }
+  seen(g, "events")
   refresh()
   return true
 end
@@ -295,6 +304,7 @@ local function save()
     for _, x in ipairs(scan.logs[tab] or {}) do log[#log + 1] = x end
   end
   scan.g.bank = { at = scan.at, by = scan.by, money = scan.money, ntabs = scan.ntabs, tabs = scan.tabs, items = items, log = log, moneyLog = scan.moneyLog }
+  seen(scan.g, "bank")
   refresh()
   bankHook("Check")
 end
@@ -475,21 +485,25 @@ ns.on("GUILDBANK_UPDATE_MONEY", function()
 end)
 
 --------------------------------------------------------------------------------------------------------------------
--- Texte FRL v1 (Format.lua) d'une guilde relevée : la fiche, et les persos du compte qui en sont (avec leur GUID, relevé
--- par l'export du perso : Export.lua)
+-- Texte FRL v1 (Format.lua) d'une guilde relevée : la fiche, et le perso connecté s'il en est (avec son GUID, relevé
+-- par l'export du perso : Export.lua). 1.6.5 : seulement ce qui a été relu pendant cette session (liste, journal,
+-- banque ; XP du perso connecté, et ses niveaux jusqu'à celui que le jeu donne) ; les autres persos du compte ont
+-- envoyé les leurs à leur déconnexion. Le texte est scellé (Format.lua, F.Seal).
 --------------------------------------------------------------------------------------------------------------------
 function G.Data(key)
   local g = key and guilds()[key]
   if not g then return nil end
-  local chars = {}
-  for ckey, c in pairs(ForeverRosterDB.chars or {}) do
-    if c.guild == key and (c.xp or c.levels) then
-      local h = c.snapshot and c.snapshot.header
-      chars[#chars + 1] = { name = ckey:match("^(.-)%-") or ckey, xp = c.xp, levels = c.levels, guid = h and h.guid }
-    end
+  local f, chars = fresh[g] or {}, {}
+  local ckey = ns.charKey()
+  local c = ckey and ForeverRosterDB.chars and ForeverRosterDB.chars[ckey]
+  if c and c.guild == key and xpAt > 0 and c.xp and c.xp.level then
+    local levels = {}
+    for lvl, at in pairs(c.levels or {}) do if lvl <= c.xp.level then levels[lvl] = at end end
+    local h = c.snapshot and c.snapshot.header
+    chars[1] = { name = ckey:match("^(.-)%-") or ckey, xp = c.xp, levels = levels, guid = h and h.guid }
   end
-  table.sort(chars, function(a, b) return a.name < b.name end)
-  return { name = g.name, faction = g.faction, realm = g.realm, addon = ns.version, roster = g.roster, events = g.events, bank = g.bank, chars = chars }
+  return { name = g.name, faction = g.faction, realm = g.realm, addon = ns.version,
+    roster = f.roster and g.roster or nil, events = f.events and g.events or nil, bank = f.bank and g.bank or nil, chars = chars }
 end
 function G.Text(key, stable)
   local d = G.Data(key)
@@ -549,7 +563,8 @@ function G.Outbox(previous)
   for _, e in ipairs(G.Pending()) do
     local key = G.PREFIX .. e.key
     local old = before[key]
-    if old and old.sig == e.sig and type(old.text) == "string" then out[#out + 1] = old
+    -- Le bloc d'un envoi précédent est gardé tel quel s'il est scellé (celui d'un addon plus ancien est refait)
+    if old and old.sig == e.sig and ns.Format.IsSealed(old.text) then out[#out + 1] = old
     else out[#out + 1] = { kind = "frl", key = key, sig = e.sig, text = e.text } end
   end
   return out

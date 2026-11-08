@@ -197,7 +197,7 @@ function R.Block(log)
     end
   end
   lines[#lines + 1] = "END;" .. (#names + #log.loot)
-  return table.concat(lines, "\n")
+  return F.Seal(lines) -- sceau (1.6.5, Format.lua)
 end
 
 function R.Prune()

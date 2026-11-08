@@ -1,5 +1,6 @@
 import type { SignupStatus } from "./core";
 import { LOOT_METHODS, LOOT_RESPONSES, type LootMethod, type LootResponse } from "./loot";
+import { sealError, sealState } from "./seal";
 
 /**
  * Bilan d'un raid relevé par l'addon (format « FRB », version 1, docs/addon-format.md) :
@@ -47,6 +48,11 @@ const gameNameOf = (s: string) => txt(s, 40).split("-")[0]!.split(/\s+/)[0] ?? "
 function parseBlock(lines: string[]): { ok: true; data: RaidLogExport } | { ok: false; error: string } {
   const head = lines[0]!.split(";");
   if (head[1] !== "1" && head[1] !== "2") return { ok: false, error: `version de bilan non gérée (${head[1] ?? "?"}) : mets le site à jour` };
+  // Sceau de l'addon (1.6.5, seal.ts) : sans lui, ou retouché, le bilan est refusé ; sans ligne END, il est incomplet (plus bas)
+  if (lines.at(-1)?.split(";")[0] === "END") {
+    const seal = sealState(lines);
+    if (seal !== "ok") return { ok: false, error: sealError(seal) };
+  }
   const raidId = (head[2] ?? "").trim(), start = int(head[3]), end = int(head[4]);
   if (!UUID.test(raidId)) return { ok: false, error: "bilan sans raid du site (charge les données du site en jeu avant le raid)" };
   if (start === null || end === null || end < start) return { ok: false, error: "heures du bilan illisibles" };
@@ -106,7 +112,9 @@ export function parseRaidLogs(text: string): { data: RaidLogExport[]; errors: st
   }
   const data: RaidLogExport[] = [], errors: string[] = [];
   for (const b of blocks.slice(0, 5)) {
-    const r = parseBlock(b);
+    // Le bilan s'arrête à sa ligne END (scellée) : ce qui suit n'en fait pas partie
+    const end = b.findIndex(l => l.split(";")[0] === "END");
+    const r = parseBlock(end >= 0 ? b.slice(0, end + 1) : b);
     if (r.ok) data.push(r.data); else errors.push(r.error);
   }
   return { data, errors };

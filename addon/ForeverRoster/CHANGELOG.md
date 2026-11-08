@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.5
+
+- **Texts sent to the website are now sealed**: each block the addon writes for the website (your characters, the guild scan, raid reports) ends with a short seal on its END line. The website refuses a block whose text was changed by hand (or damaged by the copy-paste), and refuses blocks from older versions of the addon: update to 1.6.5 so your characters and your guild scan keep reaching the website. Roster Companion sends them as before.
+- The guild scan only carries what the game gave during this session: the roster, guild log and guild bank read since you logged in, and the level and XP of the character you play (its level-up times up to its current level). Your other characters send theirs when you log out of them.
+
+Français :
+
+- **Les textes envoyés au site sont scellés** : chaque bloc que l'addon écrit pour le site (tes persos, le relevé de la guilde, les bilans de raid) se termine par un petit sceau sur sa ligne END. Le site refuse un bloc dont le texte a été retouché à la main (ou abîmé par le copier-coller), et refuse les blocs des versions plus anciennes de l'addon : passe à la 1.6.5 pour que tes persos et ton relevé de guilde arrivent toujours sur le site. Roster Companion les envoie comme avant.
+- Le relevé de la guilde ne porte plus que ce que le jeu a donné pendant cette session : la liste, le journal et la banque de guilde lus depuis la connexion, et le niveau et l'XP du perso que tu joues (l'heure de ses niveaux, jusqu'à son niveau actuel). Tes autres persos envoient les leurs quand tu les déconnectes.
+
 ## 1.6.4
 
 - **Withdrawal requests at the guild bank**: when you open the guild bank and one of your characters is an officer or a banker of a group that has open withdrawal requests on the website (a banker can open the bank with any character of their account), a small read-only window "Withdrawal requests (N)" opens next to the bank. One line per request: who asked, the item (hover for its tooltip, Shift+click to link it in chat), the quantity, the bank tab where the item is according to the current bank scan ("—" if it isn't there) and the step ("Pending" or "Prepared by Kaeldra"). It is read-only: you mark a request "Prepared" or "Handed over" on the website. It closes with the bank (or with its Close button, and then stays closed until you open the bank again), it never shows in combat or during an encounter, and it updates when the bank is read again or when new website data arrives. Nothing is sent to anyone.

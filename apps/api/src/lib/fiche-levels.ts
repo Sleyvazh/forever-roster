@@ -37,9 +37,10 @@ export async function guildFicheMatches(db: Tx, groupId: string) {
 
 /**
  * Le jeu reprend la main : chaque fiche rapprochée prend le niveau de la liste (et perd un niveau fixé par un officier),
- * sauf si l'addon de son joueur a lu ce perso (même GUID) après cette liste, à un niveau plus haut : c'est le jeu aussi, en
- * plus récent (levelSyncedAt, posé seulement par l'import de l'addon). Rend le nombre de fiches changées. Les fiches sont
- * verrouillées le temps de la mise à jour (une modification de la fiche attend, puis voit le nouveau niveau).
+ * sauf si l'addon de son joueur a lu ce perso (même GUID) après le niveau de la liste (guild_members.level_at), plus haut :
+ * c'est le jeu aussi, en plus récent (levelSyncedAt, posé seulement par l'import de l'addon, effacé dès que la fiche prend
+ * le niveau de la liste). Rend le nombre de fiches changées. Les fiches sont verrouillées le temps de la mise à jour (une
+ * modification de la fiche attend, puis voit le nouveau niveau).
  */
 export async function syncFicheLevels(db: Tx, groupId: string) {
   const { matches, rosterAt } = await guildFicheMatches(db, groupId);
@@ -50,10 +51,12 @@ export async function syncFicheLevels(db: Tx, groupId: string) {
   for (const r of rows) {
     const m = matches.get(r.id)!, lv = m.member.level;
     // Un niveau posé à la main ou fixé par un officier après l'envoi de l'addon efface levelSyncedAt : ce n'est plus celui du jeu
-    const addonNewer = m.by === "addon" && !r.fixedBy && !!r.syncedAt && !!rosterAt && r.syncedAt.getTime() > rosterAt.getTime() && r.level > lv;
+    const listAt = m.member.levelAt ?? rosterAt;
+    const addonNewer = m.by === "addon" && !r.fixedBy && !!r.syncedAt && !!listAt && r.syncedAt.getTime() > listAt.getTime() && r.level > lv;
     const move = !addonNewer && r.level !== lv;
     if (!move && !r.fixedBy) continue;
-    await db.update(characters).set({ ...(move && { level: lv }), levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() }).where(eq(characters.id, r.id));
+    // Le niveau vient alors de la liste, plus de l'addon : levelSyncedAt effacé (sinon un niveau plus haut resterait « plus récent »)
+    await db.update(characters).set({ ...(move && { level: lv, levelSyncedAt: null }), levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() }).where(eq(characters.id, r.id));
     if (move) n++;
   }
   return n;

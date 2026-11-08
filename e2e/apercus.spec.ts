@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { sealText } from "../packages/game-data/src/seal";
 
 /**
  * Aperçus des nouveautés (lots D1 et D2) avec des données fictives, pour les montrer avant déploiement.
@@ -498,7 +499,7 @@ test("aperçus des signalements", async ({ page, browser }) => {
     const r = await fetch(u as string, { method: "POST", headers: { "content-type": "application/json", "x-csrf-token": csrfToken }, body: JSON.stringify(d) });
     if (!r.ok) throw new Error(`${u} : ${r.status}`);
   }, [url, data] as const);
-  await call("/api/addon/import", { text: "FRC;2;Isoldë;Forever EU;PRIEST;Undead;60;Horde;1790000000;1.5.4\nEND;0" });
+  await call("/api/addon/import", { text: sealText("FRC;2;Isoldë;Forever EU;PRIEST;Undead;60;Horde;1790000000;1.5.4\nEND;0") });
   await page.reload();
   const shot = await fakeShot();
 

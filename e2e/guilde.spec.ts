@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { sealText } from "../packages/game-data/src/seal";
 
 /**
  * Guilde du jeu (Forever, lot « Guilde ») : le relevé FRL collé sur le site (Ctrl+V) lie la guilde, Membres s'ouvre sur
@@ -74,7 +75,7 @@ function frl(now: number) {
     "O;deposit;Kaeldra Brisevent;500000;30",
     "O;withdraw;Vex Ombrelame;;40", // montant que le jeu n'a pas dit
   ];
-  return [`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+  return sealText([`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n"));
 }
 
 const paste = (page: Page, text: string) => page.evaluate(t => {
@@ -118,7 +119,7 @@ function frlVeilleurs(now: number) {
     "I;1;2;999999;1",
     "X;1;deposit;Torvald Brumegris;8170;20;;;3",
   ];
-  return [`FRL;1;Les Veilleurs;Horde;${now};Sorelle Hautvent;1;Officier;2;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+  return sealText([`FRL;1;Les Veilleurs;Horde;${now};Sorelle Hautvent;1;Officier;2;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n"));
 }
 
 test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Accueil", async ({ page }) => {
@@ -689,7 +690,7 @@ test("guilde : niveau des fiches relevé en jeu, correction par un officier", as
   await test.step("le relevé de la guilde impose son niveau du jeu à la fiche de Necko (prénom seul)", async () => {
     const now = Math.floor(Date.now() / 1000) - 60;
     const lines = [["M", "Isolde Clairval", "PRIEST", 40, "Maître de guilde", 0, 1, 0, "", "", guid(22)].join(";"), ["M", "Necko Brisefer", "ROGUE", 34, "Membre", 3, 0, 3, "", "", guid(21)].join(";")];
-    await paste(page, [`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n"));
+    await paste(page, sealText([`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n")));
     await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Niveaux (liée) : liste de 2 membres (complète)");
     // Le joueur : niveau en lecture seule, et d'où il vient
     await player.goto(`/persos/${neckoId}`);

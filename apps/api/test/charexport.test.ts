@@ -2,13 +2,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseCharacterExport, parseCharacterExports, professionFromGame, professionsFromExport } from "@forever/game-data";
+import { parseCharacterExport, parseCharacterExports, professionFromGame, professionsFromExport, sealText } from "@forever/game-data";
 
 // Écrit par le test Lua de l'addon (lua5.1 addon/tests/format_test.lua) : le site lit exactement ce que l'addon produit
 const SAMPLE = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../addon/tests/sample.frc"), "utf8");
+/** Textes écrits à la main dans ces tests : scellés comme l'addon 1.6.5 (sample.frc l'est déjà, par l'addon : addon/tests/format_test.lua). */
+const parseOne = (t: string) => parseCharacterExport(sealText(t));
+const parseMany = (t: string) => parseCharacterExports(sealText(t));
 
 describe("export d'un perso par l'addon (FRC v1)", () => {
-  it("lit l'export produit par l'addon", () => {
+  it("lit l'export produit par l'addon (scellé par l'addon : le sceau Lua est vérifié par le site)", () => {
     const r = parseCharacterExport(SAMPLE);
     if (!r.ok) throw new Error(r.error);
     expect(r.data).toMatchObject({ name: "Tournicoti", realm: "Forever EU", cls: "Druid", race: "Tauren", level: 60, faction: "Horde", addon: "0.1.0" });
@@ -31,13 +34,13 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
     expect(professionFromGame("Travail du cuir")).toBe("Leatherworking");
     expect(professionFromGame("Secourisme")).toBe("First Aid");
     expect(professionFromGame("Arme d'hast")).toBeNull();
-    expect(parseCharacterExport("FRR;1;x;0;Raid\nEND;0")).toMatchObject({ ok: false });
-    expect(parseCharacterExport(SAMPLE.replace(/\nEND;\d+$/, ""))).toMatchObject({ ok: false });
-    expect(parseCharacterExport(SAMPLE.replace("FRC;2;", "FRC;9;"))).toMatchObject({ ok: false });
+    expect(parseOne("FRR;1;x;0;Raid\nEND;0")).toMatchObject({ ok: false });
+    expect(parseOne(SAMPLE.replace(/\nEND;\d+(;\w+)?\s*$/, ""))).toMatchObject({ ok: false });
+    expect(parseOne(SAMPLE.replace("FRC;2;", "FRC;9;"))).toMatchObject({ ok: false });
   });
   it("ignore les patrons des fenêtres que le site ne gère pas (Poisons)", () => {
     const text = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1790960455;0.1.2\nR;Cooking;s2541\nR;Poisons;s8681\nR;First Aid;s3275\nEND;3";
-    const r = parseCharacterExport(text);
+    const r = parseOne(text);
     if (!r.ok) throw new Error(r.error);
     expect(r.data.recipes).toEqual([{ profession: "Cooking", spellId: 2541 }, { profession: "First Aid", spellId: 3275 }]);
     expect(r.data.ignored).toEqual(["Poisons"]);
@@ -45,7 +48,7 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
   it("lit les inscriptions faites en jeu (une par raid, statuts valides)", () => {
     const g = "6f1c2a10-0000-4000-8000-000000000001", r = "7a1c2a10-0000-4000-8000-000000000002";
     const text = `FRC;1;Greta;Beta;DRUID;Skyborne;20;Alliance;1;0.2.0\nS;${g};${r};late\nS;${g};${r};present\nS;${g};pas-un-uuid;present\nS;${g};${r};banni\nEND;4`;
-    const res = parseCharacterExport(text);
+    const res = parseOne(text);
     if (!res.ok) throw new Error(res.error);
     expect(res.data.signups).toEqual([{ groupId: g, raidId: r, status: "present" }]);
   });
@@ -62,7 +65,7 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
       `V;${g};${r1};present;Torvin;Player-4453-0A1B2C41;0`,
       `V;${g};${r1};present;Bramm;Player-4453-0A1B2C42;12abc`,
       "END;8"].join("\n");
-    const res = parseCharacterExport(text);
+    const res = parseOne(text);
     if (!res.ok) throw new Error(res.error);
     // La dernière ligne par (prénom en minuscules, raid) l'emporte ; le GUID est normalisé, un GUID absent donne null
     expect(res.data.relayed).toEqual([
@@ -70,14 +73,14 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
       { groupId: g, raidId: r1, status: "tentative", name: "GRETA", guid: "Player-4453-0A1B2C3D", at: 1794000300 },
     ]);
     // Sans ligne V (ou site d'avant) : liste vide
-    const none = parseCharacterExport(`${head}\nEND;0`);
+    const none = parseOne(`${head}\nEND;0`);
     if (!none.ok) throw new Error(none.error);
     expect(none.data.relayed).toEqual([]);
   });
   it("ligne V : 60 inscriptions au plus par bloc", () => {
     const g = "6f1c2a10-0000-4000-8000-000000000001", r = "7a1c2a10-0000-4000-8000-000000000002";
     const lines = Array.from({ length: 70 }, (_, i) => `V;${g};${r};present;Perso${i};;${1794000000 + i}`);
-    const res = parseCharacterExport(["FRC;2;Pikou;Beta;DRUID;Skyborne;20;Alliance;1;1.6.3", ...lines, `END;${lines.length}`].join("\n"));
+    const res = parseOne(["FRC;2;Pikou;Beta;DRUID;Skyborne;20;Alliance;1;1.6.3", ...lines, `END;${lines.length}`].join("\n"));
     if (!res.ok) throw new Error(res.error);
     expect(res.data.relayed).toHaveLength(60);
     expect(res.data.relayed[0]!.name).toBe("Perso0");
@@ -85,30 +88,30 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
   });
   it("lit toujours l'ancien format (v1, une ligne par objet et par talent)", () => {
     const v1 = "FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.2.0\nG;1;7997\nR;Cooking;s2541\nT;105721;3;3;1020;2730;14156;0;1111\nEND;3";
-    const r = parseCharacterExport(v1);
+    const r = parseOne(v1);
     if (!r.ok) throw new Error(r.error);
     expect(r.data.gear).toEqual({ Head: 7997 });
     expect(r.data.recipes).toEqual([{ profession: "Cooking", spellId: 2541 }]);
     expect(r.data.talents[0]).toMatchObject({ id: 105721, rank: 3, max: 3, tree: 1111 });
-    expect(parseCharacterExport(v1.replace("FRC;1;", "FRC;3;"))).toMatchObject({ ok: false });
+    expect(parseOne(v1.replace("FRC;1;", "FRC;3;"))).toMatchObject({ ok: false });
   });
   it("lit les patrons marqués recherchés en jeu", () => {
-    const res = parseCharacterExport("FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.3.0\nW;15090;1\nW;9999;0\nW;15090;0\nW;abc;1\nEND;4");
+    const res = parseOne("FRC;1;Sley;Beta;ROGUE;Human;20;Alliance;1;0.3.0\nW;15090;1\nW;9999;0\nW;15090;0\nW;abc;1\nEND;4");
     if (!res.ok) throw new Error(res.error);
     expect(res.data.wanted).toEqual([{ itemId: 9999, on: false }, { itemId: 15090, on: false }]);
   });
   it("lit l'export de plusieurs persos et signale un bloc abîmé", () => {
     const two = `${SAMPLE.trim()}\nFRC;1;Greta;Beta;DRUID;Skyborne;20;Alliance;1;0.3.0\nG;1;16866\nEND;1\nFRC;1;Cassé;Beta;MAGE;Human;20;Alliance;1;0.3.0\nG;1;1\nEND;9`;
-    const r = parseCharacterExports(two);
+    const r = parseMany(two);
     if (!r.ok) throw new Error(r.error);
     expect(r.data.map(d => d.name)).toEqual(["Tournicoti", "Greta"]);
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0]).toMatch(/^Cassé : Export incomplet/);
-    expect(parseCharacterExports("rien du tout")).toMatchObject({ ok: false });
+    expect(parseMany("rien du tout")).toMatchObject({ ok: false });
   });
     it("reconnaît les Skyborne selon la faction", () => {
     const head = (faction: string) => `FRC;1;Greta;Beta;DRUID;Skyborne;20;${faction};1790960521;0.1.2\nEND;0`;
-    const race = (faction: string) => { const r = parseCharacterExport(head(faction)); return r.ok ? r.data.race : "erreur"; };
+    const race = (faction: string) => { const r = parseOne(head(faction)); return r.ok ? r.data.race : "erreur"; };
     expect(race("Alliance")).toBe("Skyborne (High Order)");
     expect(race("Horde")).toBe("Skyborne (Windshaper)");
   });

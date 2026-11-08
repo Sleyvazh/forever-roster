@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { sealText } from "../packages/game-data/src/seal";
 
 /**
  * Captures de Forever Roster « guilde en marche » : l'image héros de l'accueil public (apps/web/public/landing/img/forever.webp)
@@ -70,7 +71,7 @@ function frl(now: number) {
     "E;invite;Vex Ombrelame;Zirta Pellerouge;;74",
     `P;Brindille;57;61200;115200;${now};${G["Brindille Feuillevive"]}`,
   ];
-  return [`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${MEMBERS.length + 0};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+  return sealText([`FRL;1;Les Lanternes;Horde;${now};Brindille Feuillevive;1;Officier;${MEMBERS.length + 0};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n"));
 }
 
 const paste = (page: Page, text: string) => page.evaluate(t => {

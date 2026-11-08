@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createVerify } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalGroupBlock, groupBlockSignature, type GroupBlockKind } from "@forever/game-data";
+import { canonicalGroupBlock, groupBlockSignature, sealText, type GroupBlockKind } from "@forever/game-data";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { auditEvents, characters, groupMembers, raids, raidSignups } from "../src/db/schema";
@@ -278,7 +278,7 @@ const GRETA_GUID = "Player-4440-0A1B2C3D", PIKOU_GUID = "Player-4440-0A1B2C3E", 
 
 /** Bloc FRC d'un perso (celui de l'envoyeur) avec ses lignes V. */
 const block = (name: string, cls: string, race: string, v: string[]) =>
-  [`FRC;2;${name};Forever EU;${cls};${race};60;Horde;1790000000;1.6.3`, ...v, `END;${v.length}`].join("\n");
+  sealText([`FRC;2;${name};Forever EU;${cls};${race};60;Horde;1790000000;1.6.3`, ...v, `END;${v.length}`].join("\n"));
 const asOwner = (v: string[]) => block("Brakka", "WARRIOR", "Orc", v);
 const asOfficer = (v: string[]) => block("Dorgan", "ROGUE", "Orc", v);
 const asMember = (v: string[]) => block("Pikou", "PRIEST", "Human", v);

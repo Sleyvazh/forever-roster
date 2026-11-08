@@ -1,5 +1,8 @@
 -- Tests hors jeu des formats d'échange : lua5.1 addon/tests/format_test.lua (depuis la racine du dépôt)
-local F = assert(loadfile("addon/ForeverRoster/Format.lua"))("ForeverRoster", {})
+-- Le sceau des blocs envoyés au site (1.6.5) passe par la cryptographie de l'addon (SHA-256)
+local ns = {}
+assert(loadfile("addon/shared/Crypto.lua"))("ForeverRoster", ns)
+local F = assert(loadfile("addon/ForeverRoster/Format.lua"))("ForeverRoster", ns)
 local failures = 0
 local function check(cond, msg) if not cond then failures = failures + 1 print("ÉCHEC : " .. msg) end end
 
@@ -53,14 +56,14 @@ check(text:find("\nG;1:16866,7:15065,13:piège  cff\n", 1, true), "équipement s
 check(text:find("\nR;Leatherworking;i15065,s2152\n", 1, true), "patrons regroupés par métier")
 check(text:find("\nT;1089;104938:5,104939:3\n", 1, true), "seulement les talents pris")
 check(text:find("\nV;6f1c2a10-0000-4000-8000-000000000001;7a1c2a10-0000-4000-8000-000000000002;late;Greta;Player-5826-0A1B2C3E;1794000100\n", 1, true), "ligne V (inscription relayée) telle quelle")
-check(text:match("\nEND;8$"), "ligne END")
+check(text:match("\nEND;8;%x+$") and #text:match(";(%x+)$") == 16, "ligne END scellée")
 check(text:find("piège  cff", 1, true), "« ; » et « | » retirés des valeurs")
 local out = io.open("addon/tests/sample.frc", "w") out:write(text) out:close()
 -- Sans GUID ni nom complet (relevé d'avant 1.6.2, valeur secrète) : les deux champs sont là, vides ; « ; » et « | » retirés
 local bare = F.BuildFRC({ name = "Greta", realm = "Forever EU", class = "DRUID", race = "Tauren", level = 20, faction = "Horde", time = 1790000500, addon = "1.6.2" }, {})
-check(bare == "FRC;2;Greta;Forever EU;DRUID;Tauren;20;Horde;1790000500;1.6.2;;\nEND;0", "en-tête FRC sans GUID ni nom complet : champs vides")
+check(bare:match("^FRC;2;Greta;Forever EU;DRUID;Tauren;20;Horde;1790000500;1%.6%.2;;\nEND;0;%x+$"), "en-tête FRC sans GUID ni nom complet : champs vides")
 local evilFull = F.BuildFRC({ name = "Greta", realm = "Forever EU", guid = "Player-1-0A", fullName = "Greta;Cou|lé\nX" }, {})
-check(evilFull:match("^FRC;2;Greta;Forever EU;;;0;;0;;Player%-1%-0A;Greta Cou lé X\nEND;0$"), "nom complet échappé")
+check(evilFull:match("^FRC;2;Greta;Forever EU;;;0;;0;;Player%-1%-0A;Greta Cou lé X\nEND;0;%x+$"), "nom complet échappé")
 
 -- Lot G : lignes hors du compte de END (réservations, officiers, consommables, fiches de boss, conseil, inscrits)
 local lg = F.ParseFRG("FRG;1;g;1;G\nR;r1;2;Molten Core;;;council\nS;r1;19865;Gorrak:20,Vesper:0\nO;Thalwen,Brunehilde\nC;r1;13457;5;all;Fire Prot\nF;r1;1;672;11502,11503;Ragnaros\nT;r1;1;Tank principal;Grumdal;\nT;r1;1;Fils;;Groupes 3 et 4\nT;r9;1;Orpheline;;\nL;r1;Thalwen\nI;r1;Gorrak;DPS;melee\nEND;1")
@@ -304,7 +307,7 @@ check(frl:find("\nM;Bob;MAGE;12;Recrue;4;0;50;;;Player-1-0B\n", 1, true) and frl
 check(frl:find("\nJ;1790000000;Tournicoti\nE;promote;Tournicoti;Greta Coulé;1;3\nE;join;Bob;;;30\n", 1, true), "journal de guilde")
 check(frl:find("\nB;1790000100;Tournicoti;1234567;3\nT;1;Conso;1;1\nT;2;Compos ;1;1\nT;3;Officiers;0;0\nI;1;1;13457;5\nI;2;5;7078;20\n", 1, true), "banque : onglets lus et non visible, objets")
 check(frl:find("\nX;1;deposit;Bob;13457;5;;;2\nX;2;move;Greta Coulé;7078;20;1;2;4\nO;deposit;Tournicoti;500000;1\n", 1, true), "journaux de la banque")
-check(frl:find("\nP;Tournicoti;41;1234;8000;1790000050;Player%-1%-0C\nU;Tournicoti;40;1789900000;Player%-1%-0C\nU;Tournicoti;41;1789990000;Player%-1%-0C\nEND;18$"),
+check(frl:find("\nP;Tournicoti;41;1234;8000;1790000050;Player%-1%-0C\nU;Tournicoti;40;1789900000;Player%-1%-0C\nU;Tournicoti;41;1789990000;Player%-1%-0C\nEND;18;%x+$"),
   "XP, niveaux (dans l'ordre) avec le GUID en dernier champ, et END qui compte les lignes")
 check(not frl:find("|", 1, true) and select(2, frl:gsub("\n", "")) == 19, "aucun « | », une ligne par information")
 -- Notes d'officier : jamais sans le droit de les voir, même présentes dans les données
@@ -333,11 +336,18 @@ local noGuid = frlData()
 noGuid.chars[1].guid = nil
 check(F.BuildFRL(noGuid):find("\nP;Tournicoti;41;1234;8000;1790000050;\nU;Tournicoti;40;1789900000;\n", 1, true), "P et U sans GUID : dernier champ vide")
 -- Parties absentes : pas de lignes, END;0 ; liste seule : ni journal, ni banque, ni XP
-check(F.BuildFRL({ name = "Solo" }) == "FRL;1;Solo;;0;;0;;0;;\nEND;0", "relevé vide")
+check(F.BuildFRL({ name = "Solo" }):match("^FRL;1;Solo;;0;;0;;0;;\nEND;0;%x+$"), "relevé vide")
 local only = frlData()
 only.events, only.bank, only.chars = nil, nil, nil
 local onlyText = F.BuildFRL(only)
-check(not onlyText:find("\n[JEBTIXOPU];") and onlyText:match("\nEND;3$"), "liste seule")
+check(not onlyText:find("\n[JEBTIXOPU];") and onlyText:match("\nEND;3;%x+$"), "liste seule")
+
+-- Sceau (1.6.5) : mêmes vecteurs que le site (packages/game-data/src/seal.test.ts) ; forme stable sans sceau
+check(F.Seal({ "FRL;1;Les Veilleurs;Horde;1790000000;Tournicoti;0;Officier;1;Forever EU;1.6.5", "M;Zélie Ombrelune;DRUID;38;Officier;1;1;0;;;Player-4321-00000001", "END;1" }):match(";9eb5ddd1965a4476$"), "sceau d'un relevé (vecteur du site)")
+check(F.Seal({ "FRC;2;Tournicoti;Forever EU;DRUID;Tauren;12;Horde;1790000000;1.6.5;;", "END;0" }):match("\nEND;0;1aab5ef540298168$"), "sceau d'un perso (vecteur du site)")
+check(F.Seal({ "  FRC;2;Tournicoti;Forever EU;DRUID;Tauren;12;Horde;1790000000;1.6.5;;\r", "", "END;0" }):match(";1aab5ef540298168$"), "blancs et lignes vides hors du sceau")
+check(F.BuildFRL(frlData(), true):match("\nEND;18$"), "forme stable : pas de sceau")
+check(F.IsSealed(frl) and not F.IsSealed("FRL;1;X\nEND;0") and not F.IsSealed(nil), "bloc scellé reconnu")
 
 -- Jets de dés lus d'après le texte du jeu, en français, en anglais ou positionnel
 local fr = F.RollParser("%s obtient un %d (%d-%d).")

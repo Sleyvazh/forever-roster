@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseCharacterExports } from "./charexport";
 import { attendanceStatus, parseRaidLogs } from "./raidlog";
+import { sealText } from "./seal";
 
 const ID = "4a1e43ea-54e8-4b49-888f-5e19b5754f61";
 const LOG = `FRB;1;${ID};1000;8200;Thalion;Molten Core
@@ -12,7 +13,7 @@ END;4`;
 
 describe("bilan de raid (FRB)", () => {
   it("lit présence et butin, sans royaume", () => {
-    const r = parseRaidLogs(LOG);
+    const r = parseRaidLogs(sealText(LOG));
     expect(r.errors).toEqual([]);
     expect(r.data[0]).toMatchObject({ raidId: ID, start: 1000, end: 8200, recorder: "Thalion", raidName: "Molten Core" });
     expect(r.data[0]!.attendees.map(a => a.name)).toEqual(["Thalwen", "Sylvaë"]);
@@ -26,13 +27,13 @@ L;16828;Thalwen;3000;Lucifron;council;bis;3 votes
 L;17063;Grumdal;5000;Garr;sr;;jet 87 + 10
 L;18000;Bob;6000;Garr;inconnu;rien;
 END;4`;
-    const r = parseRaidLogs(v2);
+    const r = parseRaidLogs(sealText(v2));
     expect(r.errors).toEqual([]);
     expect(r.data[0]!.instance).toBe("Molten Core");
     expect(r.data[0]!.lead).toBeUndefined();
     // Lot K1 : 9e champ = relevé par le chef de raid
-    expect(parseRaidLogs(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;1")).data[0]!.lead).toBe(true);
-    expect(parseRaidLogs(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;0")).data[0]!.lead).toBeUndefined();
+    expect(parseRaidLogs(sealText(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;1"))).data[0]!.lead).toBe(true);
+    expect(parseRaidLogs(sealText(v2.replace("Molten Core;Molten Core", "Molten Core;Molten Core;0"))).data[0]!.lead).toBeUndefined();
     expect(r.data[0]!.loot).toEqual([
       { itemId: 16828, name: "Thalwen", at: 3000, boss: "Lucifron", method: "council", response: "bis", detail: "3 votes" },
       { itemId: 17063, name: "Grumdal", at: 5000, boss: "Garr", method: "sr", detail: "jet 87 + 10" },
@@ -42,12 +43,12 @@ END;4`;
 
   it("refuse un bilan tronqué ou sans raid du site", () => {
     expect(parseRaidLogs(LOG.split("\n").slice(0, 3).join("\n")).errors[0]).toMatch(/incomplet/);
-    expect(parseRaidLogs("FRB;1;pas-un-id;1;2;X;Y\nEND;0").errors[0]).toMatch(/sans raid du site/);
+    expect(parseRaidLogs(sealText("FRB;1;pas-un-id;1;2;X;Y\nEND;0")).errors[0]).toMatch(/sans raid du site/);
   });
 
   it("se mêle aux persos sans gêner leur lecture", () => {
     const chars = `FRC;2;Thalwen;Forever EU;DRUID;Tauren;60;Horde;1000;0.8.0\nG;1:16866\nEND;1`;
-    const both = `${chars}\n${LOG}`;
+    const both = sealText(`${chars}\n${LOG}`);
     const c = parseCharacterExports(both);
     expect(c.ok && c.data.map(d => d.name)).toEqual(["Thalwen"]);
     expect(parseRaidLogs(both).data).toHaveLength(1);

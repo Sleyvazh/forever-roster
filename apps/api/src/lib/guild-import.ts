@@ -39,6 +39,8 @@ const provisional = (g: Pick<GuildRow, "linkedAt">, now: number) => g.linkedAt.g
 
 export interface GuildApplySummary {
   roster: "applied" | "older" | null; members: number; complete: boolean; arrivals: number; departures: number; events: number; levels: number; xp: number;
+  /** Persos dont des niveaux au-dessus du leur ont été effacés (niveau corrigé vers le bas). */
+  corrected: number;
   bank: BankApplySummary | null;
 }
 
@@ -73,7 +75,7 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
   const now = opts.now ?? new Date();
   // Heures du relevé (horloge du PC du joueur) : jamais dans le futur, sinon un relevé daté de 2099 bloquerait tous les suivants
   const when = (unix: number) => new Date(Math.min(unix * 1000, now.getTime()));
-  const sum: GuildApplySummary = { roster: null, members: 0, complete: false, arrivals: 0, departures: 0, events: 0, levels: 0, xp: 0, bank: null };
+  const sum: GuildApplySummary = { roster: null, members: 0, complete: false, arrivals: 0, departures: 0, events: 0, levels: 0, xp: 0, corrected: 0, bank: null };
   let fiches = 0;
   await db.transaction(async tx => {
     // Un relevé à la fois par guilde (Roster Companion de plusieurs membres en même temps)
@@ -99,9 +101,12 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
           const e = byGuid.get(m.guid);
           const back = !!e?.leftAt; // revenu après un départ : nouvelle arrivée
           if (!e || back) { sum.arrivals += gg.firstRosterAt ? 1 : 0; arrived.set(m.guid, e?.leftAt ?? null); }
-          const level = Math.max(m.level, e?.level ?? 0);
+          // Niveau : la liste, sauf si l'XP ou une montée de niveau plus récente que cette liste l'a déjà donné (8/11 : la plus
+          // récente fait foi, même plus basse ; avant, le plus haut vu restait, et un relevé retouché à la main restait à vie)
+          const newer = !!e?.levelAt && e.levelAt.getTime() > rosterAt.getTime();
+          const level = newer ? e.level : m.level, levelAt = newer ? e.levelAt : rosterAt;
           rows.push({
-            groupId, guid: m.guid, name: m.name, cls: m.cls ?? e?.cls ?? "", level, rank: m.rank, rankIndex: m.rankIndex, online: m.online,
+            groupId, guid: m.guid, name: m.name, cls: m.cls ?? e?.cls ?? "", level, levelAt, rank: m.rank, rankIndex: m.rankIndex, online: m.online,
             lastOnlineAt: m.hoursOffline === null ? (e?.lastOnlineAt ?? null) : new Date(rosterAt.getTime() - m.hoursOffline * HOUR),
             note: m.note, officerNote: keepOfficerNotes ? m.officerNote : (e?.officerNote ?? ""),
             xp: e?.xp ?? null, xpMax: e?.xpMax ?? null, xpLevel: e?.xpLevel ?? null, xpAt: e?.xpAt ?? null,
@@ -116,7 +121,7 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
           await tx.insert(guildMembers).values(rows.slice(i, i + 200)).onConflictDoUpdate({
             target: [guildMembers.groupId, guildMembers.guid],
             set: {
-              name: sql`excluded.name`, cls: sql`excluded.cls`, level: sql`excluded.level`, rank: sql`excluded.rank`, rankIndex: sql`excluded.rank_index`,
+              name: sql`excluded.name`, cls: sql`excluded.cls`, level: sql`excluded.level`, levelAt: sql`excluded.level_at`, rank: sql`excluded.rank`, rankIndex: sql`excluded.rank_index`,
               online: sql`excluded.online`, lastOnlineAt: sql`excluded.last_online_at`, note: sql`excluded.note`, officerNote: sql`excluded.officer_note`,
               firstSeenAt: sql`excluded.first_seen_at`, seenAt: sql`excluded.seen_at`, joinedAt: sql`excluded.joined_at`, leftAt: sql`excluded.left_at`, updatedAt: sql`excluded.updated_at`,
             },
@@ -201,7 +206,7 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
       }
     }
 
-    // 4. XP (lignes P) : la plus récente ; un niveau plus haut que la liste est repris (date du relevé de l'XP)
+    // 4. XP (lignes P) : la plus récente ; son niveau fait foi s'il est plus récent que celui gardé (date du relevé de l'XP)
     for (const x of g.xp) {
       // GUID (addon 1.6.2) ; sans lui (addon plus ancien), le nom complet ou le prénom unique
       const guid = x.guid ? (byGuid.has(x.guid) ? x.guid : null) : find(x.name);
@@ -209,11 +214,12 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
       if (!m) continue;
       const at = when(x.at);
       if (m.xpAt && m.xpAt.getTime() >= at.getTime()) continue;
-      const level = Math.max(m.level, x.level);
+      const newer = !m.levelAt || at.getTime() >= m.levelAt.getTime();
+      const level = newer ? x.level : m.level, levelAt = newer ? at : m.levelAt;
       for (let l = m.level + 1; l <= level; l++) levelRows.push({ groupId, guid: m.guid, level: l, reachedAt: at, source: "roster" });
-      await tx.update(guildMembers).set({ xp: x.xpMax > 0 ? Math.min(x.xp, x.xpMax) : null, xpMax: x.xpMax > 0 ? x.xpMax : null, xpLevel: x.level, xpAt: at, level })
+      await tx.update(guildMembers).set({ xp: x.xpMax > 0 ? Math.min(x.xp, x.xpMax) : null, xpMax: x.xpMax > 0 ? x.xpMax : null, xpLevel: x.level, xpAt: at, level, levelAt })
         .where(and(eq(guildMembers.groupId, groupId), eq(guildMembers.guid, m.guid)));
-      m.level = level; m.xpAt = at;
+      m.level = level; m.levelAt = levelAt; m.xpAt = at;
       sum.xp++;
     }
 
@@ -221,17 +227,27 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
     if (levelRows.length) {
       for (let i = 0; i < levelRows.length; i += 500) await tx.insert(guildLevels).values(levelRows.slice(i, i + 500)).onConflictDoNothing();
     }
+    // Montée de niveau plus récente que le niveau gardé : la dernière fait foi ; une plus ancienne n'en donne que la date
     const exact: (typeof guildLevels.$inferInsert)[] = [];
+    const lastUp = new Map<string, { level: number; at: Date }>();
     for (const u of g.levels) {
       const guid = u.guid ? (byGuid.has(u.guid) ? u.guid : null) : find(u.name);
       const m = guid ? byGuid.get(guid) : null;
       if (!m) continue;
-      exact.push({ groupId, guid: m.guid, level: u.level, reachedAt: when(u.at), source: "exact" });
-      if (u.level > m.level) {
-        await tx.update(guildMembers).set({ level: u.level }).where(and(eq(guildMembers.groupId, groupId), eq(guildMembers.guid, m.guid)));
-        m.level = u.level;
+      const at = when(u.at);
+      exact.push({ groupId, guid: m.guid, level: u.level, reachedAt: at, source: "exact" });
+      const prev = lastUp.get(m.guid);
+      if ((!m.levelAt || at.getTime() >= m.levelAt.getTime()) && (!prev || at.getTime() > prev.at.getTime() || (at.getTime() === prev.at.getTime() && u.level > prev.level))) {
+        lastUp.set(m.guid, { level: u.level, at });
       }
     }
+    for (const [guid, up] of lastUp) {
+      const m = byGuid.get(guid)!;
+      await tx.update(guildMembers).set({ level: up.level, levelAt: up.at }).where(and(eq(guildMembers.groupId, groupId), eq(guildMembers.guid, guid)));
+      m.level = up.level; m.levelAt = up.at;
+    }
+    // Jamais l'heure d'un niveau au-dessus de celui que le perso a maintenant
+    exact.splice(0, exact.length, ...exact.filter(r => r.level <= (byGuid.get(r.guid)?.level ?? 0)));
     for (let i = 0; i < exact.length; i += 500) {
       const res = await tx.insert(guildLevels).values(exact.slice(i, i + 500)).onConflictDoUpdate({
         target: [guildLevels.groupId, guildLevels.guid, guildLevels.level],
@@ -241,13 +257,21 @@ export async function applyGuildExport(db: Db, groupId: string, g: GuildExport, 
       sum.levels += res.length;
     }
 
+    // Niveaux au-dessus de celui d'un membre (corrigé vers le bas par une observation plus récente) : effacés, Course au 60
+    // comprise ; un podium figé qui en comptait un est refait (freezePodium, plus bas)
+    const dropped = await tx.delete(guildLevels)
+      .where(and(eq(guildLevels.groupId, groupId), sql`${guildLevels.level} > (select ${guildMembers.level} from ${guildMembers} where ${guildMembers.groupId} = ${guildLevels.groupId} and ${guildMembers.guid} = ${guildLevels.guid})`))
+      .returning({ guid: guildLevels.guid, level: guildLevels.level });
+    if (dropped.some(d => d.level === MAX_LEVEL && gg.podium?.some(p => p.guid === d.guid))) guildPatch.podium = null;
+    sum.corrected = new Set(dropped.map(d => d.guid)).size;
+
     // 6. Banque : onglets, or et journaux
     if (g.bank) sum.bank = await applyBank(tx, groupId, g.bank, { when, sentBy: opts.userId ?? null });
 
     if (Object.keys(guildPatch).length) await tx.update(gameGuilds).set(guildPatch).where(eq(gameGuilds.groupId, groupId));
     await freezePodium(tx, groupId);
     // 7. Niveau des fiches : celles rapprochées de la liste prennent le niveau du jeu (fiche-levels.ts)
-    if (sum.roster === "applied" || sum.levels > 0 || sum.xp > 0) fiches = await syncFicheLevels(tx, groupId);
+    if (sum.roster === "applied" || sum.levels > 0 || sum.xp > 0 || lastUp.size > 0) fiches = await syncFicheLevels(tx, groupId);
   });
   if (fiches) bus.group({ t: "chars", g: groupId });
   return sum;
@@ -283,6 +307,7 @@ function summaryText(s: GuildApplySummary) {
   if (s.departures) parts.push(plural(s.departures, "départ"));
   if (s.events) parts.push(`journal : ${plural(s.events, "nouvel événement", "nouveaux événements")}`);
   if (s.levels) parts.push(plural(s.levels, "niveau noté", "niveaux notés"));
+  if (s.corrected) parts.push(plural(s.corrected, "niveau corrigé", "niveaux corrigés"));
   if (s.xp) parts.push(`XP de ${plural(s.xp, "perso")}`);
   // Ni onglet relu ni or changé : rien à dire (l'addon rejoint son dernier relevé de banque à chaque relevé de guilde)
   if (s.bank?.bank === "applied") {

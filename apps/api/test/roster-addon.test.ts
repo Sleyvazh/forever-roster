@@ -1,4 +1,4 @@
-import { buildRRR, RETAIL_NO_SOFTRES, retailRoleOf, type RosterExportMember } from "@forever/game-data";
+import { buildRRR, RETAIL_NO_SOFTRES, retailRoleOf, sealText, type RosterExportMember } from "@forever/game-data";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { raids, raidTemplates } from "../src/db/schema";
@@ -183,7 +183,7 @@ describe("textes de l'autre addon refusés", () => {
     expect(onRoster.results).toEqual([]);
     expect(onRoster.errors).toEqual(["Ce texte vient de l'addon Forever Roster : colle-le sur app.test. Sur Roster, les persos viennent de Battle.net (« Importer depuis Battle.net ») ou se créent à la main."]);
     expect((await s.off.r.get("/api/characters")).json().characters.map((c: { name: string }) => c.name)).toEqual(["Kaeldra"]);
-    const frb = `FRB;2;${s.raid.id};${s.at};${s.at + 3600};Kaeldra;Flèche du Vide;The Voidspire;1\nA;Kaeldra;${s.at};${s.at + 3600};60\nEND;1`;
+    const frb = sealText(`FRB;2;${s.raid.id};${s.at};${s.at + 3600};Kaeldra;Flèche du Vide;The Voidspire;1\nA;Kaeldra;${s.at};${s.at + 3600};60\nEND;1`);
     const frbOnRoster = (await s.off.r.post("/api/addon/import", { text: frb })).json();
     expect(frbOnRoster).toEqual({ results: [], errors: ["Ce texte vient de l'addon Forever Roster : colle-le sur app.test."] });
     expect((await s.off.r.get(s.base)).json().log).toBeNull();

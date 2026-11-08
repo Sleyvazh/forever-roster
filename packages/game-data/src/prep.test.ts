@@ -3,6 +3,7 @@ import { groupAddonExport } from "./addon";
 import { parseCharacterExport } from "./charexport";
 import { concerns, dpsType, instanceOf, knownBosses } from "./prep";
 import { parseRaidLogs } from "./raidlog";
+import { sealText } from "./seal";
 
 const RAID = "4a1e43ea-54e8-4b49-888f-5e19b5754f61";
 
@@ -48,9 +49,9 @@ describe("préparation du raid (lot G)", () => {
   });
 
   it("FRC : consommables comptés ; FRB : appel aux consommables", () => {
-    const c = parseCharacterExport("FRC;2;Greta;Forever EU;DRUID;Tauren;60;Horde;1;1.0.0\nK;13457:6,13446:0,abc\nEND;1");
+    const c = parseCharacterExport(sealText("FRC;2;Greta;Forever EU;DRUID;Tauren;60;Horde;1;1.0.0\nK;13457:6,13446:0,abc\nEND;1"));
     expect(c.ok && c.data.consumables).toEqual({ 13457: 6, 13446: 0 });
-    const log = parseRaidLogs(`FRB;2;${RAID};1000;2000;Thalwen;Molten Core;Molten Core\nA;Thalwen;1000;2000;10\nQ;1500;Thalwen\nK;Thalwen;13457:5\nK;Tavish;-\nEND;1`);
+    const log = parseRaidLogs(sealText(`FRB;2;${RAID};1000;2000;Thalwen;Molten Core;Molten Core\nA;Thalwen;1000;2000;10\nQ;1500;Thalwen\nK;Thalwen;13457:5\nK;Tavish;-\nEND;1`));
     expect(log.errors).toEqual([]);
     expect(log.data[0]!.consumableCall).toEqual({ at: 1500, by: "Thalwen", counts: [{ name: "Thalwen", items: { 13457: 5 } }, { name: "Tavish", items: null }] });
   });

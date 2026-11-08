@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseCharacterExport } from "./charexport";
 import { LAUNCH_AT } from "./core";
+import { sealText } from "./seal";
 import {
   afterLaunchText, announcedLevels, firstNameOf, guildKeyOf, levelAnnounceText, noteTarget, normalizeGuid, ordinalFr, parseGuildBlocks, parseGuildExports,
   raceDateText, raceDay, resolveNoteTarget,
@@ -11,7 +12,7 @@ import {
 const G1 = "Player-4620-0A1B2C3D", G2 = "Player-4620-0A1B2C3E", G3 = "Player-4633-00FF00AA";
 const T = 1794000000;
 
-const sample = [
+const sample = sealText([
   `FRL;1;Les Lanternes;Horde;${T};Morwen Cendrevoile;1;Officier;3;Forever EU;1.6.2`,
   `M;Kaeldra Brisevent;WARRIOR;60;Maître de guilde;0;1;0;GM, raid lead;Officier loot;${G1}`,
   `M;Vexelle Ombrelame;ROGUE;24;Membre;3;0;30;Alt de Vex;;Player-4620-0a1b2c3e`,
@@ -28,7 +29,7 @@ const sample = [
   `U;Kaeldra;59;${T - 7200};${G1}`,
   `U;Kaeldra;60;${T - 3600};${G1}`,
   "END;14",
-].join("\n");
+].join("\n"));
 
 describe("relevé de la guilde (FRL v1)", () => {
   it("liste, journal, banque, XP et niveaux ; GUID normalisé", () => {
@@ -61,14 +62,14 @@ describe("relevé de la guilde (FRL v1)", () => {
   });
 
   it("liste partielle, notes d'officier non lues, ancien format des lignes P et U (sans GUID), blocs abîmés", () => {
-    const partial = [`FRL;1;Les Lanternes;Horde;${T};Vex Ombrelame;0;Membre;40;Forever EU;1.6.1`, `M;Vex Ombrelame;ROGUE;60;Officier;1;1;0;;secret;${G1}`, "M;Sans Guid;MAGE;10;Recrue;4;0;2;;;", `P;Vex;60;0;0;${T}`, `U;Vex;12;${T - 99}`, "END;4"].join("\n");
+    const partial = sealText([`FRL;1;Les Lanternes;Horde;${T};Vex Ombrelame;0;Membre;40;Forever EU;1.6.1`, `M;Vex Ombrelame;ROGUE;60;Officier;1;1;0;;secret;${G1}`, "M;Sans Guid;MAGE;10;Recrue;4;0;2;;;", `P;Vex;60;0;0;${T}`, `U;Vex;12;${T - 99}`, "END;4"].join("\n"));
     const r = parseGuildExports(partial);
     expect(r.data[0]!.roster).toMatchObject({ complete: false, total: 40, skipped: 1, officerNotes: false });
     expect(r.data[0]!.roster!.members[0]!.officerNote).toBe("");
     expect(r.data[0]!.xp[0]!.guid).toBeNull();
     expect(r.data[0]!.levels[0]).toEqual({ name: "Vex", guid: null, level: 12, at: T - 99 });
     // Sans liste relevée (heure 0) : roster null ; sans banque : bank null ; END faux ; autre version
-    expect(parseGuildExports(`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2\nEND;0`).data[0]!.roster).toBeNull();
+    expect(parseGuildExports(sealText(`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2\nEND;0`)).data[0]!.roster).toBeNull();
     expect(r.data[0]!.bank).toBeNull();
     expect(parseGuildExports(sample.replace("END;14", "END;12")).errors).toEqual(["relevé de guilde incomplet : recopie tout le texte, jusqu'à la ligne END"]);
     expect(parseGuildExports(sample.replace("FRL;1;", "FRL;2;")).errors[0]).toMatch(/version du relevé de guilde non gérée \(2\)/);
@@ -86,16 +87,16 @@ describe("relevé de la guilde (FRL v1)", () => {
 });
 
 /** Un bloc FRL sans liste ni journal : l'en-tête, les lignes données et END. */
-const frl = (...lines: string[]) => [`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+const frl = (...lines: string[]) => sealText([`FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n"));
 const bankOf = (...lines: string[]) => parseGuildExports(frl(...lines)).data[0]!.bank;
 
 describe("journal de guilde : rang d'une ligne E", () => {
   it("rang borné à 20 comme celui des lignes M (la colonne est un smallint), vide ou illisible : null", () => {
-    const g = parseGuildExports([
+    const g = parseGuildExports(sealText([
       `FRL;1;Les Lanternes;Horde;0;;0;;0;Forever EU;1.6.2`, `J;${T};Morwen`,
       "E;promote;Kaeldra;Vexelle;99999999999;1", "E;demote;Kaeldra;Vexelle;20;2", "E;promote;Kaeldra;Vexelle;3;3", "E;promote;Kaeldra;Vexelle;;4", "E;promote;Kaeldra;Vexelle;x;5",
       "END;6",
-    ].join("\n")).data[0]!;
+    ].join("\n"))).data[0]!;
     expect(g.journal!.events.map(e => e.rankIndex)).toEqual([20, 20, 3, null, null]);
   });
 });
@@ -203,12 +204,12 @@ describe("banque de guilde (lignes B, T, I, X, O)", () => {
 
 describe("en-tête FRC de l'addon 1.6.2", () => {
   it("GUID et nom complet en fin d'en-tête ; l'ancien en-tête reste lu", () => {
-    const now = parseCharacterExport(`FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.2;${G1};Brindille Mousseclaire\nEND;0`);
+    const now = parseCharacterExport(sealText(`FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.2;${G1};Brindille Mousseclaire\nEND;0`));
     expect(now.ok && now.data).toMatchObject({ name: "Brindille", guid: G1, fullName: "Brindille Mousseclaire" });
-    const old = parseCharacterExport("FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.1\nEND;0");
+    const old = parseCharacterExport(sealText("FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.1\nEND;0"));
     expect(old.ok && old.data).toMatchObject({ guid: null, fullName: null });
     // Nom complet qui ne commence pas par le prénom : ignoré ; GUID illisible : null
-    const odd = parseCharacterExport("FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.2;n/a;Autre Nom\nEND;0");
+    const odd = parseCharacterExport(sealText("FRC;2;Brindille;Forever EU;DRUID;Tauren;55;Horde;1790000000;1.6.2;n/a;Autre Nom\nEND;0"));
     expect(odd.ok && odd.data).toMatchObject({ guid: null, fullName: null });
   });
 });

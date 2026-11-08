@@ -2,6 +2,7 @@ import { expect, request as pwRequest, test as base, type Page } from "@playwrig
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
+import { sealText } from "../packages/game-data/src/seal";
 
 /**
  * Parcours complet d'un joueur, sur le site construit comme en production.
@@ -253,7 +254,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.setViewportSize({ width: 1360, height: 900 });
     // Export de deux persos collé n'importe où (Ctrl+V hors d'un champ) : Tournicoti (fiche existante), Greta (nouvelle fiche)
     const sample = readFileSync(path.resolve("addon/tests/sample.frc"), "utf8").trim();
-    const both = `${sample}\nFRC;2;Greta;Forever EU;DRUID;Tauren;20;Horde;1790000500;0.5.0\nG;1:16866\nW;15090;1\nEND;2`;
+    const both = `${sample}\n${sealText("FRC;2;Greta;Forever EU;DRUID;Tauren;20;Horde;1790000500;0.5.0\nG;1:16866\nW;15090;1\nEND;2")}`;
     await page.locator(".topnav").getByRole("link", { name: "Mes persos" }).click();
     await page.evaluate(text => {
       const dt = new DataTransfer();
@@ -535,7 +536,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await db.connect();
     const { id: raidId, at } = (await db.query(`SELECT id, extract(epoch from scheduled_at)::int AS at FROM raids WHERE name = 'Molten Core' AND group_id = (SELECT id FROM groups WHERE name = 'Les Testeurs' ORDER BY created_at DESC LIMIT 1)`)).rows[0];
     await db.end();
-    const frb = `FRB;1;${raidId};${at - 600};${at + 3 * 3600};Tournicoti;Molten Core\nA;Tournicoti;${at - 600};${at + 3 * 3600};190\nA;Chamy;${at + 1800};${at + 3 * 3600};150\nL;16866;Tournicoti;${at + 1200};Lucifron\nEND;3`;
+    const frb = sealText(`FRB;1;${raidId};${at - 600};${at + 3 * 3600};Tournicoti;Molten Core\nA;Tournicoti;${at - 600};${at + 3 * 3600};190\nA;Chamy;${at + 1800};${at + 3 * 3600};150\nL;16866;Tournicoti;${at + 1200};Lucifron\nEND;3`);
     await page.locator(".topnav").getByRole("link", { name: "Mes persos" }).click();
     await page.evaluate(text => {
       const dt = new DataTransfer();

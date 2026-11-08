@@ -1,4 +1,4 @@
-import type { GuildMembersResponse, GuildRaceResponse } from "@forever/game-data";
+import { sealText, type GuildMembersResponse, type GuildRaceResponse } from "@forever/game-data";
 import { expect } from "vitest";
 import { signedIn, tokenFrom, type TestEnv } from "./helpers";
 
@@ -12,7 +12,7 @@ export type Signed = Awaited<ReturnType<typeof signedIn>>;
 export interface M { name: string; cls?: string; level: number; rank?: string; ri?: number; online?: boolean; hours?: number | null; note?: string; onote?: string; guid: string }
 export const m = (name: string, level: number, more: Partial<M> = {}): M => ({ name, level, guid: guid(), ...more });
 
-/** Bloc FRL comme l'addon 1.6.2 l'écrit (docs/addon-format.md). */
+/** Bloc FRL comme l'addon 1.6.2 l'écrit (docs/addon-format.md), scellé comme l'addon 1.6.5. */
 export function frl(o: { guild?: string; at: number; by?: string; officer?: boolean; total?: number; members?: M[]; journal?: { at: number; events: (string | number)[][] }; bank?: string[]; xp?: (string | number)[][]; levels?: (string | number)[][] }) {
   const members = o.members ?? [];
   const lines = [
@@ -22,11 +22,11 @@ export function frl(o: { guild?: string; at: number; by?: string; officer?: bool
     ...(o.xp ?? []).map(x => ["P", ...x].join(";")),
     ...(o.levels ?? []).map(x => ["U", ...x].join(";")),
   ];
-  return [`FRL;1;${o.guild ?? "Les Lanternes"};Horde;${o.at};${o.by ?? "Morwen Cendrevoile"};${o.officer === false ? 0 : 1};Officier;${o.total ?? members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n");
+  return sealText([`FRL;1;${o.guild ?? "Les Lanternes"};Horde;${o.at};${o.by ?? "Morwen Cendrevoile"};${o.officer === false ? 0 : 1};Officier;${o.total ?? members.length};Forever EU;1.6.2`, ...lines, `END;${lines.length}`].join("\n"));
 }
-/** En-tête FRC : nouveau (GUID et nom complet) ou ancien (addon 1.6.1). */
+/** En-tête FRC : nouveau (GUID et nom complet) ou ancien (addon 1.6.1) ; scellé. */
 export const frc = (first: string, cls: string, race: string, level: number, g?: string, full?: string) =>
-  `FRC;2;${first};Forever EU;${cls};${race};${level};Horde;1790000000;${g ? `1.6.2;${g};${full ?? ""}` : "1.6.1"}\nEND;0`;
+  sealText(`FRC;2;${first};Forever EU;${cls};${race};${level};Horde;1790000000;${g ? `1.6.2;${g};${full ?? ""}` : "1.6.1"}\nEND;0`);
 export const paste = async (s: Signed, text: string, extra: object = {}) => {
   const r = await s.c.post("/api/addon/import", { text, ...extra });
   expect(r.statusCode, r.body).toBe(200);

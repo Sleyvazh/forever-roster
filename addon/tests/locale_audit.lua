@@ -32,9 +32,11 @@ function LA.show(s)
   if type(s) == "string" and s ~= "" then LA.shown[s] = true end
 end
 
--- Codes du jeu retirés avant l'analyse : couleurs, textures, liens (le nom de l'objet vient du jeu)
+-- Codes du jeu retirés avant l'analyse : couleurs, textures, liens (le nom de l'objet vient du jeu) ; sceau des blocs
+-- envoyés au site (1.6.5 : de l'hexadécimal, où « ce » ressemblerait à du français)
 local function clean(s)
-  return (s:gsub("|H.-|h.-|h", " "):gsub("|T.-|t", " "):gsub("|A.-|a", " "):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+  return (s:gsub("|H.-|h.-|h", " "):gsub("|T.-|t", " "):gsub("|A.-|a", " "):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    :gsub("(END;%d+);%x+", "%1"))
 end
 
 local function plainRemove(s, part)

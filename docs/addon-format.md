@@ -80,6 +80,14 @@ Tout ajout se fait **en fin de ligne** ou avec un **nouveau type de ligne**, ign
 
 Une macro WoW est limitée à 255 caractères. Le site découpe donc les `/inv Nom` en plusieurs macros, persos placés uniquement.
 
+# Sceau des blocs envoyés au site (addon 1.6.5)
+
+Les blocs que l'addon écrit pour le site (`FRC`, `FRL`, `FRB`) finissent par **`END;<lignes>;<sceau>`** (8/11 : un relevé de guilde retouché à la main avait mis un perso 60). Le sceau : les 16 premiers caractères hexadécimaux du HMAC-SHA256 du bloc, avec la clé `SEAL_KEY` (`packages/game-data/src/seal.ts`, la même dans `addon/ForeverRoster/Format.lua`, `F.Seal`). Le bloc scellé va de l'en-tête à la ligne END réduite à `END;<lignes>` ; chaque ligne sans ses blancs ASCII de début et de fin (espace, tabulation, retours : un collage Windows ne change rien), sans les lignes vides, jointes par `\n`, en UTF-8. La forme stable du relevé (empreinte d'envoi) n'est pas scellée.
+
+- **Site** : `parseCharacterExport`, `parseFRLBlock` et le lecteur des bilans (`raidlog.ts`) refusent le bloc, après les contrôles de version et de longueur : sans sceau, « texte d'un addon ForeverRoster trop ancien (1.6.4 ou avant) : mets l'addon à jour » ; sceau faux, « texte modifié depuis l'addon (retouché à la main, ou abîmé par le copier-coller) ». Rien n'est enregistré pour ce bloc ; les autres blocs du texte passent. Même vérification dans l'aperçu du Ctrl+V (navigateur : SHA-256 en TypeScript, sans dépendance) et à l'envoi de Roster Companion, qui montre la raison et réessaie plus tard. Un bilan s'arrête à sa ligne END : ce qui suit n'en fait pas partie.
+- **Ce que le sceau ne fait pas** : la clé est dans le code de l'addon, chez chaque joueur (ce n'est pas un secret). Il arrête une retouche à la main du texte, pas quelqu'un qui lit le code. Deux défenses de plus : l'addon ne scelle que ce que le jeu lui a donné pendant la session (liste, journal et banque de guilde relus depuis la connexion ; XP du perso connecté et ses niveaux jusqu'à `UnitLevel` : une sauvegarde retouchée entre deux sessions ne part pas scellée), et le site prend le niveau d'un membre dans l'observation la plus récente (voir « Ce qu'en fait le site ») : un niveau faux ne tient que jusqu'au relevé suivant.
+- **Vecteurs communs** : `seal.test.ts` et `addon/tests/format_test.lua` vérifient les mêmes sceaux ; `addon/tests/sample.frc`, écrit et scellé par le test Lua, est relu par le test du site (`apps/api/test/charexport.test.ts`).
+
 # FRC, version 2 : les persos, du jeu vers le site
 
 L'addon relève chaque perso tout seul (connexion, changement d'équipement, de niveau, de talents ou de métier, fenêtre de métier ouverte, déconnexion) et garde ces relevés dans sa sauvegarde, commune au compte. L'onglet **Synchro** donne un bloc par perso **qui a changé depuis son dernier envoi** (« Tout renvoyer » pour tous) ; Ctrl+C dans ce texte le marque comme envoyé (empreinte du contenu gardée par perso), et le bouton de la minicarte affiche le nombre de persos à envoyer. Sur le site, Ctrl+V hors d'un champ, sur n'importe quelle page, ouvre la mise à jour (fiche retrouvée par le choix précédent, sinon le prénom et la classe, ou créée) ; la fiche d'un perso n'applique que le sien. Un bloc abîmé est signalé sans bloquer les autres. La date de dernière synchro est notée sur chaque fiche.
@@ -96,7 +104,7 @@ S;<groupe>;<raid>;<statut>
 V;<groupe>;<raid>;<statut>;<prénom>;<guid>;<clic>
 W;<objet patron>;<1 | 0>
 K;<objet>:<quantité>,<objet>:<quantité>,…
-END;<nombre de lignes entre l'en-tête et END>
+END;<nombre de lignes entre l'en-tête et END>;<sceau (1.6.5)>
 ```
 
 | Ligne | Contenu |
@@ -229,7 +237,7 @@ Pendant un raid prévu sur le site (raid chargé en jeu avec « Copier pour le j
 FRB;1;<id du raid du site>;<début unix>;<fin unix>;<relevé par>;<nom du raid>
 A;<prénom en jeu>;<vu la 1re fois unix>;<vu la dernière fois unix>;<nombre de relevés>
 L;<id de l'objet>;<reçu par>;<heure unix>;<boss ou vide>
-END;<nombre de lignes A et L>
+END;<nombre de lignes A et L>;<sceau (1.6.5)>
 ```
 
 **Version 2 (lot C2)** : l'en-tête ajoute l'instance (nom renvoyé par le jeu), et `L` la façon dont l'objet a été attribué.
@@ -277,7 +285,7 @@ X;<onglet>;<type>;<qui>;<objet>;<quantité>;<onglet de départ>;<onglet d'arriv�
 O;<type>;<qui>;<montant (cuivre)>;<il y a (heures)>
 P;<perso>;<niveau>;<XP>;<XP du niveau>;<relevée le unix>;<guid>
 U;<perso>;<niveau>;<atteint le unix>;<guid>
-END;<nombre de lignes entre l'en-tête et END>
+END;<nombre de lignes entre l'en-tête et END>;<sceau (1.6.5)>
 ```
 
 | Ligne | Contenu |
@@ -305,6 +313,8 @@ END;<nombre de lignes entre l'en-tête et END>
 - **Notes d'officier** : gardées seulement si l'en-tête dit `1` **et** que l'envoyeur est officier ou propriétaire de la guilde sur le site ; montrées aux officiers seulement. Les notes de guilde suggèrent le main d'un perso (« Alt de X »…), à accepter par un officier.
 - **Journal** : arrivées, départs, renvois, promotions et rétrogradations de l'Historique et de l'Accueil (date à l'heure près), effacés au bout de 12 mois.
 - **Niveaux** : lignes `P` et `U` (heure exacte, % d'XP) pour les persos rattachés par leur GUID ; sinon le niveau de la liste, daté du jour du relevé (« vers le »). Ils font la Course au 60 et ses annonces Discord.
+  - **La plus récente observation fait foi** (8/11, `guild_members.level_at`, migration 0044) : liste (heure de l'en-tête), XP (heure de la ligne `P`) ou montée de niveau (heure de la ligne `U`), même plus basse que le niveau gardé. Avant, le site gardait le plus haut niveau vu : un seul relevé retouché restait à vie. Une liste plus ancienne que l'XP ou la montée déjà lue est prise, sans son niveau ; une montée plus ancienne que le niveau gardé n'en donne que l'heure, jamais au-dessus du niveau du perso.
+  - Les niveaux notés au-dessus du niveau d'un membre (corrigé vers le bas) sont effacés à chaque relevé, Course au 60 comprise ; un podium figé qui comptait un 60 effacé est refait (`freezePodium`). Le résultat du relevé le dit (« 1 niveau corrigé »). Les fiches rapprochées suivent (`syncFicheLevels`), et leur `level_synced_at` est effacé quand elles prennent le niveau de la liste.
 - **Banque** (`B`, `T`, `I`, `X`, `O` ; lot « Banque », `apps/api/src/lib/guild-bank.ts`) : enregistrée dans la même transaction que le relevé, visible par **tous les membres** de la guilde du site (page Guilde › Banque, `/groups/:id/membres/banque`). Le site la consulte seulement, il ne la modifie pas.
   - **Un dernier relevé lu par onglet** : le contenu d'un onglet lu (`1;1`) remplace le sien s'il est plus récent que son dernier relevé ; un onglet que l'envoyeur ne voit pas (`0;0`) ou pas encore lu (`1;0`) garde le contenu d'avant, et un relevé plus ancien apporte un onglet que le site n'avait jamais lu. Chaque onglet note quand et par qui il a été lu (la page montre les onglets lus plus d'une heure avant le dernier relevé, ou jamais). Les noms d'onglets (`T`) suivent le relevé le plus récent (heure de la ligne `B`) et l'or (`B`) le relevé le plus récent qui le donne ; le nombre d'onglets ne baisse jamais (le jeu n'en retire pas, et l'addon peut en voir 0 avant d'ouvrir la banque) : un relevé qui en voit moins n'en efface aucun. Le compte du site qui a envoyé le relevé est noté, pas affiché.
   - **Journaux** (`X`, `O`) : dédoublonnés comme le journal de guilde (même ligne, « il y a N heures » à 2 h près, la date la plus ancienne gardée) et gardés **12 mois** (purge, page Confidentialité). Une ligne dont la date est impossible ou d'avant 2000, ou dont l'objet dépasse un entier de la base, est sautée ; un montant, un or ou une quantité démesurés ne sont pas gardés.
@@ -319,7 +329,7 @@ END;<nombre de lignes entre l'en-tête et END>
 
 ## Envoi au site (addon 1.6.2, Roster Companion 0.3.1)
 
-Une guilde relevée (fiche de la sauvegarde) part au site quand l'empreinte de sa forme stable a changé depuis son dernier envoi (« Tout renvoyer » : toujours) :
+Une guilde relevée (fiche de la sauvegarde) part au site quand l'empreinte de sa forme stable a changé depuis son dernier envoi (« Tout renvoyer » : toujours). Depuis 1.6.5, le bloc ne porte que ce que le jeu a donné pendant la session : liste, journal et banque relus depuis la connexion, XP du perso connecté et heures de ses niveaux jusqu'à son niveau actuel (les autres persos du compte envoient les leurs à leur déconnexion) ; un bloc gardé d'un envoi précédent n'est réutilisé que s'il est scellé :
 
 - **Copier-coller** : dans le texte de la synchro (Ctrl+C de l'onglet Synchro et de la synchro rapide), après les blocs FRC et FRB (un site plus ancien ne reconnaît un collage que s'il commence par `FRC;` ou `FRB;`) ; Ctrl+C le marque envoyé. « Copier le relevé » (`/fr guilde`) donne le bloc seul, et son Ctrl+C le marque envoyé aussi. Sur le site : Ctrl+V sur n'importe quelle page.
 - **Roster Companion** : un bloc par guilde dans la boîte d'envoi, gardé tel quel (même texte, même `sig`) tant que l'empreinte ne change pas, remplacé sinon :

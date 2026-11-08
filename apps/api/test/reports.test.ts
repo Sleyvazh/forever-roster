@@ -1,3 +1,4 @@
+import { sealText } from "@forever/game-data";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import sharp from "sharp";
@@ -21,7 +22,7 @@ const FIREFOX = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100
 let snow = 920000000000000000n;
 const linkDiscord = async (userId: string) => { const id = String(++snow); await env.app.ctx.db.update(users).set({ discordId: id }).where(eq(users.id, userId)); return id; };
 const makeAdmin = (userId: string) => env.app.ctx.db.update(users).set({ siteAdmin: true }).where(eq(users.id, userId));
-const frc = (version: string) => `FRC;2;Signaleur;Forever EU;DRUID;Tauren;60;Horde;1790000000;${version}\nEND;0`;
+const frc = (version: string) => sealText(`FRC;2;Signaleur;Forever EU;DRUID;Tauren;60;Horde;1790000000;${version}\nEND;0`);
 
 describe("signalements : joueur", () => {
   it("envoie un bug avec la page, le navigateur et sa version de l'addon ; capture jointe une fois", async () => {

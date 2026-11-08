@@ -4,6 +4,7 @@
  */
 import { CLASSES, GEAR_SLOTS, PRIMARY_PROFESSIONS, SIGNUP_STATUSES, type ClassName, type SignupStatus } from "./core";
 import { normalizeGuid } from "./guild";
+import { sealError, sealState } from "./seal";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 
@@ -83,6 +84,9 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
   const end = lines.at(-1)?.split(";");
   if (end?.[0] !== "END" || int(end[1]) !== lines.length - 2) return { ok: false, error: "Export incomplet : recopie tout le texte, jusqu'à la ligne END." };
   if (lines.length > 2000) return { ok: false, error: "Export trop long." };
+  // Sceau de l'addon (1.6.5, seal.ts) : sans lui, ou retouché, le bloc est refusé
+  const seal = sealState(lines);
+  if (seal !== "ok") { const e = sealError(seal); return { ok: false, error: `${e[0]!.toUpperCase()}${e.slice(1)}.` }; }
 
   const clsToken = head[4] ?? "";
   const cls = (Object.keys(CLASSES) as ClassName[]).find(c => c.toUpperCase() === clsToken) ?? null;

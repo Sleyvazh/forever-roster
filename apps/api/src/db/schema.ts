@@ -775,6 +775,11 @@ export const guildMembers = pgTable("guild_members", {
   name: text("name").notNull(),
   cls: text("cls").notNull().default(""),
   level: smallint("level").notNull(),
+  /**
+   * Heure de ce que dit `level` : liste de guilde, XP (ligne P) ou montée de niveau (ligne U). La plus récente fait foi,
+   * même plus basse (8/11 : un relevé retouché à la main avait mis un perso 60 ; le site gardait le plus haut niveau vu).
+   */
+  levelAt: ts("level_at"),
   rank: text("rank").notNull().default(""),
   rankIndex: smallint("rank_index").notNull().default(0),
   online: boolean("online").notNull().default(false),

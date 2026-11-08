@@ -3,6 +3,7 @@
 --   FRC v2 : un perso, du jeu vers le site (1.6.2 : GUID et nom complet en fin d'en-tête)
 --   FRG v1 : données d'un groupe (raids à venir, patrons recherchés), du site vers le jeu ; signé par le site (M, Z)
 --   FRL v1 : relève de la guilde (liste, journal, banque, niveaux et XP), du jeu vers le site (lue par le site depuis 1.6.2)
+--   Sceau (1.6.5) : FRC, FRL et FRB finissent par « END;<lignes>;<sceau> » (F.Seal) ; le site refuse un bloc sans sceau ou retouché
 -- Ce fichier n'utilise aucune fonction du jeu : il est testé hors jeu (addon/tests).
 local _, ns = ...
 ns = ns or {}
@@ -386,7 +387,8 @@ function F.BuildFRL(d, stable)
   local out = { join(head) }
   for _, f in ipairs(lines) do out[#out + 1] = join(f) end
   out[#out + 1] = "END;" .. #lines
-  return table.concat(out, "\n")
+  if stable then return table.concat(out, "\n") end
+  return F.Seal(out)
 end
 
 -- Empreinte d'un texte (djb2 et longueur) : savoir si un perso ou un relevé a changé depuis son dernier envoi
@@ -409,6 +411,58 @@ function F.BuildFRC(header, lines)
     out[#out + 1] = table.concat(parts, ";")
   end
   out[#out + 1] = "END;" .. #lines
-  return table.concat(out, "\n")
+  return F.Seal(out)
+end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Sceau des blocs envoyés au site (1.6.5, packages/game-data/src/seal.ts) : HMAC-SHA256 (ns.Crypto.sha256) du bloc, de
+-- l'en-tête à « END;<lignes> », lignes sans blancs de début et de fin, sans lignes vides, jointes par « \n » ; ses 16
+-- premiers caractères hexadécimaux s'ajoutent à la ligne END. Le site refuse un bloc sans sceau (addon trop ancien) ou
+-- dont le sceau ne correspond plus (texte retouché à la main). La clé n'est pas un secret : elle est ici, chez chaque
+-- joueur ; le sceau arrête une retouche du texte, pas une lecture de ce code.
+--------------------------------------------------------------------------------------------------------------------
+local SEAL_KEY = "fFHqJKgJJdSOroSdClByPgU72Id7t0mP"
+local pads -- { ipad, opad } de la clé, au premier usage
+
+-- Ou exclusif de deux octets (sans la bibliothèque bit, absente des tests)
+local function xor8(a, b)
+  local r, p = 0, 1
+  for _ = 1, 8 do
+    local x, y = a % 2, b % 2
+    if x ~= y then r = r + p end
+    a, b, p = (a - x) / 2, (b - y) / 2, p * 2
+  end
+  return r
+end
+
+function F.Hmac(msg)
+  local sha = ns.Crypto.sha256
+  if not pads then
+    local key = SEAL_KEY
+    if #key > 64 then key = sha(key) end
+    local i, o = {}, {}
+    for n = 1, 64 do
+      local k = key:byte(n) or 0
+      i[n], o[n] = string.char(xor8(k, 0x36)), string.char(xor8(k, 0x5c))
+    end
+    pads = { table.concat(i), table.concat(o) }
+  end
+  return ns.Crypto.hex(sha(pads[2] .. sha(pads[1] .. msg)))
+end
+
+-- out : lignes du bloc, de l'en-tête à « END;<lignes> » (une ligne peut en contenir plusieurs) ; rend le texte scellé
+function F.Seal(out)
+  local text = table.concat(out, "\n")
+  local kept = {}
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
+    local t = line:match("^%s*(.-)%s*$")
+    if t ~= "" then kept[#kept + 1] = t end
+  end
+  return text .. ";" .. F.Hmac(table.concat(kept, "\n")):sub(1, 16)
+end
+
+-- Bloc déjà scellé (texte gardé d'un envoi précédent : celui d'un addon plus ancien est refait)
+function F.IsSealed(text)
+  return type(text) == "string" and text:match("\nEND;%d+;%x+%s*$") ~= nil
 end
 return F

@@ -9,6 +9,7 @@
 import { BANK_MAX_TABS, BANK_SLOTS } from "./bank";
 import { CLASSES, LAUNCH_AT, MAX_LEVEL, type ClassName } from "./core";
 import { GAME_TIMEZONE, zonedParts } from "./time";
+import { sealError, sealState } from "./seal";
 
 /* ---------- GUID et noms ---------- */
 
@@ -102,6 +103,9 @@ function parseFRLBlock(lines: string[]): { ok: true; data: GuildExport } | { ok:
   const end = lines.at(-1)!.split(";");
   if (end[0] !== "END" || nat(end[1]) !== lines.length - 2) return { ok: false, error: "relevé de guilde incomplet : recopie tout le texte, jusqu'à la ligne END" };
   if (lines.length > MAX_FRL_LINES) return { ok: false, error: "relevé de guilde trop long" };
+  // Sceau de l'addon (1.6.5, seal.ts) : sans lui, ou retouché, le relevé est refusé
+  const seal = sealState(lines);
+  if (seal !== "ok") return { ok: false, error: sealError(seal) };
   const name = clean(head[2], 60), faction = clean(head[3], 20), realm = clean(head[9], 60);
   if (!name) return { ok: false, error: "relevé sans guilde (perso sans guilde ?)" };
   const rosterAt = nat(head[4]) ?? 0;
