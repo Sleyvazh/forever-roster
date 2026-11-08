@@ -163,7 +163,7 @@ const ROWS: Row[] = [
   },
   {
     title: "Tes persos",
-    data: "Nom, royaume, race, classe, spés, niveau, talents, équipement et objectifs, métiers et patrons, consommables comptés par l'addon, notes, portrait. Ce qu'envoient l'addon et Roster Companion : ces informations, tes inscriptions faites en jeu et la version de l'addon ; GUID du perso en jeu et nom complet (envoyés par l'addon). Sur Forever, le niveau d'une fiche rangée dans une guilde liée au jeu suit la liste de guilde ; pour un perso que la liste ne connaît pas, l'officier qui a fixé son niveau, et quand. Sur Roster : identifiant Battle.net du perso, niveau d'objet et spé active lus chez Blizzard.",
+    data: "Nom, royaume, race, classe, spés, niveau, talents, équipement et objectifs, métiers et patrons, consommables comptés par l'addon, notes, portrait. Ce qu'envoient l'addon et Roster Companion : ces informations, tes inscriptions faites en jeu et la version de l'addon ; GUID du perso en jeu et nom complet (envoyés par l'addon). Sur Forever, le niveau d'une fiche rangée dans une guilde liée au jeu suit la liste de guilde ; pour un perso que la liste ne connaît pas, l'officier qui a fixé son niveau, et quand ; pour une fiche créée par un officier ou donnée par un autre membre, qui l'a fait et quand (jusqu'à ce que tu la modifies ou la synchronises). Sur Roster : identifiant Battle.net du perso, niveau d'objet et spé active lus chez Blizzard.",
     why: "Tenir ta fiche à jour et préparer les raids ; un niveau juste pour les sorties et la guilde.",
     basis: "Contrat",
     keep: "Tant que le perso existe (tu peux le supprimer), et au plus tant que le compte existe.",

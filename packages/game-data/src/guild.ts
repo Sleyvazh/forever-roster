@@ -330,6 +330,11 @@ export interface GuildChar {
   link: { source: GuildLinkSource; confirmed: boolean | null; by: string | null } | null;
   /** Mon perso (rattaché à mon compte). */
   mine: boolean;
+  /**
+   * Fiche du site de ce perso, qui le rattache à son compte : synchronisée par l'addon (même GUID), ou (byName, 8/11) rangée
+   * dans la guilde et retrouvée par son nom. null : aucune fiche (« Créer sa fiche… » pour les officiers).
+   */
+  fiche: { id: string; byName: boolean } | null;
 }
 /** Un joueur : un compte du site (« u:<id> ») ou un joueur sans compte (« p:<id> » rattaché par un officier, « m:<guid> » perso seul). */
 export interface GuildPlayer {

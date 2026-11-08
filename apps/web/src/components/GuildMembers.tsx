@@ -1,4 +1,4 @@
-import { CLASS_NAMES, zonedParts, type GuildChar, type GuildMembersResponse, type GuildMove, type GuildPlayer, type GuildQuestion } from "@forever/game-data";
+import { CLASS_NAMES, isValidCombo, RACE_NAMES, zonedParts, type GuildChar, type GuildMembersResponse, type GuildMove, type GuildPlayer, type GuildQuestion } from "@forever/game-data";
 import { useInfiniteQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -6,10 +6,12 @@ import { ApiError, del, patch, post, put, type GroupRole, type Member } from "..
 import { useGameText } from "../gameText";
 import { activeWithin, agoText, dayKey, dayMonth, fetchHistory, GUILD_QUERY_ROOTS, guildKeys, longDay, seenText, shortDay, useGuildLink, useGuildMembers } from "../guild";
 import { useViewPref } from "../prefs";
+import { useMe } from "../auth";
 import { siteRights, SiteMembers } from "./GroupMembers";
 import { GroupCharacters } from "./GroupRoster";
 import { CharName, GuildRace } from "./GuildRace";
 import { Portrait } from "./ImageUpload";
+import { DialogHead, Modal } from "./Dialog";
 import { ClassDot } from "./Outings";
 import { PlayerSheet } from "./PlayerSheet";
 import { RowMenu } from "./RowMenu";
@@ -53,6 +55,7 @@ function MembersBar({ by, onBy, mode, onMode }: { by: GuildBy; onBy: (b: GuildBy
 }
 
 const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : "Action impossible.");
+const ROLE_LABEL: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 /** Tout ce qui vient de la guilde du jeu est à relire après une action (l'événement en direct « guild » suit pour les autres). */
 export const refreshGuild = (qc: QueryClient, groupId: string) =>
   Promise.all(GUILD_QUERY_ROOTS.map(k => qc.invalidateQueries({ queryKey: [k, groupId] })));
@@ -119,20 +122,7 @@ export function QuestionBand({ groupId, questions }: { groupId: string; question
   );
 }
 
-/** Fenêtre modale native (focus piégé, Échap) ; la retirer de la page suffit à la fermer. */
-export function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const d = ref.current; if (d && !d.open) d.showModal(); }, []);
-  return <dialog ref={ref} className="sg-dialog gd" aria-labelledby={label} onClose={onClose}>{children}</dialog>;
-}
-export function DialogHead({ id, title, sub, onClose }: { id: string; title: ReactNode; sub?: ReactNode; onClose: () => void }) {
-  return (
-    <div className="row between sg-head">
-      <div style={{ minWidth: 0 }}><h2 id={id}>{title}</h2>{sub && <p className="gd-sub">{sub}</p>}</div>
-      <button type="button" className="pi-close" aria-label="Fermer" onClick={onClose}>✕</button>
-    </div>
-  );
-}
+export { DialogHead, Modal } from "./Dialog";
 
 /** Ce que dit la petite ligne d'un perso : classe et niveau, rang. */
 function useCharLine() {
@@ -140,15 +130,23 @@ function useCharLine() {
   return (c: Pick<GuildChar, "cls" | "level">) => `${c.cls ? `${gt.cls(c.cls)} ` : "Niveau "}${c.level}`;
 }
 
-type Dialog = { kind: "attach"; guid: string } | { kind: "main"; key: string } | { kind: "claim"; guid: string } | null;
+type Dialog = { kind: "attach"; guids: string[] } | { kind: "main"; key: string } | { kind: "claim"; guid: string } | { kind: "fiche"; guid: string } | null;
 
-/** « Rattacher X à… » (officiers) : un joueur de la guilde, un perso à rattacher, ou un nouveau joueur dont X est le main. */
-function AttachDialog({ groupId, data, guid, myId, onClose }: { groupId: string; data: GuildMembersResponse; guid: string; myId?: string; onClose: () => void }) {
+/**
+ * « Rattacher X à… » (officiers) : un joueur de la guilde, un membre du site sans perso reconnu (8/11), un perso à rattacher, ou
+ * un nouveau joueur dont X est le main. Plusieurs persos cochés (8/11) : tous au même joueur ; « Nouveau joueur » : le plus
+ * haut niveau est son main, les autres ses alts.
+ */
+function AttachDialog({ groupId, data, guids, members, myId, onClose, onDone }: {
+  groupId: string; data: GuildMembersResponse; guids: string[]; members: Member[]; myId?: string; onClose: () => void; onDone?: () => void;
+}) {
   const qc = useQueryClient();
   const line = useCharLine();
   const byGuid = useMemo(() => new Map(data.chars.map(c => [c.guid, c])), [data]);
-  const c = byGuid.get(guid);
-  const suggestion = data.unattached.find(u => u.guid === guid)?.suggestion ?? null;
+  const picked = guids.map(g => byGuid.get(g)).filter((c): c is GuildChar => !!c).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+  const c = picked[0];
+  const many = picked.length > 1;
+  const suggestion = !many && c ? data.unattached.find(u => u.guid === c.guid)?.suggestion ?? null : null;
   const playerOf = useMemo(() => {
     const m = new Map<string, GuildPlayer>();
     for (const p of data.players) for (const g of [p.main, ...p.alts]) m.set(g, p);
@@ -160,52 +158,126 @@ function AttachDialog({ groupId, data, guid, myId, onClose }: { groupId: string;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!c) return null;
+  const pickedSet = new Set(picked.map(x => x.guid));
   const needle = q.trim().toLowerCase();
-  type Opt = { key: string; main: GuildChar; sub: string; account: GuildPlayer["account"] };
-  const players: Opt[] = data.players.filter(p => p.key !== c.player && byGuid.has(p.main)).map(p => {
+  type Opt = { key: string; main: GuildChar | null; name: string; sub: string; account: { userId: string; displayName: string; avatarId: string | null } | null };
+  const players: Opt[] = data.players.filter(p => !(!many && p.key === c.player) && byGuid.has(p.main) && !pickedSet.has(p.main)).map(p => {
     const main = byGuid.get(p.main)!;
-    return { key: p.key, main, account: p.account, sub: [main.rank, p.account ? `compte ${p.account.displayName}` : "sans compte", p.alts.length ? plural(p.alts.length, "alt") : null].filter(Boolean).join(" · ") };
+    return { key: p.key, main, name: main.name, account: p.account, sub: [main.rank, p.account ? `compte ${p.account.displayName}` : "sans compte", p.alts.length ? plural(p.alts.length, "alt") : null].filter(Boolean).join(" · ") };
   });
-  const band: Opt[] = data.unattached.filter(u => u.guid !== guid && byGuid.has(u.guid)).map(u => ({ key: `m:${u.guid}`, main: byGuid.get(u.guid)!, account: null, sub: `${byGuid.get(u.guid)!.rank} · à rattacher` }));
-  const match = (o: Opt) => !needle || `${o.main.name} ${o.account?.displayName ?? ""}`.toLowerCase().includes(needle);
-  const all = [...players, ...band];
+  // Membres du site sans perso reconnu dans la liste : un compte à qui rattacher (« Est-ce ton perso ? » lui sera posé)
+  const accounts = new Set(data.players.map(p => p.account?.userId).filter(Boolean));
+  const site: Opt[] = members.filter(m => !accounts.has(m.userId)).map(m => ({
+    key: `u:${m.userId}`, main: null, name: m.displayName, account: { userId: m.userId, displayName: m.displayName, avatarId: m.avatarId }, sub: `compte du site · ${ROLE_LABEL[m.role]} · aucun perso reconnu`,
+  }));
+  const band: Opt[] = data.unattached.filter(u => !pickedSet.has(u.guid) && byGuid.has(u.guid)).map(u => ({ key: `m:${u.guid}`, main: byGuid.get(u.guid)!, name: byGuid.get(u.guid)!.name, account: null, sub: `${byGuid.get(u.guid)!.rank} · à rattacher` }));
+  const match = (o: Opt) => !needle || `${o.name} ${o.account?.displayName ?? ""}`.toLowerCase().includes(needle);
+  const all = [...site, ...players, ...band];
   const top = all.filter(o => suggested.has(o.key));
-  const rest = all.filter(o => !suggested.has(o.key) && match(o)).sort((a, b) => a.main.name.localeCompare(b.main.name));
+  const siteRest = site.filter(o => !suggested.has(o.key) && match(o)).sort((a, b) => a.name.localeCompare(b.name));
+  const rest = [...players, ...band].filter(o => !suggested.has(o.key) && match(o)).sort((a, b) => a.name.localeCompare(b.name));
   const chosen = all.find(o => o.key === to) ?? null;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!to) return;
     setBusy(true); setErr(null);
-    try { await put(`/groups/${groupId}/guild/members/${guid}/link`, { to }); await refreshGuild(qc, groupId); onClose(); }
-    catch (x) { setErr(errorOf(x)); setBusy(false); }
+    try {
+      if (many) await put(`/groups/${groupId}/guild/members/link`, { guids: picked.map(x => x.guid), to });
+      else await put(`/groups/${groupId}/guild/members/${c.guid}/link`, { to });
+      await refreshGuild(qc, groupId); onDone?.(); onClose();
+    } catch (x) { setErr(errorOf(x)); setBusy(false); }
   };
   const opt = (o: Opt) => (
     <li key={o.key}><label className="gd-opt">
       <input type="radio" name="gd-to" value={o.key} checked={to === o.key} onChange={() => setTo(o.key)} />
-      <ClassDot cls={o.main.cls} />
-      <span className="t"><span className="nm"><CharName name={o.main.name} cls={o.main.cls} /><span className="lvn">{o.main.level}</span></span><small>{o.sub}</small></span>
+      {o.main ? <ClassDot cls={o.main.cls} />
+        : <span className="avatar" style={{ width: 22, height: 22 }}><Portrait id={o.account?.avatarId ?? null} size={22} fallback={<span style={{ fontSize: 11 }}>{o.name[0]}</span>} /></span>}
+      <span className="t"><span className="nm">{o.main ? <><CharName name={o.main.name} cls={o.main.cls} /><span className="lvn">{o.main.level}</span></> : <b>{o.name}</b>}</span><small>{o.sub}</small></span>
     </label></li>
   );
   const why = suggestion ? `${suggestion.from === "officerNote" ? "note d'officier" : "note de guilde"} « ${suggestion.note} »` : c.note ? `note « ${c.note} »` : "pas de note de guilde";
+  const title = many ? `Rattacher ${picked.length} persos à…` : <>Rattacher {c.name} à…</>;
+  const sub = many ? <span>{picked.map(x => `${x.name} (${line(x)})`).join(", ")}</span> : <><ClassDot cls={c.cls} /><span>{line(c)} · {why}</span></>;
+  const who = chosen?.account?.displayName ?? chosen?.main?.firstName;
   return (
     <Modal label="gd-t" onClose={onClose}>
       <form onSubmit={e => void submit(e)}>
-        <DialogHead id="gd-t" title={<>Rattacher {c.name} à…</>} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {why}</span></>} onClose={onClose} />
+        <DialogHead id="gd-t" title={title} sub={sub} onClose={onClose} />
         <input type="search" placeholder="Chercher un joueur ou un perso…" aria-label="Chercher un joueur ou un perso" value={q} onChange={e => setQ(e.target.value)} />
         <ul className="gd-list" aria-label="Joueurs de la guilde">
-          {top.length > 0 && <><li className="gd-group">Suggéré par la note</li>{top.map(opt)}{rest.length > 0 && <li className="gd-group">Autres joueurs</li>}</>}
+          {top.length > 0 && <><li className="gd-group">Suggéré par la note</li>{top.map(opt)}</>}
+          {siteRest.length > 0 && <><li className="gd-group">Sur le site, sans perso dans la liste</li>{siteRest.map(opt)}</>}
+          {rest.length > 0 && (top.length > 0 || siteRest.length > 0) && <li className="gd-group">Joueurs de la liste</li>}
           {rest.map(opt)}
-          {!top.length && !rest.length && <li className="muted small">Personne ne correspond.</li>}
+          {!top.length && !siteRest.length && !rest.length && <li className="muted small">Personne ne correspond.</li>}
         </ul>
         <label className="gd-opt new">
           <input type="radio" name="gd-to" value="new" checked={to === "new"} onChange={() => setTo("new")} />
-          <span className="t"><b>Nouveau joueur</b><small>{c.firstName} est son main</small></span>
+          <span className="t"><b>Nouveau joueur</b><small>{many ? `${c.name} est son main, ${picked.slice(1).map(x => x.name).join(", ")} ${picked.length > 2 ? "ses alts" : "son alt"}` : `${c.firstName} est son main`}</small></span>
         </label>
-        {chosen?.account && chosen.account.userId !== myId && <p className="hint" style={{ margin: 0 }}>{chosen.account.displayName} a un compte : « Est-ce ton perso ? » s'affichera à sa prochaine visite (Oui / Non).</p>}
+        {chosen?.account && chosen.account.userId !== myId && <p className="hint" style={{ margin: 0 }}>{chosen.account.displayName} a un compte : « Est-ce ton perso ? » s'affichera {many ? "pour chacun " : ""}à sa prochaine visite (Oui / Non).</p>}
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
           <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={!to || busy}>{to === "new" ? "En faire un joueur à part" : chosen ? `Rattacher à ${chosen.account?.displayName ?? chosen.main.firstName}` : "Rattacher"}</button>
+          <button type="submit" className="btn primary" disabled={!to || busy}>{to === "new" ? (many ? "En faire un joueur à part" : "En faire un joueur à part") : who ? (many ? `Rattacher les ${picked.length} à ${who}` : `Rattacher à ${who}`) : "Rattacher"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * « Créer sa fiche… » (officiers, 8/11) : la fiche du site d'un perso de la liste qu'aucune fiche ne retrouve, sur le compte d'un
+ * membre de la guilde du site ; elle arrive tout de suite dans ses persos, rangée ici (son main s'il n'en a pas).
+ */
+function FicheDialog({ groupId, groupName, data, guid, members, myName, onClose }: {
+  groupId: string; groupName: string; data: GuildMembersResponse; guid: string; members: Member[]; myName: string; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const line = useCharLine();
+  const c = data.chars.find(x => x.guid === guid);
+  const owner = c?.player?.startsWith("u:") ? c.player.slice(2) : "";
+  const [userId, setUserId] = useState(members.some(m => m.userId === owner) ? owner : "");
+  const [name, setName] = useState(c?.name ?? "");
+  const [race, setRace] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  if (!c) return null;
+  const races = RACE_NAMES.filter(r => !c.cls || isValidCombo(r, c.cls));
+  const who = members.find(m => m.userId === userId);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!userId || !name.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      await post(`/groups/${groupId}/guild/members/${c.guid}/fiche`, { userId, name: name.trim(), race });
+      await Promise.all([refreshGuild(qc, groupId), qc.invalidateQueries({ queryKey: ["group-chars", groupId] })]);
+      onClose();
+    } catch (x) { setErr(errorOf(x)); setBusy(false); }
+  };
+  return (
+    <Modal label="gfc-t" onClose={onClose}>
+      <form className="stack" style={{ gap: 12 }} onSubmit={e => void submit(e)}>
+        <DialogHead id="gfc-t" title={<>Créer la fiche de {c.name}</>} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
+        <div className="fld"><label htmlFor="gfc-u">À qui est ce perso ?</label>
+          <select id="gfc-u" value={userId} onChange={e => setUserId(e.target.value)} required>
+            <option value="" disabled>Choisir un membre du site…</option>
+            {[...members].sort((a, b) => a.displayName.localeCompare(b.displayName)).map(m => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
+          </select>
+        </div>
+        <div className="row" style={{ gap: 12, alignItems: "end" }}>
+          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="gfc-n">Nom de la fiche</label>
+            <input id="gfc-n" type="text" value={name} maxLength={40} onChange={e => setName(e.target.value)} required /></div>
+          <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="gfc-r">Race <span className="muted small">(facultatif)</span></label>
+            <select id="gfc-r" value={race} onChange={e => setRace(e.target.value)}>
+              <option value="">—</option>{races.map(r => <option key={r} value={r}>{r}</option>)}
+            </select></div>
+        </div>
+        <p className="hint" style={{ margin: 0 }}>Classe et niveau viennent de la liste du jeu (le niveau la suivra). La fiche arrive tout de suite dans les persos de {who?.displayName ?? "ce membre"}, rangée dans {groupName} (son main s'il n'en a pas), avec « Créée par {myName} ». {who?.displayName ?? "Il"} la complète, la donne ou la supprime ; son addon la retrouvera à sa première synchro. Noté au journal de la guilde.</p>
+        {err && <div className="alert error" role="alert">{err}</div>}
+        <div className="row sg-actions">
+          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
+          <button type="submit" className="btn primary" disabled={busy || !userId || !name.trim()}>{who ? `Créer la fiche pour ${who.displayName}` : "Créer la fiche"}</button>
         </div>
       </form>
     </Modal>
@@ -290,6 +362,9 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
   const [byPref, setByPref] = useViewPref<GuildBy>("guild-by", "persos", BY_VALUES);
   const [modePref, setModePref] = useViewPref<CharsMode>("guild-chars-mode", "jeu", MODE_VALUES);
   const [dialog, setDialog] = useState<Dialog>(null);
+  /** Persos cochés dans Liste du jeu (officiers, 8/11) : « Rattacher à… » une fois pour tous. */
+  const [sel, setSel] = useState<ReadonlySet<string>>(new Set());
+  const myName = useMe().data?.user?.displayName ?? "toi";
   const officer = myRole !== "member";
   const data = q.data;
   // Ligne au-dessus de Course au 60 : un texte à droite (départ de la course…)
@@ -323,7 +398,7 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
     <div className="stack">
       <MembersBar by={by} onBy={chooseBy} mode={by === "persos" && linked ? mode : undefined} onMode={chooseMode} />
       {!data ? <p className="muted">{q.error ? "Liste de guilde indisponible pour l'instant." : "Chargement…"}</p>
-        : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} notLinked={<NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="persos" />} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} />
+        : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} notLinked={<NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="persos" />} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} sel={sel} setSel={setSel} />
         : <>
           <QuestionBand groupId={groupId} questions={data.questions} />
           {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
@@ -335,7 +410,8 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
   return (
     <>
       {body}
-      {data && dialog?.kind === "attach" && <AttachDialog groupId={groupId} data={data} guid={dialog.guid} myId={myId} onClose={() => setDialog(null)} />}
+      {data && dialog?.kind === "attach" && <AttachDialog groupId={groupId} data={data} guids={dialog.guids} members={members} myId={myId} onClose={() => setDialog(null)} onDone={() => setSel(new Set())} />}
+      {data && dialog?.kind === "fiche" && <FicheDialog groupId={groupId} groupName={groupName} data={data} guid={dialog.guid} members={members} myName={myName} onClose={() => setDialog(null)} />}
       {data && dialog?.kind === "main" && <MainDialog groupId={groupId} data={data} pkey={dialog.key} onClose={() => setDialog(null)} />}
       {data && dialog?.kind === "claim" && (() => { const c = data.chars.find(x => x.guid === dialog.guid); return c ? <ClaimDialog groupId={groupId} c={c} onClose={() => setDialog(null)} /> : null; })()}
     </>
@@ -390,7 +466,8 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
             const item = (key: string, label: string, fn: () => void, bad = false) => out.push(<button key={key} type="button" role="menuitem" className={bad ? "bad" : undefined} onClick={() => { close(); fn(); }}>{label}</button>);
             if (p.account) item("sheet", sheet === p.account.userId ? "Fermer la fiche" : "Voir la fiche", () => setSheet(s => (s === p.account!.userId ? null : p.account!.userId)));
             if (chars.length > 1 && (officer || p.me)) item("main", "Choisir le main…", () => openDialog({ kind: "main", key: p.key }));
-            if (officer) for (const c of chars) item(`a${c.guid}`, chars.length > 1 ? `Rattacher ${c.name} à…` : "Rattacher à…", () => openDialog({ kind: "attach", guid: c.guid }));
+            if (officer) for (const c of chars) item(`a${c.guid}`, chars.length > 1 ? `Rattacher ${c.name} à…` : "Rattacher à…", () => openDialog({ kind: "attach", guids: [c.guid] }));
+            if (officer) for (const c of chars.filter(x => !x.fiche)) item(`f${c.guid}`, chars.length > 1 ? `Créer la fiche de ${c.name}…` : "Créer sa fiche…", () => openDialog({ kind: "fiche", guid: c.guid }));
             if (!p.account && claimable(main)) item("claim", "C'est mon perso", () => openDialog({ kind: "claim", guid: main.guid }));
             if (m && can.role && m.role === "member") item("off", "Nommer officier", () => void setRole(m, "officer"));
             if (m && can.role && m.role === "officer") item("mem", "Repasser membre", () => void setRole(m, "member"));
@@ -445,7 +522,7 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
         <section className="stack" style={{ gap: 8 }} aria-labelledby="gp-site">
           <h4 className="gm-sec" id="gp-site">Sur le site, sans perso dans la liste du jeu <span className="num">{siteOnly.length}</span></h4>
           <SiteMembers groupId={groupId} members={members} only={new Set(siteOnly.map(m => m.userId))} myRole={myRole} myId={myId} guard={guard} bankers
-            hint="Leurs persos n'ont pas encore été reconnus : l'addon à jour les rattache à leur prochaine synchro." />
+            hint="Leurs persos n'ont pas encore été reconnus : l'addon à jour, ou une fiche du site à leur nom, les rattache ; un officier peut aussi le faire (« Rattacher à… »)." />
         </section>
       )}
     </>
@@ -491,8 +568,8 @@ function AttachBand({ groupId, data, openDialog }: { groupId: string; data: Guil
               <span className="gq-acts">
                 {s?.target ? <>
                   <button type="button" className="btn sm primary" disabled={busy === u.guid} onClick={() => void accept(u.guid)}>Accepter</button>
-                  <button type="button" className="btn ghost sm" onClick={() => openDialog({ kind: "attach", guid: u.guid })}>Autre…</button>
-                </> : <button type="button" className="btn sm" onClick={() => openDialog({ kind: "attach", guid: u.guid })}>{s?.candidates.length ? "Choisir…" : "Rattacher à…"}</button>}
+                  <button type="button" className="btn ghost sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>Autre…</button>
+                </> : <button type="button" className="btn sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>{s?.candidates.length ? "Choisir…" : "Rattacher à…"}</button>}
               </span>
             </li>
           );
@@ -509,9 +586,9 @@ const LEVELS: [string, number, number][] = [["Tous", 1, 60], ["1-29", 1, 29], ["
 const CHARS_PAGE = 100;
 
 /** Par perso : la liste de guilde du jeu, ou (sheets) les fiches du site. Le choix se fait dans la barre de Membres. */
-function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, myId, openDialog, guard }: {
+function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, myId, openDialog, guard, sel, setSel }: {
   groupId: string; groupName: string; data: GuildMembersResponse; sheets: boolean; notLinked: ReactNode; members: Member[]; myRole: GroupRole; myId?: string;
-  openDialog: (d: Dialog) => void; guard: Guard;
+  openDialog: (d: Dialog) => void; guard: Guard; sel: ReadonlySet<string>; setSel: (s: ReadonlySet<string>) => void;
 }) {
   const qc = useQueryClient();
   const gt = useGameText();
@@ -546,10 +623,17 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
   const playerText = (c: GuildChar) => {
     if (!c.player) return <span className="tag warn">à rattacher</span>;
     const p = players.get(c.player);
-    if (p?.account) return p.account.displayName;
+    if (p?.account) return c.fiche?.byName && c.link?.source === "account"
+      ? <span>{p.account.displayName} <span className="muted small" title="Retrouvé par sa fiche du site, à son nom">· fiche</span></span>
+      : p.account.displayName;
     if (p && p.main !== c.guid) return <span>{byGuid.get(p.main)?.name ?? "—"} <span className="muted small">sans compte</span></span>;
     return <span className="muted">sans compte</span>;
   };
+  // Cases à cocher (officiers) : persos encore dans la liste, dans l'ordre de la liste
+  const picked = data.chars.filter(c => sel.has(c.guid));
+  const toggle = (guid: string) => { const n = new Set(sel); if (n.has(guid)) n.delete(guid); else n.add(guid); setSel(n); };
+  const allShown = shown.length > 0 && shown.every(c => sel.has(c.guid));
+  const toggleAll = () => { const n = new Set(sel); for (const c of shown) { if (allShown) n.delete(c.guid); else n.add(c.guid); } setSel(n); };
   return (
     <>
       <div className="row gc-tools">
@@ -565,8 +649,18 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
         </select>
         <label className="gr-tog" style={{ paddingTop: 0 }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /><i aria-hidden="true" />Actifs depuis moins de 7 jours</label>
       </div>
-      <div className="tscroll"><table className="data gx-table">
-        <thead><tr><th>Perso</th><th>Niv.</th><th>Rang</th><th>Joueur</th><th>Note de guilde</th>
+      {officer && picked.length > 0 && (
+        <div className="gm-act gx-sel" role="region" aria-label="Persos cochés">
+          <b>{plural(picked.length, "perso coché", "persos cochés")}</b>
+          <span className="muted gx-sel-names">{picked.map(c => c.name).join(", ")}</span>
+          <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
+            <button type="button" className="btn sm primary" onClick={() => openDialog({ kind: "attach", guids: picked.map(c => c.guid) })}>Rattacher à…</button>
+            <button type="button" className="btn ghost sm" onClick={() => setSel(new Set())}>Tout décocher</button>
+          </span>
+        </div>
+      )}
+      <div className="tscroll"><table className={`data gx-table${officer ? " ck" : ""}`}>
+        <thead><tr>{officer && <th className="gx-ck"><input type="checkbox" aria-label="Tout cocher" checked={allShown} onChange={toggleAll} /></th>}<th>Perso</th><th>Niv.</th><th>Rang</th><th>Joueur</th><th>Note de guilde</th>
           {officer && <th>Note d'officier <span className="tag" style={{ fontSize: 9, padding: "2px 4px" }}>officiers</span></th>}<th>Connexion</th><th /></tr></thead>
         <tbody>{shown.map(c => {
           const seen = seenText(c.online, c.lastOnlineAt);
@@ -575,15 +669,17 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
           const actions = (close: () => void) => {
             const out: ReactNode[] = [];
             const add = (k: string, label: string, fn: () => void) => out.push(<button key={k} type="button" role="menuitem" onClick={() => { close(); fn(); }}>{label}</button>);
-            if (officer) add("a", "Rattacher à…", () => openDialog({ kind: "attach", guid: c.guid }));
+            if (officer) add("a", "Rattacher à…", () => openDialog({ kind: "attach", guids: [c.guid] }));
+            if (officer && !c.fiche) add("f", "Créer sa fiche…", () => openDialog({ kind: "fiche", guid: c.guid }));
             if (c.link && c.link.source !== "account" && (officer || (c.mine && c.link.source === "declared"))) add("d", "Détacher de son joueur", () => void detach(c));
             if (c.player && !c.isMain && count > 1 && (officer || c.mine)) add("m", "En faire le main", () => void setMain(c));
             if (claimable(c)) add("c", "C'est mon perso", () => openDialog({ kind: "claim", guid: c.guid }));
             return out;
           };
           return (
-            <tr key={c.guid} className={c.mine ? "ps-sel" : undefined}>
-              <td><span className="gx-name"><ClassDot cls={c.cls} />{c.player && !c.isMain && <span className="gm-alt">alt</span>}<CharName name={c.name} cls={c.cls} />{c.mine && <span className="tag gold">Toi</span>}</span></td>
+            <tr key={c.guid} className={[c.mine ? "ps-sel" : "", sel.has(c.guid) ? "gx-on" : ""].filter(Boolean).join(" ") || undefined}>
+              {officer && <td className="gx-ck"><input type="checkbox" aria-label={`Cocher ${c.name}`} checked={sel.has(c.guid)} onChange={() => toggle(c.guid)} /></td>}
+              <td className="gx-nm"><span className="gx-name"><ClassDot cls={c.cls} />{c.player && !c.isMain && <span className="gm-alt">alt</span>}<CharName name={c.name} cls={c.cls} />{c.mine && <span className="tag gold">Toi</span>}</span></td>
               <td className="num gx-lv">{c.level}</td>
               <td className="small gx-rank">{c.rank}</td>
               <td className="small gx-pl">{playerText(c)}</td>

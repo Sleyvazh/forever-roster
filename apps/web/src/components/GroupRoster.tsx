@@ -10,6 +10,7 @@ import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { RoleIcon } from "./RoleIcon";
 import { RetailCharacterView } from "./RetailCharacter";
+import { GiveFicheDialog } from "./GiveFiche";
 import { BnetGroupRefresh } from "./BnetImport";
 import { useGameText } from "../gameText";
 
@@ -121,6 +122,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   const [busy, setBusy] = useState(false);
   /** « Corriger le niveau » d'une fiche ouverte (officier, Forever) : fiche et niveau en saisie. */
   const [lvEdit, setLvEdit] = useState<{ id: string; level: number } | null>(null);
+  /** « Donner la fiche à… » (Forever) : la fiche ouverte. */
+  const [giving, setGiving] = useState<string | null>(null);
   const gt = useGameText();
   if (!data) return <p className="muted">Chargement…</p>;
 
@@ -322,6 +325,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
                   {fixable(opened) && (opened.levelLock?.by === "officer"
                     ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(opened, null)}>Rendre la main sur le niveau</button>
                     : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: opened.id, level: opened.level })}>Corriger le niveau</button>)}
+                  {gt.game !== "retail" && <button type="button" className="btn sm" disabled={busy} onClick={() => setGiving(opened.id)}>Donner la fiche à…</button>}
                   <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer de la guilde</button>
                 </span>
               )}
@@ -330,6 +334,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
                 : "Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos."}</span>}
             </div>
           )}
+          {giving === opened.id && <GiveFicheDialog groupId={groupId} groupName={groupName} c={opened} members={members} onClose={() => setGiving(null)} />}
           {gt.game === "retail" ? <RetailCharacterView c={opened} /> : <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
         </>
       )}

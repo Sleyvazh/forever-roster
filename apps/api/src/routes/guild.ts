@@ -10,14 +10,15 @@ import type { Db } from "../db/client";
 import { characters, gameGuilds, groupCharacters, groups, guildEvents, raids, raidSignups } from "../db/schema";
 import { audit } from "../lib/audit";
 import { actOnRequest, createRequest, dropGuildRequests, pendingCount, standing } from "../lib/bank-requests";
-import { bus } from "../lib/events";
+import { bus, charsChanged } from "../lib/events";
 import { membership, requireRole, type GroupRole } from "../lib/groups";
 import {
   charView, computeRace, foreverGroup, guildMoves, homeFind, isOfficer, linkInfo, loadGuild, loadLevels, MOVE_FILTERS, playerOrder, playerView, questionsFor, resolveGuild,
 } from "../lib/guild";
 import { bankLog, bankView } from "../lib/guild-bank";
-import { acceptSuggestion, answerQuestion, attachMember, claimMember, detachMember, linkProposed, proposalsOf, setPlayerMain } from "../lib/guild-links";
-import { notFound, parse } from "../lib/http";
+import { acceptSuggestion, answerQuestion, attachMember, attachMembers, claimMember, createFicheFor, detachMember, linkProposed, proposalsOf, setPlayerMain } from "../lib/guild-links";
+import { characterFields } from "../lib/character-schema";
+import { badRequest, notFound, parse } from "../lib/http";
 import { groupOutings, signupName, signupsOf } from "../lib/outings";
 import { currentUser, requireAuth } from "../lib/session";
 
@@ -46,7 +47,11 @@ import { currentUser, requireAuth } from "../lib/session";
  *   POST   /:id/guild/link                { key }            → GuildLinkResponse : lier une guilde du jeu proposée
  *   DELETE /:id/guild/link                                   → { ok } : délier (efface liste, journal, niveaux, banque, demandes de retrait ; les rattachements restent)
  *   PUT    /:id/guild/announces           { announce }       → { announce } : annonces Discord des niveaux (none | sixty | tens)
- *   PUT    /:id/guild/members/:guid/link  { to }             → { player } : « Rattacher à… » (clé d'un joueur ou d'un perso, ou « new »)
+ *   PUT    /:id/guild/members/:guid/link  { to }             → { player } : « Rattacher à… » (clé d'un joueur ou d'un perso, ou « new ») ;
+ *                                           « u:<compte> » : tout membre de la guilde du site, même sans perso reconnu
+ *   PUT    /:id/guild/members/link        { guids, to }      → { player } : les persos cochés (40 au plus) au même joueur ; « new » :
+ *                                           le plus haut niveau devient le main d'un nouveau joueur
+ *   POST   /:id/guild/members/:guid/fiche { userId, name, race } → { character } : « Créer sa fiche… » sur le compte d'un membre
  *   POST   /:id/guild/members/:guid/accept { guid? }         → { player } : accepter la suggestion d'une note (candidat si ambiguë)
  * Officiers, ou le joueur concerné :
  *   DELETE /:id/guild/members/:guid/link                     → { ok } : détacher (le joueur : un perso qu'il a déclaré)
@@ -250,6 +255,35 @@ export async function guildRoutes(app: FastifyInstance) {
     await audit(db, req, "guild_member_linked", { userId: u.id, groupId: p.id, meta: { character: r.name, to } });
     changed(p.id);
     return { player: r.player };
+  });
+
+  app.put("/:id/guild/members/link", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    const body = parse(z.object({ guids: z.array(z.string().max(40)).min(1).max(40), to: z.union([playerKey, z.literal("new")]) }), req.body);
+    const guids = body.guids.map(g => normalizeGuid(g));
+    if (guids.some(g => !g)) throw badRequest("GUID invalide.");
+    await ctx(id, u.id, "officer");
+    const r = await attachMembers(db, id, guids as string[], body.to, u);
+    for (const name of r.names) await audit(db, req, "guild_member_linked", { userId: u.id, groupId: id, meta: { character: name, to: body.to } });
+    changed(id);
+    return { player: r.player };
+  });
+
+  /** « Créer sa fiche… » (officier) : la fiche d'un perso de la liste sur le compte d'un membre de la guilde du site. */
+  app.post("/:id/guild/members/:guid/fiche", async (req, reply) => {
+    const u = currentUser(req);
+    const p = parse(guidParam, req.params);
+    const body = parse(z.object({ userId: z.uuid(), name: characterFields.shape.name, race: characterFields.shape.race.default("") }), req.body);
+    await ctx(p.id, u.id, "officer");
+    const r = await createFicheFor(db, p.id, p.guid, body, u, now());
+    await audit(db, req, "character_created_for", {
+      userId: u.id, groupId: p.id, meta: { target: body.userId, targetName: r.target.displayName, character: r.character.name, cls: r.character.cls, level: r.character.level },
+    });
+    changed(p.id);
+    bus.group({ t: "chars", g: p.id });
+    await charsChanged(db, body.userId);
+    return reply.code(201).send({ character: { id: r.character.id, name: r.character.name } });
   });
 
   app.delete("/:id/guild/members/:guid/link", async (req) => {

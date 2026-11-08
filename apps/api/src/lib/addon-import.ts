@@ -299,6 +299,8 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       const consumables = Object.keys(d.consumables).length ? Object.fromEntries(Object.entries(d.consumables).slice(0, 60).map(([k, v]) => [k, Math.min(9999, v)])) : null;
       const [row] = await db.update(characters).set({
         ...patch, addonKey: key, ...(d.guid && { guid: d.guid }), addonSyncedAt: new Date(), updatedAt: new Date(),
+        // Synchronisée par son joueur : « créée par » / « donnée par » (fiche-transfer.ts) ne s'affiche plus
+        originKind: null, originBy: null, originByName: null, originAt: null,
         // Niveau lu en jeu par l'addon du joueur : un niveau fixé par un officier (fiche-levels.ts) n'a plus lieu d'être, et
         // un relevé de la guilde plus ancien ne le baissera pas
         ...(parts.has("identity") && { levelFixedBy: null, levelFixedAt: null, levelSyncedAt: new Date() }),

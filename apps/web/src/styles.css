@@ -1691,6 +1691,13 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 @media (max-width: 640px) { .gm-act.yours { grid-template-columns: 28px minmax(0, 1fr); } .gm-act.yours > .row { grid-column: 2; } }
 /* Persos de la guilde (liste du jeu) */
 .gx-table td { vertical-align: middle; }
+/* Cases à cocher de Liste du jeu (officiers, 8/11) et barre des persos cochés */
+.gx-table .gx-ck { width: 32px; padding-right: 0; }
+.gx-ck input { width: 16px; height: 16px; margin: 0; accent-color: var(--gold); vertical-align: middle; }
+.gx-table tr.gx-on td { background: color-mix(in srgb, var(--gold) 9%, transparent); }
+.gx-sel { border-color: var(--gold); }
+.gx-sel-names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 120px; }
+@media (max-width: 640px) { .gx-sel-names { flex-basis: 100%; white-space: normal; } }
 .gx-table .gx-name { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .gx-table .gx-note { max-width: 28ch; overflow-wrap: anywhere; }
 /* Téléphone : deux lignes par perso, nom et niveau puis rang · joueur · connexion ; sans notes ni en-tête, « … » à droite */
@@ -1701,7 +1708,7 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
   .gx-table tr:last-child { border-bottom: 0; }
   .gx-table tr.ps-sel { background: var(--panel-2); }
   .gx-table td { padding: 0; border: 0; min-width: 0; }
-  .gx-table td:first-child { grid-column: 1 / 4; grid-row: 1; overflow: hidden; }
+  .gx-table .gx-nm { grid-column: 1 / 4; grid-row: 1; overflow: hidden; }
   .gx-table .gx-lv { grid-column: 4; grid-row: 1; font-size: 15px; text-align: right; }
   .gx-table .mb-act { grid-column: 5; grid-row: 1 / span 2; margin-left: 4px; }
   .gx-table .gx-rank, .gx-table .gx-pl, .gx-table .gx-seen { grid-row: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
@@ -1709,6 +1716,17 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
   .gx-table .gx-pl { grid-column: 2; }
   .gx-table .gx-seen { grid-column: 3 / 5; }
   .gx-table .gx-pl::before, .gx-table .gx-seen::before { content: "·"; margin-right: 6px; }
+  /* Officiers : une case à cocher en tête de chaque perso, sur ses deux lignes */
+  .gx-table.ck tr { grid-template-columns: auto auto auto minmax(0, 1fr) auto auto; }
+  .gx-table.ck .gx-ck { grid-column: 1; grid-row: 1 / span 2; width: auto; padding-right: 4px; }
+  .gx-table.ck .gx-nm { grid-column: 2 / 5; }
+  .gx-table.ck .gx-lv { grid-column: 5; }
+  .gx-table.ck .mb-act { grid-column: 6; }
+  .gx-table.ck .gx-rank { grid-column: 2; }
+  .gx-table.ck .gx-pl { grid-column: 3; }
+  .gx-table.ck .gx-seen { grid-column: 4 / 6; }
+  .gx-table tr.gx-on { background: color-mix(in srgb, var(--gold) 9%, transparent); }
+  .gx-table tr.gx-on td { background: none; }
 }
 /* Historique (journal de guilde) */
 .gh-wrap { display: grid; }
@@ -2069,7 +2087,8 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .fi-fold summary h3 { font-size: 17px; color: var(--gold); }
 .fi-fold summary .muted { font-size: 13.5px; }
 .fi-fold summary::after { content: "Déplier ▾"; margin-left: auto; font-size: 13px; color: var(--ink-2); }
-.fi-foot { display: flex; justify-content: flex-end; }
+.fi-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.fi-origin { margin: 12px 18px 0; }
 .mp-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); text-decoration: none; font-size: 14px; }
 @media (max-width: 860px) {
   .mp { grid-template-columns: minmax(0, 1fr); }

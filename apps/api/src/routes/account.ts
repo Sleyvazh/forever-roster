@@ -3,7 +3,7 @@ import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { GAME_LANGS } from "@forever/game-data";
-import { auditEvents, groupMembers, sessions, users } from "../db/schema";
+import { auditEvents, characters, groupMembers, sessions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { hashPassword, PASSWORD_MAX, verifyPassword } from "../lib/password";
@@ -170,6 +170,8 @@ export async function accountRoutes(app: FastifyInstance) {
     await db.transaction(async tx => {
       await tx.update(auditEvents).set({ ip: null, userAgent: null }).where(eq(auditEvents.userId, u.id));
       await anonymizeReports(tx, u.id);
+      // Fiches créées ou données par ce compte : la mention « créée par » / « donnée par » part avec lui
+      await tx.update(characters).set({ originKind: null, originBy: null, originByName: null, originAt: null }).where(eq(characters.originBy, u.id));
       await tx.delete(users).where(eq(users.id, u.id));
     });
     await destroySession(app, req, reply);

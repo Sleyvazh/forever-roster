@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 58, date: "2026-11-08", kind: "site", title: "Rattacher, créer la fiche d'un joueur, donner une fiche",
+    text: "Dans Guilde › Membres › Liste du jeu, les officiers cochent plusieurs persos et les rattachent d'un coup, y compris à un membre du site qui n'a encore aucun perso reconnu ; « Créer sa fiche… » fait la fiche d'un perso de la liste directement sur le compte de son joueur. Une fiche du site rangée dans la guilde et retrouvée dans la liste par son nom rattache maintenant son perso à son compte. Et une fiche peut changer de compte : « Donner la fiche à… » (Fiches du site, ou Mes persos pour les tiennes), avec ses inscriptions à venir ; c'est noté au journal de la guilde." },
   { n: 57, date: "2026-11-08", kind: "addon", version: "1.6", title: "Addon 1.6.5 : textes scellés, à mettre à jour",
     text: "Chaque texte que l'addon écrit pour le site (tes persos, le relevé de la guilde, les bilans de raid) porte maintenant un sceau à la fin. Le site refuse un texte retouché à la main, et ceux des versions plus anciennes de l'addon : télécharge la 1.6.5 (page Addon) pour que tes persos et ton relevé arrivent encore sur le site. Roster Companion les envoie comme avant. Côté site, le niveau d'un membre de la liste de guilde suit maintenant le relevé le plus récent, même plus bas : un niveau faux ne tient plus qu'un relevé, Course au 60 comprise." },
   { n: 56, date: "2026-11-07", kind: "site", title: "Le niveau des fiches suit le jeu",

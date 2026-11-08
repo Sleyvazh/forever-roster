@@ -165,6 +165,14 @@ export const characters = pgTable("characters", {
    * guilde plus ancien ne le baisse pas. Jamais posé par une modification faite sur le site.
    */
   levelSyncedAt: ts("level_synced_at"),
+  /**
+   * Fiche créée par un officier pour ce joueur (« created ») ou donnée par un autre compte (« given ») (8/11) : qui, quand.
+   * Affiché en haut de la fiche jusqu'à ce que son joueur la modifie ou la synchronise avec l'addon.
+   */
+  originKind: text("origin_kind").$type<"created" | "given">(),
+  originBy: uuid("origin_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+  originByName: text("origin_by_name"),
+  originAt: ts("origin_at"),
   /** Lot G : consommables demandés par les raids, comptés par l'addon à la synchro (objet → quantité) et quand. */
   consumables: jsonb("consumables").$type<Record<string, number>>().notNull().default({}),
   consumablesAt: ts("consumables_at"),

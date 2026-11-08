@@ -11,6 +11,8 @@ import { NumberField } from "../components/NumberField";
 import { Paperdoll } from "../components/Paperdoll";
 import { MyAbsences } from "../components/Absences";
 import { ClassSpecPicker } from "../components/ClassSpecPicker";
+import { GiveFicheDialog } from "../components/GiveFiche";
+import { dayMonth } from "../guild";
 import { useGameText } from "../gameText";
 import { syncAge } from "../addonImport";
 import { useAutosave } from "./CharactersPage";
@@ -172,6 +174,7 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
   const gt = useGameText();
   const [portrait, setPortrait] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [giving, setGiving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const color = gt.color(c.cls) ?? "var(--gold)";
   const age = syncAge(c.addonSyncedAt);
@@ -202,6 +205,7 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
           {saveText && <span className={status.kind === "error" || status.kind === "held" ? "warnmsg" : undefined} role="status">{saveText}</span>}
         </div>
       </div>
+      {c.origin && <OriginNote c={c} />}
       {portrait && (
         <div className="portrait-panel">
           <ImageUpload title="Portrait du perso" hint="Une capture de la tête de ton perso en jeu, recadrée en 200 × 200. Visible par tes guildes." currentId={c.portraitId} round
@@ -222,6 +226,7 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
             <div className="fi-fold-in"><TalentsSection c={c} onChange={onChange} editable folded /></div>
           </details>
           <div className="fi-foot">
+            {c.group && !confirmDel && <button type="button" className="btn ghost sm" onClick={() => setGiving(true)}>Donner à un autre joueur…</button>}
             {confirmDel
               ? <span className="row small">Supprimer {c.name} ? <button className="btn danger sm" type="button" onClick={() => void remove()}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
               : <button type="button" className="btn ghost sm" onClick={() => setConfirmDel(true)}>Supprimer le perso</button>}
@@ -234,7 +239,24 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
           {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
         </div>
       )}
+      {giving && c.group && <GiveFicheDialog groupId={c.group.id} groupName={c.group.name} c={{ ...c, isMain: c.group.isMain }} onClose={() => setGiving(false)} closeOnDone />}
     </section>
+  );
+}
+
+/**
+ * Fiche créée par un officier, ou donnée par un autre compte (8/11) : une ligne en haut de la fiche, jusqu'à ce que le joueur la
+ * modifie ou la synchronise avec l'addon.
+ */
+function OriginNote({ c }: { c: Character }) {
+  const o = c.origin!;
+  return (
+    <p className="gm-note fi-origin">
+      <i aria-hidden="true">i</i>
+      {o.kind === "created"
+        ? <span><b>Fiche créée par {o.by}</b>{c.group ? `, officier de ${c.group.name},` : ""} le {dayMonth(o.at)}, d'après la liste du jeu. Complète-la (race, spé, talents) ou fais ta synchro avec l'addon : elle sera retrouvée.</span>
+        : <span><b>Fiche donnée par {o.by}</b> le {dayMonth(o.at)}{c.group ? `, rangée dans ${c.group.name}` : ""}. Ses inscriptions à venir sont maintenant les tiennes.</span>}
+    </p>
   );
 }
 

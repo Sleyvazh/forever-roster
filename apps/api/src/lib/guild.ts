@@ -6,6 +6,7 @@ import {
 import { and, desc, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { characters, gameGuilds, groupCharacters, groupMembers, groups, guildEvents, guildLevels, guildLinks, guildMembers, guildPlayers, users } from "../db/schema";
+import { guildFicheMatches } from "./fiche-levels";
 import type { GroupRole } from "./groups";
 import { badRequest, notFound } from "./http";
 
@@ -54,8 +55,12 @@ export interface GuildData {
   links: LinkRow[];
   players: PlayerRow[];
   site: { userId: string; role: GroupRole; displayName: string; avatarId: string | null }[];
-  /** Fiches du site des membres de la guilde du site qui portent le GUID d'un perso de la liste (race, main du site). */
-  fiches: { id: string; userId: string; guid: string; name: string; race: string; isMain: boolean; syncedAt: Date | null }[];
+  /**
+   * Fiches du site des membres de la guilde du site qui portent le GUID d'un perso de la liste (race, main du site) ; et
+   * (byName, 8/11) celles rangées dans la guilde que la liste retrouve par leur nom (fiche-levels.ts) : guid est alors celui
+   * du perso retrouvé.
+   */
+  fiches: { id: string; userId: string; guid: string; name: string; race: string; isMain: boolean; syncedAt: Date | null; byName: boolean }[];
 }
 
 export async function loadGuild(db: Tx, groupId: string): Promise<GuildData> {
@@ -70,7 +75,17 @@ export async function loadGuild(db: Tx, groupId: string): Promise<GuildData> {
     id: characters.id, userId: characters.userId, guid: characters.guid, name: characters.name, race: characters.race, isMain: groupCharacters.isMain, syncedAt: characters.addonSyncedAt,
   }).from(characters).leftJoin(groupCharacters, and(eq(groupCharacters.characterId, characters.id), eq(groupCharacters.groupId, groupId)))
     .where(and(eq(characters.game, "forever"), inArray(characters.guid, guids), inArray(characters.userId, site.map(s => s.userId)))))
-    .map(f => ({ ...f, guid: f.guid!, isMain: !!f.isMain })) : [];
+    .map(f => ({ ...f, guid: f.guid!, isMain: !!f.isMain, byName: false })) : [];
+  // Fiche rangée ici et retrouvée dans la liste par son nom (« Prénom Nom », prénom unique) : son perso du jeu va à son compte
+  if (gg && site.length) {
+    const active = members.filter(m => !m.leftAt);
+    const onSite = new Set(site.map(s => s.userId));
+    const { matches, fiches: ranged } = await guildFicheMatches(db, groupId, active);
+    for (const [id, m] of matches) {
+      const f = ranged.get(id);
+      if (m.by !== "addon" && f && onSite.has(f.userId)) fiches.push({ ...f, guid: m.member.guid, byName: true });
+    }
+  }
   return { gg: gg ?? null, members, links, players, site, fiches };
 }
 
@@ -105,9 +120,10 @@ export interface Resolved {
  */
 export function resolveGuild(data: GuildData, opts: { officer: boolean; now: Date }): Resolved {
   const memberUser = new Map(data.site.map(s => [s.userId, s]));
-  // Compte du site qui a ce GUID sur une fiche (le plus récemment synchronisé si deux comptes partagent un compte WoW)
+  // Compte du site qui a ce GUID sur une fiche (le plus récemment synchronisé si deux comptes partagent un compte WoW) ; une
+  // fiche retrouvée par son nom passe après une fiche synchronisée par l'addon
   const evidence = new Map<string, GuildData["fiches"][number]>();
-  for (const f of [...data.fiches].sort((a, b) => (a.syncedAt?.getTime() ?? 0) - (b.syncedAt?.getTime() ?? 0))) evidence.set(f.guid, f);
+  for (const f of [...data.fiches].sort((a, b) => Number(b.byName) - Number(a.byName) || (a.syncedAt?.getTime() ?? 0) - (b.syncedAt?.getTime() ?? 0))) evidence.set(f.guid, f);
   const linkByGuid = new Map(data.links.map(l => [l.guid, l]));
   const playerById = new Map(data.players.map(p => [p.id, p]));
   // Main choisi d'un joueur enregistré (avec ou sans compte) : il lui appartient, faute d'un lien plus fort
@@ -214,7 +230,7 @@ export function charView(r: Resolved, m: MemberRow, opts: { officer: boolean; me
     guid: m.guid, name: m.name, firstName: firstNameOf(m.name), cls: (m.cls || null) as ClassName | null, race: ev?.race || null, level: m.level,
     rank: m.rank, rankIndex: m.rankIndex, online: m.online, lastOnlineAt: iso(m.lastOnlineAt), ...joined(m, r.data.gg?.firstRosterAt ?? null),
     note: m.note, ...(opts.officer && { officerNote: m.officerNote }), xpPct: xpPctOf(m),
-    player: key, isMain: !!p && p.main.guid === m.guid,
+    player: key, isMain: !!p && p.main.guid === m.guid, fiche: ev ? { id: ev.id, byName: ev.byName } : null,
     link: o && (o.link || o.source === "account") ? { source: o.source, confirmed: o.link?.confirmed ?? null, by: o.link?.byName || null } : null,
     mine: !!p && p.userId === opts.me,
   };

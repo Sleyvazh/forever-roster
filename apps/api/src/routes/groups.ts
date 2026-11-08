@@ -11,6 +11,7 @@ import { cancelOpenRequests } from "../lib/bank-requests";
 import { linkCode, randomToken, sha256 } from "../lib/crypto";
 import { membership, outranks, requireRole } from "../lib/groups";
 import { guildFicheMatches, levelLocks } from "../lib/fiche-levels";
+import { giveFiche, givePreview } from "../lib/fiche-transfer";
 import { foreverGroup } from "../lib/guild";
 import { badRequest, conflict, forbidden, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
@@ -283,6 +284,31 @@ export async function groupRoutes(app: FastifyInstance) {
     return fixLevel(req, level);
   });
   app.delete("/:id/characters/:characterId/level", async (req) => fixLevel(req, null));
+
+  /**
+   * « Donner la fiche à… » (Forever, 8/11, lib/fiche-transfer.ts) : la fiche rangée dans la guilde passe sur le compte d'un
+   * autre membre, par son joueur ou par un officier. GET : les inscriptions à venir qui la suivront (pour le dialogue).
+   */
+  app.get("/:id/characters/:characterId/give", async (req) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), characterId: z.uuid() }), req.params);
+    return givePreview(db, p.id, p.characterId, u, app.ctx.now?.() ?? new Date());
+  });
+  app.post("/:id/characters/:characterId/give", async (req) => {
+    const u = currentUser(req);
+    const p = parse(z.object({ id: z.uuid(), characterId: z.uuid() }), req.params);
+    const { to } = parse(z.object({ to: z.uuid() }), req.body);
+    const r = await giveFiche(db, p.id, p.characterId, to, u, { now: app.ctx.now?.() ?? new Date(), origin: siteOf(cfg, req).origin });
+    await audit(db, req, "character_given", {
+      userId: u.id, groupId: p.id, meta: { character: r.character.name, from: r.from, fromName: r.fromName, target: r.to.id, targetName: r.to.displayName, moved: r.moved.length, dropped: r.dropped.length },
+    });
+    bus.group({ t: "chars", g: p.id });
+    bus.group({ t: "guild", g: p.id });
+    bus.group({ t: "outings", g: p.id });
+    await charsChanged(db, r.from);
+    await charsChanged(db, r.to.id);
+    return { ok: true, to: r.to.displayName, moved: r.moved, dropped: r.dropped };
+  });
 
   /** « Qui crafte quoi ? » : patrons connus et recherchés par les persos du groupe. */
   app.get("/:id/crafters", async (req) => {

@@ -41,6 +41,8 @@ export const EVENT_LABEL: Record<string, string> = {
   signup_relayed: "a transmis une inscription faite en jeu",
   // Niveau des fiches : une fiche introuvable dans la liste du jeu, niveau fixé par un officier (ou rendu au joueur)
   character_level_fixed: "a corrigé le niveau d'un perso", character_level_released: "a rendu la main sur le niveau d'un perso",
+  // Fiches (8/11) : un officier crée la fiche d'un joueur ; une fiche passe sur le compte d'un autre membre
+  character_created_for: "a créé la fiche d'un joueur", character_given: "a donné une fiche",
 };
 const ANNOUNCE_LABEL: Record<string, string> = { none: "rien", sixty: "les 60 seulement", tens: "tous les 10 niveaux" };
 /** Jour court d'un raid dans le journal (« ven. 14/11 »), à l'heure de Paris. */
@@ -60,6 +62,11 @@ export function eventDetail(e: GroupEvent) {
     return ` · ${str("character") ?? "?"}${to !== null ? ` : ${from !== null ? `${from} → ` : ""}${to}` : ""}`;
   }
   if (e.type === "character_level_released") return ` · ${str("character") ?? "?"}`;
+  if (e.type === "character_created_for") {
+    const lv = typeof m.level === "number" ? m.level : null;
+    return ` · ${str("character") ?? "?"}${str("cls") || lv !== null ? ` (${[str("cls"), lv].filter(x => x !== null && x !== "").join(" ")})` : ""}, pour ${str("targetName") ?? "?"}`;
+  }
+  if (e.type === "character_given") return ` · ${str("character") ?? "?"} : ${str("fromName") ?? "?"} → ${str("targetName") ?? "?"}`;
   if (e.type === "signup_relayed") {
     // « · Greta : Peut-être (Onyxia, ven. 14/11) » : prénom du perso, réponse, raid et sa date (absente si le raid n'en a pas)
     const status = str("status"), at = str("at");

@@ -29,6 +29,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   signup_relayed: ["Inscription transmise pour un joueur", ""],
   // Niveau d'un perso de la guilde fixé par un officier (fiche introuvable dans la liste du jeu), ou rendu au joueur
   character_level_fixed: ["Niveau d'un perso corrigé", ""], character_level_released: ["Niveau d'un perso rendu au joueur", ""],
+  // Fiches (8/11) : fiche créée pour un joueur (officier), fiche donnée à un autre membre
+  character_created_for: ["Fiche créée pour un joueur", ""], character_given: ["Fiche donnée à un autre joueur", ""],
 };
 
 /** Résumé lisible d'un user-agent, sans bibliothèque. */

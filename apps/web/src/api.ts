@@ -90,6 +90,8 @@ export interface Character {
   gearStats?: import("@forever/game-data").GearStats;
   /** Niveau verrouillé (7/11) : relevé en jeu (liste de guilde), ou fixé par un officier ; absent ou null : libre. */
   levelLock?: import("@forever/game-data").FicheLevelLock | null;
+  /** Fiche créée par un officier ou donnée par un autre compte (8/11), jusqu'à ce que son joueur la modifie ou la synchronise. */
+  origin?: { kind: "created" | "given"; by: string; at: string } | null;
 }
 
 export interface GearEntry { cur?: string; curId?: number | null; q?: number | null; bis?: string; bisId?: number | null; bisQ?: number | null; got?: boolean }

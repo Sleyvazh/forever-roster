@@ -23,6 +23,8 @@ export const toApi = (c: CharacterRow) => ({
   portraitId: c.portraitId, sortOrder: c.sortOrder, updatedAt: c.updatedAt, talentNodes: c.talentNodes ?? null, addonSyncedAt: c.addonSyncedAt ?? null, addonKey: c.addonKey ?? null,
   // Lot « Guilde » : GUID du perso en jeu (en-tête FRC de l'addon 1.6.2), pour reconnaître la fiche au Ctrl+V
   guid: c.guid ?? null,
+  // Fiche créée par un officier, ou donnée par un autre compte (8/11) : jusqu'à ce que son joueur la modifie ou la synchronise
+  origin: c.originKind && c.originAt ? { kind: c.originKind, by: c.originByName ?? "?", at: c.originAt } : null,
   // R2b (Roster) : lu chez Blizzard (import ou « Mettre à jour »)
   realmSlug: c.realmSlug, ilvl: c.ilvl ?? null, activeSpec: c.activeSpec, bnet: c.bnetId !== null, bnetSyncedAt: c.bnetSyncedAt ?? null,
 });
@@ -109,6 +111,8 @@ export async function characterRoutes(app: FastifyInstance) {
       const moved = (patch.name !== undefined && patch.name !== existing.name) || (patch.realm !== undefined && patch.realm !== existing.realm);
       await tx.update(characters).set({
         ...patch, updatedAt: new Date(), ...(addonSynced && { addonSyncedAt: new Date() }),
+        // Le joueur a la main sur sa fiche : « créée par » / « donnée par » ne s'affiche plus
+        originKind: null, originBy: null, originByName: null, originAt: null,
         // Niveau changé à la main : ce n'est plus celui que l'addon a lu en jeu (fiche-levels.ts)
         ...(patch.level !== undefined && patch.level !== existing.level && { levelSyncedAt: null }),
         ...(moved && existing.game === "retail" && { bnetId: null, realmSlug: "", ilvl: null, activeSpec: "", bnetSyncedAt: null }), ...(consumables && { consumables, consumablesAt: new Date() }),

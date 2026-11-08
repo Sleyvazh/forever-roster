@@ -1,7 +1,8 @@
-import { guildKeyOf, parseGuildBlocks } from "@forever/game-data";
-import { and, eq, isNull, ne, notExists, sql } from "drizzle-orm";
+import { guildKeyOf, isValidCombo, parseGuildBlocks } from "@forever/game-data";
+import { and, eq, isNull, max, ne, notExists, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { gameGuilds, guildLinkProposals, guildLinks, guildPlayers } from "../db/schema";
+import { characters, gameGuilds, guildLinkProposals, guildLinks, guildPlayers } from "../db/schema";
+import { assignCharacter } from "./group-characters";
 import { applyGuildExport, linkGameGuild } from "./guild-import";
 import { loadGuild, resolveGuild, type Resolved } from "./guild";
 import { badRequest, conflict, forbidden, notFound } from "./http";
@@ -90,6 +91,24 @@ export async function attachMember(db: Db, groupId: string, guid: string, to: st
   return { player: target, name: m.name };
 }
 
+/**
+ * « Rattacher à… » de plusieurs persos cochés (officier) : tous au même joueur ; « new » : le plus haut niveau devient le main
+ * d'un nouveau joueur, les autres ses alts. Un joueur coché ne peut pas être la cible.
+ */
+export async function attachMembers(db: Db, groupId: string, guids: readonly string[], to: string, actor: Actor) {
+  const r = await resolved(db, groupId);
+  const list = [...new Set(guids)].map(g => activeMember(r, g)).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name));
+  if (to.startsWith("m:") && list.some(m => m.guid === to.slice(2))) throw badRequest("Choisis un joueur qui n'est pas parmi les persos cochés.");
+  const names: string[] = [];
+  let target = to;
+  for (const m of list) {
+    const res = await attachMember(db, groupId, m.guid, target, actor);
+    if (target === "new") target = res.player;
+    names.push(res.name);
+  }
+  return { player: target, names };
+}
+
 /** Détacher : officier (tout lien), ou le joueur pour un perso qu'il a déclaré. Un perso du compte d'un joueur se sépare par « Nouveau joueur ». */
 export async function detachMember(db: Db, groupId: string, guid: string, actor: Actor, officer: boolean) {
   const r = await resolved(db, groupId);
@@ -97,8 +116,10 @@ export async function detachMember(db: Db, groupId: string, guid: string, actor:
   const o = r.owner(m);
   if (!o) throw badRequest("Ce perso n'est rattaché à personne.");
   if (!o.link && o.source === "account") {
-    const who = r.memberUser.get(r.evidence.get(guid)!.userId)?.displayName ?? "un joueur";
-    throw badRequest(`${m.name} est sur le compte de ${who} (fiche synchronisée par l'addon) : choisis « Nouveau joueur » pour l'en séparer.`);
+    const ev = r.evidence.get(guid)!;
+    const who = r.memberUser.get(ev.userId)?.displayName ?? "un joueur";
+    const why = ev.byName ? `sa fiche du site « ${ev.name} » porte son nom` : "fiche synchronisée par l'addon";
+    throw badRequest(`${m.name} est sur le compte de ${who} (${why}) : choisis « Nouveau joueur » pour l'en séparer.`);
   }
   if (!officer && !(o.link?.source === "declared" && o.key === `u:${actor.id}`)) throw forbidden("Seuls les officiers détachent les persos des autres.");
   await db.delete(guildLinks).where(and(eq(guildLinks.groupId, groupId), eq(guildLinks.guid, guid)));
@@ -169,6 +190,39 @@ export async function setPlayerMain(db: Db, groupId: string, key: string, guid: 
   if (!p) throw badRequest("Ce joueur n'a qu'un perso.");
   await db.update(guildPlayers).set({ mainGuid: guid }).where(eq(guildPlayers.id, p.id));
   return { ok: true };
+}
+
+/** Fiches d'un joueur sur un site (même borne que POST /characters). */
+export const MAX_FICHES = 50;
+
+/**
+ * « Créer sa fiche… » (officier, 8/11) : la fiche d'un perso de la liste qu'aucune fiche ne retrouve, sur le compte d'un
+ * membre de la guilde du site : nom choisi, classe et niveau de la liste, race facultative, GUID du perso (l'addon du joueur
+ * la retrouvera). Rangée dans la guilde (son main s'il n'en a pas), « créée par » l'officier.
+ */
+export async function createFicheFor(db: Db, groupId: string, guid: string, input: { userId: string; name: string; race: string }, actor: Actor, now = new Date()) {
+  const r = await resolved(db, groupId);
+  const m = activeMember(r, guid);
+  const target = r.memberUser.get(input.userId);
+  if (!target) throw notFound("Ce joueur n'est pas membre de la guilde du site.");
+  const ev = r.evidence.get(guid);
+  if (ev) throw conflict(`${m.name} a déjà une fiche sur le site (« ${ev.name} », de ${r.memberUser.get(ev.userId)?.displayName ?? "un joueur"}).`);
+  const [taken] = await db.select({ name: characters.name }).from(characters).where(and(eq(characters.game, "forever"), eq(characters.guid, guid)));
+  if (taken) throw conflict(`Une fiche synchronisée par l'addon porte déjà ${m.name} (« ${taken.name} »).`);
+  const cls = m.cls ?? "";
+  if (input.race && cls && !isValidCombo(input.race, cls)) throw badRequest(`${input.race} ne peut pas être ${cls} dans WoW Forever.`);
+  const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
+    .where(and(eq(characters.userId, input.userId), eq(characters.game, "forever"))) as [{ n: number; top: number | null }];
+  if (n >= MAX_FICHES) throw badRequest(`${target.displayName} a déjà ${MAX_FICHES} persos : la limite est atteinte.`);
+  const row = await db.transaction(async tx => {
+    const [c] = await tx.insert(characters).values({
+      userId: input.userId, game: "forever", name: input.name, race: input.race, cls, level: m.level, guid, sortOrder: (top ?? -1) + 1,
+      originKind: "created", originBy: actor.id, originByName: actor.displayName, originAt: now,
+    }).returning();
+    await assignCharacter(tx, groupId, c!.id, input.userId);
+    return c!;
+  });
+  return { character: row, member: m, target };
 }
 
 /** Lier une guilde du jeu proposée (Administration) : remplie tout de suite avec le relevé gardé. */

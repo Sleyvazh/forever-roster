@@ -15,24 +15,33 @@ type Tx = Pick<Db, "select" | "insert" | "update" | "delete">;
 type MemberRow = typeof guildMembers.$inferSelect;
 export interface GameMatch { member: MemberRow; by: FicheMatchBy }
 
-/** Fiches de la guilde (Forever) rapprochées de la liste du jeu, et l'heure de la liste la plus récente. */
-export async function guildFicheMatches(db: Tx, groupId: string) {
+export interface RangedFiche { id: string; userId: string; name: string; guid: string | null; race: string; isMain: boolean; syncedAt: Date | null }
+
+/**
+ * Fiches de la guilde (Forever) rapprochées de la liste du jeu, et l'heure de la liste la plus récente. `fiches` : les fiches
+ * rangées dans la guilde (pour le rattachement des persos du jeu à leur compte, lib/guild.ts). `active` : persos actuels de
+ * la liste, s'ils sont déjà lus.
+ */
+export async function guildFicheMatches(db: Tx, groupId: string, active?: readonly MemberRow[]) {
   const [gg] = await db.select({ rosterAt: gameGuilds.rosterAt }).from(gameGuilds).where(eq(gameGuilds.groupId, groupId));
   const matches = new Map<string, GameMatch>();
-  if (!gg) return { matches, rosterAt: null as Date | null };
-  const members = await db.select().from(guildMembers).where(and(eq(guildMembers.groupId, groupId), isNull(guildMembers.leftAt)));
-  if (!members.length) return { matches, rosterAt: gg.rosterAt };
-  const fiches = await db.select({ id: characters.id, userId: characters.userId, name: characters.name, guid: characters.guid })
-    .from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
+  const fiches = new Map<string, RangedFiche>();
+  if (!gg) return { matches, fiches, rosterAt: null as Date | null };
+  const members = active ?? await db.select().from(guildMembers).where(and(eq(guildMembers.groupId, groupId), isNull(guildMembers.leftAt)));
+  if (!members.length) return { matches, fiches, rosterAt: gg.rosterAt };
+  const rows = await db.select({
+    id: characters.id, userId: characters.userId, name: characters.name, guid: characters.guid, race: characters.race, isMain: groupCharacters.isMain, syncedAt: characters.addonSyncedAt,
+  }).from(groupCharacters).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
     .where(and(eq(groupCharacters.groupId, groupId), eq(characters.game, "forever")));
+  for (const f of rows) fiches.set(f.id, f);
   // GUID déjà pris par l'addon d'une fiche (rangée ici ou non) : le perso est à ce compte
   const claimedRows = await db.select({ guid: characters.guid, userId: characters.userId, at: characters.addonSyncedAt }).from(characters)
     .where(and(eq(characters.game, "forever"), inArray(characters.guid, members.map(m => m.guid))));
   const claimed = new Map<string, string>();
   for (const r of claimedRows.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0))) if (r.guid) claimed.set(r.guid, r.userId);
   const byGuid = new Map(members.map(m => [m.guid, m]));
-  for (const [id, m] of matchFiches(fiches, members, claimed)) matches.set(id, { member: byGuid.get(m.guid)!, by: m.by });
-  return { matches, rosterAt: gg.rosterAt };
+  for (const [id, m] of matchFiches(rows, members, claimed)) matches.set(id, { member: byGuid.get(m.guid)!, by: m.by });
+  return { matches, fiches, rosterAt: gg.rosterAt };
 }
 
 /**

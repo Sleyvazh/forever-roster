@@ -20,7 +20,8 @@ export type AuditType =
   | "guild_linked" | "guild_unlinked" | "guild_announces" | "guild_member_linked" | "guild_member_unlinked"
   | "signup_relayed"
   | "banker_set" | "banker_unset"
-  | "character_level_fixed" | "character_level_released";
+  | "character_level_fixed" | "character_level_released"
+  | "character_created_for" | "character_given";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,
