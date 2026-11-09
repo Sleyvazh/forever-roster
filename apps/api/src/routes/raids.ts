@@ -122,9 +122,13 @@ export async function raidRoutes(app: FastifyInstance) {
     const rows = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt, slots: raids.slots, updatedAt: raids.updatedAt, templateId: raids.templateId, size: raids.size, difficulty: raids.difficulty, lootMode: raids.lootMode })
       .from(raids).where(eq(raids.groupId, id)).orderBy(desc(raids.scheduledAt), asc(raids.name));
     const summary = await signupSummary(db, rows.map(r => r.id), u.id);
+    // Mon inscription (perso et spé) : répondre depuis la carte garde le perso et la spé choisis (refonte du 09/11)
+    const mineRows = rows.length ? await db.select({ raidId: raidSignups.raidId, status: raidSignups.status, characterId: raidSignups.characterId, spec: raidSignups.spec })
+      .from(raidSignups).where(and(inArray(raidSignups.raidId, rows.map(r => r.id)), eq(raidSignups.userId, u.id))) : [];
+    const mine = new Map(mineRows.map(m => [m.raidId, { status: m.status, characterId: m.characterId, spec: m.spec || null }]));
     return { raids: rows.map(r => ({
       id: r.id, name: r.name, scheduledAt: r.scheduledAt, filled: r.slots.length, size: r.size, difficulty: r.difficulty, updatedAt: r.updatedAt, recurring: !!r.templateId, lootMode: r.lootMode,
-      signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null, roles: summary.get(r.id)?.roles ?? { Tank: 0, Heal: 0, DPS: 0 },
+      signups: summary.get(r.id)?.counts ?? {}, mySignup: summary.get(r.id)?.mine ?? null, mine: mine.get(r.id) ?? null, roles: summary.get(r.id)?.roles ?? { Tank: 0, Heal: 0, DPS: 0 },
     })) };
   });
 

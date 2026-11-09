@@ -58,6 +58,8 @@ describe("inscriptions aux raids", () => {
     // La liste des raids donne les compteurs et mon statut
     const list = (await p1.c.get(`/api/groups/${g.id}/raids`)).json().raids[0];
     expect(list).toMatchObject({ signups: { bench: 1 }, mySignup: "bench" });
+    // … et mon inscription (perso et spé) : répondre depuis la carte les garde
+    expect(list.mine).toEqual({ status: "bench", characterId: druid.id, spec: s.spec || null });
 
     // Quitter le groupe retire ses inscriptions
     await p1.c.del(`/api/groups/${g.id}/members/${p1.user.id}`);

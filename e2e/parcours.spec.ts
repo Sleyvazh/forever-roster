@@ -394,9 +394,14 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#gr-name", "Molten Core");
     await page.getByRole("button", { name: "Créer le raid" }).click();
     await expect(page.getByRole("heading", { name: "Molten Core" })).toBeVisible();
-    // Butin : passage en soft reserve depuis la page du raid (officier)
-    await page.getByRole("tab", { name: "Butin" }).click();
+    // Avant le raid : les inscriptions d'abord ; pas d'onglet Butin en « Journal » (refonte du 09/11)
+    await expect(page.getByRole("tab", { selected: true })).toHaveText(/^Inscriptions/);
+    await expect(page.getByRole("tab", { name: "Butin" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Bilan" })).toHaveCount(0);
+    // Butin : passage en soft reserve dans Réglages (officier) ; l'onglet Butin apparaît
+    await page.getByRole("tab", { name: "Réglages" }).click();
     await page.getByRole("radio", { name: "Soft reserve" }).click();
+    await page.getByRole("tab", { name: "Butin" }).click();
     await expect(page.getByRole("heading", { name: "Soft reserve" })).toBeVisible();
     await expect(page.getByText("Aucune réservation pour l'instant.")).toBeVisible();
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/softres.png", fullPage: true });
@@ -434,13 +439,19 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await db.query(`INSERT INTO game_items (id, name, quality, item_level, req_level, class_id, subclass_id, inventory_type) VALUES (13457, 'Greater Fire Protection Potion', 1, 48, 38, 0, 0, 0) ON CONFLICT DO NOTHING`);
     await db.end();
     await page.reload();
-    await page.getByRole("button", { name: "Ajouter Chamy au raid" }).click();
-    await expect(page.getByRole("button", { name: /Groupe 1, place 2 : Chamy/ })).toContainText("Discord");
+    // Glisser-déposer (refonte du 09/11) : du banc vers une place, puis d'une place à l'autre
+    await page.locator(".rp-bi .slot").filter({ hasText: "Chamy" }).dragTo(page.getByRole("button", { name: "Groupe 2, place 1 : libre" }));
+    await expect(page.getByRole("button", { name: /Groupe 2, place 1 : Chamy/ })).toBeVisible();
+    await page.getByRole("button", { name: /Groupe 2, place 1 : Chamy/ }).dragTo(page.getByRole("button", { name: "Groupe 1, place 2 : libre" }));
+    // Place compacte (refonte du 09/11) : le ✱ marque un inscrit sans compte
+    await expect(page.getByRole("button", { name: /Groupe 1, place 2 : Chamy/ }).locator(".su-guest")).toHaveCount(1);
     await page.locator(".rp-covd summary").click();
     await expect(page.locator(".cov .it.on").filter({ hasText: "Windfury Totem" })).toBeVisible();
 
     // Compo publiée sur Discord, puis export pour le jeu
-    await page.getByRole("button", { name: "Publier la compo" }).click();
+    // « Publier la compo » à côté des besoins (refonte du 09/11) ; l'en-tête dit les inscrits qui viennent
+    await expect(page.locator(".rp-coming")).toContainText("2 viennent");
+    await page.locator(".ra").getByRole("button", { name: "Publier la compo" }).click();
     await expect(page.locator(".rp-meta")).toContainText("Compo publiée");
     await page.getByText("Export pour le jeu").click();
     await expect(page.locator("#ex-addon")).toHaveValue(/^FRR;1;[0-9a-f-]{36};0;Molten Core\nM;Tournicoti;DRUID;Tank;Feral Bear;1;1;present;site\nM;Chamy;SHAMAN;DPS;Enhancement DPS;1;2;present;discord\nEND;2$/);
@@ -582,8 +593,9 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("tab", { name: /À venir/ }).click();
   });
 
-  await test.step("absences déclarées : chaque semaine, puis retirée", async () => {
-    await page.getByRole("link", { name: "Mes persos" }).first().click();
+  await test.step("absences déclarées : chaque semaine, puis retirée (en haut de la page Raids)", async () => {
+    await page.locator(".topnav").getByRole("link", { name: "Raids" }).click();
+    await page.getByRole("button", { name: /^Mes absences/ }).click();
     const ab = page.getByRole("region", { name: "Mes absences" });
     await expect(ab).toContainText("aucune de prévue");
     await ab.getByRole("button", { name: "+ Déclarer une absence" }).click();
@@ -594,6 +606,7 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(ab).toContainText("chaque vendredi");
     await expect(ab).toContainText("Travail");
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/absences.png" });
+    await expect(page.getByRole("button", { name: /^Mes absences/ })).toHaveText("Mes absences · 1");
     await ab.getByRole("button", { name: /Retirer l'absence/ }).click();
     await expect(ab).toContainText("aucune de prévue");
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();

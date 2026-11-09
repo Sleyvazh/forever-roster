@@ -5,6 +5,8 @@
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 61, date: "2026-11-09", kind: "site", title: "Raids : répondre depuis la liste, glisser la compo",
+    text: "Dans Raids, chaque carte a ses réponses Présent, Peut-être, Absent et « Autre », et s'ouvre d'un clic ; « Mes absences » est en haut de la page (il quitte Mes persos). La page d'un raid s'ouvre sur les inscriptions avant le raid, sur le bilan après ; l'en-tête dit qui vient, et l'onglet Butin n'apparaît qu'en soft reserve ou en conseil (le mode se règle dans Réglages). Officiers : la compo se fait en glissant un perso du banc vers une place (le clic marche toujours), le banc reste à droite pendant qu'on fait défiler, et « Publier la compo » est à côté des besoins. Sur téléphone, toucher un perso du banc ouvre « Placer … dans » avec le remplissage de chaque groupe." },
   { n: 60, date: "2026-11-09", kind: "site", title: "L'Accueil, plus clair",
     text: "Une seule carte « À faire » en haut à droite : tes actions d'abord (synchro, raid sans réponse, spé à choisir), puis ce qui attend les officiers ou la banque ; elle disparaît quand il n'y a rien. Chaque ligne de l'agenda s'ouvre d'un clic n'importe où, et les réponses Présent, Peut-être, Absent et « Autre » ont la même largeur, avec ta réponse affichée à droite. Les arrivées et départs sont dans Guilde › Historique ; la Course au 60 reste sur l'Accueil pendant la course et trois jours après la fin. Les joueurs à ton niveau se déplient d'un clic dans « Trouver quoi faire »." },
   { n: 59, date: "2026-11-09", kind: "site", title: "Un bouton Synchro, et l'addon 1.6.6",

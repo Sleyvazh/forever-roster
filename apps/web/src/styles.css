@@ -971,8 +971,14 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 /* Onglet Raids du groupe (lot E, gr-) */
 .gr-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .gr-list { display: grid; gap: 8px; }
-.gr-raid { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); text-decoration: none; }
-.gr-raid:hover { border-color: var(--gold); }
+.gr-raid { position: relative; display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 10px 14px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.gr-raid:has(.gr-name.stretch:hover) { border-color: var(--gold); }
+.gr-raid:has(.gr-name.stretch:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
+.gr-name.stretch { color: var(--ink); font-weight: 700; text-decoration: none; }
+.gr-name.stretch::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.gr-name.stretch:focus-visible { outline: none; }
+.gr-ans { grid-column: 2 / -1; }
+.gr-coming { font-weight: 600; }
 .gr-raid.past { opacity: .8; }
 .gr-date { display: grid; justify-items: center; border-right: 1px solid var(--line); padding-right: 12px; line-height: 1.15; }
 .gr-date small { font: 600 10px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
@@ -984,8 +990,8 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .gr-tags, .gr-roles { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .gr-roles .role { padding: 2px 5px; font-size: 9.5px; }
 .gr-end { display: grid; justify-items: end; gap: 8px; }
-.gr-places { font-size: 14px; color: var(--ink-2); }
-@media (max-width: 560px) { .gr-raid { grid-template-columns: 58px minmax(0, 1fr); } .gr-end { grid-column: 2; display: flex; justify-items: start; } .gr-date b { font-size: 22px; } }
+.gr-places { font-size: 13.5px; }
+@media (max-width: 560px) { .gr-raid { grid-template-columns: 58px minmax(0, 1fr); } .gr-end { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 12px; justify-items: start; } .gr-date b { font-size: 22px; } .gr-ans { grid-column: 1 / -1; } }
 .gr-form { border: 1px solid var(--frame); border-radius: 10px; background: var(--panel-2); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .gr-form h3 { margin: 0; }
 .gr-line { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 14px; align-items: start; }
@@ -2357,20 +2363,24 @@ select.need { border-color: var(--warn); }
 .ag-t.stretch:focus-visible { outline: none; }
 .ag:has(.ag-t.stretch:hover) { border-color: var(--line-2); background: color-mix(in srgb, var(--panel-2) 80%, var(--ink) 4%); }
 .ag:has(.ag-t.stretch:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
-.ag-end, .ag-ans, .ag-err { position: relative; z-index: 1; }
-.ag:has(.su-menu) { z-index: 4; }
+.ag-end { position: relative; z-index: 1; }
+.ag:has(.su-menu), .gr-raid:has(.su-menu) { z-index: 4; }
 /* Raid : état à droite, réponses 3 + Autre de même largeur sous le titre */
-.ag.raid { grid-template-columns: 64px minmax(0, 1fr) auto; row-gap: 8px; }
-.ag-st { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--warn); }
-.ag-st.present { color: var(--ok); } .ag-st.late { color: var(--warn); } .ag-st.tentative { color: var(--ink); }
-.ag-st.alt { color: var(--alli); } .ag-st.bench { color: var(--gold); } .ag-st.absent { color: var(--bad); }
-.ag-ans { grid-column: 2 / -1; display: grid; gap: 6px; }
-.ag-ans .ans-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; }
-.ag-ans .su-btn.lg { min-height: 40px; padding: 8px 6px; font-size: 14px; white-space: nowrap; min-width: 0; }
-.ag-ans .su-more { min-height: 40px; min-width: 44px; justify-content: center; padding: 8px 10px; }
-.ag-ans .su-more .wide { display: none; }
-.ag-err { display: block; font-size: 13px; font-weight: 600; color: var(--bad); }
-.ag-err .link { color: var(--bad); text-decoration: underline; font-weight: 600; }
+.ag.ag-raid { grid-template-columns: 64px minmax(0, 1fr) auto; row-gap: 8px; }
+.ag-ans { grid-column: 2 / -1; }
+
+/* Réponse rapide à un raid (Accueil, liste des raids) : état, 3 + Autre de même largeur, erreur et sa solution */
+.ans-st { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--warn); }
+.ans-st.present { color: var(--ok); } .ans-st.late { color: var(--warn); } .ans-st.tentative { color: var(--ink); }
+.ans-st.alt { color: var(--alli); } .ans-st.bench { color: var(--gold); } .ans-st.absent { color: var(--bad); }
+.ans-st.past { color: var(--ink); }
+.ans-eq { display: grid; gap: 6px; position: relative; z-index: 1; }
+.ans-eq .ans-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; }
+.ans-eq .su-btn.lg { min-height: 40px; padding: 8px 6px; font-size: 14px; white-space: nowrap; min-width: 0; }
+.ans-eq .su-more { min-height: 40px; min-width: 44px; justify-content: center; padding: 8px 10px; }
+.ans-eq .su-more .wide { display: none; }
+.ans-err { display: block; position: relative; z-index: 1; font-size: 13px; font-weight: 600; color: var(--bad); }
+.ans-err .link { color: var(--bad); text-decoration: underline; font-weight: 600; }
 
 /* À faire : une seule carte (mes actions, puis Officiers ou Banque) */
 .td-list { list-style: none; margin: 0; padding: 0; display: grid; }
@@ -2403,10 +2413,70 @@ select.need { border-color: var(--warn); }
 @keyframes sk-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
 @media (max-width: 640px) {
-  .ag.raid { grid-template-columns: 46px minmax(0, 1fr); }
-  .ag.raid .ag-st { grid-column: 2; }
+  .ag.ag-raid { grid-template-columns: 46px minmax(0, 1fr); }
+  .ag.ag-raid .ans-st { grid-column: 2; }
   .ag-ans { grid-column: 1 / -1; }
-  .ag-ans .su-btn.lg { min-height: 44px; font-size: 13.5px; }
-  .ag-ans .su-more { min-height: 44px; }
+  .ans-eq .su-btn.lg { min-height: 44px; font-size: 13.5px; }
+  .ans-eq .su-more { min-height: 44px; }
   .td-list .btn { min-height: 44px; }
+}
+
+/* ==========================================================================
+   Refonte 09/11, lot 3 : Raids (maquette-raid-compo.png)
+   ========================================================================== */
+/* En-tête : le raid en une ligne, puis les inscrits qui viennent (pour tout le monde) */
+p.rp-meta { margin: 0; color: var(--ink); }
+.rp-coming { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 8px; font-size: 15px; }
+.rp-gear { display: none; width: 44px; min-height: 44px; padding: 0; font-size: 18px; justify-content: center; }
+.rp-gear[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+
+/* Ta réponse : une ligne */
+.ans { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.ans > h3 { font-size: 18px; color: var(--gold); margin: 0; }
+.ans-main { flex: 1 1 380px; max-width: 540px; }
+.ans > .ans-note { margin-left: auto; }
+.ans-edit, .ans > .alert { flex-basis: 100%; }
+
+/* Compo : groupes compacts, glisser-déposer, banc collant à droite */
+.raid:not(.editing) { grid-template-columns: minmax(0, 1fr); }
+.rgroup { padding: 8px; gap: 4px; }
+.rgroup h4 { justify-content: flex-start; align-items: center; gap: 6px; font-family: var(--f-disp); font-weight: 400; color: var(--gold); }
+.rg-n { margin-left: auto; font: 600 12.5px var(--f-mono); color: var(--ink); }
+.rslot { display: flex; gap: 4px; align-items: stretch; }
+.rgroup .slot { min-height: 34px; padding: 3px 8px; }
+.slot .who.free { font-size: 13px; }
+.slot[draggable="true"] { cursor: grab; }
+.slot.over { border: 2px dashed var(--gold); background: var(--gold-soft); }
+.slot .who.drop { color: var(--gold); font-weight: 600; font-size: 13px; }
+.slot.moving, .rp-bi.moving { opacity: .45; }
+.raid.editing > .rp-bench { position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow-y: auto; }
+.rp-bench h3 { margin: 0; }
+.rp-bench .bench { max-height: none; overflow: visible; }
+.rp-bi { display: flex; gap: 4px; align-items: stretch; }
+.rp-bi .slot .grip { font-size: 12px; letter-spacing: -2px; opacity: .7; cursor: grab; }
+.btn.rp-add { flex: none; width: 44px; min-height: 44px; padding: 0; font-size: 18px; justify-content: center; }
+.rp-foot .rp-status { font-weight: 600; }
+.rp-covd > summary { cursor: pointer; font-weight: 600; color: var(--gold); }
+.rp-covd[open] > summary { margin-bottom: 10px; }
+
+/* Téléphone : « Placer X dans… » */
+.rp-sheet { display: grid; gap: 12px; }
+.rp-sheet .btn.primary { min-height: 48px; }
+.ps-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ps-groups .btn { min-height: 48px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+@media (max-width: 720px) {
+  .rp-gear { display: inline-flex; flex: none; }
+  .rp-head { flex-wrap: nowrap; align-items: flex-start; }
+  .rp-head > div:first-child { flex: 1 1 auto; }
+  .rp-tabs .tab.rp-settab { display: none; }
+  /* Onglets de même largeur ; un libellé long passe sur deux lignes */
+  .rp-tabs { overflow-x: visible; padding: 0 6px; }
+  .rp-tabs .tab { flex: 1 1 0; min-width: 0; text-align: center; padding: 10px 2px 8px; white-space: normal; line-height: 1.2; font-size: 13.5px; }
+  .ans-main { flex-basis: 100%; max-width: none; }
+  .ans > .ans-note { margin-left: 0; }
+  .raid.editing > .rp-bench { order: -1; position: static; max-height: none; overflow: visible; }
+  .rp-bench .bench { max-height: 340px; overflow-y: auto; }
+  .rgroups { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  dialog.sg-dialog:has(.rp-sheet) { margin: auto 0 0; width: 100%; max-width: 100%; border-radius: 12px 12px 0 0; }
 }

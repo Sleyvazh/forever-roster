@@ -18,8 +18,10 @@ const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 const COMING: SignupStatus[] = ["present", "late"];
 const color = (cls: string) => classColor(cls);
 
-export function RaidAssist({ size, targets, entries, groupChars, signups, history, reach, onPlace, onSpec, onBench, onAsk }: {
+export function RaidAssist({ size, targets, entries, groupChars, signups, history, reach, onPlace, onSpec, onBench, onAsk, published, onPublish }: {
   size: number; targets: RoleTargets; entries: AssistEntry[]; groupChars: Character[]; signups: RaidSignup[]; history: BenchHistory | undefined;
+  /** « Publier la compo » à côté des besoins (refonte du 09/11 : proximité) ; publiée : « Retirer de Discord ». */
+  published?: boolean; onPublish?: () => void;
   /** Relances et demandes (lot D2) : sans elles, pas de bouton « Demander ». */
   reach?: Reach;
   onPlace: (key: string) => void; onSpec: (signupId: string, spec: string) => void; onBench: (signupIds: string[]) => void;
@@ -105,6 +107,8 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
         <h3 id="ra-title">Besoins <span className="muted small">raid à {size}</span></h3>
         {coming.length > 0 && <span className="hint">{coming.length} inscrit{coming.length > 1 ? "s" : ""} « présent / en retard » pour {size} places</span>}
         <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? "Replier" : "Voir les propositions"}</button>
+        {onPublish && <button type="button" className="btn sm" onClick={onPublish}
+          title={published ? "L'annonce Discord revient aux colonnes par rôle" : "L'annonce Discord affichera les groupes, mis à jour à chaque changement"}>{published ? "Retirer de Discord" : "Publier la compo"}</button>}
       </div>
       {!open && (
         <div className="ra-sum">

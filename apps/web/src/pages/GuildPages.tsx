@@ -10,6 +10,7 @@ import { GroupPage, OtherSite } from "./GroupPage";
 import { HomePage } from "./HomePage";
 import { GuildHead, InviteButton } from "../components/GuildHead";
 import { GroupRaids, type RaidSummary } from "../components/GroupRaids";
+import { MyAbsences, type Absence } from "../components/Absences";
 import { GroupOutings } from "../components/Outings";
 import { AttendanceTab } from "../components/RaidLog";
 import { GuildMembersTab, type GuildView } from "../components/GuildMembers";
@@ -106,10 +107,18 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   const past = (raids ?? []).filter(r => !!r.scheduledAt && Date.parse(r.scheduledAt) < now - PAST_AFTER_MS).length;
   const next = (raids?.length ?? 0) - past;
   const tabs: [typeof view, string, string][] = [["next", raids ? `À venir (${next})` : "À venir", ""], ["past", raids ? `Passés (${past})` : "Passés", "/passes"], ["presence", "Présence", "/presence"]];
+  // Mes absences (refonte du 09/11) : en haut de la page Raids, là où elles servent (elles quittent Mes persos)
+  const absences = useQuery({ queryKey: ["absences"], queryFn: () => get<{ absences: Absence[] }>("/absences") }).data?.absences;
+  const [abOpen, setAbOpen] = useState(false);
   return (
     <div className="stack" style={{ gap: 16 }}>
       <GuildHead groupId={groupId} name={d.group.name} title="Raids"
-        actions={d.group.creators.canCreateRaid && view !== "presence" && !creating && <button type="button" className="btn primary" onClick={() => setCreating(true)}>+ Raid</button>} />
+        actions={<>
+          <button type="button" className="btn" aria-expanded={abOpen} aria-controls="rp-abs" onClick={() => setAbOpen(o => !o)}>
+            Mes absences{absences?.length ? ` · ${absences.length}` : ""}</button>
+          {d.group.creators.canCreateRaid && view !== "presence" && !creating && <button type="button" className="btn primary" onClick={() => setCreating(true)}>+ Raid</button>}
+        </>} />
+      {abOpen && <div className="panel pad" id="rp-abs"><MyAbsences /></div>}
       <div className="panel lift">
         <div className="tabs" role="tablist">
           {tabs.map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={view === k} onClick={() => nav(`/groups/${groupId}/raids${path}`)}>{l}</button>)}

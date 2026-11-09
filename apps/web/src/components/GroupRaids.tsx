@@ -1,13 +1,14 @@
 import {
-  DEFAULT_TARGETS, DIFFICULTY_LABEL, lootModeLabel, lootModesOf, RAID_SIZES, retailDefaultSize, retailLootMode, SIGNUP_LABEL, WEEKDAYS,
+  DEFAULT_TARGETS, DIFFICULTY_LABEL, lootModeLabel, lootModesOf, RAID_SIZES, retailDefaultSize, retailLootMode, WEEKDAYS,
   type LootMode, type RaidSize, type RetailDifficulty, type SignupStatus,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { del, get, patch, post } from "../api";
+import { del, get, patch, post, type Character } from "../api";
 import { DAY_SHORT, DayStrip, habits, hhmm, isoOf, longDate, partsOf, TimeChips, TimeSelect, type Parts } from "./DateTime";
 import { LootModePicker, LootModeTag } from "./Loot";
+import { AnswerState, QuickAnswerButtons, useQuickAnswer } from "./QuickAnswer";
 import { NumberField } from "./NumberField";
 import { RoleTag } from "./RoleIcon";
 import { RetailFormat, RetailRaidChips } from "./RetailFormat";
@@ -24,6 +25,8 @@ import { useGameText } from "../gameText";
 export interface RaidSummary {
   id: string; name: string; scheduledAt: string | null; filled: number; size: number; difficulty?: RetailDifficulty | null; recurring: boolean; lootMode: LootMode;
   signups: Partial<Record<SignupStatus, number>>; mySignup: SignupStatus | null; roles: { Tank: number; Heal: number; DPS: number };
+  /** Mon inscription : répondre depuis la carte garde le perso et la spé (refonte du 09/11). */
+  mine?: { status: SignupStatus; characterId: string | null; spec: string | null } | null;
 }
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 
@@ -52,6 +55,14 @@ export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, disco
   const past = raids.filter(isPast).sort((a, b) => b.scheduledAt!.localeCompare(a.scheduledAt!));
   const list = when === "next" ? next : past;
   const templates = tpl.data?.templates ?? [];
+  // Répondre depuis chaque carte (refonte du 09/11) : mes persos rangés dans ce groupe (main en tête), puis sans groupe
+  const myAll = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), staleTime: 60_000 }).data?.characters ?? [];
+  const myChars = myAll.filter(c => !c.group || c.group.id === groupId)
+    .sort((a, b) => Number(!!b.group?.isMain && b.group.id === groupId) - Number(!!a.group?.isMain && a.group.id === groupId));
+  const mainId = myChars.find(c => c.group?.id === groupId && c.group.isMain)?.id ?? null;
+  const qc = useQueryClient();
+  const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["raids", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }),
+    qc.invalidateQueries({ queryKey: ["guild-home", groupId] }), qc.invalidateQueries({ queryKey: ["raid"] }), qc.invalidateQueries({ queryKey: ["characters"] })]);
 
   return (
     <div className="stack">
@@ -71,42 +82,52 @@ export function GroupRaids({ groupId, canEdit, canCreate = canEdit, guard, disco
       {list.length === 0 ? (
         <p className="muted" style={{ margin: 0 }}>{when === "next" ? (canCreate && !controlled ? "Aucun raid prévu. Crée le premier avec « + Nouveau raid »." : "Aucun raid prévu.") : "Aucun raid passé."}</p>
       ) : (
-        <div className="gr-list">{list.map(r => <RaidCard key={r.id} groupId={groupId} r={r} past={when === "past"} />)}</div>
+        <div className="gr-list">{list.map(r => <RaidCard key={r.id} groupId={groupId} r={r} past={when === "past"} officer={canEdit} chars={myChars} mainId={mainId} refresh={refresh} />)}</div>
       )}
     </div>
   );
 }
 
-function RaidCard({ groupId, r, past }: { groupId: string; r: RaidSummary; past: boolean }) {
+/**
+ * Carte d'un raid (refonte du 09/11) : la carte entière ouvre le raid ; ma réponse à droite (« Sans réponse » en orange) et,
+ * pour un raid à venir, Présent, Peut-être, Absent et « Autre » de même largeur ; les officiers voient « 5 placés sur 10 ».
+ */
+function RaidCard({ groupId, r, past, officer, chars, mainId, refresh }: {
+  groupId: string; r: RaidSummary; past: boolean; officer: boolean; chars: Character[]; mainId: string | null; refresh: () => Promise<unknown>;
+}) {
   const t = useGameText();
   const p = partsOf(r.scheduledAt);
   const wd = p ? new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay() || 7 : 0;
   const coming = (r.signups.present ?? 0) + (r.signups.late ?? 0);
   const url = `/groups/${groupId}/raids/${r.id}`;
+  const mine = r.mine ?? (r.mySignup ? { status: r.mySignup, characterId: null, spec: null } : null);
+  const qa = useQuickAnswer({ groupId, raidId: r.id, mine, mainId, chars, refresh });
   return (
-    <Link to={url} className={`gr-raid${past ? " past" : ""}`}>
+    <div className={`gr-raid${past ? " past" : ""}`}>
       <span className="gr-date">
         {p ? <><small>{DAY_SHORT[wd - 1]}</small><b>{p.d}</b><span>{MONTH_SHORT[p.m - 1]}</span><span className="gr-time">{hhmm(p)}</span></> : <><small>date</small><b>?</b><span>à définir</span></>}
       </span>
       <span className="gr-main">
-        <b className="gr-name">{r.name}</b>
+        <Link className="gr-name stretch" to={url}>{r.name}</Link>
         <span className="gr-tags">
           <span className="tag">{r.difficulty ? `${DIFFICULTY_LABEL[r.difficulty][t.lang]} · ${r.size}` : r.size}</span>
           <LootModeTag mode={r.lootMode} />
           {r.recurring && <span className="tag" title="Créé par un raid récurrent">↻ chaque semaine</span>}
         </span>
         <span className="gr-roles">
+          <span className="gr-coming">{coming} {coming > 1 ? "viennent" : "vient"}</span>
           <RoleTag role="Tank" text={`${r.roles.Tank} tank${r.roles.Tank > 1 ? "s" : ""}`}>{r.roles.Tank}</RoleTag>
           <RoleTag role="Heal" text={`${r.roles.Heal} heal${r.roles.Heal > 1 ? "s" : ""}`}>{r.roles.Heal}</RoleTag>
           <RoleTag role="DPS" text={`${r.roles.DPS} DPS`}>{r.roles.DPS}</RoleTag>
-          <span className="muted small">{coming} viennent{r.signups.tentative ? ` · ${r.signups.tentative} peut-être` : ""}</span>
+          {r.signups.tentative ? <span>{r.signups.tentative} peut-être</span> : null}
         </span>
       </span>
       <span className="gr-end">
-        {r.mySignup ? <span className={`tag su-tag ${r.mySignup}`}>{SIGNUP_LABEL[r.mySignup]}</span> : !past && <span className="tag warn">À répondre</span>}
-        <span className="num gr-places" title="Places de la compo">{r.filled}/{r.size}</span>
+        {past ? (qa.status ? <AnswerState status={qa.status} /> : null) : <AnswerState status={qa.status} />}
+        {officer && <span className="gr-places">{r.filled} placé{r.filled > 1 ? "s" : ""} sur {r.size}</span>}
       </span>
-    </Link>
+      {!past && <QuickAnswerButtons qa={qa} label={`Ma réponse pour ${r.name}`} className="gr-ans" />}
+    </div>
   );
 }
 

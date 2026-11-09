@@ -85,6 +85,8 @@ export function SyncPanel() {
   const [confirmClose, setConfirmClose] = useState(false);
   const [key, setKey] = useState<string | null>(() => rememberedSyncKey());
   const zone = useRef<HTMLTextAreaElement>(null);
+  /** Page où le panneau a été ouvert (collage, bouton). */
+  const openedAt = useRef("");
 
   // Roster : un joueur sans rôle d'officier n'a rien à coller (persos par Battle.net) : le panneau s'ouvre sur « Vers le jeu »
   const canPaste = !retail || officer;
@@ -96,6 +98,7 @@ export function SyncPanel() {
   /** Texte collé (zone du panneau ou Ctrl+V n'importe où) : lu dans le navigateur, montré en aperçu. */
   const read = useCallback((text: string) => {
     reset();
+    openedAt.current = window.location.pathname;
     setOpen(true); setWay("site");
     setPasted(text);
     if (!ADDON_TEXT.test(text)) {
@@ -141,9 +144,13 @@ export function SyncPanel() {
     return () => document.removeEventListener("paste", onPaste);
   }, [read]);
   // Bouton Synchro, Accueil, fiche : ouverture sur la zone de collage (ou Vers le jeu pour un joueur de Roster)
-  useEffect(() => onOpenSync(() => { setOpen(true); setWay(canPaste ? "site" : "game"); }), [canPaste]);
-  // Changement de page : le panneau reste ouvert seulement s'il attend un clic (aperçu) ; après une réussite, il se referme
-  useEffect(() => { if (!pasted || results) { setOpen(false); if (results) reset(); } }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => onOpenSync(() => { openedAt.current = window.location.pathname; setOpen(true); setWay(canPaste ? "site" : "game"); }), [canPaste]);
+  // Changement de page : le panneau reste ouvert seulement s'il attend un clic (aperçu) ; après une réussite, il se referme.
+  // Ouvert sur la nouvelle page (Ctrl+V juste après le clic d'un lien, avant cet effet) : il reste.
+  useEffect(() => {
+    if (window.location.pathname === openedAt.current) return;
+    if (!pasted || results) { setOpen(false); if (results) reset(); }
+  }, [loc.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stage = results ? "done" : pasted ? "preview" : "wait";
   useEffect(() => { if (open && stage === "wait" && way === "site") zone.current?.focus(); }, [open, stage, way]);

@@ -5,7 +5,7 @@ import { ApiError, del, get, post } from "../api";
 import { DateField, dayLabel, todayIso } from "./DateTime";
 
 /**
- * Mes absences (lot F), sur Mes persos : une période (du … au …) ou des jours de la semaine (« jamais le vendredi »).
+ * Mes absences (lot F ; en haut de la page Raids depuis la refonte du 09/11, raccourci sur l'Accueil) : une période (du … au …) ou des jours de la semaine (« jamais le vendredi »).
  * Les raids sans réponse de ces jours passent en « Absent » dans tous mes groupes, y compris ceux créés ensuite.
  * Motif facultatif, visible des officiers ou de tout le groupe (au choix). Classes CSS « ab- ».
  */

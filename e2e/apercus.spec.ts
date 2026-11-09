@@ -130,7 +130,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await db.end();
 
   // 1. Page du raid : besoins, propositions, banc
-  await page.goto(`/groups/${group}/raids/${raid}`);
+  await page.goto(`/groups/${group}/raids/${raid}/compo`);
   await expect(page.locator(".ra")).toContainText("raid à 10");
   await page.locator(".ra").getByRole("button", { name: "Voir les propositions" }).click();
   await page.evaluate(() => { const r = document.querySelector(".ra")!.getBoundingClientRect(); window.scrollTo(0, r.top + window.scrollY - 90); });
@@ -240,8 +240,9 @@ test("aperçus du lot F", async ({ page }) => {
   await co.locator(".co-reagpick label").first().click();
   await co.locator(".co-form").screenshot({ path: `${OUT}/apercu-nouvelle-commande.png` });
 
-  // 3. Mes absences : formulaire « chaque semaine », puis la liste
-  await page.goto("/persos");
+  // 3. Mes absences (en haut de la page Raids) : formulaire « chaque semaine », puis la liste
+  await page.goto(`/groups/${group}/raids`);
+  await page.getByRole("button", { name: /^Mes absences/ }).click();
   await page.getByRole("button", { name: "+ Déclarer une absence" }).click();
   await page.getByRole("button", { name: "Chaque semaine" }).click();
   await page.getByRole("button", { name: "ven." }).click();
@@ -601,7 +602,7 @@ test("tour des pages", async ({ page }) => {
     ["perso-notes", `/persos/${thalwen}/notes`], ["groupe-accueil", `/groups/${group}`], ["groupe-sorties", `/groups/${group}/sorties`], ["groupe-raids", `/groups/${group}/raids`],
     ["groupe-membres", `/groups/${group}/membres`], ["groupe-joueurs", `/groups/${group}/membres/joueurs`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
     ["groupe-presence", `/groups/${group}/raids/presence`],
-    ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
+    ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}/compo`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
     ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account"], ["addon", "/addon"],
   ];
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {

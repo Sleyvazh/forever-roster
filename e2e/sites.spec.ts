@@ -209,7 +209,7 @@ test.describe("Roster (WoW Retail)", () => {
       await page.getByRole("button", { name: "Créer le raid" }).click();
       await expect(page.getByRole("heading", { name: "Flèche du Vide" })).toBeVisible();
       await expect(page.locator(".rp-meta")).toContainText("Héroïque · 25 joueurs");
-      await expect(page.locator(".rp-meta .tag.gold")).toHaveText("Conseil");
+      await expect(page.locator(".rp-meta")).toContainText("Conseil");
       await expect(page.getByRole("tab", { name: "Butin" })).toBeVisible();
       await expect(page.getByRole("tab", { name: "Préparation" })).toHaveCount(0);
       await page.getByRole("tab", { name: /Inscriptions/ }).click();
@@ -218,8 +218,8 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(page.getByText("Tu es inscrit : Présent avec Brumelune (Tisse-brume)")).toBeVisible();
       await page.getByRole("tab", { name: "Compo" }).click();
       await page.getByRole("button", { name: "Ajouter Brumelune au raid" }).click();
-      await expect(page.getByText("1 effet couvert sur 14")).toBeVisible();
-      await page.getByText("Détail des 14 effets").click();
+      await expect(page.locator(".rp-covd summary")).toContainText("Couverture · 1 effet sur 14");
+      await page.locator(".rp-covd summary").click();
       await expect(page.getByText("Toucher mystique")).toBeVisible();
       await expect(page.locator(".rgroup")).toHaveCount(5);
       if (process.env.SHOTS) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: "test-results/shots/roster-raid.png", fullPage: true }); }
@@ -234,11 +234,12 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(page.getByRole("textbox", { name: "Macro d'invitation 1" })).toHaveValue("/inv Brumelune-Hyjal");
     });
 
-    await test.step("onglet Butin : mode et conseil choisi pour le raid, sans soft reserve", async () => {
-      await page.getByRole("tab", { name: "Butin" }).click();
+    await test.step("onglet Butin : conseil choisi pour le raid ; le mode se règle dans Réglages, sans soft reserve", async () => {
+      await page.getByRole("tab", { name: "Réglages" }).click();
       const mode = page.getByRole("radiogroup", { name: "Butin" });
       await expect(mode.getByRole("radio", { name: "Conseil (distribution par Roster)" })).toHaveAttribute("aria-checked", "true");
       await expect(mode.getByRole("radio", { name: "Soft reserve" })).toHaveCount(0);
+      await page.getByRole("tab", { name: "Butin" }).click();
       const council = page.getByRole("region", { name: "Conseil du butin" });
       await expect(council).toContainText("Par défaut : les officiers de la guilde.");
       const me = council.getByRole("checkbox", { name: /Officière/ });
@@ -318,8 +319,10 @@ test.describe("Roster (WoW Retail)", () => {
       await expect(dialog).toContainText("Bilan de Flèche du Vide · enregistré · 2 présents, 3 objets, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
       await dialog.getByRole("button", { name: "Fermer", exact: true }).click();
       await expect(dialog).toHaveCount(0);
-      await page.goto(raidUrl);
-      await page.getByRole("tab", { name: "Bilan" }).click();
+      // Bilan reçu : le raid s'ouvre sur le Bilan, puis Inscriptions et Compo (refonte du 09/11)
+      await page.goto(raidUrl.replace(/\/raids\/([0-9a-f-]{36}).*$/, "/raids/$1"));
+      await expect(page.getByRole("tab", { selected: true })).toHaveText("Bilan");
+      await expect(page.getByRole("tab")).toHaveText(["Bilan", /^Inscriptions/, "Compo", "Butin", "Réglages"]);
       const bilan = page.getByRole("region", { name: "Bilan du raid" });
       await expect(bilan).toContainText("Héroïque");
       await expect(bilan).toContainText("1 vaincu sur 1 tenté");
@@ -410,7 +413,8 @@ test.describe("Roster (WoW Retail)", () => {
       await page.selectOption("#gl", "en");
       await expect(page.getByText("Enregistré.")).toBeVisible();
       await page.goto(raid);
-      await page.getByText("Détail des 14 effets").click();
+      await page.getByRole("tab", { name: "Compo" }).click();
+      await page.locator(".rp-covd summary").click();
       await expect(page.getByText("Mystic Touch")).toBeVisible();
       await expect(page.locator(".rp-meta")).toContainText("Heroic · 25 joueurs");
     });

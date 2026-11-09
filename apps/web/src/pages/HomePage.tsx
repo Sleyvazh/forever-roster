@@ -1,5 +1,5 @@
 import { openSync, syncState } from "../syncPanel";
-import { CLASS_SPECS, firstNameOf, SIGNUP_LABEL, zonedParts, type HomeAgendaItem, type HomeFind, type SignupStatus, type SpecDef } from "@forever/game-data";
+import { CLASS_SPECS, firstNameOf, zonedParts, type HomeAgendaItem, type HomeFind, type SpecDef } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -12,7 +12,7 @@ import { QuestionBand, refreshGuild } from "../components/GuildMembers";
 import { CharName, Place, Podium } from "../components/GuildRace";
 import { FactionBadge } from "../components/Icons";
 import { ClassDot } from "../components/Outings";
-import { SignupButtons } from "../components/SignupButtons";
+import { AnswerState, QuickAnswerButtons, useQuickAnswer } from "../components/QuickAnswer";
 import { useWeek, whenText, type WeekRaid } from "../components/Week";
 import { useGameText } from "../gameText";
 import type { Reach } from "../components/RaidReach";
@@ -74,42 +74,22 @@ const fromWeek = (r: WeekRaid): RaidLine => ({ id: r.id, name: r.name, at: r.sch
 /** Erreur d'une ligne de l'agenda, avec la solution (« Réessayer » si la connexion est perdue). */
 function RowErr({ err, onRetry }: { err: RowError | null; onRetry: () => void }) {
   if (!err) return null;
-  return <span className="ag-err" role="alert">{err.msg}{err.retry && <> <button type="button" className="link" onClick={onRetry}>Réessayer</button></>}</span>;
+  return <span className="ans-err" role="alert">{err.msg}{err.retry && <> <button type="button" className="link" onClick={onRetry}>Réessayer</button></>}</span>;
 }
 
 function RaidRow({ groupId, r, when, chars }: { groupId: string; r: RaidLine; when: ReactNode; chars: Character[] }) {
   const refresh = useRefresh(groupId);
-  const [busy, setBusy] = useState(false);
-  // Réponse affichée tout de suite (UI optimiste), remise à l'ancienne si le site refuse
-  const [shown, setShown] = useState<SignupStatus | null>(null);
-  const [err, setErr] = useState<RowError | null>(null);
-  const [last, setLast] = useState<SignupStatus | null>(null);
-  // Changer de statut garde le perso et la spé de mon inscription ; sinon mon main dans la guilde, sinon un perso qui a sa classe
-  const usable = chars.filter(c => c.cls);
-  const charId = r.mine?.characterId ?? r.mainId ?? usable[0]?.id ?? null;
-  const char = chars.find(c => c.id === charId);
-  const spec = r.mine?.characterId && r.mine.spec ? r.mine.spec : char?.spec1 || undefined;
-  const pick = async (status: SignupStatus) => {
-    if (busy) return;
-    setBusy(true); setErr(null); setShown(status); setLast(status);
-    try { await put(`/groups/${groupId}/raids/${r.id}/signup`, { status, characterId: status === "absent" && !charId ? null : charId, ...(spec && { spec }) }); await refresh(); }
-    catch (e) { setErr(rowError(e)); }
-    finally { setBusy(false); setShown(null); }
-  };
+  const qa = useQuickAnswer({ groupId, raidId: r.id, mine: r.mine, mainId: r.mainId, chars, refresh });
   const c = r.counts;
-  const status = shown ?? (r.mine?.status as SignupStatus | undefined) ?? null;
   return (
-    <li className={`ag raid${status && status !== "absent" ? " in" : ""}`}>
+    <li className={`ag ag-raid${qa.status && qa.status !== "absent" ? " in" : ""}`}>
       {when}
       <span className="ag-main">
         <Link className="ag-t stretch" to={`/groups/${groupId}/raids/${r.id}`}><span className="kind k-raid">Raid</span>{r.name}{r.size ? <span className="lvn">{r.size}</span> : null}</Link>
         <span className="ag-s">{c.coming} {c.coming > 1 ? "viennent" : "vient"} · {plural(c.tank, "tank")} · {plural(c.heal, "heal")} · {c.dps} DPS{c.tentative ? ` · ${c.tentative} peut-être` : ""}</span>
       </span>
-      <span className={`ag-st ${status ?? "none"}`}>● {status ? SIGNUP_LABEL[status] : "Sans réponse"}</span>
-      <span className="ag-ans">
-        <SignupButtons lg value={status} onPick={s => void pick(s)} canCome={!!charId} label={`Ma réponse pour ${r.name}`} />
-        <RowErr err={err} onRetry={() => last && void pick(last)} />
-      </span>
+      <AnswerState status={qa.status} />
+      <QuickAnswerButtons qa={qa} label={`Ma réponse pour ${r.name}`} className="ag-ans" />
     </li>
   );
 }

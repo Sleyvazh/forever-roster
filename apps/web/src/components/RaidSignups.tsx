@@ -56,18 +56,25 @@ export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { g
   const role = roleOf(spec);
   return (
     <section className="ans" aria-labelledby="ans-t">
-      <div className="ans-top">
-        <h3 id="ans-t">Ta réponse</h3>
-        {char ? (
-          <button type="button" className="ans-with" aria-expanded={editing} aria-label="Changer de perso ou de spé" onClick={() => setEditing(e => !e)}>
-            <ClassDot cls={char.cls} /><span>{char.isMain ? "★ " : ""}{char.name}{spec ? ` · ${gt.spec(char.cls, spec)}` : ""}</span>{role && <span className={`role xs ${role}`}>{role}</span>}<span className="chev" aria-hidden="true" />
-          </button>
-        ) : all && (all.length
-          ? <span className="ans-note">Ton perso n'a pas de classe : <Link className="link" to={`/persos/${all[0]!.id}`}>complète sa fiche</Link>.</span>
-          : <span className="ans-note">Pas encore de perso : <Link className="link" to="/persos/nouveau">ajoute-le</Link>.</span>)}
-      </div>
+      {/* Une ligne (refonte du 09/11) : le perso choisi à côté, quatre réponses de même largeur, la note au bout */}
+      <h3 id="ans-t">Ta réponse</h3>
+      {char ? (
+        <button type="button" className="ans-with" aria-expanded={editing} aria-label="Changer de perso ou de spé" onClick={() => setEditing(e => !e)}>
+          <ClassDot cls={char.cls} /><span>{char.isMain ? "★ " : ""}{char.name}{spec ? ` · ${gt.spec(char.cls, spec)}` : ""}</span>{role && <span className={`role xs ${role}`}>{role}</span>}<span className="chev" aria-hidden="true" />
+        </button>
+      ) : all && (all.length
+        ? <span className="ans-note">Ton perso n'a pas de classe : <Link className="link" to={`/persos/${all[0]!.id}`}>complète sa fiche</Link>.</span>
+        : <span className="ans-note">Pas encore de perso : <Link className="link" to="/persos/nouveau">ajoute-le</Link>.</span>)}
+      <span className="ans-eq ans-main">
+        <SignupButtons lg value={mine?.status} onPick={s => void signUp(s)} busy={busy} canCome={!!char} label={`Ma réponse pour ${raidName}`}
+          onClear={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))} />
+      </span>
+      {char && !editing && (
+        <button type="button" className="link ans-note" onClick={() => setEditing(true)}>{mine?.note ? <>Note : « {mine.note} »</> : "+ Ajouter une note"}</button>
+      )}
+      <span className="ans-state sr-only" role="status">{mine ? <>{SIGNUP_LABEL[mine.status]}{mine.characterName ? ` avec ${mine.characterName}` : ""}{mine.note ? ` · « ${mine.note} »` : ""}</> : "Pas encore de réponse."}</span>
       {editing && char && (
-        <div className="row" style={{ alignItems: "flex-end" }}>
+        <div className="row ans-edit" style={{ alignItems: "flex-end" }}>
           {myChars.length > 1 && <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="ans-char">Perso</label>
             <select id="ans-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
               {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({gt.cls(c.cls)})</option>)}
@@ -80,14 +87,9 @@ export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { g
           <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="ans-note">Note</label>
             <input id="ans-note" type="text" maxLength={100} placeholder="Ex. j'arrive vers 21 h 15" value={note} onChange={e => setNote(e.target.value)} /></div>
           {mine && <button type="button" className="btn sm" disabled={busy} onClick={() => void signUp(mine.status).then(() => setEditing(false))}>Enregistrer</button>}
+          <button type="button" className="btn ghost sm" onClick={() => setEditing(false)}>Fermer</button>
         </div>
       )}
-      <SignupButtons lg value={mine?.status} onPick={s => void signUp(s)} busy={busy} canCome={!!char} label={`Ma réponse pour ${raidName}`}
-        onClear={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))} />
-      <div className="row">
-        <span className="ans-state">{mine ? <>{SIGNUP_LABEL[mine.status]}{mine.characterName ? ` avec ${mine.characterName}` : ""}{mine.note ? ` · « ${mine.note} »` : ""}</> : "Pas encore de réponse."}</span>
-        {char && !editing && !mine?.note && <button type="button" className="link ans-note" onClick={() => setEditing(true)}>+ Ajouter une note</button>}
-      </div>
       {error && <div className="alert error" role="alert">{error}</div>}
     </section>
   );

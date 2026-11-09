@@ -9,7 +9,6 @@ import { ImageUpload, Portrait } from "../components/ImageUpload";
 import { LockedLevel, LockIcon, levelLockText } from "../components/LevelLock";
 import { NumberField } from "../components/NumberField";
 import { Paperdoll } from "../components/Paperdoll";
-import { MyAbsences } from "../components/Absences";
 import { ClassSpecPicker } from "../components/ClassSpecPicker";
 import { GiveFicheDialog } from "../components/GiveFiche";
 import { dayMonth } from "../guild";
@@ -81,7 +80,6 @@ export function MyCharsPage() {
         <div className="mp-list">
           <SortableChars items={local} onReorder={ids => void saveOrder(ids)}
             render={c => <CharCard c={c} current={c.id === sel} onClick={() => nav(urlFor(c.id, picked ? tab : "profil"))} />} />
-          <MyAbsences />
         </div>
         {current && (
           <div className="stack mp-sheet" style={{ gap: 12 }}>
