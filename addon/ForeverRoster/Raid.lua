@@ -46,7 +46,7 @@ function RA.Chunks(text, max)
 end
 function RA.Say(text)
   if RA.test then -- raid d'essai : dans ta fenêtre de chat seulement
-    for _, line in ipairs(RA.Chunks(text)) do ns.print("|cff9aa3b6" .. L["[essai]"] .. "|r " .. line) end
+    for _, line in ipairs(RA.Chunks(text)) do ns.print("|cffece7d8" .. L["[essai]"] .. "|r " .. line) end
     return
   end
   local ch = channel()

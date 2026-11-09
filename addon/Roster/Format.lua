@@ -289,7 +289,7 @@ function F.ParseRRG(text)
       count = tonumber(f[2])
     end
   end
-  if not cur then return nil, L["Ce ne sont pas les données du site : sur Roster, « Copier pour le jeu » (barre du haut), puis colle ici."] end
+  if not cur then return nil, L["Ce ne sont pas les données du site : sur Roster, bouton Synchro, « Copier pour le jeu », puis colle ici."] end
   if not close() then return nil, L[F.INCOMPLETE] end
   return groups
 end

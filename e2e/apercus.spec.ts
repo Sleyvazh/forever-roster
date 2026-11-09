@@ -289,7 +289,7 @@ test("aperçus du lot F", async ({ page }) => {
     (document.activeElement as HTMLElement | null)?.blur();
     document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
   }, readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
-  const pasted = page.getByRole("dialog", { name: "Export de l'addon" });
+  const pasted = page.getByRole("dialog", { name: "Synchro" });
   await pasted.getByText("Choisir quoi importer").click();
   await pasted.screenshot({ path: `${OUT}/apercu-import-choix.png` });
 });

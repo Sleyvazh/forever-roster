@@ -2,6 +2,22 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.6.6
+
+- **Raid answers: 3 + Other**, like on the website and Discord: Present, Tentative and Absent are always shown, same width, then "Other..." opens Late, Alt and Bench (Raids tab and the "Coming?" reminder). Alt and Bench can now be picked in game too.
+- **Your quick sync key travels with the export**: the website's new Synchro panel shows it at step 1 ("your sync key F9").
+- **Sync reminder in chat**: once per session, a few seconds after a gear change and out of combat, one chat line if your character was already sent to the website and has changed since. With a clickable [Quick sync] link when the game supports addon links, otherwise the steps in plain text. Never a window that opens by itself, and nothing with Roster Companion (it sends by itself). Option: "Sync reminder in chat" (Options tab).
+- No more grey text: everything is in the main text color, or in a color that means something (green, orange, red, gold).
+- After Ctrl+C: "Copied · Ctrl+V on the website, on any page." The hints now point to the website's Synchro button.
+
+Français :
+
+- **Réponses à un raid : 3 + Autre**, comme sur le site et Discord : Présent, Peut-être et Absent toujours visibles, de même largeur, puis « Autre... » ouvre En retard, Reroll et Banc (onglet Raids et rappel « Tu viens ? »). Reroll et Banc se choisissent maintenant aussi en jeu.
+- **Ta touche de synchro rapide part avec l'export** : le nouveau panneau Synchro du site la montre à l'étape 1 (« ta touche de synchro F9 »).
+- **Rappel de synchro dans le chat** : une fois par session, quelques secondes après un changement d'équipement et hors combat, une ligne dans le chat si ton perso a déjà été envoyé au site et a changé depuis. Avec un lien cliquable [Synchro rapide] quand le jeu connaît les liens d'addon, sinon le geste en clair. Jamais de fenêtre qui s'ouvre seule, et rien avec Roster Companion (il envoie tout seul). Réglage : « Rappel de synchro dans le chat » (onglet Options).
+- Plus de texte gris : tout est dans la couleur du texte, ou dans une couleur qui a un sens (vert, orange, rouge, doré).
+- Après Ctrl+C : « Copié · Ctrl+V sur le site, sur n'importe quelle page. » Les aides renvoient au bouton Synchro du site.
+
 ## 1.6.5
 
 - **Texts sent to the website are now sealed**: each block the addon writes for the website (your characters, the guild scan, raid reports) ends with a short seal on its END line. The website refuses a block whose text was changed by hand (or damaged by the copy-paste), and refuses blocks from older versions of the addon: update to 1.6.5 so your characters and your guild scan keep reaching the website. Roster Companion sends them as before.

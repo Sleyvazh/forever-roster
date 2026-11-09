@@ -21,7 +21,7 @@ local L, N = ns.L, ns.N
 local R = {}
 ns.Relay = R
 
-local STATUSES = { present = true, late = true, tentative = true, absent = true } -- statuts qu'on choisit en jeu
+local STATUSES = { present = true, late = true, tentative = true, alt = true, bench = true, absent = true } -- statuts qu'on choisit en jeu (3 + Autre, 1.6.6)
 local MAX_SUP = 10         -- SUP envoyés au plus d'un coup (connexion, RLY)
 local RECONFIDE = 6 * 3600 -- confiée depuis plus longtemps, toujours pas réglée : confiée de nouveau
 local RLY_GAP = 60         -- RLY entendu : renvoi au plus une fois par minute

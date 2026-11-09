@@ -8,13 +8,13 @@ local U = {}
 ns.LootUI = U
 local K, F = ns.Kit, ns.Format
 
-local GOLD, GREY, GREEN, RED, ORANGE, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cffff6b5e", "|cfff0b43c", "|cff6fb7ff"
+local GOLD, INK, GREEN, RED, ORANGE, BLUE = "|cffe3b54b", "|cffece7d8", "|cff4fd35f", "|cffff6b5e", "|cfff0b43c", "|cff6fb7ff"
 local WHITE = "|cffffffff"
 -- Gagnant des jets : l'étoile des marqueurs de raid (le caractère étoile n'existe pas dans la police du jeu) ;
 -- réponse donnée, conseil terminé : la coche de l'appel « prêt »
 local STAR = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:0|t "
 local CHECK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
-local RESP_COLOR = { bis = GREEN, upgrade = BLUE, off = GREY, transmo = GREY, pass = GREY }
+local RESP_COLOR = { bis = GREEN, upgrade = BLUE, off = INK, transmo = INK, pass = INK }
 local RESP_INITIAL = { bis = "B", upgrade = "U", off = "O", transmo = "T", pass = "P" }
 U.state = {} -- ce que chaque fenêtre affiche (tests hors jeu)
 
@@ -41,14 +41,14 @@ local function short(full)
   local m = Lo().Member(full)
   return K.colored(m and m.class, (F.Split(full)) or name(full))
 end
-local function ilvl(e) return e.ilvl and (GREY .. "  " .. L("niv. %s", e.ilvl) .. "|r") or "" end
+local function ilvl(e) return e.ilvl and (INK .. "  " .. L("niv. %s", e.ilvl) .. "|r") or "" end
 local function count(v) if type(v) == "table" then return #v end return tonumber(v) or 0 end
 -- Temps restant pour l'échange : orange sous 30 min
 local function timeLeft(e)
-  if not e.expires then return GREY .. L["durée d'échange inconnue"] .. "|r", nil end
+  if not e.expires then return INK .. L["durée d'échange inconnue"] .. "|r", nil end
   local s = e.expires - time()
   if s <= 0 then return RED .. L["délai d'échange passé"] .. "|r", s end
-  return (s < 1800 and ORANGE or GREY) .. L("%s pour l'échanger", F.Duration(s)) .. "|r", s
+  return (s < 1800 and ORANGE or INK) .. L("%s pour l'échanger", F.Duration(s)) .. "|r", s
 end
 local function refreshMain() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end end
 local function after(fn) return function() ns.safe(L["butin"], fn) U.Refresh() refreshMain() end end
@@ -249,14 +249,14 @@ local function rollLines(li, e, st)
     local parts = {}
     for _, x in ipairs(rows) do parts[#parts + 1] = name(x.name) .. " " .. x.roll end
     local list = table.concat(parts, ", ")
-    li.Add(GREY .. (i == 1 and L("1er tour : %s", list) or L("%de tour : %s", i, list)) .. "|r")
+    li.Add(INK .. (i == 1 and L("1er tour : %s", list) or L("%de tour : %s", i, list)) .. "|r")
   end
   if r.hidden then li.Add(ORANGE .. L["Le jeu cache les messages du chat en ce moment : jets illisibles. Relance après le combat."] .. "|r") end
-  if #r.rows == 0 then li.Add(GREY .. (r.open and L["En attente des jets..."] or L["Aucun jet."]) .. "|r") end
+  if #r.rows == 0 then li.Add(INK .. (r.open and L["En attente des jets..."] or L["Aucun jet."]) .. "|r") end
   for i, x in ipairs(r.rows) do
     local win = not r.tie and i == 1
     local kind = x.kind == "free" and L["libre"] or ROLL_KIND[x.kind] or x.kind
-    li.Add((win and (STAR .. GOLD) or "") .. name(x.name) .. "|r  " .. x.roll .. GREY .. "  (" .. kind .. ")|r"
+    li.Add((win and (STAR .. GOLD) or "") .. name(x.name) .. "|r  " .. x.roll .. INK .. "  (" .. kind .. ")|r"
       .. ((r.tie and x.kind == r.best.kind and x.roll == r.best.roll) and (ORANGE .. "  " .. L["ex æquo"] .. "|r") or ""))
   end
   local buttons = {}
@@ -269,7 +269,7 @@ local function rollLines(li, e, st)
     buttons[#buttons + 1] = { L("Relancer : %s", table.concat(tied, ", ")), 250, after(function() Lo().Reroll(e.key) end) }
   end
   buttons[#buttons + 1] = { L["Annuler"], 90, after(function() Lo().Cancel(e.key) end) }
-  li.Add(GREY .. (r.kind == "free" and L["/roll 100 pour tous. Seul le premier jet compte ; égalité : seuls les ex æquo relancent."]
+  li.Add(INK .. (r.kind == "free" and L["/roll 100 pour tous. Seul le premier jet compte ; égalité : seuls les ex æquo relancent."]
     or L["MS : /roll 100, OS : /roll 99 ; la spé principale passe d'abord. Seul le premier jet compte ; égalité : seuls les ex æquo relancent."]) .. "|r", buttons)
 end
 
@@ -281,7 +281,7 @@ function U.RefreshLoot()
   local master = Lx.Master()
   local held = ns.Comm.Held()
   lootWin.hintText:SetText((Lx.test and (ORANGE .. L["Raid d'essai"] .. " · |r") or "") .. L("Chef de butin : %s", master and who(master) or "?")
-    .. (st.master and (GREEN .. " " .. L["(toi)"] .. "|r") or "") .. GREY .. "  · "
+    .. (st.master and (GREEN .. " " .. L["(toi)"] .. "|r") or "") .. INK .. "  · "
     .. (Lx.Enabled() and L["distribution par Roster activée"] or L["distribution par Roster coupée"])
     .. (held > 0 and ("  · " .. plural(held, N("%d message en attente de la fin du combat"), N("%d messages en attente de la fin du combat"))) or "") .. "|r")
   li.Reset()
@@ -295,14 +295,14 @@ function U.RefreshLoot()
     end
   end
   li.Header(L("À distribuer · %d", #todo))
-  if not st.master then li.Add(GREY .. L("Tu n'es pas chef de butin : %s distribue le butin.", master and name(master) or L["le chef de raid"]) .. "|r") end
+  if not st.master then li.Add(INK .. L("Tu n'es pas chef de butin : %s distribue le butin.", master and name(master) or L["le chef de raid"]) .. "|r") end
   if #todo == 0 then
-    li.Add(GREY .. (Lx.test and L["Aucun objet. Raid d'essai : ajoute un objet depuis le panneau d'essai."]
+    li.Add(INK .. (Lx.test and L["Aucun objet. Raid d'essai : ajoute un objet depuis le panneau d'essai."]
       or L["Aucun objet. Distribution activée, les objets que tu reçois au butin de groupe arrivent ici."]) .. "|r")
   end
   -- Tout au conseil : une annonce numérotée, chacun répond à chaque objet (bande d'objets)
   if st.master and st.fresh >= 2 then
-    li.Add(GREY .. L("Propose d'un coup les %d objets pas encore distribués : une seule annonce, objets numérotés ; chacun répond à chaque objet.", st.fresh)
+    li.Add(INK .. L("Propose d'un coup les %d objets pas encore distribués : une seule annonce, objets numérotés ; chacun répond à chaque objet.", st.fresh)
       .. "|r", { { L("Tout au conseil (%d)", st.fresh), 170, after(function() U.AllToCouncil() end) } })
   end
   for _, e in ipairs(todo) do
@@ -338,9 +338,9 @@ function U.RefreshLoot()
   end
   li.Header(L("Objets à remettre · %d", #hand))
   st.handover = #hand
-  if #hand == 0 then li.Add(GREY .. L["Aucun. Chaque objet attribué arrive ici jusqu'à l'échange."] .. "|r") end
+  if #hand == 0 then li.Add(INK .. L["Aucun. Chaque objet attribué arrive ici jusqu'à l'échange."] .. "|r") end
   for _, e in ipairs(hand) do
-    li.Add(e.link .. GREY .. " " .. L["pour"] .. " |r" .. who(e.winner) .. "  " .. (timeLeft(e)),
+    li.Add(e.link .. INK .. " " .. L["pour"] .. " |r" .. who(e.winner) .. "  " .. (timeLeft(e)),
       { { L["Échanger"], 100, after(function() Lx.Trade(e.key) end) }, { L["Remis"], 80, after(function() Lx.MarkTraded(e.key) end) } })
   end
   local np = Lx.NotPassed()
@@ -348,16 +348,16 @@ function U.RefreshLoot()
     li.Header(L("N'ont pas passé · %d", #np))
     st.notPassed = #np
     for _, n in ipairs(np) do
-      li.Add(who(n.name) .. GREY .. " " .. L["a gagné"] .. " |r" .. n.link .. GREY .. " " .. L["au butin de groupe"]
+      li.Add(who(n.name) .. INK .. " " .. L["a gagné"] .. " |r" .. n.link .. INK .. " " .. L["au butin de groupe"]
         .. (n.whispered and (" · " .. L("chuchoté à %s", date("%H:%M", n.whispered))) or "") .. "|r",
         (st.master and not n.whispered) and { { L["Chuchoter"], 110, after(function() Lx.WhisperNotPassed(n.name) end) } } or nil)
     end
-    li.Add(GREY .. L["Sans l'addon (ou passer automatique coupé), ils ont gardé leur chance au butin de groupe : demande-leur de garder l'objet pour l'échange."] .. "|r")
+    li.Add(INK .. L["Sans l'addon (ou passer automatique coupé), ils ont gardé leur chance au butin de groupe : demande-leur de garder l'objet pour l'échange."] .. "|r")
   end
   if #done > 0 then
     li.Header(L("Gardés et remis · %d", #done))
     for _, e in ipairs(done) do
-      li.Add(GREY .. (e.status == "kept" and L["Gardé :"] or L("Remis à %s :", name(e.winner))) .. " |r" .. e.link)
+      li.Add(INK .. (e.status == "kept" and L["Gardé :"] or L("Remis à %s :", name(e.winner))) .. " |r" .. e.link)
     end
   end
   li.Done()
@@ -457,10 +457,10 @@ function U.Give(session, winner)
 end
 
 local function gearText(c)
-  if c.whispered then return GREY .. L["réponse chuchotée"] .. "|r" end
-  if #c.gear == 0 then return GREY .. L["rien à cet emplacement"] .. "|r" end
+  if c.whispered then return INK .. L["réponse chuchotée"] .. "|r" end
+  if #c.gear == 0 then return INK .. L["rien à cet emplacement"] .. "|r" end
   local out = {}
-  for _, g in ipairs(c.gear) do out[#out + 1] = (g.link or L("objet %d", g.id)) .. (g.ilvl and (GREY .. " " .. g.ilvl .. "|r") or "") end
+  for _, g in ipairs(c.gear) do out[#out + 1] = (g.link or L("objet %d", g.id)) .. (g.ilvl and (INK .. " " .. g.ilvl .. "|r") or "") end
   return table.concat(out, "\n")
 end
 
@@ -480,8 +480,8 @@ end
 local function recvText(x)
   local tonight = (tonumber(x.receivedSite) or 0) > 0 and tonumber(x.receivedTonight) or 0
   local d = recvParts(x)
-  return WHITE .. tostring(x.received or 0) .. "|r" .. (tonight > 0 and (GREY .. " (+" .. tonight .. ")|r") or "")
-    .. (d ~= "" and ("\n" .. GREY .. d .. "|r") or "")
+  return WHITE .. tostring(x.received or 0) .. "|r" .. (tonight > 0 and (INK .. " (+" .. tonight .. ")|r") or "")
+    .. (d ~= "" and ("\n" .. INK .. d .. "|r") or "")
 end
 
 function U.RefreshCouncil()
@@ -503,8 +503,8 @@ function U.RefreshCouncil()
     local text = (waiting == 0 and GREEN or WHITE) .. answers .. "/" .. (answers + waiting) .. "|r"
     local lines = { L("Objet %d", n) .. (x.master and (" · " .. L("chef de butin : %s", name(x.master))) or "") }
     if x.closed then
-      text = x.winner and (CHECK .. " " .. short(x.winner)) or (GREY .. L["annulé"] .. "|r")
-      lines[#lines + 1] = x.winner and (GREEN .. L("Terminé : %s reçoit l'objet.", name(x.winner)) .. "|r") or (GREY .. L["Conseil annulé."] .. "|r")
+      text = x.winner and (CHECK .. " " .. short(x.winner)) or (INK .. L["annulé"] .. "|r")
+      lines[#lines + 1] = x.winner and (GREEN .. L("Terminé : %s reçoit l'objet.", name(x.winner)) .. "|r") or (INK .. L["Conseil annulé."] .. "|r")
     else
       lines[#lines + 1] = L("%s sur %d joueurs", plural(answers, N("%d réponse"), N("%d réponses")), answers + waiting)
       if x.myVote then lines[#lines + 1] = L("Ton vote : %s", name(x.myVote)) end
@@ -518,7 +518,7 @@ function U.RefreshCouncil()
   councilWin.band.Set(entries, councilSession)
   G.Reset()
   if not c then
-    councilWin.hintText:SetText(GREY .. L["Pas de conseil en cours."] .. "|r")
+    councilWin.hintText:SetText(INK .. L["Pas de conseil en cours."] .. "|r")
     councilWin.foot:SetText("")
     G.Done()
     return
@@ -532,16 +532,16 @@ function U.RefreshCouncil()
   -- (historique de l'addon seul)
   G.SetTitle(RECV_COL, (byReceived and K.ACCENT or "") .. (c.counts and L("Reçus · %s", c.counts.short) or L["Reçus"])
     .. (byReceived and (" " .. L["(tri)"] .. "|r") or ""))
-  local head = (num and (K.ACCENT .. num .. "|r  ") or "") .. c.link .. (c.ilvl and (GREY .. "  " .. L("niv. %s", c.ilvl) .. "|r") or "")
-    .. GREY .. "  · " .. L("chef de butin : %s", name(c.master)) .. (c.isMaster and (" " .. L["(toi)"]) or "") .. "|r"
+  local head = (num and (K.ACCENT .. num .. "|r  ") or "") .. c.link .. (c.ilvl and (INK .. "  " .. L("niv. %s", c.ilvl) .. "|r") or "")
+    .. INK .. "  · " .. L("chef de butin : %s", name(c.master)) .. (c.isMaster and (" " .. L["(toi)"]) or "") .. "|r"
   if c.closed then
-    head = head .. "\n" .. (c.winner and (GREEN .. L("Conseil terminé : %s reçoit l'objet.", name(c.winner)) .. "|r") or (GREY .. L["Conseil annulé."] .. "|r"))
+    head = head .. "\n" .. (c.winner and (GREEN .. L("Conseil terminé : %s reçoit l'objet.", name(c.winner)) .. "|r") or (INK .. L["Conseil annulé."] .. "|r"))
   else
-    head = head .. "\n" .. GOLD .. plural(#c.cands, N("%d réponse"), N("%d réponses")) .. "|r" .. GREY .. (#c.waiting > 0 and (", " .. L("%d en attente", #c.waiting)) or "")
+    head = head .. "\n" .. GOLD .. plural(#c.cands, N("%d réponse"), N("%d réponses")) .. "|r" .. INK .. (#c.waiting > 0 and (", " .. L("%d en attente", #c.waiting)) or "")
       .. "  · " .. plural(nVotes, N("%d vote"), N("%d votes")) .. " " .. L("(conseil : %d)", #c.council) .. "|r"
   end
   -- Le chef de butin n'a pas d'historique (installation neuve) : chacun voit ses propres nombres
-  if c.mlNone then head = head .. GREY .. "  · " .. L("comptes : aucun historique chez %s", name(c.master)) .. "|r" end
+  if c.mlNone then head = head .. INK .. "  · " .. L("comptes : aucun historique chez %s", name(c.master)) .. "|r" end
   councilWin.hintText:SetText(head)
   -- Tri du moteur (réponse, puis votes) ; ou par objets reçus, le moins servi d'abord (ceux qui passent restent en bas)
   local cands = {}
@@ -574,11 +574,11 @@ function U.RefreshCouncil()
     local cant = x.canUse == false
     G.Row({
       who(x.name) .. (cant and ("\n" .. ORANGE .. L["ne peut pas le porter"] .. "|r") or ""),
-      ((not cant and RESP_COLOR[resp]) or GREY) .. (label(resp) or resp) .. "|r",
+      ((not cant and RESP_COLOR[resp]) or INK) .. (label(resp) or resp) .. "|r",
       gearText(x),
       (x.note ~= "") and ("|cffc9cfdb" .. L("« %s »", x.note) .. "|r") or "",
       recvText(x),
-      #voters > 0 and (WHITE .. x.votes .. "|r " .. GREY .. table.concat(voters, ", ") .. "|r") or (GREY .. "0|r"),
+      #voters > 0 and (WHITE .. x.votes .. "|r " .. INK .. table.concat(voters, ", ") .. "|r") or (INK .. "0|r"),
     }, {
       buttons = buttons, dim = resp == "pass",
       tip = function(col, owner)
@@ -619,12 +619,12 @@ function U.RefreshCouncil()
       end,
     })
   end
-  if #c.cands == 0 then G.Row({ GREY .. L["En attente..."] .. "|r", "", GREY .. L["Les réponses arrivent ici au fil de l'eau."] .. "|r" }) end
+  if #c.cands == 0 then G.Row({ INK .. L["En attente..."] .. "|r", "", INK .. L["Les réponses arrivent ici au fil de l'eau."] .. "|r" }) end
   G.Done()
   local waiting = {}
   for i = 1, math.min(#c.waiting, 12) do waiting[i] = name(c.waiting[i]) end
-  councilWin.foot:SetText((#c.waiting > 0 and (GREY .. L["Pas encore répondu :"] .. " |r" .. table.concat(waiting, ", ") .. (#c.waiting > 12 and (" +" .. (#c.waiting - 12)) or ""))
-    or (GREY .. L["Tout le monde a répondu."] .. "|r")) .. "\n" .. GREY
+  councilWin.foot:SetText((#c.waiting > 0 and (INK .. L["Pas encore répondu :"] .. " |r" .. table.concat(waiting, ", ") .. (#c.waiting > 12 and (" +" .. (#c.waiting - 12)) or ""))
+    or (INK .. L["Tout le monde a répondu."] .. "|r")) .. "\n" .. INK
     .. L["Bande du haut : un objet par conseil. Survol : objet porté, note, détail des reçus ; clic sur « Reçus » : trier. Votes visibles du conseil seulement."]
     .. (c.isMaster and (" " .. L["« Donner » attribue l'objet (annonce au raid et au gagnant), puis passe au conseil suivant."]) or "") .. "|r")
   -- Hauteur selon le nombre de réponses, tant que la fenêtre n'a pas été redimensionnée à la main
@@ -694,7 +694,7 @@ local function buildOffer()
   w.warn = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   w.warn:SetWidth(OFFER_W - x - 18) w.warn:SetJustifyH("LEFT")
   w.noteLabel = w:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  w.noteLabel:SetText(GREY .. L["Note pour le conseil (facultatif) :"] .. "|r")
+  w.noteLabel:SetText(INK .. L["Note pour le conseil (facultatif) :"] .. "|r")
   w.note = CreateFrame("EditBox", nil, w, "InputBoxTemplate")
   w.note:SetSize(OFFER_W - x - 30, 22) w.note:SetAutoFocus(false) w.note:SetMaxLetters(60)
   w.note:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -785,17 +785,17 @@ function U.RefreshOffer()
     local usable, reason = canUse(x)
     local resp = label(x.response)
     local lines = { L("Objet %d", num) .. (x.from and (" · " .. L("proposé par %s", name(x.from))) or "") }
-    lines[#lines + 1] = x.answered and L("Ta réponse : %s", (RESP_COLOR[x.response] or GREY) .. (resp or "?") .. "|r") or L["Pas encore de réponse."]
+    lines[#lines + 1] = x.answered and L("Ta réponse : %s", (RESP_COLOR[x.response] or INK) .. (resp or "?") .. "|r") or L["Pas encore de réponse."]
     if usable == false then
       lines[#lines + 1] = ORANGE .. ((reason and reason ~= "") and L("Tu ne peux pas le porter : %s", reason) or L["Tu ne peux pas le porter"]) .. "|r"
     end
     local icon = iconOf(x.itemId or F.ItemId(x.link))
-    local text = x.answered and (CHECK .. (RESP_COLOR[x.response] or GREY) .. (RESP_INITIAL[x.response] or "?") .. "|r") or ""
+    local text = x.answered and (CHECK .. (RESP_COLOR[x.response] or INK) .. (RESP_INITIAL[x.response] or "?") .. "|r") or ""
     if not icon then text = F.cut(x.name or F.ItemName(x.link) or "?", 14) .. (text ~= "" and (" " .. text) or "") end
     entries[i] = { key = x.session, num = num, itemId = x.itemId, link = x.link, name = x.name, icon = icon, text = text, dim = usable == false, lines = lines }
     st.band[i] = { session = x.session, num = num, text = text, answered = x.answered and true or false, response = x.answered and x.response or nil }
     seen[x.session] = st.band[i].answered
-    if x.answered then mine[#mine + 1] = num .. " " .. (RESP_COLOR[x.response] or GREY) .. (resp or "?") .. "|r"
+    if x.answered then mine[#mine + 1] = num .. " " .. (RESP_COLOR[x.response] or INK) .. (resp or "?") .. "|r"
     elseif x ~= o then st.left = st.left + 1 end
   end
   w.band.Set(entries, o.session)
@@ -804,13 +804,13 @@ function U.RefreshOffer()
   local usable, reason = canUse(o)
   st.num, st.usable, st.reason = num, usable, reason
   local gear = {}
-  for _, g in ipairs(Lx.Equipped(o.itemString) or {}) do gear[#gear + 1] = g.link .. (g.ilvl and (GREY .. " (" .. g.ilvl .. ")|r") or "") end
+  for _, g in ipairs(Lx.Equipped(o.itemString) or {}) do gear[#gear + 1] = g.link .. (g.ilvl and (INK .. " (" .. g.ilvl .. ")|r") or "") end
   local lvl = Lx.ilvlOf(o.itemString)
-  local text = o.link .. (lvl and (GREY .. "  " .. L("niv. %s", lvl) .. "|r") or "") .. GREY .. "  " .. L("proposé par %s", name(o.from)) .. "|r\n"
-    .. (#gear > 0 and L("Tu portes : %s", table.concat(gear, ", ")) or (GREY .. L["Rien de porté à cet emplacement."] .. "|r"))
+  local text = o.link .. (lvl and (INK .. "  " .. L("niv. %s", lvl) .. "|r") or "") .. INK .. "  " .. L("proposé par %s", name(o.from)) .. "|r\n"
+    .. (#gear > 0 and L("Tu portes : %s", table.concat(gear, ", ")) or (INK .. L["Rien de porté à cet emplacement."] .. "|r"))
   if o.answered then
-    text = text .. "\n" .. L("Ta réponse : %s", (RESP_COLOR[o.response] or GREY) .. (label(o.response) or "?") .. "|r")
-      .. GREY .. " " .. L["(modifiable tant que le conseil est ouvert)"] .. "|r"
+    text = text .. "\n" .. L("Ta réponse : %s", (RESP_COLOR[o.response] or INK) .. (label(o.response) or "?") .. "|r")
+      .. INK .. " " .. L["(modifiable tant que le conseil est ouvert)"] .. "|r"
   end
   w.text:SetText(text)
   local warn = {}
@@ -824,9 +824,9 @@ function U.RefreshOffer()
   for _, b in pairs(w.buttons) do b:Hide() end
   local allDone = o.answered and st.left == 0
   st.done = allDone and true or false
-  w.done:SetText(allDone and (GREEN .. L["Tout est répondu."] .. "|r " .. GREY .. L["Tes réponses :"] .. " |r" .. table.concat(mine, GREY .. " · |r")
-    .. GREY .. ". " .. L["Clique un objet de la bande pour changer ta réponse."] .. "|r") or "")
-  w.foot:SetText(GREY .. L("Ta réponse part au chef de butin et au conseil, qui votent. Sans l'addon : chuchote au chef de butin bis, up, os ou transmo, suivi du numéro de l'objet (« bis %s »).", tostring(num)) .. "|r")
+  w.done:SetText(allDone and (GREEN .. L["Tout est répondu."] .. "|r " .. INK .. L["Tes réponses :"] .. " |r" .. table.concat(mine, INK .. " · |r")
+    .. INK .. ". " .. L["Clique un objet de la bande pour changer ta réponse."] .. "|r") or "")
+  w.foot:SetText(INK .. L("Ta réponse part au chef de butin et au conseil, qui votent. Sans l'addon : chuchote au chef de butin bis, up, os ou transmo, suivi du numéro de l'objet (« bis %s »).", tostring(num)) .. "|r")
   -- Mise en page de haut en bas ; la fenêtre se cale sur son contenu
   local x, y = w.x, w.top - 34
   w.text:ClearAllPoints() w.text:SetPoint("TOPLEFT", x, y)
@@ -878,20 +878,20 @@ function U.RefreshHandover()
   local Lx, li = Lo(), handWin.list
   local st = { items = 0 }
   U.state.handover = st
-  handWin.hintText:SetText(GREY .. L["« Échanger » demande l'échange au gagnant (à quelques mètres de toi). Dès que la fenêtre d'échange s'ouvre avec lui (même s'il l'ouvre lui-même), ses objets y sont posés tout seuls ; valide ensuite dans le jeu. Hors combat."] .. "|r")
+  handWin.hintText:SetText(INK .. L["« Échanger » demande l'échange au gagnant (à quelques mètres de toi). Dès que la fenêtre d'échange s'ouvre avec lui (même s'il l'ouvre lui-même), ses objets y sont posés tout seuls ; valide ensuite dans le jeu. Hors combat."] .. "|r")
   li.Reset()
   local hand = {}
   for _, e in ipairs(Lx.Items()) do if e.status == "awarded" then hand[#hand + 1] = e end end
   li.Header(L("Objets à remettre · %d", #hand))
-  if #hand == 0 then li.Add(GREY .. L["Aucun objet à remettre."] .. "|r") end
+  if #hand == 0 then li.Add(INK .. L["Aucun objet à remettre."] .. "|r") end
   for _, e in ipairs(hand) do
     st.items = st.items + 1
     local m = Lx.Member(e.winner)
-    li.Add(e.link .. ilvl(e) .. GREY .. " " .. L["pour"] .. " |r" .. who(e.winner) .. (m and "" or (RED .. " " .. L["(plus dans le groupe)"] .. "|r")) .. "\n" .. (timeLeft(e)),
+    li.Add(e.link .. ilvl(e) .. INK .. " " .. L["pour"] .. " |r" .. who(e.winner) .. (m and "" or (RED .. " " .. L["(plus dans le groupe)"] .. "|r")) .. "\n" .. (timeLeft(e)),
       { { L["Échanger"], 100, after(function() Lx.Trade(e.key) end) }, { L["Remis"], 80, after(function() Lx.MarkTraded(e.key) end) },
         { L["Retirer"], 80, after(function() Lx.Remove(e.key) end) } })
   end
-  li.Add(GREY .. L["« Remis » : échange fait à la main. Le jeu ne permet l'échange qu'aux joueurs présents au butin, pendant 2 h."] .. "|r")
+  li.Add(INK .. L["« Remis » : échange fait à la main. Le jeu ne permet l'échange qu'aux joueurs présents au butin, pendant 2 h."] .. "|r")
   li.Done()
 end
 

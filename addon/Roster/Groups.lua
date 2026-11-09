@@ -19,7 +19,7 @@ end
 
 -- Statuts d'inscription et difficultés : clés en français, traduites à l'affichage (G.Label, G.Difficulty)
 G.LABEL = { present = N("Présent"), late = N("En retard"), tentative = N("Peut-être"), absent = N("Absent"), bench = N("Banc"), alt = N("Reroll") }
-G.COLOR = { present = "|cff4fd35f", late = "|cfff0b43c", tentative = "|cff9aa3b6", absent = "|cffff6b5e", bench = "|cff9aa3b6", alt = "|cff9aa3b6" }
+G.COLOR = { present = "|cff4fd35f", late = "|cfff0b43c", tentative = "|cffece7d8", absent = "|cffff6b5e", bench = "|cffe3b54b", alt = "|cff6fb7ff" }
 G.DIFFICULTY = { normal = N("Normal"), heroic = N("Héroïque"), mythic = N("Mythique") }
 function G.Label(status) local l = G.LABEL[status] return l and L[l] or status end
 function G.Difficulty(key) local l = G.DIFFICULTY[key] return l and L[l] or key end
@@ -154,7 +154,7 @@ function D.Load(text)
   elseif kind == "RRB" then
     return false, L["Ce texte est un bilan de raid : colle-le sur le site (Ctrl+V sur n'importe quelle page)."]
   else
-    return false, L["Texte non reconnu : sur Roster, « Copier pour le jeu » (barre du haut) ou « Export pour le jeu » d'un raid (onglet Compo)."]
+    return false, L["Texte non reconnu : sur Roster, bouton Synchro, « Copier pour le jeu » ou « Export pour le jeu » d'un raid (onglet Compo)."]
   end
   d.lastLoad = { at = time(), text = saved }
   refresh()

@@ -13,7 +13,7 @@ local L, N = ns.L, ns.N
 local T = { active = false }
 ns.Test = T
 local K, F = ns.Kit, ns.Format
-local GREY, GREEN, ORANGE = K.GREY, K.GREEN, "|cfff0b43c"
+local INK, GREEN, ORANGE = K.INK, K.GREEN, "|cfff0b43c"
 
 -- Joueurs fictifs (classes et spés de Retail) ; Orvane n'a pas l'addon. rank : rang dans la guilde fictive (1 : maître de
 -- guilde, toi). Conseil défini en jeu (rangs 1 et 2) : toi, Tharok et Ashlen (officiers), et Brumelune, ajoutée à la main
@@ -73,7 +73,7 @@ local function colored(name)
 end
 local function nameOf(x) return type(x) == "table" and (x.name or x[1]) or x end
 -- Ligne de chat de l'essai : dans ta fenêtre seulement
-local function chat(text) print(GREY .. L["[essai]"] .. "|r " .. text) end
+local function chat(text) print(INK .. L["[essai]"] .. "|r " .. text) end
 
 -- Action différée, abandonnée si l'essai s'est arrêté (ou a recommencé) entre-temps
 local run = 0
@@ -665,7 +665,7 @@ local function rosterText()
   local by = { Tank = {}, Heal = {}, DPS = {} }
   for _, p in ipairs(PLAYERS) do
     local t = by[p.role]
-    t[#t + 1] = colored(p.name) .. (p.noAddon and (GREY .. " " .. L["(sans l'addon)"] .. "|r") or "")
+    t[#t + 1] = colored(p.name) .. (p.noAddon and (INK .. " " .. L["(sans l'addon)"] .. "|r") or "")
   end
   return K.roleIcon("Tank") .. " " .. table.concat(by.Tank, ", ") .. "   " .. K.roleIcon("Heal") .. " " .. table.concat(by.Heal, ", ")
     .. "\n" .. K.roleIcon("DPS") .. " " .. table.concat(by.DPS, ", ") .. "   " .. L("et toi, %s.", colored(me()))
@@ -679,16 +679,16 @@ function T.Refresh()
   p.hintText:SetText(ORANGE .. L["Tu es chef de butin, avec 9 joueurs fictifs. Rien ne part au chat du raid, aux autres joueurs ni au site."] .. "|r")
   li.Reset()
   li.Header(L["Le raid"])
-  li.Add(rosterText() .. "\n" .. GREY .. L("Conseil du butin : %s. Les annonces s'affichent dans ta fenêtre de chat, après [essai].", "|r" .. T.CouncilText() .. GREY) .. "|r")
+  li.Add(rosterText() .. "\n" .. INK .. L("Conseil du butin : %s. Les annonces s'affichent dans ta fenêtre de chat, après [essai].", "|r" .. T.CouncilText() .. INK) .. "|r")
   li.Header(L["1. Recevoir des objets"])
   li.Add(L["Le butin de groupe te donne 3 objets (ceux que tu portes : infobulles du jeu) ; les autres ont passé. Échange possible pendant 2 h : il reste 1 h 52 pour deux d'entre eux, 25 min pour le troisième (en orange)."]
-    .. GREY .. "\n" .. L("Reçus : %d · à attribuer : %d", #all, count.new or 0) .. "|r",
+    .. INK .. "\n" .. L("Reçus : %d · à attribuer : %d", #all, count.new or 0) .. "|r",
     { { L["Recevoir 3 objets"], 150, function() T.Receive() end }, { L["Fenêtre du butin"], 150, function() window("ShowLoot") end } })
   li.Header(L["2. Tout au conseil"])
   local buttons = { { L["Tout au conseil"], 150, function() T.Council() end } }
   if T.state.lastCouncil then buttons[2] = { L["Fenêtre du conseil"], 160, function() window("ShowCouncil", openCouncil()) end } end
   li.Add(L["Les objets à distribuer partent au conseil d'un coup (une annonce, objets numérotés). Chacun répond à chaque objet avec ses objets portés : Transmo ou Passer si ce n'est pas l'armure de sa classe. Orvane, sans l'addon, te chuchote « bis 1 ». Tharok et Brumelune votent sur chaque objet. La bande du haut passe d'un objet à l'autre ; vote pour départager, puis « Donner » : la fenêtre passe au conseil suivant. Réponds aussi si tu veux (fenêtre « ta réponse »)."]
-    .. GREY .. "\n" .. L("Conseils en cours : %d", count.council or 0) .. "|r", buttons)
+    .. INK .. "\n" .. L("Conseils en cours : %d", count.council or 0) .. "|r", buttons)
   li.Header(L["3. Jets MS / OS"])
   li.Add(L["MS : /roll 100, OS : /roll 99 ; le premier jet de chacun compte. Ashlen et Vex font 87 : seuls les ex æquo relancent. Puis « Donner » au gagnant. S'il ne reste rien à distribuer, un objet de plus arrive."],
     { { L["Lancer les jets MS / OS"], 190, function() T.Roll("msos") end } })
@@ -700,7 +700,7 @@ function T.Refresh()
     { { L["Garder le suivant"], 160, function() T.Keep() end } })
   li.Header(L["6. Objets à remettre"])
   li.Add(L["Chaque objet attribué attend son échange : le gagnant à portée, dans les 2 h. « Échanger » ouvre l'échange (ici simulé : il réussit)."]
-    .. GREY .. "\n" .. L("À remettre : %d · remis : %d", count.awarded or 0, count.traded or 0) .. "|r",
+    .. INK .. "\n" .. L("À remettre : %d · remis : %d", count.awarded or 0, count.traded or 0) .. "|r",
     { { L["Objets à remettre"], 160, function() T.Handover() end } })
   for _, e in ipairs(all) do
     if e.status == "awarded" then
@@ -727,13 +727,13 @@ function T.Refresh()
   li.Header(L["9. Historique"])
   local hist = (ns.Hist and ns.Hist.Entries) and ns.Hist.Entries() or {}
   li.Add(L["Chaque objet attribué ou gardé entre dans l'historique du butin (onglet Butin de la fenêtre Roster), avec sa catégorie (BiS, Upgrade, jet MS) et sa soirée. Pendant l'essai, en mémoire seulement : rien n'est gardé après."]
-    .. GREY .. "\n" .. L("Dans l'historique : %d", #hist) .. "|r",
+    .. INK .. "\n" .. L("Dans l'historique : %d", #hist) .. "|r",
     { { L["Ouvrir l'historique"], 170, function() if ns.UI and ns.UI.Show then ns.UI.Show("loot") end end } })
   li.Header(L["10. Conseil défini en jeu"])
   local g = guild() or {}
   local demoted = (guildMember(DEMOTED) or {}).rank == 3
   li.Add(L["Le conseil vient de la guilde fictive, sans le site : les rangs Maître de guilde (toi) et Officier (Tharok, Ashlen), plus Brumelune, ajoutée à la main (elle n'est pas de la guilde). Options › Conseil du butin : change le rang minimal, ajoute ou retire des membres. « Rétrograder Ashlen » : il sort du conseil tout seul. « Essayer en Recrue » : tu passes Recrue, comme Mirwen, et ta modification est refusée."]
-    .. GREY .. "\n" .. L("Conseil : %s", "|r" .. T.CouncilText() .. GREY) .. "|r",
+    .. INK .. "\n" .. L("Conseil : %s", "|r" .. T.CouncilText() .. INK) .. "|r",
     { { L["Conseil du butin"], 150, function() if ns.UI and ns.UI.ShowOptions then ns.UI.ShowOptions("council") end end },
       { demoted and L["Promouvoir Ashlen"] or L["Rétrograder Ashlen"], 170, function() T.Demote() end },
       { g.me == 1 and L["Essayer en Recrue"] or L["Redevenir maître de guilde"], 190, function() T.LowRank() end } })
@@ -741,7 +741,7 @@ function T.Refresh()
   local done = (count.awarded or 0) + (count.traded or 0) + (count.kept or 0)
   -- Pluriel : en français 0 et 1 au singulier, en anglais 1 seulement
   local single = (ns.Lang() == "fr") and done <= 1 or done == 1
-  li.Add(GREY .. L(single and N("%d objet attribué pendant l'essai. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.")
+  li.Add(INK .. L(single and N("%d objet attribué pendant l'essai. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid.")
     or N("%d objets attribués pendant l'essai. Le vrai butin de groupe (passer automatiquement), l'échange et les annonces restent à vérifier dans un vrai raid."), done) .. "|r",
     { { L["Recommencer"], 130, function() T.Restart() end }, { L["Quitter l'essai"], 140, function() T.Stop() end } })
   li.Done()

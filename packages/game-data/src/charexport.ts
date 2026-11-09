@@ -56,6 +56,11 @@ export interface CharacterExport {
   wanted: { itemId: number; on: boolean }[];
   /** Lot G : consommables demandés pour les raids à venir, comptés dans les sacs (et la banque) : objet → quantité. */
   consumables: Record<number, number>;
+  /**
+   * Touche de synchro rapide du joueur (ligne B, addon 1.6.6, ex. « F9 », « Ctrl-S ») : le panneau Synchro du site la montre
+   * à l'étape 1. Null si absente (addon plus ancien, aucune touche choisie) ou illisible.
+   */
+  syncKey: string | null;
 }
 
 /** Nom complet de l'en-tête : gardé seulement s'il commence par le prénom du perso (« Greta » → « Greta Coulé »). */
@@ -67,8 +72,8 @@ function fullNameOf(raw: string | undefined, first: string): string | null {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const int = (s: string | undefined) => { const n = Number.parseInt(s ?? "", 10); return Number.isFinite(n) ? n : 0; };
-/** Statuts qu'on peut choisir en jeu (les autres, « alt » et « bench », n'existent que sur le site). */
-const GAME_STATUSES = ["present", "late", "tentative", "absent"] as const;
+/** Statuts qu'on peut choisir en jeu : depuis l'addon 1.6.6 (« Autre » : En retard, Reroll, Banc), les mêmes que sur le site. */
+const GAME_STATUSES = SIGNUP_STATUSES;
 /** Inscriptions relayées (ligne V) gardées par bloc. */
 const MAX_RELAYED = 60;
 /** Une inscription relayée par prénom (sans casse) et par raid. */
@@ -94,7 +99,7 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
     name: (head[2] ?? "").slice(0, 40), realm: (head[3] ?? "").slice(0, 60), cls, race: raceFromGame(head[5] ?? "", head[7] ?? ""),
     level: Math.min(60, Math.max(1, int(head[6]))), faction: head[7] ?? "", time: int(head[8]), addon: (head[9] ?? "").slice(0, 20),
     guid: normalizeGuid(head[10]), fullName: fullNameOf(head[11], head[2] ?? ""),
-    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], relayed: [], wanted: [], consumables: {},
+    gear: {}, professions: [], recipes: [], ignored: [], talents: [], signups: [], relayed: [], wanted: [], consumables: {}, syncKey: null,
   };
   for (const line of lines.slice(1, -1)) {
     const f = line.split(";");
@@ -143,6 +148,10 @@ export function parseCharacterExport(text: string): { ok: true; data: CharacterE
         const [id, n] = p.split(":");
         if (int(id) > 0 && int(n) >= 0) data.consumables[int(id)] = Math.min(9999, int(n));
       }
+    } else if (f[0] === "B") {
+      // Touche de synchro rapide (1.6.6) : texte du jeu, 1 à 20 caractères sûrs (lettres, chiffres, tiret, espace, signes simples)
+      const key = (f[1] ?? "").trim();
+      data.syncKey = /^[\p{L}\p{N} +\-_.,'()\[\]]{1,20}$/u.test(key) ? key : null;
     } else if (f[0] === "T" && version === 2) {
       // Seulement les talents pris : arbre, puis nœud:rang
       const tree = int(f[1]);

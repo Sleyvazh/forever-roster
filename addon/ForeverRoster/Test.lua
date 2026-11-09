@@ -8,7 +8,7 @@ local K = ns.UI.kit
 local T = {}
 ns.Test = T
 
-local GREY, ORANGE = "|cff9aa3b6", "|cfff0b43c"
+local INK, ORANGE = "|cffece7d8", "|cfff0b43c"
 local function me() return UnitName("player") or "?" end
 local function refresh()
   if ns.UI.Refresh then ns.UI.Refresh() end
@@ -17,7 +17,7 @@ local function refresh()
 end
 -- Action différée, abandonnée si l'essai s'est arrêté entre-temps
 local function after(sec, fn) C_Timer.After(sec, function() if RA.test then ns.safe(L["raid d'essai"], fn) end end) end
-local function say(text) ns.print(GREY .. L("(essai) %s", text) .. "|r") end
+local function say(text) ns.print(INK .. L("(essai) %s", text) .. "|r") end
 
 -- Joueurs fictifs : rôle, type de DPS ; old = ancienne version de l'addon (sans conseil ni consommables), noAddon = sans addon
 local PLAYERS = {
@@ -275,13 +275,13 @@ function T.Refresh()
   p.hintText:SetText(ORANGE .. L["Toi et 9 joueurs fictifs. Rien ne part au site, au chat du raid ni aux autres joueurs."] .. "|r")
   li.Reset()
   li.Header(L["1. Qui a l'addon"])
-  li.Add(L["Thorn a une ancienne version, Mirelle n'a pas l'addon."] .. GREY .. "\n" .. L["Résultat dans l'onglet En raid (Mirelle passe en « pas d'addon » au bout de 5 s)."] .. "|r",
+  li.Add(L["Thorn a une ancienne version, Mirelle n'a pas l'addon."] .. INK .. "\n" .. L["Résultat dans l'onglet En raid (Mirelle passe en « pas d'addon » au bout de 5 s)."] .. "|r",
     { { L["Demander les versions"], 180, function() RA.AskVersions(true) ns.UI.Show("enraid") end } })
   li.Header(L["2. Consommables"])
-  li.Add(L["Chacun répond avec ses sacs ; tes vraies potions comptent."] .. GREY .. "\n" .. L["Prêts, manques et sans réponse dans l'onglet En raid."] .. "|r",
+  li.Add(L["Chacun répond avec ses sacs ; tes vraies potions comptent."] .. INK .. "\n" .. L["Prêts, manques et sans réponse dans l'onglet En raid."] .. "|r",
     { { L["Appel aux consommables"], 200, function() RA.CallConsumables() ns.UI.Show("enraid") end } })
   li.Header(L["3. Fiche du boss"])
-  li.Add(L["Hors combat, cible n'importe quel PNJ : la fiche de Ragnaros s'ouvre, comme en ciblant le boss. Attaque-le : elle se ferme."] .. GREY .. "\n" .. L["Tu as une tâche sur Ragnaros (Fils de la flamme)."] .. "|r",
+  li.Add(L["Hors combat, cible n'importe quel PNJ : la fiche de Ragnaros s'ouvre, comme en ciblant le boss. Attaque-le : elle se ferme."] .. INK .. "\n" .. L["Tu as une tâche sur Ragnaros (Fils de la flamme)."] .. "|r",
     { { L["Afficher la fiche"], 140, function() T.ShowBoss() end }, { L["Début du combat"], 140, function() RA.HideSheet() end } })
   li.Header(L["4. Butin en soft reserve"])
   li.Add(L["Les objets du corps sont ceux que tu portes. Jets SR avec bonus SR+ (tu as réservé le premier : fais /roll), une égalité à relancer, personne en MS puis jets OS, un jet libre."],
@@ -290,10 +290,10 @@ function T.Refresh()
   li.Add(L["Chacun répond (BiS, Upgrade...), Mirelle et Thorn chuchotent leur réponse, Gorrak et Nyssaël votent : à toi de départager."],
     { { L["Ouvrir le corps"], 140, function() T.OpenCorpse("council") end } })
   li.Header(L["6. Objets à remettre"])
-  li.Add(L["« Garder, à remettre » dans la fenêtre du butin, puis « Échanger » dans l'onglet En raid (échange simulé)."] .. GREY .. "\n" .. L("En attente : %d", #RA.Handover()) .. "|r",
+  li.Add(L["« Garder, à remettre » dans la fenêtre du butin, puis « Échanger » dans l'onglet En raid (échange simulé)."] .. INK .. "\n" .. L("En attente : %d", #RA.Handover()) .. "|r",
     { { L["Onglet En raid"], 130, function() ns.UI.Show("enraid") end } })
   li.Header(L["Fin"])
-  li.Add(GREY .. L("%d objet(s) attribué(s) pendant l'essai. Le vrai butin de maître et l'échange restent à vérifier dans un vrai raid.", #RA.test.log.loot) .. "|r",
+  li.Add(INK .. L("%d objet(s) attribué(s) pendant l'essai. Le vrai butin de maître et l'échange restent à vérifier dans un vrai raid.", #RA.test.log.loot) .. "|r",
     { { L["Recommencer"], 120, function() RA.StopTest() RA.StartTest() end }, { L["Quitter l'essai"], 130, function() RA.StopTest() end } })
   li.Done()
 end

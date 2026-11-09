@@ -11,12 +11,12 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a sep
 | Onglet | Rôle |
 |---|---|
 | **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul, et d'où viennent les données de chaque groupe (collées, Roster Companion, reçues d'un joueur). En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
-| **Raids** | Raids à venir de tes groupes et inscription du perso connecté (sans Roster Companion, elle est confiée à un officier qui l'a, ou part avec ton export : la ligne dit à qui) |
+| **Raids** | Raids à venir de tes groupes et inscription du perso connecté : Présent, Peut-être, Absent, ou « Autre... » (En retard, Reroll, Banc) (sans Roster Companion, elle est confiée à un officier qui l'a, ou part avec ton export : la ligne dit à qui) |
 | **Sorties** | Sorties donjon du jour et de demain de tes groupes : places par rôle, inscrits, attente, note, ta place ; **Inviter les N** (ta sortie, le jour même) ou **Chuchoter <créateur>**. Inscription sur le site ou sur Discord |
 | **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
 | **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
-| **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, relevé présence et butin (et seuil de qualité), partage des données du site avec la guilde et le raid, inscriptions confiées à un officier ou transmises au site (1.6.3), persos à retirer de l'export |
+| **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, rappel de synchro dans le chat (1.6.6), relevé présence et butin (et seuil de qualité), partage des données du site avec la guilde et le raid, inscriptions confiées à un officier ou transmises au site (1.6.3), persos à retirer de l'export |
 
 | Commande | Rôle |
 |---|---|
@@ -38,7 +38,9 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a sep
 
 Relevé du raid : pendant un raid prévu sur le site (données du site chargées en jeu), l'addon note chaque minute qui est dans le groupe de raid, et le butin de qualité épique ou plus (réglable dans Options). « REC » s'affiche sur le bouton de la minicarte. Le bilan (bloc FRB) part avec la synchro rapide ; le site ne retient que celui d'un officier du groupe.
 
-Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans réponse ouvre une petite fenêtre « Tu viens ? » (Présent, En retard, Peut-être, Absent) ; un raid déjà répondu s'affiche dans le chat. Il se base sur les dernières données du site collées en jeu.
+Rappel de raid : à la connexion, un raid de tes groupes dans les 24 h sans réponse ouvre une petite fenêtre « Tu viens ? » (Présent, Peut-être, Absent, et « Autre... » : En retard, Reroll, Banc — les mêmes réponses que le site, 1.6.6) ; un raid déjà répondu s'affiche dans le chat. Il se base sur les dernières données du site collées en jeu.
+
+Rappel de synchro (1.6.6) : une fois par session, quelques secondes après un changement d'équipement et hors combat, une ligne dans le chat si ton perso a déjà été envoyé au site et a changé depuis, avec un lien [Synchro rapide] quand le jeu connaît les liens d'addon. Jamais avec Roster Companion. Se coupe dans Options. L'export porte aussi ta touche de synchro (ligne B), que le panneau Synchro du site rappelle.
 
 Habillage : celui de Forever par défaut (cadres, onglets à icône sur le côté, textures du jeu), ou celui du site (fond sombre, liserés dorés, titres en Marcellus SC, onglets en haut, boutons plats). La police est dans `Fonts/` (licence SIL OFL, `Fonts/OFL.txt`), le logo (infini et épée, liste des addons, fenêtres, minicarte) dans `Media/Logo.tga`. Le changement s'applique au rechargement de l'interface.
 

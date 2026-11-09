@@ -33,6 +33,20 @@ function lastVerifyMail(email: string) {
   return { origin: m[1]!, token: m[2]!, line };
 }
 
+/**
+ * « Copier pour le jeu » d'un officier : bouton Synchro de la barre du haut, Vers le jeu, puis la copie (refonte du 09/11) ;
+ * le panneau se referme ensuite.
+ */
+async function copyForGame(page: Page) {
+  await page.locator(".topnav").getByRole("button", { name: /Synchro/ }).click();
+  const panel = page.getByRole("dialog", { name: "Synchro" });
+  await panel.getByRole("button", { name: "Vers le jeu" }).click();
+  await panel.getByRole("button", { name: "Copier pour le jeu" }).click();
+  await expect(panel.getByRole("button", { name: /Copié/ })).toBeVisible();
+  await panel.getByRole("button", { name: "Fermer la synchro" }).click();
+  await expect(panel).toHaveCount(0);
+}
+
 test("accueil public propre à chaque adresse", async ({ page }) => {
   await test.step("Forever Roster", async () => {
     await page.goto(`${FOREVER}/`);
@@ -132,9 +146,9 @@ test.describe("Roster (WoW Retail)", () => {
       await page.getByRole("button", { name: /se connecter/i }).click();
       await expect(page.getByRole("heading", { name: "Mes personnages" })).toBeVisible();
       await expect(page.getByText("Accès anticipé")).toHaveCount(0);
-      // R3a : l'addon Roster (page Addon, « Copier pour le jeu ») ; pas encore de nouveautés ni de compte à rebours
+      // R3a : l'addon Roster (page Addon, bouton Synchro) ; pas encore de nouveautés ni de compte à rebours
       await expect(page.getByRole("link", { name: "Addon" }).first()).toBeVisible();
-      await expect(page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ })).toBeVisible();
+      await expect(page.locator(".topnav").getByRole("button", { name: /Synchro/ })).toBeVisible();
       await expect(page.locator(".topnav").getByRole("button", { name: /Nouveautés/ })).toHaveCount(0);
     });
 
@@ -255,8 +269,7 @@ test.describe("Roster (WoW Retail)", () => {
       const zip = await page.request.get(`${RETAIL}/downloads/Roster.zip`);
       expect(zip.status()).toBe(200);
       expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
-      await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
-      await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+      await copyForGame(page);
       // R3b : conseil par défaut (O), conseil choisi pour ce raid (L), objets reçus (N), hors du compte de END ;
       // partage entre joueurs : persos du groupe (M) et signature du site (Z, clé de test de e2e/start.mjs)
       expect(await page.evaluate(() => navigator.clipboard.readText()))
@@ -294,16 +307,17 @@ test.describe("Roster (WoW Retail)", () => {
       await page.getByRole("link", { name: "Mes persos" }).first().click();
       // Un texte de l'addon Forever Roster est refusé sur Roster
       await paste("FRC;2;Tournicoti;Forever EU;DRUID;Tauren;60;Horde;1790000000;1.5.4\nEND;0");
-      const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
-      await expect(dialog).toContainText("Texte de l'autre addon");
-      await expect(dialog).toContainText("Ce texte vient de l'addon Forever Roster : colle-le sur localhost:4173.");
-      await dialog.getByRole("button", { name: "Fermer" }).click();
+      const dialog = page.getByRole("dialog", { name: "Synchro" });
+      await expect(dialog.getByRole("alert")).toContainText("Ce texte vient de l'addon Forever Roster : colle-le sur localhost:4173.");
+      await dialog.getByRole("button", { name: "Fermer la synchro" }).click();
+      await expect(dialog).toHaveCount(0);
       await paste(rrb);
       await expect(dialog).toContainText("Bilan de Flèche du Vide");
       await expect(dialog).toContainText("2 présents · 3 objets · 1 boss vaincu · relevé par Brumelune-Hyjal");
       await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
-      await expect(dialog).toContainText("Bilan de Flèche du Vide : enregistré · 2 présents, 3 objets, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
-      await dialog.getByRole("button", { name: "Fermer" }).click();
+      await expect(dialog).toContainText("Bilan de Flèche du Vide · enregistré · 2 présents, 3 objets, 1 boss vaincu · sans fiche : Inconnue-Ysondre");
+      await dialog.getByRole("button", { name: "Fermer", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
       await page.goto(raidUrl);
       await page.getByRole("tab", { name: "Bilan" }).click();
       const bilan = page.getByRole("region", { name: "Bilan du raid" });
@@ -378,8 +392,7 @@ test.describe("Roster (WoW Retail)", () => {
       if (process.env.SHOTS) await fiche.screenshot({ path: "test-results/shots/roster-fiche-detail-mobile.png" });
       await page.setViewportSize({ width: 1280, height: 720 });
       // « Copier pour le jeu » : ligne D juste après N (BiS:Upgrade:MS), mêmes entrées
-      await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
-      await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+      await copyForGame(page);
       expect(await page.evaluate(() => navigator.clipboard.readText()))
         .toMatch(new RegExp(`^RRG;1;[0-9a-f-]{36};\\d+;Pasta e Basta\nR;${raidId};0;Flèche du Vide;heroic;25;present;Brumelune-Hyjal;council\nO;Brumelune-Hyjal\nL;${raidId};Brumelune-Hyjal\nN;saison;depuis le début;Brumelune-Hyjal:4\nD;Brumelune-Hyjal:2:1:1\nM;Brumelune-Hyjal\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$`));
       await page.getByRole("tab", { name: "Administration" }).click();

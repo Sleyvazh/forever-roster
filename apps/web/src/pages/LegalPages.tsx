@@ -332,6 +332,7 @@ const STORAGE: [string, string][] = [
   ["fr-invite", "Jeton du lien d'invitation à une guilde, avec l'e-mail saisi en créant ton compte (pour le préremplir à la connexion) : gardés 24 h au plus, pour que l'invitation survive à la confirmation de l'e-mail, et effacés dès que tu rejoins la guilde. Sur Roster : le temps de te connecter (session de l'onglet)."],
   ["fr-guild", "Dernière guilde ouverte, pour arriver sur son Accueil."],
   ["fr-tab", "Dernier onglet ouvert d'une fiche de perso (session de l'onglet)."],
+  ["fr-sync-key", "Ta touche de synchro de l'addon (ex. F9), lue dans le dernier texte collé, pour la rappeler dans le panneau Synchro."],
 ];
 
 export function PrivacyPage() {

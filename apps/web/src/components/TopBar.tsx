@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { navKeyOf, navLinks, useCurrentGuild, type NavKey } from "../nav";
-import { SyncMenu } from "./SyncMenu";
 import { readInvite } from "../invite";
 import { get, type Character } from "../api";
 import { useLogout, useMe } from "../auth";
@@ -11,8 +10,7 @@ import { Logo, RosterLogo } from "./Logo";
 import { Portrait } from "./ImageUpload";
 import { ThemeToggle } from "./ThemeToggle";
 import { useLiveEvents } from "../live";
-import { CopyForGame } from "./CopyForGame";
-import { PasteImport } from "./PasteImport";
+import { SyncButton, SyncPanel } from "./SyncPanel";
 import { News } from "./News";
 import { useApplySite, useSite } from "../site";
 import { ReportDialog, useUnseenReports } from "./Report";
@@ -146,13 +144,13 @@ export function TopBar() {
           ) : <span />}
           <div className="bar-right">
             {site.preview && <span className="tag warn" title="Roster n'est pas encore ouvert : ton compte y a accès en avance, pour tester.">Accès anticipé</span>}
-            {app && !bare && (forever ? <SyncMenu /> : <CopyForGame />)}
+            {app && !bare && <SyncButton />}
             {app && forever && !bare && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
           </div>
         </div>
       </header>
-      {app && <PasteImport />}
+      {app && <SyncPanel />}
       {app && !bare && (
         <nav className={`tabbar${forever ? " five" : ""}`} aria-label="Navigation principale (mobile)">
           {forever ? <ForeverLinks bar /> : <>

@@ -52,6 +52,14 @@ const paste = (page: Page, text: string) => page.evaluate(t => {
   (document.activeElement as HTMLElement | null)?.blur();
   document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
 }, text);
+/** Ctrl+V d'un texte de l'addon : aperçu dans le panneau Synchro, puis son bouton, jusqu'au résultat (refonte du 09/11). */
+const pasteAndApply = async (page: Page, text: string) => {
+  await paste(page, text);
+  const panel = page.getByRole("dialog", { name: "Synchro" });
+  await panel.locator(".sy-go").click();
+  await expect(panel.getByRole("status", { name: "Résultat de la synchro" })).toBeVisible();
+  return panel;
+};
 /** Captures pour la relecture : SHOTS_DIR=/chemin npx playwright test fiches */
 const shot = async (target: Page | Locator, name: string) => {
   if (!process.env.SHOTS_DIR) return;
@@ -100,8 +108,8 @@ test("fiches : rattacher plusieurs persos, créer la fiche d'un joueur, donner u
   const grumz = await fiche(pikou, "Grumz", "Warrior", "Orc", "Arms", 22, null, false);
   await db.end();
 
-  await paste(page, frl(Math.floor(Date.now() / 1000) - 60));
-  await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Fiches (liée)");
+  await pasteAndApply(page, frl(Math.floor(Date.now() / 1000) - 60));
+  await expect(page.getByRole("dialog", { name: "Synchro" })).toContainText("Les Fiches (liée)");
   await page.goto(`/groups/${group}/membres/persos?vue=jeu`);
   const table = page.locator(".gx-table");
   const row = (name: string) => table.locator("tbody tr", { hasText: name });

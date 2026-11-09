@@ -64,18 +64,36 @@ describe("export d'un perso par l'addon (FRC v1)", () => {
       `V;${g};${r1};present;;Player-4453-0A1B2C40;1794000170`,
       `V;${g};${r1};present;Torvin;Player-4453-0A1B2C41;0`,
       `V;${g};${r1};present;Bramm;Player-4453-0A1B2C42;12abc`,
-      "END;8"].join("\n");
+      `V;${g};${r1};banni;Orvane;Player-4453-0A1B2C43;1794000180`,
+      "END;9"].join("\n");
     const res = parseOne(text);
     if (!res.ok) throw new Error(res.error);
-    // La dernière ligne par (prénom en minuscules, raid) l'emporte ; le GUID est normalisé, un GUID absent donne null
+    // La dernière ligne par (prénom en minuscules, raid) l'emporte ; le GUID est normalisé, un GUID absent donne null ;
+    // Banc et Reroll se choisissent en jeu depuis l'addon 1.6.6 (« Autre ») ; un statut inconnu est ignoré
     expect(res.data.relayed).toEqual([
       { groupId: g, raidId: r2, status: "late", name: "Thalwen", guid: null, at: 1794000200 },
+      { groupId: g, raidId: r1, status: "bench", name: "Brindille", guid: "Player-4453-0A1B2C3E", at: 1794000150 },
       { groupId: g, raidId: r1, status: "tentative", name: "GRETA", guid: "Player-4453-0A1B2C3D", at: 1794000300 },
     ]);
     // Sans ligne V (ou site d'avant) : liste vide
     const none = parseOne(`${head}\nEND;0`);
     if (!none.ok) throw new Error(none.error);
     expect(none.data.relayed).toEqual([]);
+  });
+  it("ligne B : touche de synchro du joueur (addon 1.6.6), ignorée si illisible", () => {
+    const head = "FRC;2;Pikou;Beta;DRUID;Skyborne;20;Alliance;1;1.6.6";
+    const key = (line: string | null) => {
+      const res = parseOne(line === null ? `${head}\nEND;0` : `${head}\n${line}\nEND;1`);
+      if (!res.ok) throw new Error(res.error);
+      return res.data.syncKey;
+    };
+    expect(key("B;F9")).toBe("F9");
+    expect(key("B;Maj-G")).toBe("Maj-G");
+    expect(key("B; Ctrl-Num Pad 5 ")).toBe("Ctrl-Num Pad 5");
+    expect(key("B;<script>")).toBeNull();
+    expect(key("B;une touche bien trop longue")).toBeNull();
+    expect(key("B;")).toBeNull();
+    expect(key(null)).toBeNull();
   });
   it("ligne V : 60 inscriptions au plus par bloc", () => {
     const g = "6f1c2a10-0000-4000-8000-000000000001", r = "7a1c2a10-0000-4000-8000-000000000002";

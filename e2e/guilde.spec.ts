@@ -84,6 +84,14 @@ const paste = (page: Page, text: string) => page.evaluate(t => {
   (document.activeElement as HTMLElement | null)?.blur();
   document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
 }, text);
+/** Ctrl+V d'un texte de l'addon : aperçu dans le panneau Synchro, puis son bouton, jusqu'au résultat (refonte du 09/11). */
+const pasteAndApply = async (page: Page, text: string) => {
+  await paste(page, text);
+  const panel = page.getByRole("dialog", { name: "Synchro" });
+  await panel.locator(".sy-go").click();
+  await expect(panel.getByRole("status", { name: "Résultat de la synchro" })).toBeVisible();
+  return panel;
+};
 
 /** Compte vérifié et connecté : inscription, lien reçu par e-mail (journal de l'API), connexion. */
 async function signUp(page: Page, name: string) {
@@ -161,16 +169,17 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
 
   await test.step("Ctrl+V du relevé : la guilde du jeu se lie et la liste arrive", async () => {
     await paste(page, frl(Math.floor(Date.now() / 1000) - 60));
-    // Rien à choisir : le relevé part tout de suite (refonte du 23/10), le résultat s'affiche
-    const toast = page.getByRole("status", { name: "Export de l'addon" });
-    await expect(toast).toContainText("Liste de guilde reçue");
-    await expect(toast).toContainText("Les Lanternes (liée) : liste de 7 membres (complète)");
-    await expect(page.getByRole("dialog", { name: "Export de l'addon" })).toHaveCount(0);
-    await toast.getByRole("button", { name: "Détails" }).click();
-    const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
-    await expect(dialog).toContainText("Guilde Les Lanternes : Les Lanternes (liée) : liste de 7 membres (complète)");
-    await dialog.getByRole("link", { name: "Les Lanternes › Membres" }).click();
+    // Panneau Synchro (refonte du 09/11) : l'aperçu, rien d'enregistré avant le bouton
+    const panel = page.getByRole("dialog", { name: "Synchro" });
+    await expect(panel).toContainText("Aperçu · relevé de guilde");
+    await expect(panel).toContainText("Relevé de la guilde Les Lanternes");
+    await panel.getByRole("button", { name: "Envoyer le relevé de guilde" }).click();
+    const result = panel.getByRole("status", { name: "Résultat de la synchro" });
+    await expect(result).toContainText("Envoyé au site");
+    await expect(panel).toContainText("Guilde Les Lanternes · Les Lanternes (liée) : liste de 7 membres (complète)");
+    await panel.getByRole("link", { name: "Les Lanternes › Membres" }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${group}/membres$`));
+    await expect(panel).toHaveCount(0);
   });
 
   const players = page.getByRole("table", { name: "Joueurs de la guilde" });
@@ -463,8 +472,8 @@ test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", a
   await db.end();
 
   await test.step("le relevé de l'officière lie la guilde du jeu et sa banque", async () => {
-    await paste(page, frlVeilleurs(Math.floor(Date.now() / 1000) - 60));
-    await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Veilleurs (liée) : liste de 2 membres (complète)");
+    const panel = await pasteAndApply(page, frlVeilleurs(Math.floor(Date.now() / 1000) - 60));
+    await expect(panel).toContainText("Les Veilleurs (liée) : liste de 2 membres (complète)");
   });
 
   const bank = `/groups/${group}/membres/banque`;
@@ -690,8 +699,8 @@ test("guilde : niveau des fiches relevé en jeu, correction par un officier", as
   await test.step("le relevé de la guilde impose son niveau du jeu à la fiche de Necko (prénom seul)", async () => {
     const now = Math.floor(Date.now() / 1000) - 60;
     const lines = [["M", "Isolde Clairval", "PRIEST", 40, "Maître de guilde", 0, 1, 0, "", "", guid(22)].join(";"), ["M", "Necko Brisefer", "ROGUE", 34, "Membre", 3, 0, 3, "", "", guid(21)].join(";")];
-    await paste(page, sealText([`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n")));
-    await expect(page.getByRole("status", { name: "Export de l'addon" })).toContainText("Les Niveaux (liée) : liste de 2 membres (complète)");
+    const panel = await pasteAndApply(page, sealText([`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n")));
+    await expect(panel).toContainText("Les Niveaux (liée) : liste de 2 membres (complète)");
     // Le joueur : niveau en lecture seule, et d'où il vient
     await player.goto(`/persos/${neckoId}`);
     await expect(player.locator("#f-level")).toHaveValue("34");

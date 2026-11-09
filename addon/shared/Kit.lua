@@ -5,7 +5,7 @@ local ADDON, ns = ...
 local L, N = ns.L, ns.N
 local K = {}
 ns.Kit = K
-local GOLD, GREY, GREEN, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cff6fb7ff"
+local GOLD, INK, GREEN, BLUE = "|cffe3b54b", "|cffece7d8", "|cff4fd35f", "|cff6fb7ff"
 local CLASS_COLOR = RAID_CLASS_COLORS or {}
 
 -- Habillage de l'interface de Forever (relevé sur la fiche de perso) : cadre « PortraitFrameTemplate » aux textures
@@ -29,8 +29,9 @@ local function site() local db = ns.db and ns.db() return db and db.skin == "sit
 local C = {
   bg = { 0.027, 0.039, 0.071 }, panel = { 0.055, 0.078, 0.153 }, panel2 = { 0.078, 0.106, 0.2 },
   line = { 0.137, 0.173, 0.278 }, line2 = { 0.204, 0.251, 0.373 }, frame = { 0.427, 0.353, 0.173 },
-  gold = { 0.902, 0.749, 0.341 }, ink = { 0.925, 0.906, 0.847 }, ink2 = { 0.663, 0.69, 0.761 },
+  gold = { 0.902, 0.749, 0.341 }, ink = { 0.925, 0.906, 0.847 },
 }
+-- Refonte du 09/11 : plus de texte gris (comme sur le site) ; le texte est à l'encre (INK) ou d'une couleur qui a un sens
 -- Couleurs propres à l'addon (Roster : argent-azur à la place de l'or), posées par son Core.lua avant ce fichier
 for k, v in pairs(ns.palette or {}) do C[k] = v end
 local TITLE_FONT = "Interface\\AddOns\\" .. (ADDON or "ForeverRoster") .. "\\Fonts\\MarcellusSC.ttf"
@@ -109,9 +110,9 @@ local function siteWindow(name, title, w, h, icon)
   local close = CreateFrame("Button", nil, f)
   close:SetSize(22, 22) close:SetPoint("TOPRIGHT", -4, -3)
   local x = close:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-  x:SetPoint("CENTER") x:SetText(L["×"]) x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) -- croix de fermeture (la même dans toutes les langues)
+  x:SetPoint("CENTER") x:SetText(L["×"]) x:SetTextColor(C.ink[1], C.ink[2], C.ink[3]) -- croix de fermeture (la même dans toutes les langues)
   close:SetScript("OnEnter", function() x:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
-  close:SetScript("OnLeave", function() x:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) end)
+  close:SetScript("OnLeave", function() x:SetTextColor(C.ink[1], C.ink[2], C.ink[3]) end)
   close:SetScript("OnClick", function() f:Hide() end)
   function f:SetWindowTitle(text) self.titleText:SetText(text) end
   function f:SetIcon(tex)
@@ -258,6 +259,50 @@ local function styleStatus(b, label, color, selected)
     b.bg:SetColorTexture(0.04, 0.05, 0.09, 0.85)
     b.label:SetTextColor(b.r, b.g, b.b)
   end
+end
+
+-- Petit menu de choix sous un bouton (« Autre » des réponses à un raid, refonte du 09/11) : une colonne de boutons de
+-- statut. Un choix, un clic ailleurs (cadre transparent sur tout l'écran, à l'addon) ou un second clic sur le bouton le
+-- ferme. items : { { label, color, selected, onClick }, … }
+local menu, catcher
+local function choices(anchor, items)
+  if not menu then
+    catcher = CreateFrame("Frame", nil, UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:EnableMouse(true)
+    catcher:Hide()
+    menu = CreateFrame("Frame", nil, UIParent)
+    menu:SetFrameStrata("FULLSCREEN_DIALOG")
+    menu.bg = menu:CreateTexture(nil, "BACKGROUND")
+    menu.bg:SetAllPoints()
+    solid(menu.bg, C.panel)
+    edges(menu, C.frame)
+    menu:EnableMouse(true)
+    menu.buttons = {}
+    menu:SetScript("OnHide", function(self) catcher:Hide() self.anchor = nil end)
+    catcher:SetScript("OnMouseDown", function() menu:Hide() end)
+    menu:Hide()
+  end
+  if menu:IsShown() and menu.anchor == anchor then menu:Hide() return menu end
+  if catcher.GetFrameLevel and menu.SetFrameLevel then menu:SetFrameLevel((catcher:GetFrameLevel() or 1) + 5) end
+  local w = math.max(120, (anchor.GetWidth and anchor:GetWidth()) or 120)
+  for i, it in ipairs(items) do
+    local b = menu.buttons[i] or statusButton(menu)
+    menu.buttons[i] = b
+    styleStatus(b, it.label, it.color, it.selected)
+    b:SetSize(w - 8, 24)
+    b:ClearAllPoints() b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 28)
+    b:SetScript("OnClick", function() menu:Hide() it.onClick() end)
+    b:Show()
+  end
+  for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
+  menu:SetSize(w, 4 + #items * 28)
+  menu:ClearAllPoints() menu:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
+  menu.anchor = anchor
+  catcher:Show()
+  menu:Show()
+  return menu
 end
 
 -- Liens d'objets dans les textes d'un cadre : infobulle du jeu au survol, clic comme dans le chat
@@ -547,10 +592,10 @@ end
 
 -- Outils exposés aux fichiers de chaque addon (fenêtre principale, butin, conseil, fiches…)
 K.window, K.button, K.list, K.grid, K.resizable, K.hint, K.colored, K.site = window, button, list, grid, resizable, hint, colored, site
-K.textArea, K.front, K.roleIcon, K.itemTips, K.styleStatus, K.statusButton = textArea, front, roleIcon, itemTips, styleStatus, statusButton
+K.textArea, K.front, K.roleIcon, K.itemTips, K.styleStatus, K.statusButton, K.choices = textArea, front, roleIcon, itemTips, styleStatus, statusButton, choices
 K.solid, K.edges, K.recolor, K.titleFont, K.diamond, K.gapX, K.atlas, K.inset, K.scrollFrame = solid, edges, recolor, titleFont, diamond, gapX, atlas, inset, scrollFrame
 K.C, K.ART, K.CLASS_COLOR = C, ART, CLASS_COLOR
-K.GOLD, K.GREY, K.GREEN, K.BLUE = GOLD, GREY, GREEN, BLUE
+K.GOLD, K.INK, K.GREEN, K.BLUE = GOLD, INK, GREEN, BLUE
 
 -- Ajouts du lot R3a (addon Roster) : fenêtre à onglets. Forever Roster garde ses propres copies (UI.lua).
 
@@ -652,7 +697,7 @@ local function topTab(parent, index, t, onClick, width)
   hl:SetAllPoints() solid(hl, C.panel2, 0.8)
   function b:SetOn(on)
     if on then self.selected:Show() self.mark:Show() label:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) icon:SetDesaturated(false)
-    else self.selected:Hide() self.mark:Hide() label:SetTextColor(C.ink2[1], C.ink2[2], C.ink2[3]) icon:SetDesaturated(true) end
+    else self.selected:Hide() self.mark:Hide() label:SetTextColor(C.ink[1], C.ink[2], C.ink[3]) icon:SetDesaturated(true) end
   end
   b:SetOn(false)
   b:SetScript("OnClick", function() if onClick then onClick(t.key) end end)

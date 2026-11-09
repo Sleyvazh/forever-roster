@@ -16,7 +16,7 @@ local KEEP = 2 * 3600 -- une sortie disparaît 2 h après son heure (comme sur l
 local TICK = 30       -- s : bandeau vérifié toutes les 30 s
 local DAY = 86400
 local LABEL = N("sorties")
-local GOLD, GREY, GREEN = K.GOLD, K.GREY, K.GREEN
+local GOLD, INK, GREEN = K.GOLD, K.INK, K.GREEN
 local ROLES = { "Tank", "Heal", "DPS" }
 local ROLE_NAME = { Tank = N("Tank"), Heal = N("Heal"), DPS = N("DPS") }
 local ONLINE, OFFLINE = { 0.25, 0.83, 0.25 }, { 0.45, 0.47, 0.52 }
@@ -220,7 +220,7 @@ end
 local function hm(t) return date("%H:%M", t) end
 local function levels(o)
   if not (o.min and o.max) then return "" end
-  return GREY .. "  " .. (o.min == o.max and tostring(o.min) or (o.min .. "-" .. o.max)) .. "|r"
+  return INK .. "  " .. (o.min == o.max and tostring(o.min) or (o.min .. "-" .. o.max)) .. "|r"
 end
 -- « Gnomeregan à 21:00, complet » / « Gnomeregan : complet » (dès que complet) ; sinon « 3/5 inscrits »
 local function headline(o)
@@ -328,7 +328,7 @@ local function render(e, kind)
     local x, row = banner.x, 0
     for i, p in ipairs(plan.others) do
       local s = slot(i)
-      local name = p.manual and (GREY .. p.name .. "|r") or (p.online == false and not p.group) and (GREY .. p.name .. "|r") or K.colored(p.class, p.name)
+      local name = p.manual and (INK .. p.name .. "|r") or (p.online == false and not p.group) and (INK .. p.name .. "|r") or K.colored(p.class, p.name)
       s.text:SetText(name)
       local w = (s.text.GetStringWidth and s.text:GetStringWidth()) or 60
       if type(w) ~= "number" or w <= 0 then w = 60 end
@@ -344,7 +344,7 @@ local function render(e, kind)
     local parts = { L("%d en ligne sur %d", plan.online, plan.total) }
     parts[2] = plan.grouped == 0 and L["aucun déjà dans ton groupe"] or L("%d déjà dans ton groupe", plan.grouped)
     if #plan.manual > 0 then parts[3] = L("à inviter à la main : %s", table.concat(plan.manual, ", ")) end
-    banner.info:SetText(GREY .. table.concat(parts, " · ") .. "|r")
+    banner.info:SetText(INK .. table.concat(parts, " · ") .. "|r")
     if #plan.invite > 0 then
       local label = inviteLabel(plan)
       -- Fermé une fois les invitations parties ; sinon (combat, pas chef du groupe) il reste, le chat dit pourquoi
@@ -367,7 +367,7 @@ local function render(e, kind)
   else
     local me = O.Me(o, mine)
     local who = me.char and key(me.char) ~= current() and L("tu viens en %s avec %s", roleName(me.role), me.char) or L("tu viens en %s", roleName(me.role))
-    banner.info:SetText(GREY .. L("Créée par %s", o.creator) .. " · " .. who .. "|r")
+    banner.info:SetText(INK .. L("Créée par %s", o.creator) .. " · " .. who .. "|r")
     local label = L("Chuchoter %s", o.creator)
     setButton(banner.go, label, width(label, 120), function()
       ns.safe(N("chuchotement"), O.Whisper, o.creator)
@@ -473,7 +473,7 @@ local function roleLine(o, pres)
         local s = not manual(name) and pres[key(name)]
         names[#names + 1] = (s and s.class) and K.colored(s.class, name) or name
       end
-      for _ = #list + 1, n do names[#names + 1] = GREY .. L["libre"] .. "|r" end
+      for _ = #list + 1, n do names[#names + 1] = INK .. L["libre"] .. "|r" end
       parts[#parts + 1] = K.roleIcon(role) .. " " .. table.concat(names, ", ")
     end
   end
@@ -486,7 +486,7 @@ function O.FillTab(rows)
   local list = O.List(now)
   if #list == 0 then
     rows.Header(L["Sorties"])
-    rows.Add(GREY .. (#groups == 0 and L["Aucun groupe chargé : sur le site, « Copier pour le jeu » (en haut de chaque page), puis colle dans l'onglet Synchro."]
+    rows.Add(INK .. (#groups == 0 and L["Aucun groupe chargé : sur le site, bouton Synchro, « Copier pour le jeu », puis colle dans l'onglet Synchro."]
       or (L["Aucune sortie aujourd'hui ni demain."] .. "\n" .. L["Crée-en une ou inscris-toi sur le site ou sur Discord."])) .. "|r")
     return
   end
@@ -499,16 +499,16 @@ function O.FillTab(rows)
     end
     local filled, total, full = O.Count(o)
     local when = o.time == 0 and L["dès que complet"] or hm(o.time)
-    local lines = { GOLD .. o.title .. "|r" .. levels(o) .. "  " .. when .. GREY .. "  ·  " .. filled .. "/" .. total .. "|r" .. (full and ("  " .. GREEN .. L["complet"] .. "|r") or "") }
+    local lines = { GOLD .. o.title .. "|r" .. levels(o) .. "  " .. when .. INK .. "  ·  " .. filled .. "/" .. total .. "|r" .. (full and ("  " .. GREEN .. L["complet"] .. "|r") or "") }
     lines[#lines + 1] = roleLine(o, pres)
     if #o.wait > 0 then
       local w = {}
       for _, x in ipairs(o.wait) do w[#w + 1] = x.role ~= "" and L("%s (%s)", x.name, roleName(x.role)) or x.name end
-      lines[#lines + 1] = GREY .. L("En attente : %s", table.concat(w, ", ")) .. "|r"
+      lines[#lines + 1] = INK .. L("En attente : %s", table.concat(w, ", ")) .. "|r"
     end
-    if o.note ~= "" then lines[#lines + 1] = GREY .. L("« %s »", o.note) .. "|r" end
+    if o.note ~= "" then lines[#lines + 1] = INK .. L("« %s »", o.note) .. "|r" end
     local me = O.Me(o, mine)
-    local foot = GREY .. L("Créée par %s", o.creator) .. (#groups > 1 and ("  ·  " .. (e.group.name or "")) or "") .. "|r"
+    local foot = INK .. L("Créée par %s", o.creator) .. (#groups > 1 and ("  ·  " .. (e.group.name or "")) or "") .. "|r"
     local buttons
     if me.creator then
       foot = foot .. "  ·  " .. GOLD .. L["ta sortie"] .. "|r"

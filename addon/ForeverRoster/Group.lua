@@ -6,13 +6,19 @@ local L, N = ns.L, ns.N
 local G = {}
 ns.Group = G
 
-local GOLD, GREY, GREEN, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cff6fb7ff"
+local GOLD, INK, GREEN, BLUE = "|cffe3b54b", "|cffece7d8", "|cff4fd35f", "|cff6fb7ff"
 
 -- Statuts proposés en jeu (le banc reste une décision des officiers, sur le site)
 -- Couleurs : celles du site (thème sombre), pour reconnaître un statut d'un coup d'œil. Noms traduits à l'affichage (L[…]).
+-- Réponses à un raid (refonte du 09/11) : 3 + Autre, comme sur le site et Discord — Présent (vert), Peut-être (encre),
+-- Absent (rouge) toujours visibles, de même largeur ; « Autre » ouvre En retard (orange), Reroll (bleu), Banc (doré)
 G.STATUSES = {
-  { key = "present", label = N("Présent"), color = { 0.31, 0.83, 0.37 } }, { key = "late", label = N("En retard"), color = { 0.94, 0.71, 0.24 } },
-  { key = "tentative", label = N("Peut-être"), color = { 0.66, 0.69, 0.76 } }, { key = "absent", label = N("Absent"), color = { 1, 0.42, 0.37 } },
+  { key = "present", label = N("Présent"), color = { 0.31, 0.83, 0.37 } }, { key = "tentative", label = N("Peut-être"), color = { 0.925, 0.906, 0.847 } },
+  { key = "absent", label = N("Absent"), color = { 1, 0.42, 0.37 } },
+}
+G.OTHER = {
+  { key = "late", label = N("En retard"), color = { 0.94, 0.71, 0.24 } }, { key = "alt", label = N("Reroll"), color = { 0.435, 0.718, 1 } },
+  { key = "bench", label = N("Banc"), color = { 0.902, 0.749, 0.341 } },
 }
 G.LABEL = { present = N("Présent"), late = N("En retard"), tentative = N("Peut-être"), alt = N("Reroll"), bench = N("Banc"), absent = N("Absent") }
 -- Nom d'un statut dans la langue de l'interface (statut inconnu : tel quel)
@@ -531,12 +537,12 @@ local function addLines(tooltip, itemId)
   tooltip:AddLine(" ")
   tooltip:AddLine(GOLD .. "Forever Roster|r")
   if info.who then
-    tooltip:AddLine(joinNames(info.who.wanted) and L("Recherché par : %s", GREEN .. joinNames(info.who.wanted) .. "|r") or (GREY .. L["Personne ne le recherche"] .. "|r"), 1, 1, 1, true)
-    if joinNames(info.who.known) then tooltip:AddLine(GREY .. L("Connu par : %s", joinNames(info.who.known)) .. "|r", 1, 1, 1, true) end
+    tooltip:AddLine(joinNames(info.who.wanted) and L("Recherché par : %s", GREEN .. joinNames(info.who.wanted) .. "|r") or (INK .. L["Personne ne le recherche"] .. "|r"), 1, 1, 1, true)
+    if joinNames(info.who.known) then tooltip:AddLine(INK .. L("Connu par : %s", joinNames(info.who.known)) .. "|r", 1, 1, 1, true) end
   end
   if info.bis then tooltip:AddLine(L("BiS de : %s", BLUE .. joinNames(info.bis) .. "|r"), 1, 1, 1, true) end
   if info.sr then tooltip:AddLine(L("SR (%s) : %s", info.sr.raid.name, GREEN .. G.ReserveText(info.sr) .. "|r"), 1, 1, 1, true) end
-  if info.mark ~= nil then tooltip:AddLine(GREY .. (info.mark and L["Marqué recherché par toi (à envoyer)"] or L["Retiré de tes recherchés (à envoyer)"]) .. "|r") end
+  if info.mark ~= nil then tooltip:AddLine(INK .. (info.mark and L["Marqué recherché par toi (à envoyer)"] or L["Retiré de tes recherchés (à envoyer)"]) .. "|r") end
   if tooltip.Show then tooltip:Show() end
 end
 G.addTooltipLines = addLines

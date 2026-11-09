@@ -4,7 +4,6 @@ import {
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, parseTalentLink, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import type { Character, Prof } from "../api";
 import { CRAFTING, RecipeCard } from "./GameData";
 import { ExternalLink } from "./ExternalLink";
@@ -15,6 +14,7 @@ import { Paperdoll } from "./Paperdoll";
 import { ranksFrom, TalentTrees, useTalentData, type Talent, type TreeView } from "./TalentTrees";
 import { useViewPref } from "../prefs";
 import { syncAge } from "../addonImport";
+import { openSync } from "../syncPanel";
 import { RoleIcon } from "./RoleIcon";
 
 type Tab = "profil" | "metiers" | "stuff" | "legacy";
@@ -408,9 +408,7 @@ function SyncLine({ at }: { at?: string | null }) {
   const age = syncAge(at);
   return (
     <div className={`ce-sync${age.stale ? " stale" : ""}`}>
-      {at
-        ? <><b>Addon</b> · {age.text} · en jeu : ta touche, Ctrl+C, puis Ctrl+V ici</>
-        : <><b>Addon</b> · jamais synchronisé · <Link to="/addon">installer et synchroniser</Link></>}
+      <b>Addon</b> · {at ? age.text : "jamais synchronisé"} · <button type="button" className="link" onClick={openSync}>Ouvrir la synchro</button>
     </div>
   );
 }

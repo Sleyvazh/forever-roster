@@ -573,7 +573,7 @@ end
 --------------------------------------------------------------------------------------------------------------------
 -- /fr guilde : ce qui a été relevé (diagnostic), son envoi au site, et le relevé à copier
 --------------------------------------------------------------------------------------------------------------------
-local GOLD, GREY, GREEN = K.GOLD, K.GREY, K.GREEN
+local GOLD, INK, GREEN = K.GOLD, K.INK, K.GREEN
 local win, copy
 
 local function when(t) return t and t > 0 and date("%d/%m %H:%M", t) or "?" end
@@ -591,27 +591,27 @@ local function shown(v) if v == nil or v == "" then return "?" end return tostri
 
 local function addGuild(li, g)
   local r = g.roster
-  li.Add(GOLD .. g.name .. "|r  ·  " .. g.faction .. GREY .. "  ·  " .. g.realm .. "|r" .. (r and r.rank ~= "" and ("\n" .. L("Ton rang : %s", r.rank)) or ""))
+  li.Add(GOLD .. g.name .. "|r  ·  " .. g.faction .. INK .. "  ·  " .. g.realm .. "|r" .. (r and r.rank ~= "" and ("\n" .. L("Ton rang : %s", r.rank)) or ""))
   if not r then
-    li.Add(GREY .. L["Liste pas encore relevée (demandée à la connexion, puis toutes les 10 min, hors combat)."] .. "|r")
+    li.Add(INK .. L["Liste pas encore relevée (demandée à la connexion, puis toutes les 10 min, hors combat)."] .. "|r")
     return
   end
   li.Add(L("Membres : %d lus sur %d (liste relevée le %s)", #r.members, r.total or 0, when(r.at)) .. "\n" ..
-    (r.officer and (GREEN .. L["Notes d'officier : visibles (ton rang les voit)"] .. "|r") or (GREY .. L["Notes d'officier : non visibles (ton rang ne les voit pas)"] .. "|r")))
+    (r.officer and (GREEN .. L["Notes d'officier : visibles (ton rang les voit)"] .. "|r") or (INK .. L["Notes d'officier : non visibles (ton rang ne les voit pas)"] .. "|r")))
   li.Header(L["5 membres, tels que lus"])
   -- Le perso connecté d'abord (nom avec ou sans nom de famille), puis les premiers de la liste
   local mine, list = G.Key(me()), {}
   for _, m in ipairs(r.members) do if m.key == mine and #list == 0 then list[1] = m end end
   for _, m in ipairs(r.members) do if #list < 5 and m ~= list[1] then list[#list + 1] = m end end
   for _, m in ipairs(list) do
-    li.Add(K.colored(m.class, m.name) .. GREY .. "  " .. L("(clé : %s)", m.key) .. "|r\n" .. L("rang %s (%s) · niveau %s · %s · dernière connexion : %s",
+    li.Add(K.colored(m.class, m.name) .. INK .. "  " .. L("(clé : %s)", m.key) .. "|r\n" .. L("rang %s (%s) · niveau %s · %s · dernière connexion : %s",
       shown(m.rank), shown(m.rankIndex), shown(m.level), shown(m.class), m.online and L["en ligne"] or ago(m.hours)))
   end
 end
 
 local function addEvents(li, ev)
   li.Header(L["Journal de guilde"])
-  if not ev then li.Add(GREY .. L["Journal pas encore relevé."] .. "|r") return end
+  if not ev then li.Add(INK .. L["Journal pas encore relevé."] .. "|r") return end
   local last = ev.list[1]
   li.Add(L("%d événements gardés sur %d (relevé le %s)", #ev.list, ev.total or #ev.list, when(ev.at)) .. (last and ("\n" ..
     L("Dernier : %s · %s · %s", last.type, last.p1 .. (last.p2 ~= "" and (", " .. last.p2) or ""), ago(last.hours))) or ""))
@@ -619,7 +619,7 @@ end
 
 local function addBank(li, b)
   li.Header(L["Banque de guilde"])
-  if not b then li.Add(GREY .. L["Pas encore relevée : ouvre la banque de guilde (elle n'est relevée que pendant qu'elle est ouverte)."] .. "|r") return end
+  if not b then li.Add(INK .. L["Pas encore relevée : ouvre la banque de guilde (elle n'est relevée que pendant qu'elle est ouverte)."] .. "|r") return end
   local read, hidden, unread, late = 0, 0, 0, 0
   for tab = 1, b.ntabs or 0 do
     local t = b.tabs[tab]
@@ -627,7 +627,7 @@ local function addBank(li, b)
   end
   li.Add(L("Relevée le %s par %s", when(b.at), shown(b.by)) .. "\n" ..
     L("Onglets : %d lus, %d non visibles (rang), %d pas encore lus", read, hidden, unread) ..
-    (late > 0 and ("\n" .. GREY .. L("dont %d lus sans réponse du serveur (peut-être incomplets)", late) .. "|r") or "") .. "\n" ..
+    (late > 0 and ("\n" .. INK .. L("dont %d lus sans réponse du serveur (peut-être incomplets)", late) .. "|r") or "") .. "\n" ..
     L("Objets : %d · or : %s", #b.items, b.money and coins(b.money) or "?") .. "\n" ..
     L("Journaux : %d mouvements d'objets, %d d'or", #b.log, #b.moneyLog))
 end
@@ -640,23 +640,23 @@ local function addChar(li)
     local pct = (x.max or 0) > 0 and math.floor((x.xp or 0) * 100 / x.max) or 0
     li.Add(L("%s · niveau %d · XP %s / %s (%d %%) · relevée le %s", name, x.level, shown(x.xp), shown(x.max), pct, when(x.at)))
   else
-    li.Add(GREY .. L["XP pas encore relevée."] .. "|r")
+    li.Add(INK .. L["XP pas encore relevée."] .. "|r")
   end
   local top, n = nil, 0
   for lvl in pairs(c.levels or {}) do n = n + 1 if not top or lvl > top then top = lvl end end
   li.Add(top and L("Niveaux notés : %d (dernier : %d, le %s)", n, top, when(c.levels[top]))
-    or (GREY .. L["Aucun niveau noté pour l'instant : l'heure de chaque montée de niveau est notée."] .. "|r"))
+    or (INK .. L["Aucun niveau noté pour l'instant : l'heure de chaque montée de niveau est notée."] .. "|r"))
 end
 
 function G.Refresh()
   if not (win and win:IsShown()) then return end
   local li = win.list
   local g, key = G.Current()
-  win.hintText:SetText(GREY .. L["Le relevé part au site avec ta synchro (onglet Synchro ou Roster Companion), seulement quand il a changé. Rien ne part aux autres joueurs."] .. "|r")
+  win.hintText:SetText(INK .. L["Le relevé part au site avec ta synchro (onglet Synchro ou Roster Companion), seulement quand il a changé. Rien ne part aux autres joueurs."] .. "|r")
   li.Reset()
   li.Header(L["Guilde"])
   if g then addGuild(li, g)
-  else li.Add(GREY .. (inGuild() and L["Guilde pas encore relevée : réessaie dans quelques secondes."] or L["Ce perso n'est pas dans une guilde."]) .. "|r") end
+  else li.Add(INK .. (inGuild() and L["Guilde pas encore relevée : réessaie dans quelques secondes."] or L["Ce perso n'est pas dans une guilde."]) .. "|r") end
   if g then
     addEvents(li, g.events)
     addBank(li, g.bank)
@@ -669,7 +669,7 @@ function G.Refresh()
     if not g.sentAt then status = L["Pas encore envoyé : il part avec ta prochaine synchro."]
     elseif g.sentSig ~= e.sig then status = L("Envoyé le %s ; changé depuis : il repart avec ta prochaine synchro.", when(g.sentAt))
     else status = L("Envoyé le %s ; rien de nouveau depuis.", when(g.sentAt)) end
-    li.Add(status .. "\n" .. GREY .. L["« Copier le relevé » : le texte FRL seul, à coller sur le site (Ctrl+V sur n'importe quelle page)."] .. "|r",
+    li.Add(status .. "\n" .. INK .. L["« Copier le relevé » : le texte FRL seul, à coller sur le site (Ctrl+V sur n'importe quelle page)."] .. "|r",
       { { L["Copier le relevé"], 170, function() G.ShowCopy(key) end } })
   end
   li.Done()
@@ -713,7 +713,7 @@ function G.ShowCopy(key)
   end
   copy.value, copy.entry = text, entry
   copy.hintText:SetText(L["Le relevé est déjà sélectionné : Ctrl+C pour le copier (Ctrl+A pour tout resélectionner)."] .. "\n" ..
-    GREY .. L("%d lignes. Sur le site : Ctrl+V sur n'importe quelle page.", select(2, text:gsub("\n", "\n")) + 1) .. "|r")
+    INK .. L("%d lignes. Sur le site : Ctrl+V sur n'importe quelle page.", select(2, text:gsub("\n", "\n")) + 1) .. "|r")
   copy.box:SetText(text)
   K.front(copy)
   copy:Show()

@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.4.3
+
+- No more grey text: everything is in the main text color, or in a color that means something (green, orange, red, accent). Bench answers show in gold and Alt answers in blue, like on the website.
+- The hints now point to the website's new Synchro button (where "Copier pour le jeu" now lives).
+
+Français :
+
+- Plus de texte gris : tout est dans la couleur du texte, ou dans une couleur qui a un sens (vert, orange, rouge, accent). Les réponses Banc s'affichent en doré et Reroll en bleu, comme sur le site.
+- Les aides renvoient au nouveau bouton Synchro du site (où se trouve maintenant « Copier pour le jeu »).
+
 ## 0.4.2
 
 - Sharing the website's data between players: the code shared with Forever Roster now keeps a short log of what was announced, requested, received or refused, and understands Forever Roster's new "send me your data" request (Roster itself does not send it). Nothing changes on screen.

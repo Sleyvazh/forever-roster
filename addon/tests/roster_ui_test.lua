@@ -906,7 +906,7 @@ local function votesOf(x) if type(x.votes) == "number" then return x.votes end l
 local function offerOf(s) for _, o in ipairs(Lt.Offers() or {}) do if tostring(o.session) == tostring(s) then return o end end end
 -- Ligne de chat de l'essai (« [essai] … ») affichée depuis la ligne « from »
 local function said(from, pattern)
-  for i = from + 1, #printed do if printed[i]:find("^|cff9aa3b6%[essai%]|r ") and printed[i]:find(pattern) then return printed[i] end end
+  for i = from + 1, #printed do if printed[i]:find("^|cffece7d8%[essai%]|r ") and printed[i]:find(pattern) then return printed[i] end end
 end
 -- Fenêtres du butin : bande d'objets (boutons affichés), lignes du tableau du conseil et leurs boutons, réponses
 local function win(kind) return ns.LootUI.Windows()[kind] end
@@ -1047,15 +1047,15 @@ give(cw, "Kaeldra")
 advance(1)
 local e1 = entries()[1]
 assert(e1.status == "awarded" and F.SameName(e1.winner, "Kaeldra-Hyjal") and e1.response == "bis", "objet donné (conseil : BiS)")
-assert(said(before, "%] .*Kaeldra.* reçoit ") and said(before, "^|cff9aa3b6%[essai%]|r À Kaeldra"), "annonce au raid et chuchotement, dans ta fenêtre seulement")
+assert(said(before, "%] .*Kaeldra.* reçoit ") and said(before, "^|cffece7d8%[essai%]|r À Kaeldra"), "annonce au raid et chuchotement, dans ta fenêtre seulement")
 assert(U.state.council.session == s2, "« Donner » : conseil ouvert suivant")
 assert(U.state.council.band[1].closed and hasCheck(U.state.council.band[1].text) and U.state.council.band[1].text:find("Kaeldra", 1, true), "bande : coche et gagnant")
 assert(U.state.council.band[2].text:find("^|cff%x+%d+/10|r$"), "bande : réponses sur joueurs (« 9/10 »)")
 -- Spallières en plaques : Kaeldra ne peut pas les porter ; colonne « Reçus » : total et détail
 local kr = rowOf(cw, "Kaeldra")
-assert(kr.cells[1]:GetText():find("ne peut pas le porter", 1, true) and kr.cells[2]:GetText():find("^|cff9aa3b6"), "ne peut pas le porter : réponse grisée, mention")
+assert(kr.cells[1]:GetText():find("ne peut pas le porter", 1, true) and kr.cells[2]:GetText():find("^|cffece7d8"), "ne peut pas le porter : réponse grisée, mention")
 assert(not rowOf(cw, "Tharok").cells[1]:GetText():find("ne peut pas", 1, true), "un guerrier peut porter des plaques")
-assert(kr.cells[5]:GetText():find("^|cffffffff%d+|r") and kr.cells[5]:GetText():find("\n|cff9aa3b6%d+ BiS · %d+ Up · %d+ MS|r$"), "Reçus : total, puis BiS · Up · MS")
+assert(kr.cells[5]:GetText():find("^|cffffffff%d+|r") and kr.cells[5]:GetText():find("\n|cffece7d8%d+ BiS · %d+ Up · %d+ MS|r$"), "Reçus : total, puis BiS · Up · MS")
 GameTooltip.lines = {}
 GameTooltip.AddLine = function(self, text) self.lines[#self.lines + 1] = text end
 script(kr.hover[5], "OnEnter")
@@ -1141,7 +1141,7 @@ local found
 for _, x in pairs(Lt.NotPassed() or {}) do if F.SameName(nameOf(x), "Orvane-Hyjal") then found = x end end
 assert(found and said(before, "Orvane%-Hyjal.* reçoit le butin"), "joueur sans l'addon : il n'a pas passé")
 click("Chuchoter à Orvane")
-assert(said(before, "^|cff9aa3b6%[essai%]|r À Orvane"), "chuchoté à Orvane, dans ta fenêtre seulement")
+assert(said(before, "^|cffece7d8%[essai%]|r À Orvane"), "chuchoté à Orvane, dans ta fenêtre seulement")
 
 -- Étape 8 : côté joueur, Tharok propose deux objets (le second en mailles : pas pour un druide) ; un troisième arrive
 -- pendant ta réponse ; réponse changée ; Tharok termine ses conseils après ta dernière réponse

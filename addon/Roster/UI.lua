@@ -9,7 +9,7 @@ ns.UI = U
 local K = ns.Kit
 U.kit, U.site = K, K.site
 
-local ACCENT, GREY, GREEN, RED = K.ACCENT, K.GREY, K.GREEN, "|cffff6b5e"
+local ACCENT, INK, GREEN, RED = K.ACCENT, K.INK, K.GREEN, "|cffff6b5e"
 local site, C, window, textArea, button, hint, list = K.site, K.C, K.window, K.textArea, K.button, K.hint, K.list
 local front, headerBar, gapX = K.front, K.headerBar, K.gapX
 
@@ -111,17 +111,17 @@ local function buildSynchro(p)
   again:SetPoint("LEFT", p.toggleAll, "RIGHT", 8, 0)
   p.foot = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   p.foot:SetPoint("TOPLEFT", 6, -464) p.foot:SetWidth(526) p.foot:SetJustifyH("LEFT")
-  p.foot:SetText(GREY .. L["Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide."] .. "|r")
+  p.foot:SetText(INK .. L["Plus rapide : ta touche (Échap > Options > Raccourcis > AddOns > Roster) ou le clic droit sur le bouton de la minicarte ouvrent la synchro rapide."] .. "|r")
 end
 refreshers.synchro = function(p)
   local D = data()
-  p.loadStatus:SetText(p.loadMessage or (GREY .. L["Colle ici (Ctrl+V) : c'est chargé tout seul dès que le texte est complet."] .. "|r"))
+  p.loadStatus:SetText(p.loadMessage or (INK .. L["Colle ici (Ctrl+V) : c'est chargé tout seul dès que le texte est complet."] .. "|r"))
   local ok, summary = pcall(function() return D and D.Summary and D.Summary() end)
-  p.summary:SetText(ok and summary and (GREY .. tostring(summary) .. "|r") or "")
+  p.summary:SetText(ok and summary and (INK .. tostring(summary) .. "|r") or "")
   local okO, origins = pcall(function() return D and D.Origins and D.Origins() end)
   local lines = okO and type(origins) == "table" and origins or {}
   if #lines > 3 then lines = { lines[1], lines[2], L("+ %d autres groupes", #lines - 2) } end
-  p.origins:SetText(#lines > 0 and (GREY .. table.concat(lines, "\n") .. "|r") or "")
+  p.origins:SetText(#lines > 0 and (INK .. table.concat(lines, "\n") .. "|r") or "")
   local value, count, err = export(p.all)
   p.value, p.count = value, count
   p.toggleAll:SetText(p.all and L["Seulement les changements"] or L["Tout renvoyer"])
@@ -130,10 +130,10 @@ refreshers.synchro = function(p)
   elseif p.sent then
     p.status:SetText(GREEN .. L["Copié. Sur le site, appuie sur Ctrl+V sur n'importe quelle page."] .. "|r")
   elseif count == 0 then
-    p.status:SetText(GREY .. (value == "" and L["Rien à envoyer pour l'instant : le bilan d'un raid apparaît ici après le raid."] or L["Rien de nouveau depuis ton dernier envoi."])
+    p.status:SetText(INK .. (value == "" and L["Rien à envoyer pour l'instant : le bilan d'un raid apparaît ici après le raid."] or L["Rien de nouveau depuis ton dernier envoi."])
       .. (p.all and "" or (" " .. L["« Tout renvoyer » pour tout recopier."])) .. "|r")
   else
-    p.status:SetText(L("%s : %s", ACCENT .. L["À envoyer"] .. "|r", blocks(count)) .. GREY .. "   " .. L["Ctrl+C puis Échap."] .. "|r")
+    p.status:SetText(L("%s : %s", ACCENT .. L["À envoyer"] .. "|r", blocks(count)) .. INK .. "   " .. L["Ctrl+C puis Échap."] .. "|r")
   end
   p.text:SetText(value)
   -- Export sélectionné pour Ctrl+C, sauf pendant un collage dans la case du haut (Refresh appelé par les modules de jeu)
@@ -227,7 +227,7 @@ end
 
 local QUALITY = { { 3, N("Rare"), { 0, 0.44, 0.87 } }, { 4, N("Épique"), { 0.64, 0.21, 0.93 } }, { 5, N("Légendaire"), { 1, 0.5, 0 } } }
 local YES, NO = { 0.31, 0.83, 0.37 }, { 0.6, 0.64, 0.71 }
-local function yesNo(on) return on and (GREEN .. L["oui"] .. "|r") or (GREY .. L["non"] .. "|r") end
+local function yesNo(on) return on and (GREEN .. L["oui"] .. "|r") or (INK .. L["non"] .. "|r") end
 refreshers.options = function(p)
   local view = p.views[U.optionsView] and U.optionsView or "general"
   local accent = { C.gold[1], C.gold[2], C.gold[3] }
@@ -253,7 +253,7 @@ refreshers.options = function(p)
     else
       local buttons = { { L["Choisir une touche"], 160, function() U.StartCapture(b.action) end } }
       if #shown > 0 then buttons[2] = { L["Retirer"], 100, function() U.SetBinding(b.action, nil) U.Refresh() end } end
-      list.Add(L("%s : %s", L[b.label], #shown > 0 and (ACCENT .. table.concat(shown, ", ") .. "|r") or (GREY .. L["aucune touche"] .. "|r")), buttons)
+      list.Add(L("%s : %s", L[b.label], #shown > 0 and (ACCENT .. table.concat(shown, ", ") .. "|r") or (INK .. L["aucune touche"] .. "|r")), buttons)
     end
   end
   list.Header(L["Affichage"])
@@ -268,7 +268,7 @@ refreshers.options = function(p)
   if langPending then langButtons[4] = { L["Recharger"], 110, function() ns.Reload() end } end
   list.Add(L("Langue : %s", ACCENT .. ns.LangLabel(lang) .. "|r") ..
     (langPending and (GREEN .. "  · " .. L["appliquée après rechargement de l'interface"] .. "|r") or "") ..
-    "\n" .. GREY .. L["Fenêtres, messages et annonces de l'addon (les annonces au raid et les chuchotements partent dans cette langue)."] .. "|r", langButtons)
+    "\n" .. INK .. L["Fenêtres, messages et annonces de l'addon (les annonces au raid et les chuchotements partent dans cette langue)."] .. "|r", langButtons)
   -- Habillage : appliqué au rechargement de l'interface (les fenêtres sont construites une fois)
   local skin = site() and "site" or "jeu" -- nolocale (valeurs de l'habillage)
   local shown = main and main.skin or skin
@@ -280,10 +280,10 @@ refreshers.options = function(p)
   if skin ~= shown then skinButtons[3] = { L["Recharger"], 110, function() ns.Reload() end } end
   list.Add(L("Habillage : %s", ACCENT .. (skin == "site" and L["celui du site"] or L["celui du jeu"]) .. "|r") .. -- nolocale
     (skin ~= shown and (GREEN .. "  · " .. L["appliqué après rechargement de l'interface"] .. "|r") or "") ..
-    "\n" .. GREY .. L["Jeu : cadres et onglets de l'interface de WoW. Site : thème sombre, liserés argent-azur et onglets en haut, comme sur le site."] .. "|r", skinButtons)
+    "\n" .. INK .. L["Jeu : cadres et onglets de l'interface de WoW. Site : thème sombre, liserés argent-azur et onglets en haut, comme sur le site."] .. "|r", skinButtons)
   local mapOn = not (R.minimap and R.minimap.hidden)
-  list.Add(L("Bouton de la minicarte : %s", mapOn and (GREEN .. L["affiché"] .. "|r") or (GREY .. L["masqué"] .. "|r")) ..
-    "\n" .. GREY .. L["Clic : fenêtre, clic droit : synchro rapide, pastille : envois en attente. Roster reste aussi dans la liste des addons de la minicarte."] .. "|r",
+  list.Add(L("Bouton de la minicarte : %s", mapOn and (GREEN .. L["affiché"] .. "|r") or (INK .. L["masqué"] .. "|r")) ..
+    "\n" .. INK .. L["Clic : fenêtre, clic droit : synchro rapide, pastille : envois en attente. Roster reste aussi dans la liste des addons de la minicarte."] .. "|r",
     { { mapOn and L["Masquer"] or L["Afficher"], 100, function() if ns.Minimap then ns.Minimap.SetShown(not mapOn) end U.Refresh() end } })
   list.Header(L["Présence et butin"])
   local rec = R.record ~= false
@@ -292,7 +292,7 @@ refreshers.options = function(p)
   local function setRec(on) return function() if on then R.record = nil else R.record = false end updateMinimap() U.Refresh() end end
   list.Add(L("Relever la présence et le butin pendant les raids : %s", yesNo(rec)) ..
     (recording and (ACCENT .. "  · " .. L["relevé en cours"] .. "|r") or "") ..
-    "\n" .. GREY .. L["Pendant un raid du site chargé en jeu : qui est dans le raid (chaque minute), le butin et les boss. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier du groupe."] .. "|r",
+    "\n" .. INK .. L["Pendant un raid du site chargé en jeu : qui est dans le raid (chaque minute), le butin et les boss. Le bilan part avec ta synchro ; le site ne retient que celui d'un officier du groupe."] .. "|r",
     { { L["Oui"], 80, setRec(true), { color = YES, selected = rec } },
       { L["Non"], 80, setRec(false), { color = NO, selected = not rec } } })
   local q = tonumber(R.lootQuality) or 4
@@ -314,7 +314,7 @@ refreshers.options = function(p)
       ((okMaster and type(master) == "string" and ns.Format) and L(", chef de butin : %s", ns.Format.Display(master)) or "") .. "|r"
   end
   list.Add(L("Passer automatiquement quand le chef de butin distribue (Distribution par Roster) : %s", yesNo(auto)) .. current ..
-    "\n" .. GREY .. L["Si tu coupes, passe toi-même sur chaque objet du butin de groupe : sinon il peut te revenir au lieu d'aller au chef de butin."] .. "|r",
+    "\n" .. INK .. L["Si tu coupes, passe toi-même sur chaque objet du butin de groupe : sinon il peut te revenir au lieu d'aller au chef de butin."] .. "|r",
     { { L["Oui"], 80, setAuto(true), { color = YES, selected = auto } },
       { L["Non"], 80, setAuto(false), { color = NO, selected = not auto } } })
   -- Partage des données du site (Groups.lua, addon/shared/Share.lua) : nil = oui (par défaut), false = ni annonce ni envoi
@@ -329,7 +329,7 @@ refreshers.options = function(p)
     end
   end
   list.Add(L("Partager les données du site avec la guilde et le raid : %s", yesNo(share)) ..
-    "\n" .. GREY .. L["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] .. "|r",
+    "\n" .. INK .. L["Les données collées (ou reçues) partent aux joueurs de ta guilde et de ton raid qui ont Roster ; chacun ne garde que ses groupes, vérifiés par la signature du site. Coupé : tu reçois toujours celles des autres."] .. "|r",
     { { L["Oui"], 80, setShare(true), { color = YES, selected = share } },
       { L["Non"], 80, setShare(false), { color = NO, selected = not share } } })
   list.Done()
@@ -488,14 +488,14 @@ function U.Quick(all)
     quick.status:SetText(RED .. L("Export impossible : %s", tostring(err)) .. "|r\n" .. L["Ctrl+V ici pour coller ce que tu as copié sur le site."])
   elseif count > 0 then
     quick.status:SetText(L("%s : %s", ACCENT .. L["Vers le site"] .. "|r", blocks(count)) .. "\n" ..
-      L["Ctrl+C pour copier, puis Ctrl+V sur le site."] .. "\n" .. GREY .. L["Ou Ctrl+V ici pour coller ce que tu as copié sur le site."] .. "|r")
+      L["Ctrl+C pour copier, puis Ctrl+V sur le site."] .. "\n" .. INK .. L["Ou Ctrl+V ici pour coller ce que tu as copié sur le site."] .. "|r")
   else
-    quick.status:SetText(GREY .. L["Rien de nouveau à envoyer au site."] .. "|r\n" ..
+    quick.status:SetText(INK .. L["Rien de nouveau à envoyer au site."] .. "|r\n" ..
       L["Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »)."])
   end
   local D = data()
   local ok, summary = pcall(function() return D and D.Summary and D.Summary() end)
-  quick.foot:SetText(ok and summary and (GREY .. tostring(summary) .. "|r") or "")
+  quick.foot:SetText(ok and summary and (INK .. tostring(summary) .. "|r") or "")
   quick.box:SetText(value)
   front(quick)
   quick:Show()

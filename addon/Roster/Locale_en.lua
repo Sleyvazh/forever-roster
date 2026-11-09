@@ -66,8 +66,8 @@ T["Texte incomplet : recopie tout, jusqu'à la dernière ligne END."] = "Incompl
 T["Ce texte vient de Forever Roster (WoW Forever) : colle-le dans l'addon Forever Roster."] =
   "This text comes from Forever Roster (WoW Forever): paste it into the Forever Roster addon."
 T["Version non gérée (%s) : mets l'addon à jour."] = "Unsupported version (%s): update the addon."
-T["Ce ne sont pas les données du site : sur Roster, « Copier pour le jeu » (barre du haut), puis colle ici."] =
-  'This is not the website data: on Roster, click "Copier pour le jeu" (top bar), then paste here.'
+T["Ce ne sont pas les données du site : sur Roster, bouton Synchro, « Copier pour le jeu », puis colle ici."] =
+  'This is not the website data: on Roster, click Synchro, then "Copier pour le jeu", then paste here.'
 T["Ce n'est pas un export de compo : sur Roster, page du raid, onglet Compo, « Export pour le jeu »."] =
   'This is not a comp export: on Roster, raid page, "Compo" tab, "Export pour le jeu".'
 T["Export incomplet : recopie tout le texte, jusqu'à la ligne END."] = "Incomplete export: copy the whole text, up to the END line."
@@ -118,8 +118,8 @@ T["%d persos"] = "%d characters"
 T["compo « %s » : %s (onglet Compo)"] = 'comp "%s": %s (Comp tab)'
 T["Ce texte est un bilan de raid : colle-le sur le site (Ctrl+V sur n'importe quelle page)."] =
   "This text is a raid summary: paste it on the website (Ctrl+V on any page)."
-T["Texte non reconnu : sur Roster, « Copier pour le jeu » (barre du haut) ou « Export pour le jeu » d'un raid (onglet Compo)."] =
-  'Text not recognized: on Roster, click "Copier pour le jeu" (top bar) or a raid\'s "Export pour le jeu" ("Compo" tab).'
+T["Texte non reconnu : sur Roster, bouton Synchro, « Copier pour le jeu » ou « Export pour le jeu » d'un raid (onglet Compo)."] =
+  'Text not recognized: on Roster, click Synchro, then "Copier pour le jeu" or a raid\'s "Export pour le jeu" ("Compo" tab).'
 T["Chargé : %s."] = "Loaded: %s."
 T["minicarte"] = "minimap"
 T["%d groupes chargés"] = "%d groups loaded"
@@ -317,8 +317,8 @@ T["Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu
 T["Raids à venir de tes groupes."] = "Upcoming raids of your groups."
 T["Inscris-toi sur le site ou sur Discord."] = "Sign up on the website or on Discord."
 T["Raids à venir"] = "Upcoming raids"
-T["Aucun groupe chargé. Sur Roster, « Copier pour le jeu » (barre du haut), puis colle dans l'onglet Synchro : c'est chargé tout seul."] =
-  'No group loaded. On Roster, click "Copier pour le jeu" (top bar), then paste in the Sync tab: it loads by itself.'
+T["Aucun groupe chargé. Sur Roster, bouton Synchro, « Copier pour le jeu », puis colle dans l'onglet Synchro : c'est chargé tout seul."] =
+  'No group loaded. On Roster, click Synchro, then "Copier pour le jeu", then paste in the Sync tab: it loads by itself.'
 T["Groupes : %s"] = "Groups: %s"
 T["(chargés le %s)"] = "(loaded %s)"
 T["Pas d'inscription en jeu : inscris-toi sur le site ou sur Discord, puis recopie les données du site."] =

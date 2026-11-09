@@ -3,7 +3,7 @@
 :root {
   color-scheme: light;
   /* Thème clair « parchemin » : papier teinté, jamais de blanc pur */
-  --bg: #ddd5c4; --panel: #efe9dc; --panel-2: #e5ddcc; --ink: #231d14; --ink-2: #57503f; --ink-3: #5d5442;
+  --bg: #ddd5c4; --panel: #efe9dc; --panel-2: #e5ddcc; --ink: #231d14; --ink-2: #231d14; --ink-3: #231d14; /* refonte 09/11 : plus de texte gris */
   --line: #cbbfa6; --line-2: #b9aa8c; --frame: #a8843f; --gold: #78520b; --gold-soft: #e6d7b3; --on-gold: #fbf7ee;
   --q0: #666360; --q1: #3b3f48; --q2: #186e05; --q3: #0058b0; --q4: #7e26c2; --q5: #a14e00;
   --ok: #186a05; --warn: #7f4d00; --bad: #aa241c; --alli: #2458b8; --horde: #aa241c;
@@ -16,7 +16,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #a9b0c2; --ink-3: #7c86a0;
+    --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #ece7d8; --ink-3: #ece7d8; /* refonte 09/11 : plus de texte gris */
     --line: #232c47; --line-2: #34405f; --frame: #6d5a2c; --gold: #e6bf57; --gold-soft: #2a2512; --on-gold: #0e1427;
     --q0: #9d9d9d; --q1: #f2f2f2; --q2: #1eff00; --q3: #3d9cff; --q4: #b65cff; --q5: #ff8000;
     --ok: #4fd35f; --warn: #f0b43c; --bad: #ff6b5e; --alli: #5f95ff; --horde: #ff5a4d;
@@ -26,7 +26,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #a9b0c2; --ink-3: #7c86a0;
+  --bg: #070a12; --panel: #0e1427; --panel-2: #141b33; --ink: #ece7d8; --ink-2: #ece7d8; --ink-3: #ece7d8; /* refonte 09/11 : plus de texte gris */
   --line: #232c47; --line-2: #34405f; --frame: #6d5a2c; --gold: #e6bf57; --gold-soft: #2a2512; --on-gold: #0e1427;
   --q0: #9d9d9d; --q1: #f2f2f2; --q2: #1eff00; --q3: #3d9cff; --q4: #b65cff; --q5: #ff8000;
   --ok: #4fd35f; --warn: #f0b43c; --bad: #ff6b5e; --alli: #5f95ff; --horde: #ff5a4d;
@@ -658,27 +658,13 @@ button.hportrait { cursor: pointer; }
 .addon-safety > summary { cursor: pointer; color: var(--ink-2); font-weight: 600; }
 .addon-safety > ul { margin-top: 8px; }
 .addon-step code.sha { font-size: 12px; }
-.addon-results { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-.addon-results li.ok::before { content: "✓ "; color: var(--ok); }
-.addon-results li.bad::before { content: "✗ "; color: var(--warn); }
-.addon-results li.info::before { content: "• "; color: var(--ink-3); }
 
-/* Copier pour le jeu (barre du haut) */
+/* Copier pour le jeu (panneau Synchro, Vers le jeu) */
 .copy-game { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.copy-game svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .copy-game.done { border-color: var(--ok); color: var(--ok); }
-@media (max-width: 900px) { .copy-game span { display: none; } }
 
 /* Export de l'addon collé n'importe où */
-.paste-import { position: fixed; right: 16px; bottom: 16px; z-index: 80; width: min(400px, calc(100vw - 32px)); display: grid; gap: 10px;
-  padding: 14px 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--gold); box-shadow: 0 12px 40px rgb(0 0 0 / .45); }
-.pi-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .pi-close { background: none; border: 0; color: var(--ink-3); font-size: 16px; cursor: pointer; padding: 2px 6px; }
-.pi-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; max-height: 50vh; overflow: auto; }
-.pi-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.pi-list .with-icon { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.pi-list select { max-width: 150px; }
-@media (max-width: 760px) { .paste-import { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
 
 /* Dernière synchro de chaque perso (page Addon) */
 .addon-sub { font-size: 15px; color: var(--gold); margin: 4px 0 0; }
@@ -838,7 +824,6 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .rl-bar i { display: block; height: 100%; background: var(--ok); }
 .rl-bar i.low { background: var(--warn); }
 .nowrap { white-space: nowrap; }
-.pi-log { display: flex; gap: 10px; align-items: center; cursor: pointer; }
 
 /* Mains et alts dans l'onglet Personnages d'un groupe (gm-) */
 .gm-lab { font: 600 10.5px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
@@ -1087,8 +1072,6 @@ a.gc-next:hover { border-color: var(--frame); border-left-color: var(--gold); }
 .ce-sync { margin-top: 4px; font-size: 13px; color: var(--ink-3); }
 .ce-sync b { color: var(--ink-2); font-weight: 600; }
 .ce-sync.stale b { color: var(--warn); }
-.pi-parts > summary { cursor: pointer; font-size: 13px; color: var(--gold); }
-.pi-parts[open] > summary { margin-bottom: 6px; }
 
 /* Commandes d'artisanat (lot F, co-) */
 .co { border: 1px solid var(--frame); border-radius: 10px; padding: 14px 16px; background: var(--panel-2); }
@@ -1936,16 +1919,9 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
    inscription à trois statuts, synchro dans la barre, Administration en six sections. Classes de la maquette.
    ===================================================================== */
 
-/* ---------- Barre du haut : 5 entrées, « Copier pour le jeu » et son état ---------- */
-.sync { display: inline-flex; align-items: stretch; }
-.sync .copy-game { border-radius: 5px 0 0 5px; }
-.sync .sync-more { border-radius: 0 5px 5px 0; border-left: 0; padding: 4px 8px; gap: 6px; }
-.sync .sync-more[aria-expanded="true"] { border-color: var(--gold); background: var(--gold-soft); }
-.sync .chev { margin: 0 2px 3px 0; }
+/* ---------- Pastille d'état (bouton Synchro, Nouveautés) ---------- */
 .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
 .sdot.warn { background: var(--warn); }
-@media (max-width: 1100px) { .sync .copy-game span { display: none; } }
-@media (max-width: 720px) { .sync { display: none; } }
 
 /* En-tête d'une page de guilde : le nom de la guilde en sur-titre, sélecteur s'il y en a plusieurs */
 .ph-t { display: grid; gap: 6px; min-width: 0; flex: 1 1 280px; }
@@ -2155,23 +2131,6 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 }
 
 /* ---------- Synchro ---------- */
-.sync-pop { position: absolute; top: calc(100% + 8px); right: 120px; z-index: 60; width: 380px; display: grid; gap: 12px; padding: 14px 16px; border-radius: 8px; background: var(--panel); border: 1px solid var(--frame);
-  box-shadow: inset 0 0 0 2px var(--panel), inset 0 0 0 3px color-mix(in srgb, var(--frame) 40%, transparent), var(--shadow); text-align: left; }
-.sync-pop h3 { font-size: 17px; color: var(--gold); }
-.sp-way { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.sp-way .lbl { margin-bottom: 2px; }
-.sp-way p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
-.sp-way kbd, .ad-step kbd, .toast kbd { font: 600 12px var(--f-mono); padding: 1px 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: var(--panel-2); color: var(--ink); }
-.sp-chars { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.sp-chars li { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.sp-chars li .mc-sync { margin-left: auto; }
-.sp-foot { display: grid; justify-items: start; gap: 4px; font-size: 13.5px; }
-.sp-foot .soon { color: var(--ink-3); }
-.toast { position: absolute; right: 16px; bottom: 16px; z-index: 70; width: min(380px, calc(100vw - 32px)); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start;
-  padding: 12px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--ok); box-shadow: var(--shadow); }
-.toast .ic { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--ok) 20%, var(--panel)); color: var(--ok); font-weight: 700; }
-.toast .t { display: grid; gap: 2px; font-size: 14px; }
-.toast .t small { color: var(--ink-3); font-size: 12.5px; }
 .sf.rel { position: relative; }
 .ad { display: grid; gap: 16px; }
 .ad-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; margin: 0; padding: 0; counter-reset: s; }
@@ -2203,7 +2162,6 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .adm-li small { grid-column: 1; color: var(--ink-3); font-size: 13px; }
 .adm-li span { grid-row: 1 / span 2; grid-column: 2; font-size: 22px; color: var(--ink-3); }
 @media (max-width: 720px) { .inv-pop { position: static; flex: 1 1 100%; width: auto; } }
-@media (max-width: 720px) { .sync-pop { display: none; } }
 .rr-p.me .t small { color: var(--ink-2); }
 /* Onglets : 4 au plus, tous visibles à 390 px */
 @media (max-width: 720px) {
@@ -2213,9 +2171,6 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 
 /* ---------- Refonte : compléments du site (menus, sélecteur de guilde, barre du bas, administration) ---------- */
 
-.sync { position: relative; }
-.sync .sync-pop { right: 0; }
-.sp-chars .cn { font-weight: 600; }
 .g-pick-wrap { position: relative; justify-self: start; }
 .g-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 60; min-width: 240px; padding: 6px; display: grid; gap: 2px; border-radius: 8px; background: var(--panel); border: 1px solid var(--frame);
   box-shadow: inset 0 0 0 2px var(--panel), inset 0 0 0 3px color-mix(in srgb, var(--frame) 40%, transparent), var(--shadow); }
@@ -2306,10 +2261,6 @@ select.need { border-color: var(--warn); }
 }
 
 /* Collage de l'addon appliqué tout seul : le résultat en bas de l'écran */
-.toast.paste-toast { position: fixed; right: 16px; bottom: 16px; }
-.toast.bad { border-color: var(--bad); }
-.toast.bad .ic { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--panel)); }
-@media (max-width: 760px) { .toast.paste-toast { left: 16px; right: 16px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); } }
 .mp-list .ab-line { border: 0; border-top: 1px dashed var(--line-2); border-radius: 0; background: none; padding: 10px 0 0; font-size: 13.5px; color: var(--ink-2); }
 .mp-list .ab-line > b { font: 500 13.5px var(--f-body); color: var(--ink-2); margin: 0; }
 .mp-list .ab-line > b::after { content: " :"; }
@@ -2325,3 +2276,88 @@ select.need { border-color: var(--warn); }
 .mp-list .ab-line .btn:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* Un texte pour lecteur d'écran (position absolue) dans un tableau qui défile ne doit pas élargir la page */
 .tscroll { position: relative; }
+
+/* ---------- Refonte 09/11, lot 1 : plus de texte gris, panneau Synchro ---------- */
+/* Texte d'exemple des champs : couleur du texte, en italique (pas de gris) */
+::placeholder { color: var(--ink); opacity: .9; font-style: italic; }
+.ad-step kbd, .sy-panel kbd { font: 600 12px var(--f-mono); padding: 1px 6px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; background: var(--panel-2); color: var(--ink); }
+
+/* Bouton de la barre du haut */
+.sync-btn { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; white-space: nowrap; }
+.sync-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.sync-btn .sdot { width: 9px; height: 9px; }
+
+/* Panneau latéral (R ext 12 = R int 6 + marge 6) */
+.sy-scrim { position: fixed; inset: 0; z-index: 89; background: rgba(4, 6, 12, .5); }
+.sy-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 90; width: min(440px, 100vw); overflow-y: auto; display: grid; gap: 14px; align-content: start;
+  padding: 18px 20px 24px; background: var(--panel); border-left: 1px solid var(--frame); box-shadow: -18px 0 50px -24px rgba(0,0,0,.8); }
+.sy-head { display: flex; align-items: center; gap: 10px; }
+.sy-head h2 { font-size: 24px; color: var(--gold); }
+.sy-x { margin-left: auto; width: 44px; height: 44px; display: grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); color: var(--ink); font-size: 18px; cursor: pointer; }
+.sy-ways { display: grid; grid-template-columns: 1fr 1fr; }
+.sy-ways button { min-height: 44px; }
+.sy-sub { margin: 0; font-weight: 600; font-size: 15px; }
+.sy-warn { margin: -8px 0 0; color: var(--warn); font-weight: 600; font-size: 14px; }
+.sy-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14.5px; }
+.sy-steps li { display: flex; align-items: center; gap: 10px; }
+.sy-steps .n { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); display: grid; place-items: center; font: 600 12px var(--f-mono); }
+.sy-keys { display: inline-flex; align-items: center; gap: 3px; }
+.sy-drop { position: relative; display: grid; justify-items: center; gap: 8px; padding: 22px 16px; text-align: center; border: 2px dashed var(--gold); border-radius: 12px;
+  background: var(--gold-soft); cursor: text; }
+.sy-drop:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 35%, transparent); }
+.sy-drop-t { font-weight: 600; font-size: 16px; }
+.sy-drop-s { font-size: 13px; }
+.sy-drop textarea { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; resize: none; cursor: text; border: 0; }
+.sy-mine .lbl { display: block; margin-bottom: 4px; }
+.sy-mine ul { list-style: none; margin: 0; padding: 0; display: grid; }
+.sy-mine li { display: flex; align-items: center; gap: 8px; min-height: 44px; border-top: 1px solid var(--line); font-size: 14.5px; }
+.sy-mine li:first-child { border-top: 0; }
+.sy-mine .cn { font-weight: 600; }
+.sy-age { margin-left: auto; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.sy-age.ok { color: var(--ok); } .sy-age.warn { color: var(--warn); }
+.sy-foot { display: grid; gap: 2px; border-top: 1px solid var(--line); padding-top: 10px; font-size: 14px; }
+.sy-link { justify-self: start; min-height: 44px; display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--gold); font: inherit; font-weight: 500; font-size: 14px; cursor: pointer; text-decoration: none; }
+.sy-link:hover { text-decoration: underline; }
+.sy-link.mid { justify-self: center; }
+.sy-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.sy-rows > li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-height: 56px; padding: 6px 0; border-top: 1px solid var(--line); }
+.sy-rows > li:first-child { border-top: 0; }
+.sy-check { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.sy-check input { width: 18px; height: 18px; }
+.sy-check span, .sy-ct { display: grid; gap: 1px; min-width: 0; }
+.sy-check small, .sy-ct small { font-size: 13px; }
+.sy-ct small.warn { color: var(--warn); font-weight: 600; }
+.sy-ic { width: 26px; height: 26px; border-radius: 50%; border: 1px dashed var(--line-2); }
+.sy-mini { margin-left: auto; min-height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+.sy-pair { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-left: 36px; }
+.sy-pair button { min-height: 44px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }
+.sy-pair button.on { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
+.sy-sel { flex-basis: calc(100% - 36px); margin-left: 36px; min-height: 40px; }
+.sy-parts > summary { cursor: pointer; font-size: 14px; color: var(--gold); min-height: 36px; display: flex; align-items: center; gap: 8px; }
+.sy-go { width: 100%; min-height: 52px; font-size: 15.5px; }
+.sy-note { margin: 0; font-size: 13px; }
+.sy-err { display: grid; gap: 8px; justify-items: start; padding: 12px 14px; border: 1px solid var(--bad); border-radius: 6px; font-size: 14px; }
+.sy-err b { color: var(--bad); font-weight: 600; }
+.sy-done { display: grid; gap: 14px; }
+.sy-win { display: grid; justify-items: center; gap: 6px; text-align: center; padding: 10px 0 4px; }
+.sy-win .ck { width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--ok); color: var(--ok); display: grid; place-items: center; font-size: 34px; box-shadow: 0 0 30px -6px var(--ok); }
+.sy-win b { font: 400 26px var(--f-disp); color: var(--ok); }
+.sy-win.bad .ck { border-color: var(--bad); color: var(--bad); box-shadow: none; }
+.sy-win.bad b { color: var(--bad); }
+.sy-results { list-style: none; margin: 0; padding: 0; display: grid; font-size: 14px; }
+.sy-results li { padding: 8px 0; border-top: 1px solid var(--line); }
+.sy-results li:first-child { border-top: 0; }
+.sy-results li.ok b { color: var(--ok); } .sy-results li.bad b { color: var(--bad); }
+.sy-next { margin: 0; font-size: 14px; text-align: center; }
+.sy-game { display: grid; gap: 14px; }
+.sy-comp, .sy-copy { display: grid; gap: 6px; justify-items: start; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 12px; font-size: 14px; }
+.sy-comp b, .sy-copy b { font-size: 15px; }
+.sy-comp.ok { border-color: var(--frame); }
+.sy-comp .ok { color: var(--ok); font-weight: 600; }
+.sy-confirm { display: grid; gap: 8px; }
+@media (max-width: 640px) {
+  .sy-panel { width: 100vw; border-left: 0; }
+  .sync-btn span { display: none; }
+  .sync-btn { min-width: 44px; min-height: 44px; justify-content: center; position: relative; }
+  .sync-btn .sdot { position: absolute; top: 6px; right: 6px; }
+}

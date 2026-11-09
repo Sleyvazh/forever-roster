@@ -104,6 +104,7 @@ S;<groupe>;<raid>;<statut>
 V;<groupe>;<raid>;<statut>;<prénom>;<guid>;<clic>
 W;<objet patron>;<1 | 0>
 K;<objet>:<quantité>,<objet>:<quantité>,…
+B;<touche de synchro>
 END;<nombre de lignes entre l'en-tête et END>;<sceau (1.6.5)>
 ```
 
@@ -116,9 +117,10 @@ END;<nombre de lignes entre l'en-tête et END>;<sceau (1.6.5)>
 | `R` | Patron connu, relevé à l'ouverture des fenêtres de métier : `s` + sort de fabrication, ou `i` + objet fabriqué quand le jeu ne donne que lui. Les fenêtres que le site ne gère pas (ex. Poisons du voleur) sont ignorées et signalées à l'import. |
 | `T` | Talents pris (système de talents de Forever, `C_Traits`), par arbre : identifiant du nœud et rang. En version 1 : une ligne par nœud, avec rang max, position, sort, sous-arbre et arbre. |
 | `W` | Patron marqué « recherché » en jeu (`1`) ou retiré (`0`) : onglet Patrons ou `/fr cherche <lien>`. Le site retrouve la recette enseignée par l'objet ; un patron déjà connu n'est jamais rétrogradé. |
-| `S` | Inscription faite en jeu (onglet Raids) : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. L'addon envoie la ligne jusqu'à ce que les données du site (FRG) montrent ce statut, ou soient plus récentes que l'accusé de réception, puis l'oublie (1.5.4) : un changement fait ensuite sur le site n'est pas écrasé. |
-| `V` | Inscription faite en jeu **par un autre joueur** et transmise par l'officier qui envoie ce bloc (addon 1.6.3, voir « Relais des inscriptions faites en jeu ») : identifiant du groupe, du raid, statut du jeu (`present`, `late`, `tentative`, `absent`), prénom de celui qui s'est inscrit (1 à 40 caractères, donné par le jeu à l'officier), son GUID (`Player-<serveur>-<hex>`, vide si inconnu) et l'heure de son clic en secondes Unix (heure du serveur de jeu : `GetServerTime()`, sinon `time()`). Écrite par l'addon de l'officier (appli active, option « Transmettre au site les inscriptions de la guilde ») dans le bloc du perso connecté seulement, après les lignes `S` ; 60 au plus par bloc ; comptée par `END` et dans l'empreinte du perso (le bloc repart). Le site la traite comme décrit plus bas (7 contrôles) ; un site plus ancien l'ignore. Ligne `V` en double (même prénom, même raid) : la dernière l'emporte. |
+| `S` | Inscription faite en jeu (onglet Raids, rappel « Tu viens ? ») : identifiant du groupe, du raid, statut (`present`, `late`, `tentative`, `absent` ; depuis l'addon 1.6.6, « Autre » : aussi `alt` et `bench`). Le site l'enregistre pour ce perso ; une ligne par raid, la dernière l'emporte. L'addon envoie la ligne jusqu'à ce que les données du site (FRG) montrent ce statut, ou soient plus récentes que l'accusé de réception, puis l'oublie (1.5.4) : un changement fait ensuite sur le site n'est pas écrasé. |
+| `V` | Inscription faite en jeu **par un autre joueur** et transmise par l'officier qui envoie ce bloc (addon 1.6.3, voir « Relais des inscriptions faites en jeu ») : identifiant du groupe, du raid, statut du jeu (`present`, `late`, `tentative`, `absent` ; `alt` et `bench` depuis 1.6.6 : un officier en 1.6.5 les refuse, l'inscription part alors avec l'export du joueur), prénom de celui qui s'est inscrit (1 à 40 caractères, donné par le jeu à l'officier), son GUID (`Player-<serveur>-<hex>`, vide si inconnu) et l'heure de son clic en secondes Unix (heure du serveur de jeu : `GetServerTime()`, sinon `time()`). Écrite par l'addon de l'officier (appli active, option « Transmettre au site les inscriptions de la guilde ») dans le bloc du perso connecté seulement, après les lignes `S` ; 60 au plus par bloc ; comptée par `END` et dans l'empreinte du perso (le bloc repart). Le site la traite comme décrit plus bas (7 contrôles) ; un site plus ancien l'ignore. Ligne `V` en double (même prénom, même raid) : la dernière l'emporte. |
 | `K` | Lot G : consommables demandés par les raids chargés (lignes `C` du FRG), comptés dans les sacs et la banque (`GetItemCount`, banque incluse si elle a été ouverte) à la connexion, quand les sacs changent et à l'ouverture de la banque. Le site les garde sur la fiche (onglet Préparation des raids). |
+| `B` | Addon 1.6.6 : la touche de synchro rapide du joueur, telle que le jeu l'affiche (`GetBindingText`, ex. `F9`, `Maj-G`), sans codes de couleur ni d'icône ; absente si aucune touche n'est choisie. Hors empreinte (changer de touche ne fait pas repartir le perso) ; dans le bloc de chaque perso. Le site (`syncKey`, 1 à 20 caractères : lettres, chiffres, espace et `+-_.,'()[]`, sinon ignorée) la retient dans le navigateur (`localStorage`, clé `fr-sync-key`) et la montre à l'étape 1 du panneau Synchro et après une synchro réussie. Rien n'est enregistré côté serveur. |
 
 **Ce que le site fait des lignes `V` (addon 1.6.3).** Pour chaque ligne, dans l'ordre, avec l'envoyeur du bloc (le compte relié à l'appli, ou celui qui colle) comme relais (`applyRelayed`, `apps/api/src/lib/addon-import.ts`). Elles sont traitées pour chaque bloc dès que sa partie « inscriptions » est reprise, que le perso porteur soit connu, ignoré ou laissé de côté, et leur résultat s'ajoute à celui du bloc :
 
@@ -136,7 +138,7 @@ Le générateur est `Format.lua` (`BuildFRC`), le lecteur `parseCharacterExport`
 
 # FRG, version 1 : données des groupes, du site vers le jeu
 
-Sur le site : « Copier pour le jeu », en haut de chaque page (un bloc FRG par groupe, à la suite), ou un seul groupe depuis son onglet **Raids**. En jeu : synchro rapide (raccourci clavier ou clic droit sur le bouton de la minicarte) ou onglet **Synchro** (`/fr synchro`), Ctrl+V : chargé dès que le texte collé est complet. La zone de collage reconnaît aussi l'« Export pour le jeu » d'un raid (FRR, onglet Compo). Plusieurs groupes remplacent ceux déjà chargés ; un seul groupe est ajouté ou mis à jour. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
+Sur le site : bouton Synchro (en haut de chaque page), « Copier pour le jeu » (un bloc FRG par groupe, à la suite), ou un seul groupe depuis son onglet **Raids**. En jeu : synchro rapide (raccourci clavier ou clic droit sur le bouton de la minicarte) ou onglet **Synchro** (`/fr synchro`), Ctrl+V : chargé dès que le texte collé est complet. La zone de collage reconnaît aussi l'« Export pour le jeu » d'un raid (FRR, onglet Compo). Plusieurs groupes remplacent ceux déjà chargés ; un seul groupe est ajouté ou mis à jour. Le texte est propre à chaque joueur (il contient ses inscriptions) et se régénère à la demande.
 
 ```
 FRG;1;<groupe>;<généré le>;<nom du groupe>
@@ -415,7 +417,7 @@ Mêmes principes que les formats de Forever (une information par ligne, `;`, auc
 
 ## RRG, version 1 : données des groupes (site → jeu)
 
-« Copier pour le jeu » sur Roster (barre du haut), collé dans l'onglet Synchro de l'addon (ou sa synchro rapide). Un bloc par groupe de WoW Retail, à la suite.
+« Copier pour le jeu » sur Roster (bouton Synchro de la barre du haut), collé dans l'onglet Synchro de l'addon (ou sa synchro rapide). Un bloc par groupe de WoW Retail, à la suite.
 
 ```
 RRG;1;<groupe>;<généré le unix>;<nom du groupe>

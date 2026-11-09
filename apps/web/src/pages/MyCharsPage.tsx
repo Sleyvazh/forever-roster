@@ -14,7 +14,7 @@ import { ClassSpecPicker } from "../components/ClassSpecPicker";
 import { GiveFicheDialog } from "../components/GiveFiche";
 import { dayMonth } from "../guild";
 import { useGameText } from "../gameText";
-import { syncAge } from "../addonImport";
+import { openSync, syncState } from "../syncPanel";
 import { useAutosave } from "./CharactersPage";
 
 /**
@@ -156,9 +156,23 @@ function CharCard({ c, current, onClick }: { c: Character; current: boolean; onC
           fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
       </span>
       <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title={`Main dans ${c.group.name}`}>★</span>}{c.name}</span>
-      {!c.cls || !c.spec1 ? <span className="tag warn">À compléter</span> : <span />}
+      {!c.cls || !c.spec1 ? <span className="tag warn">À compléter</span> : <SyncDot at={c.addonSyncedAt} />}
       <span className="sub">{[t.cls(c.cls) || "Classe ?", specs || "pas de spé"].join(" · ")}</span>
     </button>
+  );
+}
+
+/**
+ * Âge de la synchro sur la carte (refonte 09/11) : point vert à moins de 7 jours, orange avec l'âge au-delà (« 12 j »)
+ * ou « Jamais ». Court, pour laisser la place au nom ; la fiche donne l'état complet.
+ */
+function SyncDot({ at }: { at?: string | null }) {
+  const s = syncState(at);
+  if (s.tone === "ok") return <span className="sy-age ok" title={`Synchro à jour · ${s.ago}`}>●<span className="sr-only"> Synchro à jour</span></span>;
+  return (
+    <span className="sy-age warn" title={s.ago ? `Synchro ${s.ago}` : "Jamais synchronisé"}>
+      ● <span className="sr-only">Synchro </span>{s.ago ? <><span className="sr-only">il y a </span>{s.label.replace("Il y a ", "")}</> : "Jamais"}
+    </span>
   );
 }
 
@@ -177,7 +191,7 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
   const [giving, setGiving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const color = gt.color(c.cls) ?? "var(--gold)";
-  const age = syncAge(c.addonSyncedAt);
+  const age = syncState(c.addonSyncedAt);
   const face = <Portrait id={c.portraitId} size={44} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={34} /> : <ClassIcon cls={c.cls} size={34} />) : <span className="muted">?</span>} />;
   /** Guilde du perso (une seule, ou aucune) ; main : il passe en tête pour les inscriptions. */
   const moveTo = async (to: string, main = false) => {
@@ -201,7 +215,8 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
           <div className="sub">Niv. {c.level} · <b className={`cn${c.cls === "Shaman" ? " sha" : ""}`}>{gt.cls(c.cls) || "Classe ?"}</b>{c.race && ` · ${c.race}`}{c.group && ` · ${c.group.name}${c.group.isMain ? " (main)" : ""}`}</div>
         </div>
         <div className="fi-state">
-          {c.addonSyncedAt ? <span className={age.stale ? "warnmsg" : "ok-t"}>{age.text}</span> : <Link className="link" to="/addon">Pas encore synchronisé · l'addon</Link>}
+          <span className={`sy-age ${age.tone}`}>● {age.tone === "ok" ? `À jour · ${age.ago}` : age.ago ? `${age.label} sans synchro` : "Jamais synchronisé"}</span>
+          {age.tone === "warn" && <button type="button" className="btn sm" onClick={openSync}>Ouvrir la synchro</button>}
           {saveText && <span className={status.kind === "error" || status.kind === "held" ? "warnmsg" : undefined} role="status">{saveText}</span>}
         </div>
       </div>

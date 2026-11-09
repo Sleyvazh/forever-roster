@@ -243,11 +243,27 @@ local function linesOf(c, snap, relayed)
   return ns.Format.Compact(lines)
 end
 
+-- Touche de synchro rapide du joueur (ligne B, 1.6.6) : le panneau Synchro du site la montre à l'étape 1 (« ta touche de
+-- synchro F9 ») et la retient dans le navigateur. Hors empreinte : changer de touche ne fait pas repartir le perso.
+-- Texte affiché par le jeu (« Ctrl-Maj-S »), sans codes de couleur ni d'icône ; rien si aucune touche n'est choisie.
+function E.SyncKey()
+  if type(GetBindingKey) ~= "function" then return nil end
+  local key = GetBindingKey("FOREVERROSTER_SYNC")
+  if type(key) ~= "string" or key == "" then return nil end
+  local text = (type(GetBindingText) == "function" and GetBindingText(key)) or key
+  text = tostring(text):gsub("|[cC]%x%x%x%x%x%x%x%x", ""):gsub("|[rR]", ""):gsub("|[aATtK].-|[aAtTk]", ""):gsub("[^%w%s%+%-_%.,'%(%)%[%]\128-\255]", "")
+  text = text:match("^%s*(.-)%s*$")
+  return text ~= "" and text or nil
+end
+
 local function block(c, snap)
   local h = {}
   for k, v in pairs(snap.header or {}) do h[k] = v end
   h.time, h.addon, h.fullName = snap.at or 0, ns.version, fullName(snap)
-  return ns.Format.BuildFRC(h, linesOf(c, snap))
+  local lines = linesOf(c, snap)
+  local key = E.SyncKey()
+  if key then lines[#lines + 1] = { "B", key } end
+  return ns.Format.BuildFRC(h, lines)
 end
 
 -- Empreinte du contenu d'un perso (sans la date du relevé) : sert à savoir s'il a changé depuis le dernier envoi

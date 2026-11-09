@@ -159,23 +159,24 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
 
   await test.step("addon : mise à jour de la fiche depuis l'export du jeu", async () => {
     await page.getByRole("tab", { name: "Profil" }).click();
-    // Ctrl+V n'importe où (lot F) ; Tournicoti a sa fiche : la mise à jour part tout de suite (refonte du 23/10)
-    await expect(page.locator(".fi-state")).toContainText("Pas encore synchronisé");
+    // Ctrl+V n'importe où (lot F) : le panneau Synchro s'ouvre sur l'aperçu, la mise à jour part au bouton (refonte du 09/11)
+    await expect(page.locator(".fi-state")).toContainText("Jamais synchronisé");
     await page.evaluate(text => {
       const dt = new DataTransfer();
       dt.setData("text/plain", text);
       (document.activeElement as HTMLElement | null)?.blur();
       document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
     }, readFileSync(path.resolve("addon/tests/sample.frc"), "utf8"));
-    const toast = page.getByRole("status", { name: "Export de l'addon" });
-    await expect(toast).toContainText("Tournicoti mis à jour");
-    await expect(page.getByRole("dialog", { name: "Export de l'addon" })).toHaveCount(0);
-    await toast.getByRole("button", { name: "Détails" }).click();
-    const pasted = page.getByRole("dialog", { name: "Export de l'addon" });
+    const pasted = page.getByRole("dialog", { name: "Synchro" });
+    await expect(pasted).toContainText("Rien n'est encore enregistré.");
+    await expect(pasted.getByRole("list", { name: "Persos reconnus" })).toContainText("Tournicoti");
+    await pasted.getByRole("button", { name: "Mettre à jour 1 perso" }).click();
+    await expect(pasted.getByRole("status", { name: "Résultat de la synchro" })).toContainText("1 perso à jour");
     // Le nom complet lu en jeu (addon 1.6.2) est gardé à côté de la fiche
-    await expect(pasted).toContainText("Tournicoti : fiche mise à jour · nom complet : Tournicoti Ventfeuille · 2 patrons cochés");
-    await pasted.getByRole("button", { name: "Fermer" }).click();
-    await expect(page.locator(".fi-state")).toContainText("synchro il y a moins d'une heure");
+    await expect(pasted).toContainText("Tournicoti · fiche mise à jour · nom complet : Tournicoti Ventfeuille · 2 patrons cochés");
+    await pasted.getByRole("button", { name: "Fermer la synchro" }).click();
+    await expect(pasted).toHaveCount(0);
+    await expect(page.locator(".fi-state")).toContainText("À jour · à l'instant");
     await page.locator(".fi-fold summary").click();
     await expect(page.locator("#f-tal-main")).toHaveValue("0/8/0");
     await expect(page.locator("#f-link-main")).toHaveValue("https://foreverchanges.pro/talents/druid?b=-53");
@@ -235,10 +236,17 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     const zip = await page.request.get("/downloads/ForeverRoster.zip");
     expect(zip.status()).toBe(200);
     expect((await zip.body()).subarray(0, 4).toString("latin1")).toBe("PK\u0003\u0004");
-    // « Copier pour le jeu » : barre du haut (toutes les pages) et étape 2
-    await page.locator(".topnav").getByRole("button", { name: /Copier pour le jeu/ }).click();
-    await expect(page.locator(".topnav").getByRole("button", { name: /Copié/ })).toBeVisible();
+    // « Copier pour le jeu » : bouton Synchro de la barre du haut (refonte du 09/11) ; officier : Vers le jeu, Roster
+    // Companion d'abord, la copie en secours
+    await page.locator(".topnav").getByRole("button", { name: /Synchro/ }).click();
+    const panel = page.getByRole("dialog", { name: "Synchro" });
+    await panel.getByRole("button", { name: "Vers le jeu" }).click();
+    await expect(panel).toContainText("Roster Companion n'est pas installé");
+    await panel.getByRole("button", { name: "Copier pour le jeu" }).click();
+    await expect(panel.getByRole("button", { name: /Copié/ })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nM;\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$/);
+    await panel.getByRole("button", { name: "Fermer la synchro" }).click();
+    await expect(panel).toHaveCount(0);
     // Trois étapes ; la synchro au quotidien, les commandes et la sécurité sont repliées
     await expect(page.locator(".ad-step")).toHaveCount(3);
     await expect(page.locator("details.ad-more")).toHaveCount(3);
@@ -262,25 +270,25 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
       (document.activeElement as HTMLElement | null)?.blur();
       document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
     }, both);
-    // Un perso inconnu (Greta) : il y a un choix à faire, la fenêtre reste
-    const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
-    await expect(dialog).toContainText("Export de l'addon reconnu");
-    await expect(dialog.getByRole("combobox", { name: "Fiche pour Tournicoti" })).toHaveValue(/[0-9a-f-]{36}/);
-    await expect(dialog.getByRole("combobox", { name: "Fiche pour Greta" })).toHaveValue("new");
+    // Aperçu dans le panneau Synchro : Tournicoti retrouvé (sa fiche), Greta nouvelle (« Créer sa fiche » choisi d'office)
+    const dialog = page.getByRole("dialog", { name: "Synchro" });
+    await expect(dialog).toContainText("Aperçu · 2 persos reconnus");
+    await expect(dialog.getByRole("button", { name: "Changer la fiche de Tournicoti" })).toBeVisible();
+    const greta = dialog.getByRole("group", { name: "Greta : créer ou ignorer" });
+    await expect(greta.getByRole("button", { name: "Créer sa fiche" })).toHaveAttribute("aria-pressed", "true");
     await dialog.getByText("Choisir quoi importer").click();
     await expect(dialog.getByRole("checkbox", { name: "Équipement porté" })).toBeChecked();
-    await dialog.getByRole("button", { name: "Mettre à jour 1 perso et créer 1 fiche" }).click();
-    await expect(dialog).toContainText("Greta : fiche créée · 1 recherché ajouté");
-    await expect(dialog).toContainText("Tournicoti : fiche mise à jour");
-    await expect(page.getByRole("button", { name: /Greta/ }).first()).toBeVisible();
-    await dialog.getByRole("button", { name: "Fermer" }).click();
-    // Dernière synchro de chaque perso : la flèche de « Copier pour le jeu »
-    await page.getByRole("button", { name: /État de la synchro/ }).click();
-    const sync = page.getByRole("dialog", { name: "Synchro de l'addon" });
-    await expect(sync.locator(".sp-chars li").filter({ hasText: "Tournicoti" })).toContainText(/à l'instant|il y a/);
-    await expect(sync.getByRole("link", { name: "Installer ou mettre à jour l'addon" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Mettre à jour 1 perso et créer Greta" }).click();
+    await expect(dialog.getByRole("status", { name: "Résultat de la synchro" })).toContainText("2 persos à jour");
+    await expect(dialog).toContainText("Greta · fiche créée · 1 recherché ajouté");
+    await expect(dialog).toContainText("Tournicoti · fiche mise à jour");
+    await expect(page.locator(".mp-list").getByRole("button", { name: /Greta/ }).first()).toBeVisible();
+    // Dernière synchro de chaque perso : dans le panneau, sous la zone de collage
+    await dialog.getByRole("button", { name: "Coller un autre texte" }).click();
+    await expect(dialog.locator(".sy-mine li").filter({ hasText: "Tournicoti" })).toContainText("À jour · à l'instant");
+    await expect(dialog.getByRole("link", { name: "Installer ou mettre à jour l'addon ›" })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(sync).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
   });
 
   await test.step("Roster Companion : appairage d'un appareil", async () => {
@@ -544,12 +552,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
       (document.activeElement as HTMLElement | null)?.blur();
       document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
     }, frb);
-    const dialog = page.getByRole("dialog", { name: "Export de l'addon" });
+    const dialog = page.getByRole("dialog", { name: "Synchro" });
     await expect(dialog).toContainText("Bilan de Molten Core");
     await expect(dialog).toContainText("2 présents · 1 objet");
     await dialog.getByRole("button", { name: "Enregistrer le bilan" }).click();
-    await expect(dialog).toContainText("Bilan de Molten Core : enregistré · 2 présents, 1 objet · sans fiche : Chamy");
-    await dialog.getByRole("button", { name: "Fermer" }).click();
+    await expect(dialog).toContainText("Bilan de Molten Core · enregistré · 2 présents, 1 objet · sans fiche : Chamy");
+    await dialog.getByRole("button", { name: "Fermer", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
     await page.locator(".topnav").getByRole("link", { name: "Raids" }).click();
     await page.locator(".gr-raid").filter({ hasText: "Molten Core" }).click();
     await page.getByRole("tab", { name: "Bilan" }).click();

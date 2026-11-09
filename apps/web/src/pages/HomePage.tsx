@@ -1,3 +1,4 @@
+import { openSync, syncState } from "../syncPanel";
 import { CLASS_SPECS, firstNameOf, zonedParts, type HomeAgendaItem, type HomeFind, type SignupStatus, type SpecDef } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type CSSProperties, type ReactNode } from "react";
@@ -152,6 +153,14 @@ function TodoList({ groupId, groupName, chars }: { groupId: string; groupName: s
     <div key="none" className="todo-i" role="listitem"><span className="t">Ajoute ton perso pour t'inscrire aux raids et aux sorties.</span>
       <span className="acts"><Link className="btn sm primary" to="/persos/nouveau">Ajouter un perso</Link></span></div>,
   );
+  // Persos pas synchronisés depuis 7 jours (refonte 09/11) : une seule ligne, qui ouvre le panneau Synchro
+  const late = (week.data?.todo ?? []).filter(t => t.kind === "sync");
+  if (late.length) items.push(
+    <div key="sync" className="todo-i ask" role="listitem">
+      <span className="t"><b>Synchro</b> · {late.length > 1 ? `${late.length} persos à mettre à jour` : "1 perso à mettre à jour"}</span>
+      <span className="acts"><button type="button" className="btn sm" onClick={openSync}>Ouvrir la synchro</button></span>
+    </div>,
+  );
   for (const t of week.data?.todo ?? []) {
     if (t.kind === "incomplete") {
       const c = chars.find(x => x.id === t.characterId) ?? all?.find(x => x.id === t.characterId);
@@ -178,13 +187,6 @@ function TodoList({ groupId, groupName, chars }: { groupId: string; groupName: s
               onClick={() => void run("assign", () => put(`/groups/${groupId}/characters/${c.id}`, { assigned: true, main: true }))}>{c.name}</button>)
               : <Link className="btn sm" to="/persos">Mes persos</Link>}
           </span>
-        </div>,
-      );
-    } else if (t.kind === "sync") {
-      items.push(
-        <div key={`sync-${t.characterId}`} className="todo-i ask" role="listitem">
-          <span className="t"><b>{t.name}</b> n'est pas synchronisé depuis {t.days} jours.</span>
-          <span className="acts"><Link className="btn sm ghost" to="/addon">Comment ?</Link></span>
         </div>,
       );
     }
@@ -254,11 +256,10 @@ function MyCharsCard({ groupId, chars }: { groupId: string; chars: Character[] }
   const abs = useQuery({ queryKey: ["absences"], queryFn: () => get<{ absences: Absence[] }>("/absences") });
   const [declaring, setDeclaring] = useState(false);
   const list = abs.data?.absences ?? [];
+  // Âge de la synchro (refonte 09/11) : vert à moins de 7 jours, orange au-delà ou jamais
   const syncOf = (c: Character) => {
-    if (!c.addonSyncedAt) return { text: "pas synchronisé", cls: "" };
-    const h = (Date.now() - Date.parse(c.addonSyncedAt)) / 3600e3;
-    const d = Math.floor(h / 24);
-    return { text: h < 1 ? "à l'instant" : h < 24 ? `il y a ${Math.floor(h)} h` : d === 1 ? "hier" : `il y a ${d} j`, cls: h < 24 ? "ok" : d > 7 ? "warn" : "" };
+    const s = syncState(c.addonSyncedAt);
+    return { text: `● ${s.tone === "ok" ? `À jour · ${s.ago}` : s.ago ? s.label : "Jamais"}`, cls: s.tone };
   };
   return (
     <section className="hm-card" style={{ ["--o" as string]: 2 } as CSSProperties} aria-labelledby="hm-me">

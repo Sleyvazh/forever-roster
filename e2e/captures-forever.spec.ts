@@ -131,11 +131,14 @@ test("guilde en marche : image de l'accueil public, Accueil, Sorties, Course", a
     await db.query("update characters set guid = $1, addon_synced_at = $2 where id = $3", [G["Thalion Cendrebois"], new Date(now - 26 * 3600e3), ids.tha]);
   } finally { await db.end(); }
 
-  // Relevé de la guilde collé par Thalion (officier) : la guilde du jeu se lie toute seule
+  // Relevé de la guilde collé par Thalion (officier) : aperçu dans le panneau Synchro, puis envoi ; la guilde du jeu se lie
   await page.goto(`/groups/${ids.g}`);
   await page.waitForLoadState("networkidle");
   await paste(page, frl(Math.floor(now / 1000)));
-  await page.waitForTimeout(2500);
+  const sync = page.getByRole("dialog", { name: "Synchro" });
+  await sync.getByRole("button", { name: "Envoyer le relevé de guilde" }).click();
+  await sync.getByRole("status", { name: "Résultat de la synchro" }).waitFor();
+  await sync.getByRole("button", { name: "Fermer la synchro" }).click();
 
   const db2 = new pg.Client({ connectionString: DB });
   await db2.connect();

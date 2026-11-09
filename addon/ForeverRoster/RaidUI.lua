@@ -6,7 +6,7 @@ local RA = ns.Raid
 local U = ns.UI
 local K = U.kit
 
-local GOLD, GREY, GREEN, RED, ORANGE, BLUE = "|cffe3b54b", "|cff9aa3b6", "|cff4fd35f", "|cffff6b5e", "|cfff0b43c", "|cff6fb7ff"
+local GOLD, INK, GREEN, RED, ORANGE, BLUE = "|cffe3b54b", "|cffece7d8", "|cff4fd35f", "|cffff6b5e", "|cfff0b43c", "|cff6fb7ff"
 -- Gagnant du jet : l'étoile des marqueurs de raid (le caractère étoile n'existe pas dans la police du jeu)
 local STAR = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_1:0|t "
 -- Lien à afficher : le vrai lien de l'objet, sinon celui construit en attendant que le jeu reçoive l'objet
@@ -57,21 +57,21 @@ function RA.RefreshLoot()
   local li, d, s = lootWin.list, RA.Current(), RA.session
   local mode = d and d.loot or "journal"
   lootWin.hintText:SetText(d and (GOLD .. d.entry.raid.name .. "|r · " .. L("butin : %s", mode == "softres" and L["soft reserve"] or mode == "council" and L["conseil du butin"] or L["journal"]))
-    or (GREY .. L["Pas de raid du site en cours : jets libres ou MS / OS seulement."] .. "|r"))
+    or (INK .. L["Pas de raid du site en cours : jets libres ou MS / OS seulement."] .. "|r"))
   li.Reset()
   li.Header(L["Objets"])
-  if #RA.items == 0 then li.Add(GREY .. (RA.test and L["Aucun objet. Raid d'essai : « Ouvrir le corps » dans le panneau d'essai."] or L["Aucun objet. Ouvre un corps en maître du butin, ou /fr butin puis Maj+clic sur un objet."]) .. "|r") end
+  if #RA.items == 0 then li.Add(INK .. (RA.test and L["Aucun objet. Raid d'essai : « Ouvrir le corps » dans le panneau d'essai."] or L["Aucun objet. Ouvre un corps en maître du butin, ou /fr butin puis Maj+clic sur un objet."]) .. "|r") end
   for _, it in ipairs(RA.items) do
     local res, list = RA.ReservesOf(it.itemId)
-    local text = itemLink(it) .. ((it.slot or it.test) and "" or (GREY .. "  " .. L["(dans les sacs)"] .. "|r"))
+    local text = itemLink(it) .. ((it.slot or it.test) and "" or (INK .. "  " .. L["(dans les sacs)"] .. "|r"))
     local buttons = {}
     if mode == "softres" and res then
       local who = {}
-      for _, x in ipairs(list) do who[#who + 1] = x.name .. ((x.bonus or 0) > 0 and (GREY .. " +" .. x.bonus .. "|r") or "") end
+      for _, x in ipairs(list) do who[#who + 1] = x.name .. ((x.bonus or 0) > 0 and (INK .. " +" .. x.bonus .. "|r") or "") end
       text = text .. "\n" .. GREEN .. L["SR :"] .. " |r" .. table.concat(who, ", ")
       buttons[#buttons + 1] = { L["Jets SR"], 110, function() RA.StartRoll(it, "sr") end }
     else
-      if mode == "softres" then text = text .. "\n" .. GREY .. L["Personne ne l'a réservé."] .. "|r" end
+      if mode == "softres" then text = text .. "\n" .. INK .. L["Personne ne l'a réservé."] .. "|r" end
       if mode == "council" then buttons[#buttons + 1] = { L["Conseil"], 100, function() RA.StartCouncil(it) end } end
       buttons[#buttons + 1] = { L["Jets MS / OS"], 130, function() RA.StartRoll(it, "ms") end }
       buttons[#buttons + 1] = { L["Jet libre"], 100, function() RA.StartRoll(it, "free") end }
@@ -84,12 +84,12 @@ function RA.RefreshLoot()
   elseif s then
     li.Header(L("Jets · %s", KIND[s.kind] and L[KIND[s.kind]] or s.kind))
     local list, tied = RA.Ranking(s)
-    li.Add(itemLink(s.item) .. GREY .. "  " .. (s.kind == "sr" and L("/roll %d, bonus SR+ ajouté", s.max) or ("/roll " .. s.max)) .. "|r")
-    if #list == 0 then li.Add(GREY .. L["En attente des jets..."] .. "|r") end
+    li.Add(itemLink(s.item) .. INK .. "  " .. (s.kind == "sr" and L("/roll %d, bonus SR+ ajouté", s.max) or ("/roll " .. s.max)) .. "|r")
+    if #list == 0 then li.Add(INK .. L["En attente des jets..."] .. "|r") end
     for i, x in ipairs(list) do
-      li.Add((i == 1 and not tied and (STAR .. GOLD) or "") .. x.name .. "|r  " .. x.roll .. (s.kind == "sr" and (GREY .. " +" .. x.bonus .. " = |r" .. x.total) or ""))
+      li.Add((i == 1 and not tied and (STAR .. GOLD) or "") .. x.name .. "|r  " .. x.roll .. (s.kind == "sr" and (INK .. " +" .. x.bonus .. " = |r" .. x.total) or ""))
     end
-    for n, r in pairs(s.ignored) do li.Add(GREY .. L("%s  %d : pas de réservation, ignoré", n, r) .. "|r") end
+    for n, r in pairs(s.ignored) do li.Add(INK .. L("%s  %d : pas de réservation, ignoré", n, r) .. "|r") end
     local buttons = {}
     if #list > 0 and not tied then
       local w = list[1].name
@@ -101,7 +101,7 @@ function RA.RefreshLoot()
     if tied then buttons[#buttons + 1] = { L("Relancer : %s", table.concat(tied, ", ")), 260, function() RA.StartRoll(s.item, s.kind, tied) end } end
     if s.kind == "ms" and #list == 0 then buttons[#buttons + 1] = { L["Passer aux jets OS"], 160, function() RA.StartRoll(s.item, "os") end } end
     buttons[#buttons + 1] = { L["Annuler"], 90, function() RA.session = nil RA.RefreshWindows() end }
-    li.Add(GREY .. L["Égalité : seuls les ex æquo relancent. Corps fermé : l'objet part dans les objets à remettre."] .. "|r", buttons)
+    li.Add(INK .. L["Égalité : seuls les ex æquo relancent. Corps fermé : l'objet part dans les objets à remettre."] .. "|r", buttons)
   end
   li.Done()
 end
@@ -139,9 +139,9 @@ function RA.ShowAsk()
   for _, b in ipairs(ask.buttons) do b:SetText(L[RA.RESPONSES[b.key]]) end
   local gear = {}
   for _, id in ipairs(RA.Equipped(a.itemId)) do gear[#gear + 1] = linkFor(id) end
-  ask.text:SetText(linkFor(a.itemId) .. GREY .. "  " .. L("proposé par %s", a.ml) .. "|r\n" .. (#gear > 0 and L("Tu portes : %s", table.concat(gear, ", ")) or GREY .. L["Rien de porté à cet emplacement."] .. "|r")
-    .. (#RA.asks > 1 and (GREY .. "\n" .. L("%d autre(s) objet(s) ensuite.", #RA.asks - 1) .. "|r") or ""))
-  ask.timer:SetText(GREY .. L["Une précision au besoin, puis ta réponse. Sans addon, on peut chuchoter bis, up, os au maître du butin."] .. "|r")
+  ask.text:SetText(linkFor(a.itemId) .. INK .. "  " .. L("proposé par %s", a.ml) .. "|r\n" .. (#gear > 0 and L("Tu portes : %s", table.concat(gear, ", ")) or INK .. L["Rien de porté à cet emplacement."] .. "|r")
+    .. (#RA.asks > 1 and (INK .. "\n" .. L("%d autre(s) objet(s) ensuite.", #RA.asks - 1) .. "|r") or ""))
+  ask.timer:SetText(INK .. L["Une précision au besoin, puis ta réponse. Sans addon, on peut chuchoter bis, up, os au maître du butin."] .. "|r")
   K.front(ask)
   ask:Show()
 end
@@ -209,7 +209,7 @@ function RA.RefreshCouncil()
   for i, col in ipairs(COUNCIL_COLS) do if col.title ~= "" then G.SetTitle(i, L[col.title]) end end
   G.Reset()
   if not c then
-    councilWin.hintText:SetText(GREY .. L["Ce conseil est terminé."] .. "|r")
+    councilWin.hintText:SetText(INK .. L["Ce conseil est terminé."] .. "|r")
     councilWin.foot:SetText("")
     G.Done()
     return
@@ -232,8 +232,8 @@ function RA.RefreshCouncil()
   local waiting = {}
   for _, n in ipairs(RA.Members()) do if not c.cands[n] then waiting[#waiting + 1] = n end end
   local nVotes = #by
-  councilWin.hintText:SetText(linkFor(c.itemId, c.link, c.name, c.quality) .. GREY .. "  · " .. L("maître du butin : %s", c.ml) .. (isML and (" " .. L["(toi)"]) or "")
-    .. "  · |r" .. GOLD .. L("%d réponse(s)", #list) .. "|r" .. GREY .. (#waiting > 0 and (", " .. L("%d en attente", #waiting)) or "")
+  councilWin.hintText:SetText(linkFor(c.itemId, c.link, c.name, c.quality) .. INK .. "  · " .. L("maître du butin : %s", c.ml) .. (isML and (" " .. L["(toi)"]) or "")
+    .. "  · |r" .. GOLD .. L("%d réponse(s)", #list) .. "|r" .. INK .. (#waiting > 0 and (", " .. L("%d en attente", #waiting)) or "")
     .. "  · " .. L("%d voix sur %d membre(s) du conseil", nVotes, #RA.CouncilNames()) .. "|r")
   for _, e in ipairs(list) do
     local whispered = e.x.note == "chuchoté" -- nolocale (marque interne de Raid.lua)
@@ -252,11 +252,11 @@ function RA.RefreshCouncil()
     end
     G.Row({
       (who and who.role and (K.roleIcon(who.role) .. " ") or "") .. GOLD .. e.name .. "|r",
-      (resp == "bis" and GREEN or resp == "upgrade" and BLUE or GREY) .. (RA.RESPONSES[resp] and L[RA.RESPONSES[resp]] or resp) .. "|r",
-      whispered and (GREY .. L["réponse chuchotée"] .. "|r") or (#gear > 0 and table.concat(gear, "\n") or (GREY .. L["rien à cet emplacement"] .. "|r")),
+      (resp == "bis" and GREEN or resp == "upgrade" and BLUE or INK) .. (RA.RESPONSES[resp] and L[RA.RESPONSES[resp]] or resp) .. "|r",
+      whispered and (INK .. L["réponse chuchotée"] .. "|r") or (#gear > 0 and table.concat(gear, "\n") or (INK .. L["rien à cet emplacement"] .. "|r")),
       (not whispered and e.x.note ~= "") and ("|cffc9cfdb" .. L("« %s »", e.x.note) .. "|r") or "",
-      tostring(site + tonight) .. (tonight > 0 and (GREY .. " (+" .. tonight .. ")|r") or ""),
-      #vs > 0 and ("|cffffffff" .. #vs .. "|r " .. GREY .. table.concat(vs, ", ") .. "|r") or (GREY .. "0|r"),
+      tostring(site + tonight) .. (tonight > 0 and (INK .. " (+" .. tonight .. ")|r") or ""),
+      #vs > 0 and ("|cffffffff" .. #vs .. "|r " .. INK .. table.concat(vs, ", ") .. "|r") or (INK .. "0|r"),
     }, {
       buttons = buttons, dim = resp == "pass",
       tip = function(col, owner)
@@ -280,10 +280,10 @@ function RA.RefreshCouncil()
       end,
     })
   end
-  if #list == 0 then G.Row({ GREY .. L["En attente..."] .. "|r", "", GREY .. L["Les réponses arrivent ici au fil de l'eau."] .. "|r" }) end
+  if #list == 0 then G.Row({ INK .. L["En attente..."] .. "|r", "", INK .. L["Les réponses arrivent ici au fil de l'eau."] .. "|r" }) end
   G.Done()
-  councilWin.foot:SetText((#waiting > 0 and (GREY .. L["Pas encore répondu :"] .. " |r" .. table.concat(waiting, ", ")) or (GREY .. L["Tout le monde a répondu."] .. "|r"))
-    .. "\n" .. GREY .. L["Survol : objet porté, précision, détail des objets reçus."] .. (isML and (" " .. L["« Donner » attribue l'objet."]) or "") .. "|r")
+  councilWin.foot:SetText((#waiting > 0 and (INK .. L["Pas encore répondu :"] .. " |r" .. table.concat(waiting, ", ")) or (INK .. L["Tout le monde a répondu."] .. "|r"))
+    .. "\n" .. INK .. L["Survol : objet porté, précision, détail des objets reçus."] .. (isML and (" " .. L["« Donner » attribue l'objet."]) or "") .. "|r")
   -- Hauteur selon le nombre de réponses, tant que la fenêtre n'a pas été redimensionnée à la main
   if not (ForeverRosterDB.sizes and ForeverRosterDB.sizes.council) then
     councilWin:SetHeight(math.max(300, math.min(640, 150 + 30 * math.max(#list, 3))))
@@ -313,10 +313,10 @@ function RA.ShowSheet(sheet)
   sheetWin.announce:SetText(L["Annoncer en /raid"])
   sheetWin.close:SetText(L["Fermer"])
   local mine = RA.MyTasks(sheet)
-  sheetWin.mine:SetText(#mine > 0 and ("|cffffffff" .. table.concat(mine, " · ") .. "|r") or (GREY .. L["Pas de tâche pour toi"] .. "|r"))
+  sheetWin.mine:SetText(#mine > 0 and ("|cffffffff" .. table.concat(mine, " · ") .. "|r") or (INK .. L["Pas de tâche pour toi"] .. "|r"))
   local lines = {}
-  for _, l in ipairs(RA.SheetLines(sheet)) do lines[#lines + 1] = (l.label ~= "" and (GREY .. L("%s :", l.label) .. " |r") or "") .. l.value end
-  sheetWin.text:SetText(table.concat(lines, "\n") .. "\n" .. GREY .. L["Se ferme au début du combat · /fr boss pour la revoir"] .. "|r")
+  for _, l in ipairs(RA.SheetLines(sheet)) do lines[#lines + 1] = (l.label ~= "" and (INK .. L("%s :", l.label) .. " |r") or "") .. l.value end
+  sheetWin.text:SetText(table.concat(lines, "\n") .. "\n" .. INK .. L["Se ferme au début du combat · /fr boss pour la revoir"] .. "|r")
   local h = 110 + ((sheetWin.text.GetStringHeight and sheetWin.text:GetStringHeight()) or 60)
   sheetWin:SetHeight(math.max(170, math.min(420, h)))
   sheetWin.announce:SetScript("OnClick", function() RA.AnnounceSheet(sheet) end)
@@ -347,14 +347,14 @@ function RA.FillTab(li)
   li.Header("Raid")
   if d then
     local e = d.entry
-    li.Add(GOLD .. e.raid.name .. "|r  " .. (e.raid.time > 0 and when(e.raid.time) or "") .. GREY .. "  · " .. e.group.name
+    li.Add(GOLD .. e.raid.name .. "|r  " .. (e.raid.time > 0 and when(e.raid.time) or "") .. INK .. "  · " .. e.group.name
       .. (ns.Recorder.Current() and ("  · " .. L["relevé en cours"]) or "") .. (RA.IsMasterLooter() and ("  · " .. L["tu es maître du butin"]) or "") .. "|r",
       { { L["Fenêtre du butin"], 150, function() RA.ShowLoot() end } })
   else
-    li.Add(GREY .. L["Pas de raid du site dans les 2 h : charge les données du site (onglet Synchro) avant le raid."] .. "|r", { { L["Fenêtre du butin"], 150, function() RA.ShowLoot() end } })
+    li.Add(INK .. L["Pas de raid du site dans les 2 h : charge les données du site (onglet Synchro) avant le raid."] .. "|r", { { L["Fenêtre du butin"], 150, function() RA.ShowLoot() end } })
   end
   if not RA.test and not (IsInGroup and IsInGroup()) then
-    li.Add(GREY .. L["Pour tout essayer seul (butin, conseil, fiches, consommables) : un raid fictif de 10 joueurs."] .. "|r", { { L["Raid d'essai"], 120, function() RA.StartTest() end } })
+    li.Add(INK .. L["Pour tout essayer seul (butin, conseil, fiches, consommables) : un raid fictif de 10 joueurs."] .. "|r", { { L["Raid d'essai"], 120, function() RA.StartTest() end } })
   end
 
   if (IsInGroup and IsInGroup()) or RA.test then
@@ -365,42 +365,42 @@ function RA.FillTab(li)
     end
     li.Header(L("Addon dans le raid · %d/%d", #ok + #old, #rows))
     if #ok > 0 then li.Add(GREEN .. L["À jour :"] .. " |r" .. names(ok, 10)) end
-    if #old > 0 then li.Add(ORANGE .. L["À mettre à jour :"] .. " |r" .. table.concat(old, ", ") .. GREY .. "\n" .. L["Ancienne version : ni conseil du butin ni appel aux consommables."] .. "|r") end
-    if #none > 0 then li.Add(RED .. L["Pas d'addon :"] .. " |r" .. table.concat(none, ", ") .. GREY .. "\n" .. L["Ils peuvent toujours /roll, ou chuchoter leur réponse au conseil."] .. "|r") end
-    if #wait > 0 then li.Add(GREY .. L("En attente de réponse : %s", names(wait, 10)) .. "|r") end
-    li.Add(GREY .. L["La question part à l'arrivée dans un raid."] .. "|r", { { L["Redemander"], 120, function() RA.AskVersions(true) C_Timer.After(5, function() ns.UI.Refresh() end) ns.UI.Refresh() end } })
+    if #old > 0 then li.Add(ORANGE .. L["À mettre à jour :"] .. " |r" .. table.concat(old, ", ") .. INK .. "\n" .. L["Ancienne version : ni conseil du butin ni appel aux consommables."] .. "|r") end
+    if #none > 0 then li.Add(RED .. L["Pas d'addon :"] .. " |r" .. table.concat(none, ", ") .. INK .. "\n" .. L["Ils peuvent toujours /roll, ou chuchoter leur réponse au conseil."] .. "|r") end
+    if #wait > 0 then li.Add(INK .. L("En attente de réponse : %s", names(wait, 10)) .. "|r") end
+    li.Add(INK .. L["La question part à l'arrivée dans un raid."] .. "|r", { { L["Redemander"], 120, function() RA.AskVersions(true) C_Timer.After(5, function() ns.UI.Refresh() end) ns.UI.Refresh() end } })
   end
 
   local list = d and d.consumables or {}
   li.Header(L["Consommables"])
   if #list == 0 then
-    li.Add(GREY .. L["Aucun consommable demandé pour ce raid (site : page du raid, onglet Préparation)."] .. "|r")
+    li.Add(INK .. L["Aucun consommable demandé pour ce raid (site : page du raid, onglet Préparation)."] .. "|r")
   else
     local want = {}
     for _, c in ipairs(list) do want[#want + 1] = L("%s ×%d", c.name ~= "" and c.name or L("objet %d", c.itemId), c.n) end
-    li.Add(GREY .. L["Demandé :"] .. " |r" .. table.concat(want, ", "))
+    li.Add(INK .. L["Demandé :"] .. " |r" .. table.concat(want, ", "))
     local s = RA.CallSummary()
     if s then
       li.Add(L("Appel de %s%s|r par %s : %s%d prêt(s)|r · %s%d incomplet(s)|r · %s%d sans réponse|r%s", GOLD, date("%H:%M", RA.call.at), RA.call.by,
-        GREEN, #s.ready, ORANGE, #s.missing, RED, #s.silent, RA.call.open and (GREY .. " " .. L["(réponses en cours)"] .. "|r") or ""))
+        GREEN, #s.ready, ORANGE, #s.missing, RED, #s.silent, RA.call.open and (INK .. " " .. L["(réponses en cours)"] .. "|r") or ""))
       for _, m in ipairs(s.missing) do
         local who = d.roster[m.name]
-        li.Add((who and who.role and (K.roleIcon(who.role) .. " ") or "") .. m.name .. "  " .. GREY .. table.concat(m.lacks, ", ") .. "|r")
+        li.Add((who and who.role and (K.roleIcon(who.role) .. " ") or "") .. m.name .. "  " .. INK .. table.concat(m.lacks, ", ") .. "|r")
       end
       if #s.silent > 0 then li.Add(RED .. L["Sans réponse :"] .. " |r" .. names(s.silent, 12)) end
     end
     local buttons = {}
     if RA.isLeader() then buttons[#buttons + 1] = { L["Appel aux consommables"], 200, function() RA.CallConsumables() end } end
     if s and RA.isLeader() then buttons[#buttons + 1] = { L["Annoncer les manques"], 180, function() RA.AnnounceMissing() end } end
-    li.Add(GREY .. L["Chaque addon répond avec ce qu'il a dans ses sacs ; le résultat part au site avec ta synchro."] .. "|r", buttons)
+    li.Add(INK .. L["Chaque addon répond avec ce qu'il a dans ses sacs ; le résultat part au site avec ta synchro."] .. "|r", buttons)
   end
 
   local hand = RA.Handover()
   li.Header(L("Objets à remettre · %d", #hand))
-  if #hand == 0 then li.Add(GREY .. L["Aucun. « Garder, à remettre » dans la fenêtre du butin les ajoute ici."] .. "|r") end
+  if #hand == 0 then li.Add(INK .. L["Aucun. « Garder, à remettre » dans la fenêtre du butin les ajoute ici."] .. "|r") end
   for _, h in ipairs(hand) do
     local left, secs = remaining(h.at)
-    li.Add(L("%s pour %s", linkFor(h.itemId, h.link, h.name, h.quality), GOLD .. h.winner .. "|r") .. "  " .. (secs < 1800 and ORANGE or GREY) .. L("%s pour l'échanger", left) .. "|r",
+    li.Add(L("%s pour %s", linkFor(h.itemId, h.link, h.name, h.quality), GOLD .. h.winner .. "|r") .. "  " .. (secs < 1800 and ORANGE or INK) .. L("%s pour l'échanger", left) .. "|r",
       { { L["Échanger"], 110, function() RA.Trade(h) end }, { L["Retirer"], 90, function()
         local all = RA.Handover()
         for i = #all, 1, -1 do if all[i] == h then table.remove(all, i) end end
@@ -410,11 +410,11 @@ function RA.FillTab(li)
 
   local sheets = RA.Sheets()
   li.Header(L("Fiches de boss · %d", #sheets))
-  if #sheets == 0 then li.Add(GREY .. L["Aucune fiche pour ce raid (site : onglet Préparation du raid)."] .. "|r")
+  if #sheets == 0 then li.Add(INK .. L["Aucune fiche pour ce raid (site : onglet Préparation du raid)."] .. "|r")
   else
     local mine = {}
     for _, s in ipairs(sheets) do local t = RA.MyTasks(s) if #t > 0 then mine[#mine + 1] = L("%s :", s.name) .. " " .. table.concat(t, ", ") end end
-    li.Add((#mine > 0 and L("Tes tâches : %s", table.concat(mine, " · ")) or GREY .. L["Pas de tâche pour toi."] .. "|r") .. "\n" .. GREY .. L["La fiche s'ouvre en ciblant le boss, avant le pull."] .. "|r",
+    li.Add((#mine > 0 and L("Tes tâches : %s", table.concat(mine, " · ")) or INK .. L["Pas de tâche pour toi."] .. "|r") .. "\n" .. INK .. L["La fiche s'ouvre en ciblant le boss, avant le pull."] .. "|r",
       { { L["Voir une fiche"], 140, function() RA.ShowSheetCommand() end } })
   end
 end

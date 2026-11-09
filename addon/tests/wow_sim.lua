@@ -265,6 +265,64 @@ assert(chat, "rappel : raid déjà répondu dans le chat")
 rawget(rm.buttons[1], "scripts").OnClick(rm.buttons[1])
 assert(ns.charDB().signups.r7.status == "present" and rm.entry == false and rm.text:GetText():find("Noté"), "rappel : inscription notée, invitation à synchroniser")
 assert(#select(1, ns.UI.SoonRaids()) == 0, "rappel : plus rien à demander")
+-- Réponses 3 + Autre (1.6.6, refonte du 09/11) : Présent, Peut-être, Absent, puis « Autre... » qui ouvre En retard, Reroll, Banc
+local picked
+local specs = ns.UI.AnswerButtons(nil, function(k) picked = k end)
+assert(#specs == 4 and specs[1][1] == "Présent" and specs[2][1] == "Peut-être" and specs[3][1] == "Absent" and specs[4][1] == "Autre...", "3 + Autre")
+local menu = specs[4][3](CreateFrame("Button"))
+assert(menu and menu:IsShown() and menu.buttons[1].label:GetText() == "En retard" and menu.buttons[3].label:GetText() == "Banc", "Autre : En retard, Reroll, Banc")
+rawget(menu.buttons[3], "scripts").OnClick(menu.buttons[3])
+assert(picked == "bench" and not menu:IsShown(), "Autre : Banc choisi, menu fermé")
+specs = ns.UI.AnswerButtons("alt", function() end)
+assert(specs[4][1] == "Reroll" and specs[4][4].selected and not specs[1][4].selected, "réponse Autre choisie : le bouton prend son nom")
+assert(#rm.buttons == 4 and rm.buttons[4].label:GetText() == "Autre...", "« Tu viens ? » : 3 + Autre")
+-- Rappel de synchro dans le chat (1.6.6) : une ligne, une fois par session, après un changement d'équipement, si le perso
+-- a déjà été envoyé et a changé depuis ; lien [Synchro rapide] si le jeu connaît les liens d'addon, sinon le geste en clair
+do
+  local c = ns.charDB()
+  local keep = { sentSig = c.sentSig, sentAt = c.sentAt, companion = ForeverRosterDB.companion, combat = InCombatLockdown, quick = ns.UI.Quick }
+  ForeverRosterDB.companion = nil
+  local function nudgeLine(from) for i = from + 1, #printed do if printed[i]:find("dernière synchro") then return printed[i] end end end
+  ns.UI.ResetNudge()
+  c.sentAt, c.sentSig = time(), "envoyé avant ce changement"
+  local n = #printed
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  assert((nudgeLine(n) or ""):find("clic droit sur le bouton FR de la minicarte, Ctrl%+C, puis Ctrl%+V sur le site"), "rappel de synchro : le geste en clair")
+  n = #printed
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  assert(not nudgeLine(n), "rappel de synchro : une fois par session")
+  -- Liens d'addon connus du jeu : [Synchro rapide] ouvre la synchro rapide
+  ns.UI.ResetNudge()
+  local cb, opened
+  LinkTypes, EventRegistry = { addon = function() end }, { RegisterCallback = function(_, ev, fn) if ev == "SetItemRef" then cb = fn end end }
+  ns.UI.Quick = function() opened = true end
+  n = #printed
+  fire("PLAYER_EQUIPMENT_CHANGED")
+  assert((nudgeLine(n) or ""):find("|Haddon:ForeverRoster:sync|h[Synchro rapide]|h", 1, true) and cb, "rappel de synchro : lien cliquable")
+  cb(ns.UI, "addon:ForeverRoster:sync", "[Synchro rapide]", "LeftButton")
+  assert(opened, "lien : synchro rapide ouverte")
+  LinkTypes, EventRegistry, ns.UI.Quick = nil, nil, keep.quick
+  -- Coupé, en combat (attend la fin du combat), perso jamais envoyé, perso à jour
+  ns.UI.ResetNudge()
+  ForeverRosterDB.noSyncNudge = true
+  assert(not ns.UI.SyncNudge(), "rappel coupé dans les Options")
+  ForeverRosterDB.noSyncNudge = nil
+  InCombatLockdown = function() return true end
+  assert(not ns.UI.SyncNudge(), "pas en combat")
+  InCombatLockdown = keep.combat
+  n = #printed
+  fire("PLAYER_REGEN_ENABLED")
+  assert(nudgeLine(n), "après le combat")
+  ns.UI.ResetNudge()
+  c.sentAt = nil
+  assert(not ns.UI.SyncNudge(), "jamais envoyé : pas de rappel")
+  c.sentAt = time()
+  c.sentSig = nil
+  ns.Export.MarkSent({ { char = c, snap = c.snapshot, current = true } })
+  assert(not ns.UI.SyncNudge(), "à jour : pas de rappel")
+  c.sentSig, c.sentAt, ForeverRosterDB.companion = keep.sentSig, keep.sentAt, keep.companion
+  ns.UI.ResetNudge()
+end
 run("rappels")
 assert(ForeverRosterDB.noReminder, "/fr rappels coupe")
 run("rappels")
@@ -288,11 +346,20 @@ IsShiftKeyDown = function() return true end
 rawget(cap, "scripts").OnKeyDown(cap, "G")
 IsShiftKeyDown = function() return false end
 assert(BINDS["SHIFT-G"] == "FOREVERROSTER_SYNC" and BINDS.F8 == nil, "nouvelle touche : l'ancienne est libérée")
+-- Touche de synchro dans l'export (ligne B, 1.6.6) : le site la montre à l'étape 1 ; hors empreinte (le perso ne repart pas)
+local pendingBefore = #ns.Export.Pending()
+assert(ns.Export.SyncKey() == "SHIFT-G" and ns.Export.Build({ all = true }):find("\nB;SHIFT%-G\nEND;"), "ligne B : la touche de synchro")
+assert(#ns.Export.Pending() == pendingBefore, "ligne B hors empreinte")
+local keepText = GetBindingText
+GetBindingText = function() return "|cffffd200Maj-G|r" end
+assert(ns.Export.SyncKey() == "Maj-G", "ligne B : texte du jeu sans code de couleur")
+GetBindingText = keepText
 ns.UI.StartCapture("FOREVERROSTER_TOGGLE")
 rawget(cap, "scripts").OnKeyDown(cap, "ESCAPE")
 assert(select("#", GetBindingKey("FOREVERROSTER_TOGGLE")) == 0 and not cap:IsShown(), "Échap annule")
 ns.UI.SetBinding("FOREVERROSTER_SYNC", nil)
 assert(BINDS["SHIFT-G"] == nil, "touche retirée")
+assert(ns.Export.SyncKey() == nil and not ns.Export.Build({ all = true }):find("\nB;"), "sans touche : pas de ligne B")
 ns.Minimap.SetShown(false)
 assert(ForeverRosterDB.minimap.hidden, "minicarte masquée")
 ns.Minimap.SetShown(true)
@@ -2645,7 +2712,7 @@ local function relaying()
   refused("groupe où je ne suis pas officier", "Greta", function() return sup(GB, RB1, "present", clock - 60, GUID.greta) end, "je ne suis pas officier de ce groupe")
   refused("groupe inconnu", "Greta", function() return sup(GZ, RA1, "present", clock - 60, GUID.greta) end, "groupe inconnu")
   refused("raid passé depuis plus de 24 h", "Greta", function() return sup(GA, RA2, "present", clock - 60, GUID.greta) end, "raid passé")
-  refused("statut du site seulement", "Greta", function() return sup(GA, RA1, "bench", clock - 60, GUID.greta) end, "statut inconnu")
+  refused("statut inconnu", "Greta", function() return sup(GA, RA1, "dispo", clock - 60, GUID.greta) end, "statut inconnu")
   refused("clic dans 10 min", "Greta", function() return sup(GA, RA1, "present", clock + 600, GUID.greta) end, "heure du clic hors limites")
   refused("clic d'il y a 8 jours", "Greta", function() return sup(GA, RA1, "present", clock - 8 * 86400, GUID.greta) end, "heure du clic hors limites")
   refused("mon propre perso", "Brindille", function() return sup(GA, RA1, "present", clock - 60, "") end, "c'est un de mes persos")

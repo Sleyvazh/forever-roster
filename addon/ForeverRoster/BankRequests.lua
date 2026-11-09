@@ -17,7 +17,7 @@ ns.BankRequests = B
 
 local LABEL = N("demandes de retrait")
 B.Label = LABEL
-local GOLD, GREY, GREEN = K.GOLD, K.GREY, K.GREEN
+local GOLD, INK, GREEN = K.GOLD, K.INK, K.GREEN
 local WIDTH = 560        -- largeur de la fenêtre : une petite fenêtre, qui tient à côté de la banque (770 px) sur un écran de 1366
 local ROW = 28           -- hauteur d'une ligne (deux lignes de petit texte)
 local MAX_ROWS = 8       -- lignes visibles sans défiler (la fenêtre grandit jusque-là)
@@ -81,9 +81,9 @@ end
 -- Onglets où se trouve l'objet d'après le relevé de la banque en cours
 local function tabsOf(itemId)
   local list, complete = ns.Guild.BankTabsOf(itemId)
-  if not list then return GREY .. NONE .. "|r" end
-  if not complete then return GREY .. LATER .. "|r" end
-  if #list == 0 then return GREY .. NONE .. "|r" end
+  if not list then return INK .. NONE .. "|r" end
+  if not complete then return INK .. LATER .. "|r" end
+  if #list == 0 then return INK .. NONE .. "|r" end
   local names = {}
   for _, t in ipairs(list) do names[#names + 1] = t.name ~= "" and t.name or L("Onglet %d", t.tab) end
   return table.concat(names, ", ")
@@ -146,8 +146,8 @@ local function render(g)
   local G = win.grid
   for i, col in ipairs(COLS) do G.SetTitle(i, L[col.title]) end
   local at = tonumber(g.at) or 0
-  win.sub:SetText(GREY .. (at > 0 and L("%s · données du site reçues le %s à %s", g.name or "", date("%d/%m", at), date("%H:%M", at)) or (g.name or "")) .. "|r")
-  win.foot:SetText(GREY .. L["Lecture seule : on marque « Préparée » ou « Remise » sur le site."] .. "|r")
+  win.sub:SetText(INK .. (at > 0 and L("%s · données du site reçues le %s à %s", g.name or "", date("%d/%m", at), date("%H:%M", at)) or (g.name or "")) .. "|r")
+  win.foot:SetText(INK .. L["Lecture seule : on marque « Préparée » ou « Remise » sur le site."] .. "|r")
   win.close:SetText(L["Fermer"])
   wanted = {}
   G.Reset()

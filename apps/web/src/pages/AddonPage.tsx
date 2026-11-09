@@ -42,7 +42,7 @@ export function AddonPage() {
       <details className="ad-more">
         <summary>Synchroniser au quotidien</summary>
         <div className="stack" style={{ padding: "0 14px 14px", gap: 6 }}>
-          <p style={{ margin: 0 }}>Du site vers le jeu : « Copier pour le jeu », puis en jeu ta touche et <K k={["Ctrl", "V"]} />.</p>
+          <p style={{ margin: 0 }}>Du site vers le jeu : bouton <strong>Synchro</strong>, « Copier pour le jeu », puis en jeu ta touche et <K k={["Ctrl", "V"]} />.</p>
           <p style={{ margin: 0 }}>Du jeu vers le site : ta touche et <K k={["Ctrl", "C"]} />, puis <K k={["Ctrl", "V"]} /> sur n'importe quelle page du site.</p>
         </div>
       </details>
@@ -133,7 +133,7 @@ function RosterBefore() {
   return (
     <Step n={2} title="Avant le raid : du site vers le jeu">
       <ul className="addon-list">
-        <li><strong>Raids à venir et inscriptions</strong> : <strong>Copier pour le jeu</strong>, en haut de chaque page ; en jeu, <code>/roster</code>, onglet <strong>Synchro</strong> (ou la synchro rapide de l'addon), puis Ctrl+V. C'est chargé : l'addon connaît les raids de tes guildes, leur difficulté et ton perso inscrit.</li>
+        <li><strong>Raids à venir et inscriptions</strong> : bouton <strong>Synchro</strong> en haut de chaque page, <strong>Copier pour le jeu</strong> ; en jeu, <code>/roster</code>, onglet <strong>Synchro</strong> (ou la synchro rapide de l'addon), puis Ctrl+V. C'est chargé : l'addon connaît les raids de tes guildes, leur difficulté et ton perso inscrit.</li>
         <li><strong>Chef de raid : la compo</strong> : sur la page du raid, onglet <strong>Compo</strong>, « Export pour le jeu ». Colle ce texte dans l'onglet Synchro (ou Compo) de l'addon : invitations et placement des groupes se font depuis l'addon. Les noms sont en <code>Prénom-Royaume</code>, comme dans le jeu ; des macros <code>/inv Prénom-Royaume</code> sont aussi proposées.</li>
         <li><strong>Butin</strong> : pour un raid en mode « Conseil (distribution par Roster) », le même texte apporte le conseil du butin (les officiers, ou celui choisi dans l'onglet <strong>Butin</strong> du raid) et les objets reçus de chacun (colonne « Reçus », avec le détail BiS, Upgrade et jets MS).</li>
         <li>Copie à nouveau après un changement sur le site (nouveau raid, inscription, compo, conseil) : le texte se régénère à chaque fois.</li>
