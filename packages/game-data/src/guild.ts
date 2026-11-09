@@ -263,10 +263,18 @@ export const RACE_MILESTONES = [20, 40, 60] as const;
 export type RaceMilestone = (typeof RACE_MILESTONES)[number];
 /** Départ de la course : la sortie, le 5/11 à 00:00 (heure de Paris). */
 export const RACE_START = LAUNCH_AT;
-/** Jour de la course (1 le jour de la sortie) ; null avant le départ. */
-export function raceDay(now = Date.now()): number | null {
-  if (now < RACE_START) return null;
-  return Math.floor((now - RACE_START) / 86400e3) + 1;
+/** Jour de la course (1 le jour du départ : la sortie, ou celui de la guilde) ; null avant le départ. */
+export function raceDay(now = Date.now(), start = RACE_START): number | null {
+  if (now < start) return null;
+  return Math.floor((now - start) / 86400e3) + 1;
+}
+/**
+ * Départ de la course d'une guilde (refonte du 09/11) : la sortie du jeu, ou, pour une guilde liée plus tard sans aucun
+ * 60 à son premier relevé, ce premier relevé (elle lance sa course toute seule). `firstRosterAt` : première liste reçue ;
+ * `sixtyAtFirst` : un membre était déjà 60 à ce relevé.
+ */
+export function guildRaceStart(firstRosterAt: number | null, sixtyAtFirst: boolean): number {
+  return firstRosterAt !== null && firstRosterAt > RACE_START && !sixtyAtFirst ? firstRosterAt : RACE_START;
 }
 /** Jours entiers entre la sortie et un instant (« 9 jours après la sortie »). */
 export const daysSinceLaunch = (at: number) => Math.max(0, Math.floor((at - RACE_START) / 86400e3));

@@ -247,15 +247,15 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     // « Fiches du site » : ?vue=fiches dans l'adresse, retenu pour la prochaine fois
     await mode.getByRole("button", { name: "Fiches du site" }).click();
     await expect(page).toHaveURL(/\/membres\?vue=fiches$/);
-    await expect(page.getByRole("group", { name: "Affichage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();
     await expect(page.locator(".gx-table")).toHaveCount(0);
     await page.goto(`/groups/${group}/membres`);
-    await expect(page.getByRole("group", { name: "Affichage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();
     // ?vue=jeu force la liste du jeu sans changer le choix retenu ; « Liste du jeu » le rétablit
     await page.goto(`/groups/${group}/membres?vue=jeu`);
     await expect(page.locator(".gx-table")).toBeVisible();
     await page.goto(`/groups/${group}/membres`);
-    await expect(page.getByRole("group", { name: "Affichage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();
     await mode.getByRole("button", { name: "Liste du jeu" }).click();
     await expect(page).toHaveURL(/\/membres\?vue=jeu$/);
     await expect(page.locator(".gx-table")).toBeVisible();
@@ -266,7 +266,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
   await test.step("ancienne adresse /persos?perso= : la fiche reste ouverte malgré le choix retenu « Liste du jeu »", async () => {
     await page.goto(`/groups/${group}/persos?perso=${kaeldraId}`);
     await expect(page).toHaveURL(/\/membres\/persos\?(?=.*vue=fiches)/);
-    await expect(page.getByRole("group", { name: "Affichage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();
     await expect(page.locator(".grow[aria-expanded=true]")).toContainText("Kaeldra Brisevent");
     await expect(page.locator(".gx-table")).toHaveCount(0);
     // Elle y est encore une fois ?perso= retiré de l'adresse
@@ -434,6 +434,35 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
         expect(await page.locator(".panel > .tabs").evaluate(t => t.scrollWidth <= t.clientWidth), `onglets de Guilde sans défilement à ${width} px`).toBe(true);
       }
     }
+  });
+
+  await test.step("course finie : l'onglet devient Palmarès, en dernier (refonte du 09/11)", async () => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // Trois 60 dans l'heure, podium figé (comme au troisième 60 d'un relevé)
+    const db2 = new pg.Client({ connectionString: DB });
+    await db2.connect();
+    const podium = [];
+    for (const [i, g] of [1, 2, 3].entries()) {
+      const at = new Date(Date.now() - (3 - i) * 3600e3);
+      const m = (await db2.query("UPDATE guild_members SET level = 60 WHERE group_id = $1 AND guid = $2 RETURNING name, cls", [group, guid(g)])).rows[0] as { name: string; cls: string };
+      await db2.query("INSERT INTO guild_levels (group_id, guid, level, reached_at, source) VALUES ($1, $2, 60, $3, 'exact') ON CONFLICT DO NOTHING", [group, guid(g), at]);
+      podium.push({ guid: guid(g), name: m.name, cls: m.cls, at: at.toISOString(), exact: true, place: i + 1, tie: false });
+    }
+    await db2.query("UPDATE game_guilds SET podium = $2 WHERE group_id = $1", [group, JSON.stringify(podium)]);
+    await db2.end();
+    await page.goto(`/groups/${group}/membres/course`);
+    await expect(page.locator(".panel > .tabs [role=tab]")).toHaveText(["Membres", "Artisans", "Banque", "Historique", "Palmarès"]);
+    await expect(page.getByRole("tab", { name: "Palmarès" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("heading", { name: "Palmarès" })).toBeVisible();
+    const sixties = page.getByRole("region", { name: "Les 60 de la guilde" });
+    await expect(sixties.locator("li")).toHaveCount(3);
+    await expect(sixties.locator("li").first()).toContainText("Kaeldra Brisevent");
+    await expect(sixties.locator("li").first()).toContainText(/en (\d+ jours?|moins d.un jour)/);
+    if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/palmares.png", fullPage: true });
+    // Le classement complet se déplie
+    await expect(page.locator(".rk")).toHaveCount(0);
+    await page.getByRole("button", { name: "Voir le classement complet" }).click();
+    await expect(page.locator(".rk")).toBeVisible();
   });
 });
 

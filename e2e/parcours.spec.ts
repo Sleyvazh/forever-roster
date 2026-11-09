@@ -324,13 +324,15 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
     // Une ligne discrète, pas de gros bloc (31/10)
     await expect(page.locator(".gm-note")).toContainText("Liste du jeu pas encore reçue");
-    await expect(page.locator(".gm-note")).toContainText("voici les fiches du site");
+    await expect(page.locator(".gm-note")).toContainText("en attendant, les fiches du site");
     await expect(page.getByText("Pas encore de liste de guilde")).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "Membres" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("group", { name: "Persos : liste du jeu ou fiches du site" })).toHaveCount(0);
     await page.getByRole("group", { name: "Par perso ou par joueur" }).getByRole("button", { name: "Par joueur" }).click();
     await expect(page).toHaveURL(/\/membres\/joueurs$/);
-    await expect(page.locator(".gm-note")).toContainText("voici les membres du site");
+    await expect(page.locator(".gm-note")).toContainText("en attendant, les membres du site");
+    // « Depuis » en date courte (refonte du 09/11) ; toute la ligne ouvre la fiche du joueur
+    await expect(page.locator(".mb-table tbody tr").first().locator("td").nth(4)).toHaveText(/^\d{1,2} [a-zéû]+\.?$/);
     await page.locator(".ps-link").first().click();
     await expect(page.locator(".ps")).toContainText("raids venus");
     await page.locator(".ps").getByRole("button", { name: "Fermer" }).click();
@@ -376,15 +378,26 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page).toHaveURL(/\/membres\/persos$/);
     await expect(page.locator(".grow").filter({ hasText: "Greta" })).toContainText("alt");
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/mains-alts.png", fullPage: true });
-    // Mains seulement : l'alt disparaît
+    // Mes persos surlignés d'or ; la faction n'est plus sur chaque ligne
+    await expect(page.locator(".grow.mine")).toHaveCount(2);
+    await expect(page.locator(".grow .fac-img, .grow .fac")).toHaveCount(0);
+    await expect(page.locator(".g-meta .g-fac")).toHaveText("Horde");
+    // « Affichage · Mains + alts, Liste ▾ » regroupe Persos et Vue (refonte du 09/11) ; Mains seulement : l'alt disparaît
+    const disp = page.getByRole("button", { name: /^Affichage · / });
+    await expect(disp).toHaveText(/Affichage · Mains \+ alts, Liste/);
+    await disp.click();
     await page.getByRole("group", { name: "Persos" }).getByRole("button", { name: "Mains", exact: true }).click();
     await expect(page.locator(".grow").filter({ hasText: "Greta" })).toHaveCount(0);
+    await expect(disp).toHaveText(/Affichage · Mains, Liste/);
     await page.getByRole("group", { name: "Persos" }).getByRole("button", { name: "Mains + alts" }).click();
-    // Pas de « Par joueur » dans l'Affichage des fiches : celui de la barre suffit ; un ancien choix « players » se lit « Liste »
-    await expect(page.getByRole("group", { name: "Affichage" }).getByRole("button")).toHaveText(["Liste", "Tuiles", "Par rôle"]);
+    // Pas de « Par joueur » dans la Vue des fiches : celui de la barre suffit ; un ancien choix « players » se lit « Liste »
+    await expect(page.getByRole("group", { name: "Vue" }).getByRole("button")).toHaveText(["Liste", "Tuiles", "Par rôle"]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("group", { name: "Vue" })).toHaveCount(0);
     await page.evaluate(() => localStorage.setItem("fr-view-group-chars", "players"));
     await page.reload();
-    await expect(page.getByRole("group", { name: "Affichage" }).getByRole("button", { name: "Liste" })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: /^Affichage · / }).click();
+    await expect(page.getByRole("group", { name: "Vue" }).getByRole("button", { name: "Liste" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".grow").filter({ hasText: "Greta" })).toContainText("alt");
   });
 

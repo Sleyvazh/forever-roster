@@ -1,5 +1,5 @@
 import {
-  dungeonsFor, firstNameOf, MAX_LEVEL, nameKey, pickCharacterFor, RACE_MILESTONES, RACE_START, raceDay, resolveNoteTarget,
+  dungeonsFor, firstNameOf, guildRaceStart, MAX_LEVEL, nameKey, pickCharacterFor, RACE_MILESTONES, RACE_START, raceDay, resolveNoteTarget,
   type ClassName, type GuildChar, type GuildLinkInfo, type GuildLinkSource, type GuildMove, type GuildMoveKind, type GuildPlayer, type GuildQuestion, type GuildSuggestion,
   type GuildUnattached, type HomeFind, type LevelAnnounce, type RaceChar, type RaceCharRow, type RaceDate, type RacePodiumPlace, type RaceRow,
 } from "@forever/game-data";
@@ -361,6 +361,8 @@ function ranked<T>(list: T[], charOf: (x: T) => RaceChar) {
 }
 
 export interface RaceResult {
+  /** Départ de la course de cette guilde (la sortie, ou son premier relevé sans aucun 60). */
+  startsAt: string;
   started: boolean; day: number | null;
   rows: RaceRow[]; chars: RaceCharRow[];
   podium: { frozen: boolean; sixties: number; places: RacePodiumPlace[] };
@@ -372,9 +374,14 @@ export interface RaceResult {
 /** Course au 60 de la guilde : une ligne par joueur (ses alts dépliables), tous les persos, podium, premiers par classe. */
 export function computeRace(r: Resolved, levels: readonly LevelRow[], opts: { now: Date; me: string; announce: LevelAnnounce }): RaceResult {
   const now = opts.now;
-  const day = raceDay(now.getTime());
+  const gg = r.data.gg;
+  const first = gg?.firstRosterAt?.getTime() ?? null;
+  // Une guilde liée après la sortie, sans aucun 60 à son premier relevé, lance sa course ce jour-là
+  const sixtyAtFirst = levels.some(l => l.level >= MAX_LEVEL && l.source === "seen");
+  const start = guildRaceStart(first, sixtyAtFirst);
+  const day = raceDay(now.getTime(), start);
   const started = day !== null;
-  const empty: RaceResult = { started, day, rows: [], chars: [], podium: { frozen: false, sixties: 0, places: [] }, firstByClass: [], me: null, announce: opts.announce };
+  const empty: RaceResult = { startsAt: new Date(start).toISOString(), started, day, rows: [], chars: [], podium: { frozen: false, sixties: 0, places: [] }, firstByClass: [], me: null, announce: opts.announce };
   if (!started || !r.data.gg) return empty;
   // Persos « à rattacher » : comptés comme leur propre joueur
   const persons = [...r.persons.values()];
@@ -408,14 +415,14 @@ export function computeRace(r: Resolved, levels: readonly LevelRow[], opts: { no
   });
 
   const me = rows.find(x => x.me);
-  return { started, day, rows, chars: charRows, podium: podiumOf(r, levels, chars, keyOf, rows, now), firstByClass, me: me ? { rank: me.rank, tie: me.tie, player: me.player } : null, announce: opts.announce };
+  return { startsAt: new Date(start).toISOString(), started, day, rows, chars: charRows, podium: podiumOf(r, levels, chars, keyOf, rows, now, start), firstByClass, me: me ? { rank: me.rank, tie: me.tie, player: me.player } : null, announce: opts.announce };
 }
 
 const bestOf = (p: Person, chars: Map<string, RaceChar>) => p.chars.map(c => chars.get(c.guid)!).sort(raceCompare)[0]!;
 
 /** « Premiers 60 » : figés dès le troisième ; avant, les 60 dans l'ordre, complétés par les premiers encore en course. */
-function podiumOf(r: Resolved, levels: readonly LevelRow[], chars: Map<string, RaceChar>, keyOf: Map<string, string>, rows: RaceRow[], now: Date): RaceResult["podium"] {
-  const days = (at: string | null) => (at ? Math.max(0, Math.floor((Date.parse(at) - RACE_START) / DAY)) : null);
+function podiumOf(r: Resolved, levels: readonly LevelRow[], chars: Map<string, RaceChar>, keyOf: Map<string, string>, rows: RaceRow[], now: Date, start: number): RaceResult["podium"] {
+  const days = (at: string | null) => (at ? Math.max(0, Math.floor((Date.parse(at) - start) / DAY)) : null);
   const frozen = r.data.gg?.podium;
   if (frozen) {
     return {

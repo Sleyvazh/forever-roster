@@ -1,5 +1,5 @@
 import {
-  BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, characterRoles, classRoles, endOfDay, hasDungeonLevel, LEVEL_ANNOUNCES, levelsText, normalizeGuid, OUTING_ROLES, outingDays, RACE_START, roleOf,
+  BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, characterRoles, classRoles, endOfDay, hasDungeonLevel, LEVEL_ANNOUNCES, levelsText, normalizeGuid, OUTING_ROLES, outingDays, roleOf,
   type BankRequest, type GuildBankLogResponse, type GuildBankResponse, type GuildCharsResponse, type GuildHistoryResponse, type GuildHomeResponse, type GuildLinkResponse, type GuildMembersResponse, type GuildRaceResponse,
   type HomeAgendaItem, type SignupStatus,
 } from "@forever/game-data";
@@ -190,7 +190,7 @@ export async function guildRoutes(app: FastifyInstance) {
     const t = now();
     const r = resolveGuild(await loadGuild(db, id), { officer: true, now: t });
     const race = computeRace(r, r.data.gg ? await loadLevels(db, id) : [], { now: t, me: u.id, announce: g.levelAnnounces });
-    return { startsAt: new Date(RACE_START).toISOString(), linked: !!r.data.gg, ...race };
+    return { linked: !!r.data.gg, ...race };
   });
 
   app.get("/:id/home", async (req): Promise<GuildHomeResponse> => homeView(db, parse(gid, req.params).id, currentUser(req).id, now(), ctx));
@@ -420,7 +420,7 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
     agenda: agenda.map(({ sort: _, ...a }) => a as HomeAgendaItem),
     outings: { total: outs.length, hidden },
     race: {
-      startsAt: new Date(RACE_START).toISOString(), started: race.started, day: race.day, linked: !!data.gg, podium: race.podium.places, endedAt,
+      startsAt: race.startsAt, started: race.started, day: race.day, linked: !!data.gg, podium: race.podium.places, endedAt,
       me: meRow ? { rank: meRow.rank, tie: meRow.tie, name: meRow.best.name, cls: meRow.best.cls, level: meRow.best.level, xpPct: meRow.best.xpPct, weekGain: meRow.best.weekGain } : null,
     },
     guild: { linked: !!data.gg, name: data.gg?.name ?? null, rosterAt: data.gg?.rosterAt?.toISOString() ?? null },

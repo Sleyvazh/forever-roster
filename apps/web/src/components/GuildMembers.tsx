@@ -40,7 +40,7 @@ const MODE_VALUES: readonly CharsMode[] = ["jeu", "fiches"];
 function MembersBar({ by, onBy, mode, onMode }: { by: GuildBy; onBy: (b: GuildBy) => void; mode?: CharsMode; onMode: (m: CharsMode) => void }) {
   return (
     <div className="gm-bar">
-      <div className="seg" role="group" aria-label="Par perso ou par joueur">
+      <div className="seg eq gm-by" role="group" aria-label="Par perso ou par joueur">
         <button type="button" className={by === "persos" ? "on" : ""} aria-pressed={by === "persos"} onClick={() => onBy("persos")}>Par perso</button>
         <button type="button" className={by === "joueurs" ? "on" : ""} aria-pressed={by === "joueurs"} onClick={() => onBy("joueurs")}>Par joueur</button>
       </div>
@@ -72,9 +72,9 @@ export function NotLinked({ groupId, officer, onAdmin, compact }: { groupId: str
   const proposals = link.data?.proposals ?? [];
   if (compact) {
     return (
-      <p className="gm-note">
+      <p className="gm-note" title="Elle arrive à la première synchro d'un officier qui a l'addon à jour, puis se tient à jour toute seule.">
         <i aria-hidden="true">i</i>
-        <span><b>Liste du jeu pas encore reçue</b> : elle arrive à la première synchro d'un officier qui a l'addon à jour. En attendant, voici les {compact === "persos" ? "fiches" : "membres"} du site.
+        <span><b>Liste du jeu pas encore reçue</b> · en attendant, les {compact === "persos" ? "fiches" : "membres"} du site.
           {officer && proposals.length > 0 && <> {proposals.length > 1 ? `${proposals.length} guildes du jeu sont proposées` : <>La guilde du jeu <b>{proposals[0]!.name}</b> est proposée</>} : {onAdmin ? <button type="button" className="link" onClick={onAdmin}>la lier dans l'Administration</button> : "la lier dans l'Administration"}.</>}
         </span>
       </p>
@@ -478,11 +478,17 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
           };
           return (
             <Fragment key={p.key}>
-              <div className={`gp-r${p.me ? " me" : ""}`} role="row">
+              <div className={`gp-r${p.me ? " me" : ""}${p.account ? " open" : ""}`} role="row">
                 <span className="gp-who" role="cell">
                   <ClassDot cls={main.cls} size="md" />
                   <span className="t">
-                    <span className="nm"><CharName name={main.name} cls={main.cls} /><span className="lvn">{main.level}</span>{p.me && <span className="tag gold">Toi</span>}{m?.banker && m.role === "member" && <span className="tag">Banquier</span>}</span>
+                    <span className="nm">
+                      {/* Toute la ligne ouvre la fiche du joueur (refonte du 09/11) : le nom est un bouton étiré sur la ligne */}
+                      {p.account
+                        ? <button type="button" className="gp-open" aria-expanded={sheet === p.account.userId} onClick={() => setSheet(s => (s === p.account!.userId ? null : p.account!.userId))}
+                            title={`Fiche de ${p.account.displayName}`}><CharName name={main.name} cls={main.cls} /></button>
+                        : <CharName name={main.name} cls={main.cls} />}
+                      <span className="lvn">{main.level}</span>{p.me && <span className="tag gold">Toi</span>}{m?.banker && m.role === "member" && <span className="tag">Banquier</span>}</span>
                     <small>{[main.cls ? gt.cls(main.cls) : null, main.race].filter(Boolean).join(" · ") || "Classe inconnue"}</small>
                   </span>
                 </span>
@@ -493,11 +499,10 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
                 </span>
                 <span className={`gp-seen ${seen.state}`} role="cell"><i aria-hidden="true" />{seen.text}</span>
                 {p.account
-                  ? <button type="button" className="gp-acc" role="cell" aria-expanded={sheet === p.account.userId} onClick={() => setSheet(s => (s === p.account!.userId ? null : p.account!.userId))}
-                      title={`Fiche de ${p.account.displayName}`}>
+                  ? <span className="gp-acc" role="cell">
                       <span className="avatar" style={{ width: 20, height: 20 }}><Portrait id={p.account.avatarId} size={20} fallback={<span style={{ fontSize: 10 }}>{p.account.displayName[0]}</span>} /></span>
                       <span>{p.account.displayName}</span>
-                    </button>
+                    </span>
                   : <span className="gp-acc no" role="cell">sans compte</span>}
                 <PlayerMenu label={`Actions pour ${main.name}`} build={actions} />
               </div>

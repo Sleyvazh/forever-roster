@@ -56,11 +56,12 @@ export function CraftOrders({ groupId, myId, prefill }: { groupId: string; myId?
               <td className="small">{o.crafters.length ? names(o.crafters) : <span className="warnmsg">personne ne connaît le patron</span>}</td>
               <td><span className={`rl-chip ${o.status === "done" ? "ok" : o.status === "taken" ? "" : "warn"}`}>{STATUS[o.status]}{o.taker && o.status !== "open" ? ` · ${o.taker.name}` : ""}</span></td>
               <td className="co-act">
-                {o.status === "open" && !o.mine && <button type="button" className={`btn sm ${o.canCraft ? "primary" : "ghost"}`} onClick={() => act(o, "take")}>Je m'en charge</button>}
-                {o.status === "taken" && o.taker?.id === myId && <><button type="button" className="btn sm primary" onClick={() => act(o, "done")}>Faite</button><button type="button" className="btn sm ghost" onClick={() => act(o, "release")}>Rendre</button></>}
+                {/* Un seul doré par écran : « + Demander une fabrication » ; ici des boutons neutres, les actions négatives en lien (refonte du 09/11) */}
+                {o.status === "open" && !o.mine && <button type="button" className="btn sm" onClick={() => act(o, "take")}>Je m'en charge</button>}
+                {o.status === "taken" && o.taker?.id === myId && <><button type="button" className="btn sm" onClick={() => act(o, "done")}>Faite</button><button type="button" className="link neg" onClick={() => act(o, "release")}>Rendre</button></>}
                 {o.status === "taken" && o.mine && o.taker?.id !== myId && <button type="button" className="btn sm" onClick={() => act(o, "done")}>Reçue</button>}
-                {o.status === "open" && o.canManage && <button type="button" className="btn sm ghost" onClick={() => remove(o)}>Annuler</button>}
-                {o.status === "done" && (o.canManage || o.taker?.id === myId) && <button type="button" className="btn sm ghost" onClick={() => remove(o)}>Archiver</button>}
+                {o.status === "open" && o.canManage && <button type="button" className="link neg" onClick={() => remove(o)}>Annuler</button>}
+                {o.status === "done" && (o.canManage || o.taker?.id === myId) && <button type="button" className="link neg" onClick={() => remove(o)}>Archiver</button>}
               </td>
             </tr>
           ))}</tbody>

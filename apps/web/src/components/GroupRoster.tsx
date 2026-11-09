@@ -1,6 +1,6 @@
 import { classColor, CLASSES, RACES, roleOf, type ClassName, type Role } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, del, get, put, type Character, type GroupRole, type Member } from "../api";
 import { useViewPref } from "../prefs";
@@ -18,12 +18,59 @@ import { useGameText } from "../gameText";
  * Onglet Personnages d'un groupe : les persos que chaque membre y joue (son main marqué ★, ses alts),
  * mes persos à choisir en haut, et l'affichage au choix (mains seuls, avec les alts, séparés ; liste, tuiles,
  * par rôle, par joueur). Un clic ouvre la fiche en lecture ; le joueur, ou un officier, y gère main et retrait.
+ * Refonte du 09/11 (maquette-guilde-membres.png) : recherche, rôle de même largeur et « Affichage · Mains + alts, Liste ▾ »
+ * qui regroupe Persos et Vue ; mes persos surlignés d'or ; la faction n'est plus sur chaque ligne (une fois dans l'en-tête),
+ * sauf dans un groupe aux deux factions.
  */
 
 type Scope = "mains" | "all" | "split";
 type View = "list" | "tiles" | "roles" | "players";
 const SCOPES: [Scope, string][] = [["mains", "Mains"], ["all", "Mains + alts"], ["split", "Séparés"]];
 const VIEWS: [View, string][] = [["list", "Liste"], ["tiles", "Tuiles"], ["roles", "Par rôle"], ["players", "Par joueur"]];
+
+/** Faction des persos d'un groupe : la même pour tous, sinon null (groupe aux deux factions, ou aucune race connue). */
+export function factionOf(chars: Pick<Character, "race">[]): "Alliance" | "Horde" | null {
+  const f = new Set(chars.map(c => RACES[c.race]?.faction).filter(Boolean));
+  return f.size === 1 ? ([...f][0] as "Alliance" | "Horde") : null;
+}
+
+/**
+ * « Affichage · Mains + alts, Liste ▾ » : Persos et Vue dans un menu, choix retenus et écrits sur le bouton (refonte du 09/11).
+ * Reste ouvert pendant les choix ; se ferme au clic ailleurs et à Échap.
+ */
+function DisplayMenu({ scope, onScope, view, onView, views }: {
+  scope: Scope; onScope: (s: Scope) => void; view: View; onView: (v: View) => void; views: [View, string][];
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); box.current?.querySelector<HTMLButtonElement>(".gm-disp-btn")?.focus(); } };
+    document.addEventListener("pointerdown", down); document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
+  }, [open]);
+  const label = `${SCOPES.find(([k]) => k === scope)![1]}, ${views.find(([k]) => k === view)?.[1] ?? "Liste"}`;
+  return (
+    <div className="gm-disp" ref={box}>
+      <button type="button" className="btn gm-disp-btn" aria-expanded={open} aria-controls="gm-disp-pop" onClick={() => setOpen(o => !o)}>
+        Affichage · {label} <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="gm-disp-pop" id="gm-disp-pop">
+          <span className="gm-lab" id="gm-scope">Persos</span>
+          <div className="seg eq" role="group" aria-labelledby="gm-scope">
+            {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => onScope(k)}>{l}</button>)}
+          </div>
+          <span className="gm-lab" id="gm-view">Vue</span>
+          <div className="seg eq" role="group" aria-labelledby="gm-view" style={{ "--n": views.length } as CSSProperties}>
+            {views.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => onView(k)}>{l}</button>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 const ROLE_NAME: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 const RANK: Record<GroupRole, number> = { member: 0, officer: 1, owner: 2 };
 
@@ -84,10 +131,10 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
   }
   return (
     <div className="gm-fold">
-      <span className="muted small">Tes persos ici :</span>
+      <span>Tes persos ici ·</span>
       {main && <b style={{ color: color(main) }}>★ {main.name}</b>}
-      {assigned.filter(c => !c.isMain).map(c => <span key={c.id}><span className="muted">· </span><span style={{ color: color(c) }}>{c.name}</span></span>)}
-      <Link className="btn ghost sm" style={{ marginLeft: "auto" }} to="/persos">Gérer dans Mes persos</Link>
+      {assigned.filter(c => !c.isMain).map(c => <span key={c.id}><span aria-hidden="true">· </span><b style={{ color: color(c) }}>{c.name}</b></span>)}
+      <Link className="link gm-manage" to="/persos">Gérer dans Mes persos <span aria-hidden="true">›</span></Link>
     </div>
   );
 }
@@ -138,6 +185,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
     // Par joueur (ordre des membres), main en tête, persos à configurer (sans classe) à la fin
     .sort((x, y) => (order.get(x.userId) ?? 99) - (order.get(y.userId) ?? 99) || Number(!x.isMain) - Number(!y.isMain) || Number(!x.cls) - Number(!y.cls));
   const opened = all.find(c => c.id === open);
+  // Faction : une fois dans l'en-tête de la guilde ; sur chaque ligne seulement si le groupe mêle les deux
+  const mixed = !factionOf(all) && new Set(all.map(c => RACES[c.race]?.faction).filter(Boolean)).size > 1;
   const toggle = (id: string) => setOpen(o => (o === id ? null : id));
 
   // Gérer un perso : le sien, ou celui d'un autre si officier (et pas celui du propriétaire, sauf par lui-même)
@@ -185,10 +234,10 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   const list = (chars: Character[]) => (
     <div className="glist" role="list">
       {chars.map(c => (
-        <button key={c.id} type="button" role="listitem" className="grow" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
+        <button key={c.id} type="button" role="listitem" className={`grow${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
           <Face c={c} size={30} />
           <span className="gname"><Mark c={c} /><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
-          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
+          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{mixed && RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
           <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
           {owner(c)}
         </button>
@@ -200,7 +249,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
       {chars.map(c => {
         const r = roleOf(c.spec1);
         return (
-          <button key={c.id} type="button" className="gtile" aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
+          <button key={c.id} type="button" className={`gtile${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
             title={[gt.spec(c.cls, c.spec1), gt.spec(c.cls, c.spec2)].filter(Boolean).join(" / ")}>
             <Face c={c} size={34} />
             <span className="n">{c.isMain && <span className="gm-star" aria-label="Main">★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
@@ -270,26 +319,14 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
         <p className="muted" style={{ margin: 0 }}>Les membres n'ont pas encore choisi leurs persos pour cette guilde.</p>
       ) : (
         <>
-          <div className="row gc-tools">
-            <input type="text" aria-label="Filtrer les persos" placeholder="Filtrer (nom, joueur, classe, spé)…" value={filter} onChange={e => setFilter(e.target.value)} style={{ flex: "1 1 200px" }} />
-            <div className="seg" role="group" aria-label="Rôle">
+          <div className="gc-tools gm-tools">
+            <input type="search" aria-label="Chercher un perso" placeholder="Chercher un nom, une classe, une spé…" value={filter} onChange={e => setFilter(e.target.value)} />
+            <div className="seg eq" role="group" aria-label="Rôle">
               {(["", "Tank", "Heal", "DPS"] as const).map(r => (
                 <button key={r || "all"} type="button" className={role === r ? "on" : ""} aria-pressed={role === r} onClick={() => setRole(r)}>{r || "Tous"}</button>
               ))}
             </div>
-            {/* Chaque libellé reste collé à ses boutons quand la ligne passe à la suivante (téléphone) */}
-            <span className="gm-labseg">
-              <span className="gm-lab" id="gm-scope">Persos</span>
-              <div className="seg" role="group" aria-labelledby="gm-scope">
-                {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => setScope(k)}>{l}</button>)}
-              </div>
-            </span>
-            <span className="gm-labseg">
-              <span className="gm-lab" id="gm-view">Affichage</span>
-              <div className="seg" role="group" aria-labelledby="gm-view">
-                {views.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => setView(k)}>{l}</button>)}
-              </div>
-            </span>
+            <DisplayMenu scope={scope} onScope={setScope} view={view} onView={setView} views={views} />
           </div>
           {gt.game === "retail" && RANK[myRole] >= 1 && <BnetGroupRefresh groupId={groupId} onDone={() => void qc.invalidateQueries({ queryKey: ["group-chars", groupId] })} />}
           {!shown.length && <p className="muted">Aucun perso ne correspond.</p>}

@@ -4,7 +4,7 @@ import { LAUNCH_AT } from "./core";
 import { sealText } from "./seal";
 import {
   afterLaunchText, announcedLevels, firstNameOf, guildKeyOf, levelAnnounceText, noteTarget, normalizeGuid, ordinalFr, parseGuildBlocks, parseGuildExports,
-  raceDateText, raceDay, resolveNoteTarget,
+  guildRaceStart, raceDateText, raceDay, resolveNoteTarget,
 } from "./guild";
 
 /** Lot « Guilde » : relevé FRL, en-tête FRC avec GUID et nom complet, notes de guilde, textes de la Course au 60. Noms inventés. */
@@ -246,6 +246,13 @@ describe("Course au 60 : textes et paliers", () => {
     expect(raceDay(LAUNCH_AT - 1)).toBeNull();
     expect(raceDay(LAUNCH_AT)).toBe(1);
     expect(raceDay(LAUNCH_AT + 13.5 * 86400e3)).toBe(14);
+    // Course d'une guilde liée plus tard sans aucun 60 : son premier relevé est le jour 1
+    const later = LAUNCH_AT + 20 * 86400e3;
+    expect(guildRaceStart(later, false)).toBe(later);
+    expect(guildRaceStart(later, true)).toBe(LAUNCH_AT);
+    expect(guildRaceStart(LAUNCH_AT - 86400e3, false)).toBe(LAUNCH_AT);
+    expect(guildRaceStart(null, false)).toBe(LAUNCH_AT);
+    expect(raceDay(later + 2.5 * 86400e3, guildRaceStart(later, false))).toBe(3);
     expect([1, 2, 10].map(ordinalFr)).toEqual(["1re", "2e", "10e"]);
     // 14/11 à 16:52 (Paris) : 9 jours après la sortie
     const at = Date.UTC(2026, 10, 14, 15, 52);

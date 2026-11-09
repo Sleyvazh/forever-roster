@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ApiError, del, get, patch, post, type GroupDetail } from "../api";
+import { ApiError, del, get, patch, post, type Character, type GroupDetail } from "../api";
 import { useMe } from "../auth";
 import { useSite } from "../site";
 import { rememberGuild } from "../nav";
-import { agoText, useGuildLink, useGuildMembers } from "../guild";
+import { agoText, useGuildLink, useGuildMembers, useGuildRace } from "../guild";
 import { GroupPage, OtherSite } from "./GroupPage";
 import { HomePage } from "./HomePage";
 import { GuildHead, InviteButton } from "../components/GuildHead";
@@ -18,7 +18,7 @@ import { GuildBank } from "../components/GuildBank";
 import { GuildLinkSection, RaceAnnounces } from "../components/GuildAdmin";
 import { GroupFeedback } from "../components/GroupFeedback";
 import { LootSettingsPanel } from "../components/Loot";
-import { FactionBadge } from "../components/Icons";
+import { factionOf } from "../components/GroupRoster";
 import { NumberField } from "../components/NumberField";
 import {
   AddBot, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
@@ -140,6 +140,10 @@ const GUILD_TABS: [GuildPageView, ReactNode, string][] = [
   ["membres", "Membres", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"],
   ["banque", "Banque", "/banque"], ["historique", "Historique", "/historique"],
 ];
+/** Course finie (podium figé au troisième 60) : l'onglet devient « Palmarès » et passe en dernier (refonte du 09/11). */
+const guildTabs = (ended: boolean): [GuildPageView, ReactNode, string][] => ended
+  ? [...GUILD_TABS.filter(([k]) => k !== "course"), ["course", "Palmarès", "/course"]]
+  : GUILD_TABS;
 
 function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetail; view: GuildPageView; guard: Guard }) {
   const nav = useNavigate();
@@ -151,14 +155,19 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   const gm = useGuildMembers(groupId).data;
   const gg = gm?.link;
   const players = gm?.players.length ?? 0;
+  const ended = !!useGuildRace(groupId).data?.podium.frozen;
+  // La faction, une fois ici (plus sur chaque ligne) : celle de la guilde du jeu, sinon celle de toutes les fiches du site
+  const siteChars = useQuery({ queryKey: ["group-chars", groupId], queryFn: () => get<{ characters: Character[] }>(`/groups/${groupId}/characters`), enabled: !gg }).data?.characters;
+  const faction = gg ? (gg.faction === "Horde" || gg.faction === "Alliance" ? gg.faction : null) : siteChars ? factionOf(siteChars) : null;
+  const fac = faction && <><span aria-hidden="true">·</span><b className={`g-fac ${faction}`}>{faction}</b></>;
   const meta = gg ? <>
-    {(gg.faction === "Horde" || gg.faction === "Alliance") && <FactionBadge faction={gg.faction} size={20} />}
-    <span>{players} joueur{players > 1 ? "s" : ""}, {gm!.chars.length} perso{gm!.chars.length > 1 ? "s" : ""}</span>
+    <span>{players} joueur{players > 1 ? "s" : ""}, {gm!.chars.length} perso{gm!.chars.length > 1 ? "s" : ""}</span>{fac}
     {gg.roster && <><span aria-hidden="true">·</span><span>liste relevée par {gg.roster.by} {agoText(gg.roster.at)}</span></>}
-  </> : <span>{members.length} membre{members.length > 1 ? "s" : ""} sur le site</span>;
+  </> : <><span>{members.length} membre{members.length > 1 ? "s" : ""} sur le site</span>{fac}</>;
   const leave = () => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/"); });
   const actions = officer
-    ? <><InviteButton groupId={groupId} groupName={group.name} primary /><Link className="btn ghost" to={`/groups/${groupId}/admin`}>Administration</Link></>
+    // « Inviter » et « Administration » neutres : le doré va à l'action de l'onglet ouvert (refonte du 09/11)
+    ? <><InviteButton groupId={groupId} groupName={group.name} /><Link className="btn" to={`/groups/${groupId}/admin`}>Administration</Link></>
     : <LeaveButton onLeave={leave} />;
   const tabOn = view === "persos" || view === "joueurs" ? "membres" : view;
   return (
@@ -166,7 +175,7 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
       <GuildHead groupId={groupId} name={group.name} title="Guilde" meta={meta} actions={actions} />
       <div className="panel lift">
         <div className="tabs bk-five" role="tablist">
-          {GUILD_TABS.map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{l}</button>)}
+          {guildTabs(ended).map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{l}</button>)}
         </div>
         <div className="pane">
           {view === "artisans" ? <Crafters groupId={groupId} myId={myId} />

@@ -438,7 +438,9 @@ describe("accueil de la guilde", () => {
     expect((await s.get<GuildHistoryResponse>(s.p.Vexou!, "/guild/history")).moves.map(x => [x.kind, x.who.name])).toContainEqual(["join", "Torvin Rochefer"]);
     expect(home.race.endedAt).toBeNull();
     expect(home.guild).toMatchObject({ linked: true, name: "Les Lanternes" });
-    expect(home.race).toMatchObject({ startsAt: new Date(LAUNCH_AT).toISOString(), linked: true });
+    // Guilde liée après la sortie, sans aucun 60 à son premier relevé : sa course part de ce relevé (refonte du 09/11)
+    expect(home.race).toMatchObject({ startsAt: new Date(T * 1000).toISOString(), started: true, day: 1, linked: true });
+    expect(Date.parse(home.race.startsAt)).toBeGreaterThan(LAUNCH_AT);
     // Le créateur voit sa sortie
     const mine = (await s.get<GuildHomeResponse>(s.owner, "/home")).agenda.find(a => a.kind === "outing" && a.title === "Gnomeregan");
     expect(mine).toMatchObject({ mine: { role: "Tank", creator: true, characterName: "Torvin" }, suggest: [] });

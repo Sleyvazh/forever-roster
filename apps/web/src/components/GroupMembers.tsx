@@ -8,7 +8,10 @@ import { PlayerSheet } from "./PlayerSheet";
 import { RowMenu } from "./RowMenu";
 
 type Guard = (fn: () => Promise<unknown>) => Promise<void>;
-const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+/** « 9 nov. », avec l'année si ce n'est pas celle-ci (« 9 nov. 2025 ») : dates courtes (refonte du 09/11). */
+const DAY_MONTH = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
+const DAY_MONTH_YEAR = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+export const shortDate = (iso: string) => { const d = new Date(iso); return (d.getFullYear() === new Date().getFullYear() ? DAY_MONTH : DAY_MONTH_YEAR).format(d); };
 const RANK: Record<GroupRole, number> = { member: 0, officer: 1, owner: 2 };
 
 /**
@@ -58,13 +61,13 @@ export function SiteMembers({ groupId, members, myRole, myId, guard, only, hint,
         const can = { ...rights, banker: !!bankers && rights.banker };
         const asking = confirm?.userId === m.userId ? confirm.action : null;
         return (
-        <tr key={m.userId} className={sheet === m.userId ? "ps-sel" : undefined}>
+        <tr key={m.userId} className={[sheet === m.userId ? "ps-sel" : "", m.userId === myId ? "me" : ""].filter(Boolean).join(" ") || undefined}>
           <td><span className="with-icon" style={{ gap: 8 }}><span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>
-            <button type="button" className="ps-link" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
+            <button type="button" className="ps-link stretch" aria-expanded={sheet === m.userId} onClick={() => setSheet(s => (s === m.userId ? null : m.userId))}>{m.displayName}</button>{m.userId === myId && <span className="tag gold">Toi</span>}</span></td>
           <td>{main ? <b style={{ color: classColor(main.cls) }}>{main.name}</b> : <span className="muted">—</span>}</td>
           <td>{m.role === "member" ? (bankers && m.banker ? <span className="tag">Banquier</span> : <span className="muted">{ROLE_LABEL[m.role]}</span>) : <span className={`tag ${m.role === "owner" ? "gold" : ""}`}>{ROLE_LABEL[m.role]}</span>}</td>
           <td className="nowrap">{nRaids ? (() => { const n = presence(m.userId), pct = Math.round(n / nRaids * 100); return <><span className="rl-bar" aria-hidden="true"><i style={{ width: `${pct}%` }} className={pct < 50 ? "low" : ""} /></span><span className="num small">{n}/{nRaids}</span></>; })() : <span className="muted">—</span>}</td>
-          <td className="muted small">{fmt.format(new Date(m.joinedAt))}</td>
+          <td className="nowrap" title={new Date(m.joinedAt).toLocaleString("fr-FR")}>{shortDate(m.joinedAt)}</td>
           <td className="mb-act">
             {asking === "owner" && <span className="row small">Lui donner la guilde ? Tu deviens officier. <button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
             {asking === "remove" && <span className="row small">Retirer {m.displayName} ? <button type="button" className="btn danger sm" onClick={() => void remove(m)}>Retirer</button><button type="button" className="btn ghost sm" onClick={() => setConfirm(null)}>Annuler</button></span>}
