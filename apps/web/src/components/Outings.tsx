@@ -14,9 +14,10 @@ import { NumberField } from "./NumberField";
 import { RoleIcon } from "./RoleIcon";
 
 /**
- * Onglet « Sorties » d'un groupe de Forever (maquette du 15/10, écran 2) : les sorties du jour et de demain, une carte
- * chacune ; inscription en un clic par rôle avec le perso qui a le niveau, complète → liste d'attente, carte grisée si
- * aucun de mes persos n'a le niveau ; « + Sortie » en une seule carte ; ma sortie se gère depuis sa carte.
+ * Onglet « Sorties » d'un groupe de Forever (maquette du 15/10, écran 2 ; revu le 09/11, maquette-sorties.png) : les sorties
+ * du jour et de demain, une carte chacune ; « Pour moi » par défaut, les sorties pas à mon niveau repliées en une ligne
+ * (plus de carte grisée) ; inscription en un clic par rôle (« + Heal avec Brindille ») dans la première place libre,
+ * complète → liste d'attente ; « + Sortie » en une seule carte ; ma sortie se gère depuis sa carte (« Gérer ma sortie »).
  * Règles côté serveur : apps/api/src/lib/outings.ts. Classes CSS so-, sx-, dg-, pc-chip.
  * « + Sortie » lit une fois `?donjon=<clé>&perso=<id>` (bouton « Proposer » de l'Accueil) : donjon et perso déjà choisis.
  */
@@ -90,8 +91,10 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
   headPlus?: boolean;
 }) {
   const { data, isLoading } = useQuery({ queryKey: ["outings", groupId], queryFn: () => get<OutingsData>(`/groups/${groupId}/outings`) });
-  const [filter, setFilter] = useState<"all" | "me" | "mine">(headPlus ? "me" : "all");
-  if (isLoading || !data) return <p className="muted">Chargement…</p>;
+  // « Pour moi » d'abord et par défaut (refonte du 09/11) ; les sorties pas à mon niveau se déplient d'une ligne
+  const [filter, setFilter] = useState<"all" | "me" | "mine">("me");
+  const [others, setOthers] = useState<string[]>([]);
+  if (isLoading || !data) return <p>Chargement…</p>;
   if (creating && data.canCreate) return <div className="stack"><NewOuting groupId={groupId} data={data} channelName={channelName} discordLinked={discordLinked} onClose={onClose} /></div>;
 
   const chars = data.me.characters;
@@ -101,13 +104,15 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
   };
   const counts = { all: data.outings.length, me: data.outings.filter(forMe).length, mine: data.outings.filter(o => o.creator.me).length };
   const shown = data.outings.filter(o => (filter === "me" ? forMe(o) : filter === "mine" ? o.creator.me : true));
-  const days = [...new Set(shown.map(o => (o.day < data.today ? data.today : o.day)))].sort();
+  const notForMe = filter === "me" ? data.outings.filter(o => !forMe(o)) : [];
+  const dayOf = (o: Outing) => (o.day < data.today ? data.today : o.day);
+  const days = [...new Set([...shown, ...notForMe].map(dayOf))].sort();
   const plus = data.canCreate && !headPlus && <button type="button" className="btn primary" onClick={onCreate}>+ Sortie</button>;
   const bar = (withPlus: boolean) => (
     <div className="so-bar">
-      <div className="seg" role="group" aria-label="Sorties affichées">
-        {([["all", "Toutes"], ["me", "Pour moi"], ["mine", "Les miennes"]] as const).map(([k, l]) => (
-          <button key={k} type="button" className={filter === k ? "on" : ""} aria-pressed={filter === k} onClick={() => setFilter(k)}>{l} ({counts[k]})</button>
+      <div className="seg so-filter" role="group" aria-label="Sorties affichées">
+        {([["me", "Pour moi"], ["all", "Toutes"], ["mine", "Les miennes"]] as const).map(([k, l]) => (
+          <button key={k} type="button" className={filter === k ? "on" : ""} aria-pressed={filter === k} onClick={() => { setFilter(k); setOthers([]); }}>{l} · {counts[k]}</button>
         ))}
       </div>
       <span className="grow1" />
@@ -131,31 +136,42 @@ export function GroupOutings({ groupId, guard, channelName, discordLinked, creat
   return (
     <div className="stack">
       {bar(true)}
-      {!shown.length && <p className="muted" style={{ margin: 0 }}>{filter === "mine" ? "Tu n'as proposé aucune sortie." : "Aucune sortie pour tes persos aujourd'hui ni demain."}</p>}
-      {days.map(day => (
-        <section key={day} className="stack" style={{ gap: 8 }} aria-label={day === data.today ? "Aujourd'hui" : "Demain"}>
-          <h3 className="so-day">{day === data.today ? "Aujourd'hui" : "Demain"} <small>{dayTitle(day)}</small></h3>
-          <div className="so-list">
-            {shown.filter(o => (o.day < data.today ? data.today : o.day) === day).map(o => (
-              <OutingCard key={o.id} groupId={groupId} o={o} chars={chars} guard={guard} discordLinked={discordLinked} />
-            ))}
-          </div>
-        </section>
-      ))}
-      {filter === "me" && counts.all > counts.me && (
-        <p className="small muted" style={{ margin: 0 }}>{counts.all - counts.me} autre{counts.all - counts.me > 1 ? "s sorties ne sont" : " sortie n'est"} pas pour tes persos · <button type="button" className="link" onClick={() => setFilter("all")}>Toutes ({counts.all})</button></p>
-      )}
+      {!shown.length && <p style={{ margin: 0 }}>{filter === "mine" ? "Tu n'as proposé aucune sortie." : "Aucune sortie pour tes persos aujourd'hui ni demain."}</p>}
+      {days.map(day => {
+        const label = day === data.today ? "Aujourd'hui" : "Demain";
+        const list = shown.filter(o => dayOf(o) === day);
+        // Pas à mon niveau : repliées sous une ligne, pas grisées (refonte du 09/11)
+        const hidden = notForMe.filter(o => dayOf(o) === day);
+        const unfolded = others.includes(day);
+        return (
+          <section key={day} className="stack" style={{ gap: 8 }} aria-label={label}>
+            <h3 className="so-day">{label} <small>{dayTitle(day)}</small></h3>
+            {list.length > 0 && <div className="so-list">
+              {list.map(o => <OutingCard key={o.id} groupId={groupId} o={o} chars={chars} guard={guard} discordLinked={discordLinked} />)}
+            </div>}
+            {hidden.length > 0 && (
+              <button type="button" className="so-others" aria-expanded={unfolded} aria-controls={`so-others-${day}`}
+                onClick={() => setOthers(v => (unfolded ? v.filter(d => d !== day) : [...v, day]))}>
+                {hidden.length > 1 ? `${hidden.length} autres sorties` : "1 autre sortie"}, pas à ton niveau <span aria-hidden="true">{unfolded ? "▾" : "›"}</span>
+              </button>
+            )}
+            {hidden.length > 0 && unfolded && (
+              <div id={`so-others-${day}`} className="so-list">
+                {hidden.map(o => <OutingCard key={o.id} groupId={groupId} o={o} chars={chars} guard={guard} discordLinked={discordLinked} />)}
+              </div>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
 
-/** Ma sortie est dépliée sur un écran large ; sur téléphone, « Gérer » la déplie. */
-const wide = () => typeof window === "undefined" || !window.matchMedia || window.matchMedia("(min-width: 641px)").matches;
-
 function OutingCard({ groupId, o, chars, guard, discordLinked }: { groupId: string; o: Outing; chars: MyChar[]; guard: Guard; discordLinked: boolean }) {
   const qc = useQueryClient();
   const m = useMine(o, chars);
-  const [open, setOpen] = useState(() => o.creator.me && wide());
+  // Ma sortie se gère d'un clic (« Gérer ma sortie ») : repliée par défaut (refonte du 09/11)
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const w = outingWhen(o.at ? new Date(o.at) : null, o.day);
@@ -167,10 +183,9 @@ function OutingCard({ groupId, o, chars, guard, discordLinked }: { groupId: stri
   };
   const join = (role: Role, c: MyChar, wait = false) => act(() => put(`/groups/${groupId}/outings/${o.id}/signup`, { role, characterId: c.id, wait }));
   const leave = () => act(() => del(`/groups/${groupId}/outings/${o.id}/signup`));
-  const kind = o.creator.me ? "mine" : m.entry ? "in" : m.canJoin ? "can" : !m.atLevel.length ? "dim" : "";
+  // Plus de carte grisée : une sortie pas à mon niveau garde son style, sans bouton pour rejoindre
+  const kind = o.creator.me ? "mine" : m.entry ? "in" : m.canJoin ? "can" : "";
   const waitRole = m.waitWith ? characterRoles(m.waitWith)[0] ?? "DPS" : null;
-  const byLine = <span className="so-with">par <b>{o.creator.me ? "toi" : o.creator.name}</b></span>;
-  const sideButton = m.waiting || !!m.waitWith;
 
   return (
     <article className={`so-card ${kind}`} aria-label={`${o.title}, ${w.day.toLowerCase()} ${w.time ?? "dès que complet"}`}>
@@ -181,15 +196,13 @@ function OutingCard({ groupId, o, chars, guard, discordLinked }: { groupId: stri
         {o.zone && <span className="so-zone">{o.zone}</span>}
       </div>
       <div className="so-side">
-        <span className="so-count"><b>{n}</b>/{t}</span>
+        <span className="so-top"><span className="so-count"><b>{n}</b>/{t}</span><span className="so-with"> · par {o.creator.me ? "toi" : o.creator.name}</span></span>
         {m.waiting ? <>
           <span className="so-wait">{rank(o.waiting.findIndex(s => s.mine) + 1)} en attente</span>
           <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void leave()}>Quitter l'attente</button>
         </> : <>
           {m.complete && <span className={`tag${o.creator.me ? " ok" : ""}`}>Complète</span>}
-          {m.waitWith && waitRole
-            ? <button type="button" className="btn sm" disabled={busy} onClick={() => void join(waitRole, m.waitWith!, true)}>Me mettre en attente</button>
-            : byLine}
+          {m.waitWith && waitRole && <button type="button" className="btn sm" disabled={busy} onClick={() => void join(waitRole, m.waitWith!, true)}>Me mettre en attente</button>}
         </>}
       </div>
       <div className="so-roles">
@@ -206,8 +219,9 @@ function OutingCard({ groupId, o, chars, guard, discordLinked }: { groupId: stri
                     {s.guest && <span className="guest" title="Inscrit depuis Discord, sans compte"> ✱</span>}</span>
                 ))}
                 {Array.from({ length: free }, (_, i) => (i === 0 && c
-                  ? <button key={i} type="button" className="so-join" title={`T'inscrire avec ${c.name}`} disabled={busy} onClick={() => void join(r, c)}>+ {c.name}</button>
-                  : <span key={i} className="so-free">libre</span>))}
+                  ? <button key={i} type="button" className="so-join" title={`T'inscrire en ${ROLE_WORD[r]} avec ${c.name}`} disabled={busy} onClick={() => void join(r, c)}>
+                      <b>+ {r}</b> <small>avec {c.name}</small></button>
+                  : <span key={i} className="so-free">Libre</span>))}
               </span>
             </span>
           );
@@ -215,24 +229,22 @@ function OutingCard({ groupId, o, chars, guard, discordLinked }: { groupId: stri
       </div>
       <div className="so-foot">
         {o.note && <span className="so-note">« {o.note} »</span>}
-        {sideButton && byLine}
-        {m.entry && !m.waiting && !o.creator.me && (
-          <span className="so-mine">Tu viens en {ROLE_WORD[m.entry.role]} avec {m.entry.name} · <button type="button" className="link" disabled={busy} onClick={() => void leave()}>Me retirer</button></span>
-        )}
-        {m.waiting && m.entry && <span className="so-mine">{m.entry.name} prendra la première place libérée, un MP te préviendra.</span>}
-        {kind === "dim" && !m.entry && <span className="so-why">Aucun de tes persos n'a le niveau.</span>}
+        {m.entry && !m.waiting && <span className="so-mine">✓ Tu viens en {ROLE_WORD[m.entry.role]} avec {m.entry.name}</span>}
+        {m.waiting && m.entry && <span className="so-mine wait">{m.entry.name} prendra la première place libérée, un MP te préviendra.</span>}
+        {!m.atLevel.length && !m.entry && <span className="so-why">Aucun de tes persos n'a le niveau.</span>}
         {!m.waiting && o.waiting.length > 0 && <span>{o.waiting.length} en attente</span>}
-        {o.canManage && !open && <button type="button" className={`link${o.creator.me ? "" : " so-manage"}`} onClick={() => setOpen(true)}>{o.creator.me ? "Gérer ma sortie" : "Gérer"}</button>}
-        {err && <span className="so-why" role="alert">{err}</span>}
+        {o.canManage && !open && <button type="button" className="btn sm" onClick={() => setOpen(true)}>{o.creator.me ? "Gérer ma sortie" : "Gérer"}</button>}
+        {m.entry && !m.waiting && !o.creator.me && <button type="button" className="link neg" disabled={busy} onClick={() => void leave()}>Me retirer</button>}
+        {err && <span className="so-err" role="alert">{err}</span>}
       </div>
-      {o.canManage && open && <Manage groupId={groupId} o={o} guard={guard} discordLinked={discordLinked} />}
+      {o.canManage && open && <Manage groupId={groupId} o={o} guard={guard} discordLinked={discordLinked} onClose={() => setOpen(false)} />}
     </article>
   );
 }
 
 /* ---------- Gestion (créateur, officiers) ---------- */
 
-function Manage({ groupId, o, guard, discordLinked }: { groupId: string; o: Outing; guard: Guard; discordLinked: boolean }) {
+function Manage({ groupId, o, guard, discordLinked, onClose }: { groupId: string; o: Outing; guard: Guard; discordLinked: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [panel, setPanel] = useState<null | "time" | "places" | "cancel">(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["outings", groupId] });
@@ -285,6 +297,7 @@ function Manage({ groupId, o, guard, discordLinked }: { groupId: string; o: Outi
       <div className="sx-acts">
         <button type="button" className="btn sm" onClick={() => setPanel("time")}>Changer l'heure</button>
         <button type="button" className="btn sm" onClick={() => setPanel("places")}>Places et note</button>
+        <button type="button" className="btn ghost sm" onClick={onClose}>Replier</button>
         <span className="grow1" />
         <button type="button" className="btn danger sm" onClick={() => setPanel("cancel")}>Annuler la sortie</button>
       </div>
@@ -578,7 +591,7 @@ function NewOuting({ groupId, data, channelName, discordLinked, onClose }: { gro
       <div className="gr-sum">
         <p><b>{name}</b> · {whenText} · {summary}</p>
         <div className="row"><button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={busy || !titleOk || full}>Publier</button></div>
+          <button type="submit" className="btn primary" disabled={busy || !titleOk || full}>Publier la sortie</button></div>
       </div>
       {err && <div className="alert error" role="alert">{err}</div>}
       <p className="hint" style={{ margin: 0 }}>

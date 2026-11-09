@@ -4,7 +4,8 @@ import path from "node:path";
 import pg from "pg";
 
 /**
- * Sorties donjon (Forever) : créer une sortie avec « + Sortie », s'inscrire d'un clic, liste d'attente et place libérée.
+ * Sorties donjon (Forever) : créer une sortie avec « + Sortie », s'inscrire d'un clic, liste d'attente et place libérée ;
+ * les sorties pas à mon niveau repliées sous une ligne (refonte du 09/11).
  * Les autres joueurs sont écrits directement en base ; les sorties sont pour demain (le test passe à toute heure).
  */
 const test = base.extend<{ page: Page }>({
@@ -93,22 +94,43 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
   };
   await outing("blackrock-depths", "Blackrock Depths", 52, 60, "20:00", "Grimbald", [["Grimbald", "Tank"], ["Morwen", "DPS"]]);
   await outing("maraudon", "Maraudon", 46, 55, "21:30", "Oddo", [["Oddo", "DPS"], ["Rempart", "Tank"], ["Nessa", "Heal"], ["Ashka", "DPS"], ["Fenrik", "DPS"]]);
+  await outing("wailing-caverns", "Wailing Caverns", 17, 24, "19:00", "Ashka", []);
   await db.end();
 
   await page.goto(`/groups/${group}`);
   await page.locator(".topnav").getByRole("link", { name: "Sorties" }).click();
   await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties$`));
-  // « Pour moi » par défaut (Brindille 55 a le niveau des deux)
-  await expect(page.getByRole("button", { name: "Pour moi (2)" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "Toutes (2)" })).toBeVisible();
+  // « Pour moi » par défaut et en premier (Brindille 55 a le niveau des deux premières ; personne n'a celui des Wailing Caverns)
+  const filters = page.getByRole("group", { name: "Sorties affichées" }).getByRole("button");
+  await expect(filters).toHaveText(["Pour moi · 2", "Toutes · 3", "Les miennes · 0"]);
+  await expect(filters.first()).toHaveAttribute("aria-pressed", "true");
+
+  await test.step("pas à mon niveau : repliée sous une ligne, pas grisée", async () => {
+    const wc = page.locator("article.so-card", { hasText: "Wailing Caverns" });
+    await expect(wc).toHaveCount(0);
+    const more = page.getByRole("button", { name: /^1 autre sortie, pas à ton niveau/ });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await more.click();
+    await expect(wc).toContainText("Aucun de tes persos n'a le niveau.");
+    await expect(wc.locator(".so-join")).toHaveCount(0);
+    await more.click();
+    await expect(wc).toHaveCount(0);
+    // « Toutes » la montre
+    await page.getByRole("button", { name: "Toutes · 3" }).click();
+    await expect(wc).toBeVisible();
+    await expect(page.getByRole("button", { name: /pas à ton niveau/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Pour moi · 2" }).click();
+  });
 
   await test.step("s'inscrire d'un clic avec le perso qui a le niveau", async () => {
     const brd = page.locator("article.so-card", { hasText: "Blackrock Depths" });
     await expect(brd).toHaveClass(/\bcan\b/);
     // Brindille (tank/heal) : le rôle heal est libre ; Pikou (33) n'a pas le niveau, pas de bouton en DPS
-    await expect(brd.getByRole("button", { name: "+ Brindille" })).toHaveCount(1);
-    await brd.getByRole("button", { name: "+ Brindille" }).click();
-    await expect(brd).toContainText("Tu viens en heal avec Brindille");
+    await expect(brd.locator(".so-join")).toHaveCount(1);
+    await expect(brd.locator(".so-free")).toHaveCount(2);
+    await brd.getByRole("button", { name: "+ Heal avec Brindille" }).click();
+    await expect(brd.locator(".so-mine")).toHaveText("✓ Tu viens en heal avec Brindille");
+    await expect(brd.locator(".so-with")).toContainText("par Grimbald");
     await expect(brd.locator(".so-slot.me")).toContainText("Brindille");
     await expect(brd.locator(".so-count")).toHaveText("3/5");
   });
@@ -142,11 +164,19 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
     await form.getByRole("button", { name: "Demain 21:00" }).click();
     await form.locator("#so-note").fill("Aile est et quêtes.");
     await expect(form.locator(".gr-sum")).toContainText("Dire Maul · demain 21:00 · 1 tank (toi), 1 heal, 3 DPS");
-    await form.getByRole("button", { name: "Publier" }).click();
+    await form.getByRole("button", { name: "Publier la sortie" }).click();
     await expect(page).toHaveURL(new RegExp(`/groups/${group}/sorties$`));
     const dm = page.locator("article.so-card.mine", { hasText: "Dire Maul" });
     await expect(dm).toContainText("« Aile est et quêtes. »");
     await expect(dm.locator(".so-slot.me")).toContainText("Brindille");
-    await expect(page.getByRole("button", { name: "Les miennes (1)" })).toBeVisible();
+    await expect(dm.locator(".so-with")).toContainText("par toi");
+    // Ma sortie : repliée, « Gérer ma sortie » la déplie, « Replier » la referme ; pas de « Me retirer » pour le créateur
+    await expect(dm.locator(".sx")).toHaveCount(0);
+    await expect(dm.getByRole("button", { name: "Me retirer" })).toHaveCount(0);
+    await dm.getByRole("button", { name: "Gérer ma sortie" }).click();
+    await expect(dm.getByRole("button", { name: "Annuler la sortie" })).toBeVisible();
+    await dm.getByRole("button", { name: "Replier" }).click();
+    await expect(dm.locator(".sx")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Les miennes · 1" })).toBeVisible();
   });
 });

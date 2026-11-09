@@ -1321,7 +1321,6 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .so-card.can { --sc: color-mix(in srgb, var(--gold) 45%, var(--line-2)); }
 .so-card.in, .so-card.mine { --sc: var(--gold); }
 .so-card.mine { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); border-left-color: var(--gold); box-shadow: var(--shadow); }
-.so-card.dim { --sc: var(--line); }
 .so-when { grid-row: 1 / span 3; align-self: stretch; display: grid; justify-items: center; align-content: start; gap: 4px; padding-right: 12px; border-right: 1px solid var(--line); text-align: center; }
 .so-when small { font: 600 10px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
 .so-when b { font: 600 19px/1.1 var(--f-mono); font-variant-numeric: tabular-nums; }
@@ -2479,4 +2478,57 @@ p.rp-meta { margin: 0; color: var(--ink); }
   .rp-bench .bench { max-height: 340px; overflow-y: auto; }
   .rgroups { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   dialog.sg-dialog:has(.rp-sheet) { margin: auto 0 0; width: 100%; max-width: 100%; border-radius: 12px 12px 0 0; }
+}
+
+/* ==========================================================================
+   Refonte 09/11, lot 4 : Sorties (maquette-sorties.png)
+   ========================================================================== */
+/* Filtres de même largeur, « Pour moi » d'abord */
+.seg.so-filter { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(100%, 420px); }
+.seg.so-filter button { min-height: 44px; padding: 8px 10px; font-size: 14px; color: var(--ink); white-space: nowrap; }
+.seg.so-filter button + button { border-left: 1px solid var(--line-2); }
+.seg.so-filter button.on { color: var(--gold); background: var(--gold-soft); box-shadow: inset 0 -2px 0 var(--gold); }
+
+/* Carte : places de 44 px, « + Heal avec Brindille » dans la première place libre, « Libre » en pointillé */
+.so-card { padding: 14px 16px; row-gap: 10px; }
+.so-card.mine { border-color: var(--gold); }
+.so-side { min-width: 0; }
+.so-top { white-space: nowrap; font-size: 14px; }
+.so-count { color: var(--ink); }
+.so-with { font-size: 14px; color: var(--ink); }
+.so-rg > .role { padding: 4px 6px; font-size: 10.5px; }
+.so-slot, .so-free, .so-join { min-height: 44px; border-radius: 6px; font-size: 14px; }
+.so-slot { gap: 8px; padding: 4px 12px 4px 6px; }
+.so-slot .cp { width: 28px; height: 28px; }
+.so-free { padding: 4px 12px; color: var(--ink); border-color: var(--line-2); }
+.so-join { gap: 6px; padding: 4px 14px; background: var(--gold-soft); font-size: 14px; }
+.so-join b { font-weight: 700; }
+.so-join small { font: 500 12.5px var(--f-body); color: var(--ink); }
+.so-foot { align-items: center; gap: 6px 16px; font-size: 14px; color: var(--ink); }
+.so-foot .btn { min-height: 40px; }
+.so-mine { color: var(--ok); font-weight: 600; }
+.so-mine.wait { color: var(--ink); font-weight: 400; }
+.so-why { color: var(--ink); }
+.so-err { color: var(--bad); font-weight: 600; }
+/* Lien d'action négative : encre soulignée */
+.link.neg { color: var(--ink); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; min-height: 40px; }
+.link.neg:hover { color: var(--bad); }
+/* « 2 autres sorties, pas à ton niveau › » */
+.so-others { justify-self: start; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--gold); font: 500 15px var(--f-body); cursor: pointer; text-align: left; }
+.so-others:hover { text-decoration: underline; text-underline-offset: 3px; }
+.sx-acts .btn { min-height: 40px; }
+
+@media (max-width: 640px) {
+  .seg.so-filter { width: 100%; }
+  .so-bar .seg.so-filter button { font-size: 13px; padding-inline: 4px; min-height: 44px; }
+  .so-card { padding: 12px; }
+  .so-side { grid-row: 1; }
+  .so-top { font-size: 13px; }
+  .so-rg { grid-template-columns: 54px minmax(0, 1fr); }
+  .so-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+  .so-join { justify-content: center; white-space: normal; text-align: center; line-height: 1.15; }
+  .so-free { justify-content: center; }
+  .so-foot .btn, .link.neg { min-height: 44px; }
+  /* Ma place sur sa ligne, puis « Gérer » et « Me retirer » côte à côte */
+  .so-foot .so-mine, .so-foot .so-note, .so-foot .so-why { flex-basis: 100%; }
 }
