@@ -510,11 +510,11 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await mc.getByRole("button", { name: "Peut-être" }).click();
     await expect(mc.getByRole("button", { name: "Peut-être" })).toHaveAttribute("aria-pressed", "true");
     // À faire : Greta n'a pas de spé, choisie sur place d'un clic
-    const todo = page.getByRole("list", { name: "À faire" });
-    await expect(todo).toContainText("Greta n'a pas de spé");
+    const todo = page.getByRole("list", { name: "Pour toi" });
+    await expect(todo).toContainText("Greta · pas de spé : choisis-la pour t'inscrire");
     if (process.env.SHOTS) await page.screenshot({ path: "test-results/shots/accueil.png" });
     await todo.getByRole("group", { name: "Spé de Greta" }).getByRole("button", { name: "Restoration" }).click();
-    await expect(page.getByText("Greta n'a pas de spé")).toHaveCount(0);
+    await expect(page.getByText("Greta · pas de spé")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Mes persos" })).toContainText("Greta");
     await page.reload();
     await expect(page.getByRole("region", { name: "Aujourd'hui et demain" }).locator("li.ag").filter({ hasText: "Molten Core" })

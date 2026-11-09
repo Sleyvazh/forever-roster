@@ -66,10 +66,10 @@ test("avis du Discord : pastilles, fil, réponse depuis le site, statut", async 
     await db.query("insert into feedback_messages (feedback_id, \"from\", name, text, source, delivered, created_at) values ($1, 'team', 'Brakka', 'Bonne idée, on en parle jeudi entre officiers. Tu viens d''habitude le mercredi ?', 'discord', true, now() - interval '90 minutes'), ($1, 'author', null, 'Oui, chaque semaine, mais je décroche vers minuit.', 'discord', null, now() - interval '20 minutes')", [anon]);
   } finally { await db.end(); }
 
-  await test.step("« À traiter » sur l'Accueil des officiers, pastille sur « Avis »", async () => {
+  await test.step("« À faire » sur l'Accueil des officiers, pastille sur « Avis »", async () => {
     await page.goto(`/groups/${groupId}`);
-    const todo = page.getByRole("region", { name: /À traiter/ });
-    await expect(todo.locator("li").filter({ hasText: "avis Discord à lire" }).locator(".tt-n")).toHaveText("2");
+    const todo = page.getByRole("list", { name: "Pour les officiers" });
+    await expect(todo.locator("li").filter({ hasText: "Avis Discord · à lire" }).locator(".tt-n")).toHaveText("2");
     await expect(todo.getByRole("link", { name: "Lire" })).toHaveAttribute("href", `/groups/${groupId}/admin?section=avis`);
     await page.locator(".topnav").getByRole("link", { name: "Guilde" }).click();
     await page.getByRole("link", { name: "Administration" }).click();

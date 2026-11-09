@@ -468,6 +468,8 @@ export type HomeAgendaItem =
 export interface HomeRace {
   startsAt: string; started: boolean; day: number | null; linked: boolean;
   podium: RacePodiumPlace[];
+  /** Course finie (podium figé au troisième 60) : date du dernier 60 du podium ; l'Accueil la montre encore 3 jours. */
+  endedAt: string | null;
   me: { rank: number; tie: boolean; name: string; cls: ClassName | null; level: number; xpPct: number | null; weekGain: number } | null;
 }
 /**
@@ -491,8 +493,6 @@ export interface GuildHomeResponse {
   /** Sorties du jour et de demain : toutes, et celles qui ne sont pour aucun de mes persos (non listées). */
   outings: { total: number; hidden: number };
   race: HomeRace;
-  /** Arrivées, départs, promotions des 7 derniers jours. */
-  moves: GuildMove[];
   guild: { linked: boolean; name: string | null; rosterAt: string | null };
   questions: GuildQuestion[];
   /** Null : aucun perso à moi dans la guilde, pas de carte. */

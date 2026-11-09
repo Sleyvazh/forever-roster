@@ -383,6 +383,8 @@ describe("Course au 60", () => {
     const home = await s.get<GuildHomeResponse>(s.p.Vexou!, "/home");
     expect(home.race).toMatchObject({ started: true, linked: true, me: { rank: 2, tie: true, name: V.name, cls: "Rogue", level: 60 } });
     expect(home.race.podium).toHaveLength(4);
+    // Course finie : le jour du dernier 60 du podium (l'Accueil la montre encore 3 jours)
+    expect(home.race.endedAt).toBe(race.podium.places.map(p => p.reached!.at!).sort().at(-1));
   });
 
   it("guilde reliée en cours de course : les 60 du premier relevé figent le podium sans rang ni date", async () => {
@@ -432,7 +434,9 @@ describe("accueil de la guilde", () => {
     expect(o.suggest).toEqual([{ role: "Heal", characterId: vex.id, characterName: "Vexou" }, { role: "DPS", characterId: vex.id, characterName: "Vexou" }]);
     // Maraudon n'est pour aucun perso de Vexou : comptée, pas listée
     expect(home.outings).toEqual({ total: 2, hidden: 1 });
-    expect(home.moves.map(x => [x.kind, x.who.name])).toEqual([["join", "Torvin Rochefer"]]);
+    // Arrivées et départs : plus sur l'Accueil (refonte du 09/11), dans Guilde › Historique
+    expect((await s.get<GuildHistoryResponse>(s.p.Vexou!, "/guild/history")).moves.map(x => [x.kind, x.who.name])).toContainEqual(["join", "Torvin Rochefer"]);
+    expect(home.race.endedAt).toBeNull();
     expect(home.guild).toMatchObject({ linked: true, name: "Les Lanternes" });
     expect(home.race).toMatchObject({ startsAt: new Date(LAUNCH_AT).toISOString(), linked: true });
     // Le créateur voit sa sortie

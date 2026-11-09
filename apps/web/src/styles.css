@@ -1997,13 +1997,6 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 }
 
 /* ---------- Accueil ---------- */
-.todo { display: grid; gap: 6px; }
-.todo-i { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 14px; border: 1px solid var(--line); border-left: 3px solid var(--warn); border-radius: 6px; background: var(--panel); font-size: 14.5px; }
-.todo-i .t { flex: 1 1 220px; min-width: 0; }
-.todo-i .t b { font-weight: 600; }
-.todo-i .acts { display: flex; flex-wrap: wrap; gap: 6px; }
-.todo-i .acts .btn { min-height: 36px; }
-.todo-i.ask { border-left-color: var(--gold); }
 .mc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .mc-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
 .mc-list li:last-child { border-bottom: 0; }
@@ -2015,20 +2008,13 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .ag-later { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed var(--line-2); }
 .ag-later .lbl { display: block; margin-bottom: 4px; }
 /* « Trouver quoi faire » (Accueil) : donjons à mon niveau et persos de la guilde à mon niveau */
-.tf-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-.tf-h .gm-sec { margin: 0; }
-.tf-h small { font: 500 13px var(--f-body); color: var(--ink-3); }
 .ag.tf-d { grid-template-columns: minmax(0, 1fr) auto; }
 .ag.tf-d .ag-end { grid-column: auto; display: grid; justify-items: end; text-align: right; }
 .tf-d .ag-t .tag { align-self: center; }
 .tf-who { padding: 0; }
 .tf-who li { padding: 5px 0; }
 @media (max-width: 640px) { .ag.tf-d { align-items: center; } .ag.tf-d .ag-end { grid-column: auto; } .tf-d .ag-end .btn, .tf-d .ag-end .link { min-height: 36px; display: inline-flex; align-items: center; } }
-.tt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.tt-list li { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
 .tt-n { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--frame); font: 600 13px var(--f-mono); color: var(--gold); }
-.tt-list .t { min-width: 0; font-size: 14px; line-height: 1.3; }
-.tt-list .t small { display: block; color: var(--ink-3); font-size: 12.5px; }
 .inv-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; width: min(380px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px; border-radius: 8px;
   background: var(--panel); border: 1px solid var(--frame); box-shadow: inset 0 0 0 2px var(--panel), inset 0 0 0 3px color-mix(in srgb, var(--frame) 40%, transparent), var(--shadow); }
 .inv-pop h3 { font-size: 17px; }
@@ -2205,7 +2191,6 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .mc-list a.t:hover .cn { text-decoration: underline; text-underline-offset: 3px; }
 .mc-list .gm-star { color: var(--gold); }
 .hm-card.off { border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
-.tt-list .btn { min-height: 34px; }
 .hm-card .ab { margin: 0; }
 
 /* Barre du bas : cinq entrées */
@@ -2360,4 +2345,68 @@ select.need { border-color: var(--warn); }
   .sync-btn span { display: none; }
   .sync-btn { min-width: 44px; min-height: 44px; justify-content: center; position: relative; }
   .sync-btn .sdot { position: absolute; top: 6px; right: 6px; }
+}
+
+/* ==========================================================================
+   Refonte 09/11, lot 2 : Accueil (maquette-accueil.png)
+   ========================================================================== */
+/* Lignes de l'agenda entières cliquables : le lien du titre couvre la ligne, les boutons passent au-dessus */
+.ag { position: relative; }
+.ag-t.stretch { color: inherit; text-decoration: none; }
+.ag-t.stretch::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.ag-t.stretch:focus-visible { outline: none; }
+.ag:has(.ag-t.stretch:hover) { border-color: var(--line-2); background: color-mix(in srgb, var(--panel-2) 80%, var(--ink) 4%); }
+.ag:has(.ag-t.stretch:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
+.ag-end, .ag-ans, .ag-err { position: relative; z-index: 1; }
+.ag:has(.su-menu) { z-index: 4; }
+/* Raid : état à droite, réponses 3 + Autre de même largeur sous le titre */
+.ag.raid { grid-template-columns: 64px minmax(0, 1fr) auto; row-gap: 8px; }
+.ag-st { font-size: 13px; font-weight: 600; white-space: nowrap; color: var(--warn); }
+.ag-st.present { color: var(--ok); } .ag-st.late { color: var(--warn); } .ag-st.tentative { color: var(--ink); }
+.ag-st.alt { color: var(--alli); } .ag-st.bench { color: var(--gold); } .ag-st.absent { color: var(--bad); }
+.ag-ans { grid-column: 2 / -1; display: grid; gap: 6px; }
+.ag-ans .ans-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 6px; }
+.ag-ans .su-btn.lg { min-height: 40px; padding: 8px 6px; font-size: 14px; white-space: nowrap; min-width: 0; }
+.ag-ans .su-more { min-height: 40px; min-width: 44px; justify-content: center; padding: 8px 10px; }
+.ag-ans .su-more .wide { display: none; }
+.ag-err { display: block; font-size: 13px; font-weight: 600; color: var(--bad); }
+.ag-err .link { color: var(--bad); text-decoration: underline; font-weight: 600; }
+
+/* À faire : une seule carte (mes actions, puis Officiers ou Banque) */
+.td-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.td-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; min-height: 52px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.td-list li.has-n { grid-template-columns: 30px minmax(0, 1fr) auto; }
+.td-list li:last-child { border-bottom: 0; }
+.td-list li.wide .acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.td-list .t { min-width: 0; font-size: 14.5px; line-height: 1.3; }
+.td-list .t b { font-weight: 600; }
+.td-list .t small { display: block; font-size: 12.5px; }
+.td-list .btn { min-height: 36px; }
+.td-sec { margin: 4px 0 -4px; }
+.td-msg { margin: 0; font-size: 13.5px; }
+.td-msg.bad { color: var(--bad); font-weight: 600; }
+
+/* Trouver quoi faire : pour qui, et les joueurs à mon niveau repliés */
+.tf-for { font-size: 13px; }
+.tf-who-box { display: grid; gap: 4px; padding-top: 8px; border-top: 1px dashed var(--line-2); }
+.tf-sum { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; font-size: 14px; }
+.tf-sum .link { min-height: 36px; }
+
+/* Squelettes du chargement, à la forme des cartes */
+.sk-card { min-height: 180px; align-content: start; }
+.sk-card.sm { min-height: 140px; }
+.sk { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--panel-2) 25%, color-mix(in srgb, var(--panel-2) 70%, var(--line-2)) 50%, var(--panel-2) 75%); background-size: 200% 100%; }
+.sk-h { width: 45%; height: 18px; }
+.sk-row { height: 54px; }
+.sk-card.sm .sk-row { height: 36px; }
+@media (prefers-reduced-motion: no-preference) { .sk { animation: sk-shine 1.4s ease-in-out infinite; } }
+@keyframes sk-shine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+@media (max-width: 640px) {
+  .ag.raid { grid-template-columns: 46px minmax(0, 1fr); }
+  .ag.raid .ag-st { grid-column: 2; }
+  .ag-ans { grid-column: 1 / -1; }
+  .ag-ans .su-btn.lg { min-height: 44px; font-size: 13.5px; }
+  .ag-ans .su-more { min-height: 44px; }
+  .td-list .btn { min-height: 44px; }
 }

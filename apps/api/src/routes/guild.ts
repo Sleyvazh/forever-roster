@@ -406,22 +406,23 @@ async function homeView(db: Db, id: string, me: string, t: Date, ctx: (g: string
   }
   agenda.sort((a, b) => a.sort - b.sort);
 
-  // Mini-course et mouvements
+  // Mini-course (les arrivées et départs ont quitté l'Accueil : Guilde › Historique, refonte du 09/11)
   const data = await loadGuild(db, id);
   const r = resolveGuild(data, { officer: true, now: t });
   const race = computeRace(r, data.gg ? await loadLevels(db, id) : [], { now: t, me, announce: g.levelAnnounces });
   const meRow = race.rows.find(x => x.me);
   const plain = resolveGuild(data, { officer: false, now: t });
-  const moves = data.gg ? (await guildMoves(db, id, data.members, { types: MOVE_FILTERS.all, since: new Date(t.getTime() - 7 * DAY), limit: 20 })).moves : [];
+  // Course finie (podium figé au troisième 60) : le jour du dernier 60 du podium ; l'Accueil la montre encore 3 jours
+  const endedAt = race.podium.frozen
+    ? race.podium.places.reduce<string | null>((max, p) => (p.reached?.at && (!max || p.reached.at > max) ? p.reached.at : max), null) : null;
   return {
     today, tomorrow,
     agenda: agenda.map(({ sort: _, ...a }) => a as HomeAgendaItem),
     outings: { total: outs.length, hidden },
     race: {
-      startsAt: new Date(RACE_START).toISOString(), started: race.started, day: race.day, linked: !!data.gg, podium: race.podium.places,
+      startsAt: new Date(RACE_START).toISOString(), started: race.started, day: race.day, linked: !!data.gg, podium: race.podium.places, endedAt,
       me: meRow ? { rank: meRow.rank, tie: meRow.tie, name: meRow.best.name, cls: meRow.best.cls, level: meRow.best.level, xpPct: meRow.best.xpPct, weekGain: meRow.best.weekGain } : null,
     },
-    moves,
     guild: { linked: !!data.gg, name: data.gg?.name ?? null, rosterAt: data.gg?.rosterAt?.toISOString() ?? null },
     questions: questionsFor(plain, me),
     find: await homeFind(db, id, me, plain, outs),

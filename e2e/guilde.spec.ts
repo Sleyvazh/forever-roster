@@ -353,14 +353,18 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(page).toHaveURL(new RegExp(`/groups/${group}$`));
     await expect(page.getByRole("heading", { name: /Aujourd'hui et demain/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Course au 60/ })).toBeVisible();
-    await expect(page.getByRole("region", { name: /Arrivées et départs/ })).toContainText("Zirta Pellerouge rejoint la guilde");
+    // Arrivées et départs : plus sur l'Accueil (refonte du 09/11), dans Guilde › Historique
+    await expect(page.getByRole("region", { name: /Arrivées et départs/ })).toHaveCount(0);
     // Trouver quoi faire : pour Brindille (niveau 28), les donjons de Forever d'abord, les joueurs à 3 niveaux près (liste du jeu)
     const find = page.getByRole("region", { name: "Trouver quoi faire" });
-    await expect(find).toContainText("Brindille, niveau 28");
+    await expect(find).toContainText("pour Brindille · 28");
     await expect(find.locator(".tf-d").first()).toContainText("City of Dalaran");
     await expect(find.locator(".tf-d").first().locator(".tag")).toHaveText("Forever");
     await expect(find.locator(".tf-d").filter({ hasText: "Excavation Site: Wetlands" })).toContainText("1 perso de la guilde a le niveau");
     // Même dernière connexion : le plus proche de son niveau d'abord
+    // Repliés en une ligne, dépliés au clic
+    await expect(find.locator(".tf-sum")).toContainText("2 persos de la guilde à 3 niveaux près");
+    await find.getByRole("button", { name: "Voir" }).click();
     await expect(find.locator(".tf-who li")).toHaveText([/Vex Ombrelame\s*27/, /Kaeldra Brisevent\s*30/]);
     // « Proposer » ouvre « + Sortie » avec le donjon et le perso déjà choisis
     const proposer = find.getByRole("link", { name: "Proposer une sortie à Excavation Site: Wetlands" });
@@ -602,17 +606,17 @@ test("guilde : demandes de retrait à la banque, Préparer, Remise, banquier", a
     await shot(page, "membres-banquier-pc.png");
   });
 
-  await test.step("le banquier voit « À traiter » sur l'accueil et traite la demande de l'officière", async () => {
+  await test.step("le banquier voit la partie Banque de « À faire » sur l'accueil et traite la demande de l'officière", async () => {
     // L'officière demande à son tour (Annuler seulement sur sa propre demande en attente)
     await page.goto(bank);
     await page.getByLabel("Strange Dust × 5").click();
     await page.getByRole("dialog", { name: "Strange Dust" }).getByRole("button", { name: "Demander" }).click();
     await page.getByRole("dialog", { name: "Demander à la banque" }).getByRole("button", { name: "Envoyer la demande" }).click();
     await expect(rowOf(page, "Strange Dust").getByRole("button")).toHaveText(["Annuler"]);
-    // Torvald est banquier : un membre simple n'avait pas « À traiter », lui l'a, avec les demandes en attente
+    // Torvald est banquier : un membre simple n'avait pas la partie Banque de « À faire », lui l'a, avec les demandes en attente
     await member.goto(`/groups/${group}`);
-    const todo = member.getByRole("region", { name: /À traiter/ });
-    await expect(todo).toContainText("banquiers");
+    await expect(member.getByRole("region", { name: "À faire" })).toContainText("Banque");
+    const todo = member.getByRole("list", { name: "Pour les banquiers" });
     await expect(todo.getByRole("listitem")).toHaveCount(1);
     await expect(todo.locator(".tt-n")).toHaveText("1");
     await expect(todo.getByRole("listitem")).toContainText("demande de retrait");
