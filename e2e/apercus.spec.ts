@@ -594,12 +594,29 @@ test("tour des pages", async ({ page }) => {
   await add("Ombrefeu", "Undead", "Warlock", "Destruction", "Affliction", g2, true);
   const thalwen = (await db.query("SELECT id FROM characters WHERE user_id = $1 AND name = 'Thalwen'", [me])).rows[0].id as string;
   await add("Pansoufle", "Tauren", "Druid", "", "", null, false);
+  // Thalwen relevée par l'addon (refonte du 09/11, lot 6) : métiers, patrons (connus, recherchés), équipement, talents
+  await db.query(`INSERT INTO game_items (id, name, quality, item_level, req_level, class_id, subclass_id, inventory_type) VALUES
+    (15063, 'Devilsaur Gauntlets', 3, 63, 58, 4, 2, 10), (15062, 'Devilsaur Leggings', 3, 63, 58, 4, 2, 7), (15067, 'Ironfeather Shoulders', 3, 61, 56, 4, 2, 3),
+    (15094, 'Black Dragonscale Boots', 4, 63, 58, 4, 3, 8), (15138, 'Hide of the Wild', 4, 62, 57, 4, 1, 16), (18251, 'Core Armor Kit', 3, 60, 0, 0, 0, 0) ON CONFLICT DO NOTHING`);
+  await db.query(`INSERT INTO game_recipes (spell_id, skill_line, name, req_skill, trivial_low, trivial_high, created_item_id, reagents, from_item) VALUES
+    (19084, 165, 'Devilsaur Gauntlets', 290, 300, 320, 15063, '[]', true), (19107, 165, 'Devilsaur Leggings', 300, 320, 340, 15062, '[]', true),
+    (19062, 165, 'Ironfeather Shoulders', 270, 290, 310, 15067, '[]', true), (20854, 165, 'Black Dragonscale Boots', 300, 320, 340, 15094, '[]', true),
+    (19090, 165, 'Hide of the Wild', 300, 320, 340, 15138, '[]', true), (22727, 165, 'Core Armor Kit', 300, 320, 340, 18251, '[]', true) ON CONFLICT DO NOTHING`);
+  await db.query("UPDATE characters SET professions = $2, talents = '14/32/5', talents2 = '0/11/40', addon_synced_at = now() - interval '3 hours' WHERE id = $1",
+    [thalwen, JSON.stringify({ prof1: { name: "Leatherworking", skill: 300 }, prof2: { name: "Skinning", skill: 295 }, cooking: 150, fishing: 0, firstAid: 225 })]);
+  for (const [spell, st] of [[19084, "known"], [19107, "known"], [19062, "known"], [20854, "wanted"], [19090, "wanted"]] as const)
+    await db.query("INSERT INTO character_recipes (character_id, spell_id, status) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", [thalwen, spell, st]);
+  const gear = { Head: ["Cenarion Helm", 4, true], Neck: ["Onyxia Tooth Pendant", 4, false], Shoulder: ["Ironfeather Shoulders", 3, false], Back: ["Cape of the Black Baron", 3, false],
+    Chest: ["Cenarion Vestments", 4, true], Wrist: ["Wristguards of Stability", 3, false], Hands: ["Devilsaur Gauntlets", 3, false], Waist: ["Cenarion Belt", 4, true],
+    Legs: ["Devilsaur Leggings", 3, false], Feet: ["Cenarion Boots", 4, false], "Finger 1": ["Don Julio's Band", 4, true], "Finger 2": ["Blackstone Ring", 3, false],
+    "Trinket 1": ["Blackhand's Breadth", 4, true], "Trinket 2": ["Mark of Tyranny", 3, false], "Main Hand": ["Manual Crowd Pummeler", 4, true], "Ranged / Relic": ["Idol of Ferocity", 3, false] };
+  await db.query("UPDATE characters SET gear = $2 WHERE id = $1", [thalwen, JSON.stringify(Object.fromEntries(Object.entries(gear).map(([k, [n, q, got]]) => [k, { cur: n, q, bis: n, bisQ: q, got }])))]);
   await db.end();
 
   const OUT_T = path.resolve("test-results/tour");
   const pages: [string, string][] = [
     ["persos", "/persos"], ["perso-profil", `/persos/${thalwen}`], ["perso-metiers", `/persos/${thalwen}/metiers`], ["perso-equipement", `/persos/${thalwen}/equipement`],
-    ["perso-notes", `/persos/${thalwen}/notes`], ["groupe-accueil", `/groups/${group}`], ["groupe-sorties", `/groups/${group}/sorties`], ["groupe-raids", `/groups/${group}/raids`],
+    ["perso-notes", `/persos/${thalwen}/notes`], ["perso-modifier", `/persos/${thalwen}/profil`], ["groupe-accueil", `/groups/${group}`], ["groupe-sorties", `/groups/${group}/sorties`], ["groupe-raids", `/groups/${group}/raids`],
     ["groupe-membres", `/groups/${group}/membres`], ["groupe-joueurs", `/groups/${group}/membres/joueurs`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
     ["groupe-presence", `/groups/${group}/raids/presence`],
     ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}/compo`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
@@ -608,7 +625,7 @@ test("tour des pages", async ({ page }) => {
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
     for (const [name, url] of pages) {
-      if (suffix && !["persos", "groupe-accueil", "groupe-raids", "groupe-membres", "groupe-joueurs", "raid"].includes(name)) continue;
+      if (suffix && !["persos", "groupe-accueil", "groupe-raids", "groupe-membres", "groupe-joueurs", "raid", "perso-modifier", "perso-metiers"].includes(name)) continue;
       await page.goto(url);
       await page.waitForLoadState("networkidle");
       await page.screenshot({ path: `${OUT_T}/${name}${suffix}.png`, fullPage: true });

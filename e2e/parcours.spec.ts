@@ -83,22 +83,33 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.getByRole("group", { name: "Spé" }).getByRole("button", { name: /Feral Cat/ }).click();
     await page.getByRole("button", { name: "Créer le perso" }).click();
     await expect(page).toHaveURL(/\/persos\/[0-9a-f-]{36}$/);
-    // L'essentiel en deux lignes, enregistré tout seul
+    // L'identité en texte dans l'en-tête, Équipement par défaut ; « ✎ Modifier le profil » ouvre l'édition (refonte du 09/11)
+    await expect(page.getByRole("tab", { name: "Équipement" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Profil" })).toHaveCount(0);
+    await page.getByRole("button", { name: "✎ Modifier le profil" }).click();
+    // Un seul doré pendant l'édition : « + Ajouter un perso » et les onglets sont désactivés
+    await expect(page.getByRole("button", { name: "+ Ajouter un perso" })).toBeDisabled();
+    await expect(page.getByRole("tab", { name: "Métiers" })).toBeDisabled();
+    await expect(page.getByRole("group", { name: "Spé" }).getByRole("button", { name: /Feral Cat/ })).toHaveAttribute("aria-pressed", "true");
+    // La spé choisie est désactivée dans l'off-spec ; « Aucune » en premier
+    await expect(page.getByRole("group", { name: "Off-spec" }).getByRole("button", { name: /Feral Cat/ })).toBeDisabled();
+    await expect(page.getByRole("group", { name: "Off-spec" }).getByRole("button").first()).toHaveText("Aucune");
     await page.selectOption("#f-race", "Tauren");
+    await page.fill("#f-level", "60");
+    await page.locator("#f-level").blur();
+    await page.getByRole("button", { name: "Valider le profil" }).click();
     await expect(page.locator(".fi-state")).toContainText("Enregistré ✓");
     await page.reload();
     await expect(page.locator(".fi-head h2")).toContainText("Tournicoti");
-    await expect(page.locator("#f-spec")).toHaveValue("Feral Cat");
-    await expect(page.locator("#f-race")).toHaveValue("Tauren");
-    // Talents repliés (l'addon les remplit) : on les déplie pour importer un build
-    await page.locator(".fi-fold summary").click();
+    await expect(page.locator(".fi-specs")).toContainText("Feral Cat");
+    await expect(page.locator(".fi-head .sub").first()).toHaveText("Niv. 60 · Druid · Tauren");
+    // Talents dans l'en-tête ; pas encore relevés : « Remplir à la main › » pour importer un build
+    await page.getByRole("button", { name: /^Talents/ }).click();
+    await page.locator("#fi-talents").getByRole("button", { name: "Remplir à la main ›" }).click();
     // Import d'un build ForeverChanges : répartition calculée, puis appliquée à la spé principale
     await page.fill("#f-import", "https://foreverchanges.pro/talents/priest?b=5");
     await expect(page.locator(".bi-result")).toContainText("Ce build est pour la classe Priest");
     await page.fill("#f-import", "https://foreverchanges.pro/talents/druid?b=050022-5520002123032213051-05");
-    await expect(page.locator(".bi-result")).toContainText("plus que les 0 disponibles");
-    await page.fill("#f-level", "60");
-    await page.locator("#f-level").blur();
     await expect(page.locator(".bi-result")).toContainText("Build complet : 51/51 points.");
     await page.getByRole("button", { name: "Appliquer à la spé principale" }).click();
     await expect(page.locator("#f-tal-main")).toHaveValue("9/37/5");
@@ -129,23 +140,35 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.reload();
     await expect(page.getByRole("tab", { name: "Métiers" })).toHaveAttribute("aria-selected", "true");
     await page.goBack();
-    await expect(page.getByRole("tab", { name: "Profil" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Équipement" })).toHaveAttribute("aria-selected", "true");
     await page.goForward();
+    // Liste + détail : « Modifier à la main » ouvre la saisie du métier choisi (refonte du 09/11)
+    await expect(page.locator(".pf-row").first()).toContainText("Pas encore choisi");
+    await page.getByRole("button", { name: "Modifier à la main" }).click();
     await page.selectOption("#p1-n", "Leatherworking");
     await page.fill("#p1-s", "300");
     await page.locator("#p1-s").press("ArrowDown");
     await expect(page.locator("#p1-s")).toHaveValue("295");
     await page.locator("#p1-s").fill("0450");
     await expect(page.locator("#p1-s")).toHaveValue("300");
-    const card = page.locator("details.recipes").first();
-    await card.locator("summary").click();
-    await card.getByRole("button", { name: "Je connais Warbear Woolies" }).click();
-    await expect(card.getByRole("button", { name: "Je connais Warbear Woolies" })).toHaveAttribute("aria-pressed", "true");
-    await expect(card.locator("summary")).toContainText("1 connu");
+    await expect(page.locator(".pf-row").first()).toContainText("Artisan");
+    const shown = page.getByRole("group", { name: "Patrons affichés" });
+    await shown.getByRole("button", { name: /^Tous/ }).click();
+    await page.getByRole("searchbox", { name: "Chercher un patron" }).fill("Warbear");
+    await page.getByRole("button", { name: "Je connais Warbear Woolies" }).click();
+    await expect(page.getByRole("button", { name: "Je connais Warbear Woolies" })).toHaveAttribute("aria-pressed", "true");
+    await expect(shown.getByRole("button", { name: /^Connus/ })).toHaveText("Connus · 1");
+    await expect(page.locator(".pf-row").first()).toContainText("1 patron");
+    // « Je le recherche » se marque toujours, même hors saisie
+    await page.getByRole("button", { name: "Terminer la saisie" }).click();
+    await expect(page.locator(".pf-rl li").filter({ hasText: "Warbear Woolies" })).toContainText("✓ Connu");
   });
 
   await test.step("équipement : choisir un objet dans la base", async () => {
     await page.getByRole("tab", { name: "Équipement" }).click();
+    // Pas encore relevé : l'équipé se remplit à la main ; l'objectif BiS, toujours
+    await expect(page.locator(".gear-none")).toContainText("Pas encore relevé");
+    await page.getByRole("button", { name: "remplis à la main ›" }).click();
     await page.getByRole("button", { name: /^Tête : vide/ }).click();
     await page.getByRole("combobox", { name: "Équipé : Tête" }).fill("helm");
     await page.getByRole("option", { name: /Helm of Might/ }).click();
@@ -158,7 +181,6 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
   });
 
   await test.step("addon : mise à jour de la fiche depuis l'export du jeu", async () => {
-    await page.getByRole("tab", { name: "Profil" }).click();
     // Ctrl+V n'importe où (lot F) : le panneau Synchro s'ouvre sur l'aperçu, la mise à jour part au bouton (refonte du 09/11)
     await expect(page.locator(".fi-state")).toContainText("Jamais synchronisé");
     await page.evaluate(text => {
@@ -176,8 +198,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(pasted).toContainText("Tournicoti · fiche mise à jour · nom complet : Tournicoti Ventfeuille · 2 patrons cochés");
     await pasted.getByRole("button", { name: "Fermer la synchro" }).click();
     await expect(pasted).toHaveCount(0);
-    await expect(page.locator(".fi-state")).toContainText("À jour · à l'instant");
-    await page.locator(".fi-fold summary").click();
+    await expect(page.locator(".fi-state")).toContainText("À jour");
+    await expect(page.locator(".fi-state")).toContainText("relevé par l'addon à l'instant");
+    // Relevés par l'addon : en lecture ; « Modifier à la main » en secours
+    if (!(await page.locator("#fi-talents").isVisible())) await page.getByRole("button", { name: /^Talents/ }).click();
+    await expect(page.locator("#fi-talents")).toContainText("relevés par l'addon");
+    const talEdit = page.locator("#fi-talents").getByRole("button", { name: /^(Modifier à la main|Terminer la saisie)$/ });
+    if ((await talEdit.textContent()) === "Modifier à la main") await talEdit.click();
     await expect(page.locator("#f-tal-main")).toHaveValue("0/8/0");
     await expect(page.locator("#f-link-main")).toHaveValue("https://foreverchanges.pro/talents/druid?b=-53");
     await expect(page.locator(".build").first().locator(".tt-col.main .tg-slot.on")).toHaveCount(2);
@@ -351,10 +378,14 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.locator(".gm-fold").getByRole("link", { name: "Gérer dans Mes persos" }).click();
     await expect(page.locator(".mp-list .card").filter({ hasText: "Tournicoti" })).toContainText("★");
     await page.locator(".mp-list .card").filter({ hasText: "Greta" }).click();
+    await page.getByRole("button", { name: "✎ Modifier le profil" }).click();
+    // Greta vient de l'addon : nom, niveau, classe et race en lecture, avec un cadenas
+    await expect(page.locator(".pe-locks")).toContainText("relevés par l'addon");
     await expect(page.locator("#f-guild")).toHaveValue("");
     await page.selectOption("#f-guild", { label: "Les Testeurs" });
-    await expect(page.locator(".fi-head .sub")).toContainText("Les Testeurs");
     await expect(page.getByRole("group", { name: "Main ou alt dans la guilde" }).getByRole("button", { name: "Alt" })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "Valider le profil" }).click();
+    await expect(page.locator(".fi-guild")).toHaveText("Les Testeurs · alt");
     // Ordre de la liste : flèche haut sur la poignée ⋮⋮ de Greta, gardé sur le compte ; puis glisser à la souris
     const cards = page.locator(".mp-list .card");
     const order = async () => (await (await page.request.get("/api/characters")).json()).characters.map((c: { name: string }) => c.name.split(" ")[0]);

@@ -190,6 +190,8 @@ test("fiches : rattacher plusieurs persos, créer la fiche d'un joueur, donner u
     await morwenPage.goto(`/persos/${grumz}`);
     await expect(morwenPage.locator(".fi-origin")).toContainText("Fiche donnée par Vex le");
     await shot(morwenPage, "fiches-mes-persos.png");
+    // « Donner à un autre joueur… » est dans « Modifier le profil » (refonte du 09/11)
+    await morwenPage.getByRole("button", { name: "✎ Modifier le profil" }).click();
     await morwenPage.getByRole("button", { name: "Donner à un autre joueur…" }).click();
     const dlg = morwenPage.getByRole("dialog");
     await expect(dlg.getByRole("heading")).toHaveText("Donner Grumz à…");

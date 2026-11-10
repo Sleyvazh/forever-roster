@@ -6,6 +6,7 @@ import { ItemPicker, useGameVersion } from "./GameData";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { FloatingTip, iconUsable, ItemIcon, ItemTooltipBody, useIconFailures } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
+import { openSync, syncState } from "../syncPanel";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 type View = "cur" | "bis";
@@ -40,10 +41,20 @@ function shownFor(g: GearEntry, view: View, items: Record<number, GameItem>): Sh
   return { name, id, quality, item };
 }
 
-/** Onglet Équipement présenté comme la fiche de personnage du jeu. */
-export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (p: Partial<Character>) => void; editable: boolean }) {
+/**
+ * Onglet Équipement présenté comme la fiche de personnage du jeu. `fiche` (Mes persos de Forever, refonte du 09/11) : ce que
+ * l'addon relève est en lecture (« ● relevé par l'addon · il y a 3 h »), « Modifier à la main » en secours ; l'objectif BiS
+ * reste toujours modifiable ; sans relevé, « Pas encore relevé · fais ta synchro » ou « Remplir à la main ».
+ */
+export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onChange: (p: Partial<Character>) => void; editable: boolean; fiche?: boolean }) {
   const [view, setView] = useState<View>("cur");
   const [open, setOpen] = useState<Slot | null>(null);
+  const [manual, setManual] = useState(false);
+  // Fiche : l'équipé se change « à la main », l'objectif BiS toujours
+  const canEdit = editable && (!fiche || manual || view === "bis");
+  const bisOnly = !!fiche && !manual;
+  const synced = syncState(c.addonSyncedAt);
+  const empty = !GEAR_SLOTS.some(s => c.gear[s]?.cur || c.gear[s]?.bis);
   const [tip, setTip] = useState<{ slot: Slot; rect: DOMRect } | null>(null);
   const cls = CLASSES[c.cls as ClassName];
 
@@ -78,9 +89,12 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
     const g = c.gear[slot] ?? {};
     const shown = shownFor(g, view, items);
     const iconOk = iconUsable(shown?.item?.details?.icon);
-    const act = () => { setTip(null); if (editable) setOpen(o => (o === slot ? null : slot)); };
+    const act = () => { setTip(null); if (canEdit) setOpen(o => (o === slot ? null : slot)); };
+    // Main gauche vide sous une arme à deux mains : dit pourquoi, comme en jeu
+    const mh = c.gear["Main Hand"]?.curId ? items[c.gear["Main Hand"]!.curId!] : undefined;
+    const taken = slot === "Off Hand" && !shown && view === "cur" && mh?.inventoryType === INVTYPE_2H;
     return (
-      <div key={slot} role="button" tabIndex={0} className="gslot" aria-expanded={editable ? open === slot : undefined}
+      <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}`} aria-expanded={canEdit ? open === slot : undefined}
         aria-label={`${SLOT_FR[slot]} : ${shown ? shown.name : "vide"}${g.got ? ", BiS obtenu" : ""}`}
         onClick={act}
         onKeyDown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } }}
@@ -93,16 +107,33 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
           {g.got && <span className="got" aria-hidden="true">✓</span>}
         </span>
         <span className="gtxt">
-          <span className={`gname${shown?.quality != null ? ` q${shown.quality}` : ""}`} style={shown ? undefined : { color: "var(--ink-3)" }}>{shown ? shown.name : "Vide"}</span>
-          <span className="gmeta"><span>{SLOT_FR[slot]}</span>{shown?.item && <span className="num">{shown.item.itemLevel}</span>}</span>
+          <span className={`gname${shown?.quality != null ? ` q${shown.quality}` : ""}`}>{shown ? shown.name : "Vide"}{fiche && shown && g.got && <span className="tag ok gbis">BiS</span>}</span>
+          <span className="gmeta"><span>{SLOT_FR[slot]}</span>{taken ? <span>prise par l'arme à deux mains</span> : shown?.item && <span className="num">{fiche ? `niv. ${shown.item.itemLevel}` : shown.item.itemLevel}</span>}</span>
         </span>
       </div>
     );
   };
 
+  const top = fiche ? (
+    <>
+      <div className="gear-top fiche">
+        <h3 style={{ margin: 0 }}>Équipement</h3>
+        {c.addonSyncedAt && <span className={`sy-age ${synced.tone}`}>● relevé par l'addon · {synced.ago}</span>}
+        <span className="grow1" />
+        <div className="seg eq" role="group" aria-label="Vue">
+          {(["cur", "bis"] as View[]).map(v => <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => { setView(v); setOpen(null); }}>{v === "cur" ? "Équipé" : "Objectif BiS"}</button>)}
+        </div>
+        {editable && <button type="button" className="btn" aria-pressed={manual} onClick={() => { setManual(m => !m); setOpen(null); }}>{manual ? "Terminer la saisie" : "Modifier à la main"}</button>}
+      </div>
+      {editable && empty && !c.addonSyncedAt && !manual && (
+        <p className="gm-note gear-none"><i aria-hidden="true">i</i>
+          <span><b>Pas encore relevé</b> · <button type="button" className="link" onClick={openSync}>fais ta synchro</button>, ou <button type="button" className="link" onClick={() => setManual(true)}>remplis à la main ›</button></span></p>
+      )}
+    </>
+  ) : null;
   return (
     <div className="sec">
-      <div className="gear-top">
+      {top ?? <div className="gear-top">
         <h3 style={{ margin: 0 }}>Équipement</h3>
         <div className="theme-seg" role="group" aria-label="Vue">
           {/* Pas de <button> : la fiche en lecture seule est dans un fieldset désactivé, et la vue doit rester changeable. */}
@@ -113,7 +144,7 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
             </span>
           ))}
         </div>
-      </div>
+      </div>}
       <div className="doll">
         <div className="dcol left">{LEFT.map(slotEl)}</div>
         <aside className="portrait" aria-label="Résumé de l'équipement" style={cls ? { ["--cc" as string]: cls.color } : undefined}>
@@ -132,11 +163,11 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
             <div className="pstat"><span>Niveau d'objet moyen</span><b>{avg}</b></div>
             <div className="pstat"><span>Épiques visés</span><b>{epics}</b></div>
           </div>
-          {editable && <div className="small muted">Clique sur un emplacement pour choisir l'objet.</div>}
+          {canEdit && <div className="small">{bisOnly ? "Clique sur un emplacement pour choisir ton objectif BiS." : "Clique sur un emplacement pour choisir l'objet."}</div>}
         </aside>
         <div className="dcol right">{RIGHT.map(slotEl)}</div>
         <div className="dweapons">{WEAPONS.map(slotEl)}</div>
-        {editable && open && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
+        {canEdit && open && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} bisOnly={bisOnly} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
       </div>
       {tip && <ItemTip slot={tip.slot} rect={tip.rect} g={c.gear[tip.slot] ?? {}} view={view} items={items}
         owned={new Set(GEAR_SLOTS.map(s => shownFor(c.gear[s] ?? {}, view, items)?.name).filter((n): n is string => !!n))} />}
@@ -144,7 +175,7 @@ export function Paperdoll({ c, onChange, editable }: { c: Character; onChange: (
   );
 }
 
-function SlotEditor({ slot, g, items, onSet, onClose }: { slot: Slot; g: GearEntry; items: Record<number, GameItem>; onSet: (p: Partial<GearEntry>) => void; onClose: () => void }) {
+function SlotEditor({ slot, g, items, bisOnly, onSet, onClose }: { slot: Slot; g: GearEntry; items: Record<number, GameItem>; bisOnly?: boolean; onSet: (p: Partial<GearEntry>) => void; onClose: () => void }) {
   const cur = g.curId ? items[g.curId] : null;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [slot]);
@@ -152,6 +183,7 @@ function SlotEditor({ slot, g, items, onSet, onClose }: { slot: Slot; g: GearEnt
     <div className="gedit" ref={ref} role="region" aria-label={`Modifier : ${SLOT_FR[slot]}`}>
       <div className="row between"><b>{SLOT_FR[slot]}</b><button type="button" className="btn sm ghost" onClick={onClose}>Fermer</button></div>
       <div className="grid">
+        {!bisOnly && <>
         <div className="fld"><span className="lbl">Équipé</span>
           <ItemPicker slot={slot} label={`Équipé : ${SLOT_FR[slot]}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q} compareWith={cur} compareLabel="Par rapport à"
             onChange={p => onSet({ cur: p.name, curId: p.id, ...(p.quality !== undefined && { q: p.quality }) })} />
@@ -161,6 +193,7 @@ function SlotEditor({ slot, g, items, onSet, onClose }: { slot: Slot; g: GearEnt
             <option value="">—</option>{ITEM_QUALITIES.map((q, i) => <option key={q} value={i}>{q}</option>)}
           </select>
         </div>
+        </>}
         <div className="fld"><span className="lbl">Objectif BiS</span>
           <ItemPicker slot={slot} label={`Objectif BiS : ${SLOT_FR[slot]}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ} compareWith={cur} compareLabel="Gain par rapport à"
             onChange={p => onSet({ bis: p.name, bisId: p.id, bisQ: p.quality ?? (p.id ? g.bisQ : null) })} />

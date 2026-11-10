@@ -1,6 +1,6 @@
 import { NumberField } from "./NumberField";
 import {
-  CLASSES, LEGACY_TREES, PRIMARY_PROFESSIONS, PROFESSION_PAIRS, RACE_NAMES, RACES,
+  CLASSES, LEGACY_TREES, PRIMARY_PROFESSIONS, RACE_NAMES, RACES,
   SECONDARY_PROFESSIONS, CLASS_SPECS, isValidCombo, parseTalentLink, professionTier, roleOf, specDef, talentPointsAt, type ClassName, type Role, type SpecDef,
 } from "@forever/game-data";
 import { useState } from "react";
@@ -155,7 +155,7 @@ function Profil({ c, onChange, editable }: SubProps) {
  * Talents : répartition, lien du calculateur et arbres, pour la spé principale et l'off-spec. `folded` (Mes persos de Forever) :
  * sans titre ni choix de la spé (ils sont dans l'en-tête de la fiche).
  */
-export function TalentsSection({ c, onChange, editable, folded }: SubProps & { folded?: boolean }) {
+export function TalentsSection({ c, onChange, editable, folded, readOnly }: SubProps & { folded?: boolean; readOnly?: boolean }) {
   const cl = CLASSES[c.cls as ClassName];
   const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
   const avail = talentPointsAt(c.level);
@@ -184,9 +184,9 @@ export function TalentsSection({ c, onChange, editable, folded }: SubProps & { f
         )}
         {cl && (
           <div className={`builds${view === "gauges" ? " two" : ""}`}>
-            <Build id="main" hideSpec={folded} title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
+            <Build id="main" hideSpec={folded} readOnly={readOnly} title="Spé principale" view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" hideSpec={folded} title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
+            <Build id="off" hideSpec={folded} readOnly={readOnly} title="Off-spec" view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -202,8 +202,10 @@ export function TalentsSection({ c, onChange, editable, folded }: SubProps & { f
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange, hideSpec }: {
+function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange, hideSpec, readOnly }: {
   id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"]; hideSpec?: boolean;
+  /** Lecture (Mes persos, données de l'addon) : la répartition en texte, sans champs. */
+  readOnly?: boolean;
   cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
   onChange: (p: { spec?: string; talents?: string; link?: string }) => void;
 }) {
@@ -228,7 +230,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
         <h4 className="with-icon">{def && <SpecIcon cls={cls} spec={spec} size={26} />}<span>{title}</span></h4>
         {def && <RoleIcon role={def.role} />}
       </div>
-      <div className="grid">
+      {readOnly ? <p className="build-ro">{spec || "Pas de spé"} · <b className="num">{talents || "—"}</b></p> : <div className="grid">
         {!hideSpec && <div className="fld"><label htmlFor={`f-spec-${id}`}>Intitulé de la spé</label>
           <select id={`f-spec-${id}`} value={spec} onChange={e => onChange({ spec: e.target.value })}>
             <option value="">—</option>
@@ -244,7 +246,7 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
         <div className="fld" style={{ gridColumn: "1 / -1" }}><label htmlFor={`f-link-${id}`}>Lien du build</label>
           <input id={`f-link-${id}`} type="url" placeholder={`https://foreverchanges.pro/talents/${cl?.slug ?? ""}…`} value={link} onChange={e => setLink(e.target.value)} />
         </div>
-      </div>
+      </div>}
       {parsed?.ok && parsed.cls && parsed.cls !== cls && <div className="warnmsg">Ce lien est un build {parsed.cls} : la répartition n'a pas été reprise.</div>}
       {cl && <TalentTrees cls={cls} points={split} mainTree={def?.tree} view={view} ranks={ranks} talents={treeTalents} />}
       {view === "grid" && treeTalents.length > 0 && !ranks && (
@@ -308,8 +310,8 @@ function BuildImport({ cls, avail, onApply }: { cls: string; avail: number; onAp
   );
 }
 
-function ProfCard({ k, p, other, onSet, characterId, editable }: { k: string; p: Prof; other: string; onSet: (p: Prof) => void; characterId: string; editable: boolean }) {
-  const pair = p.name && PROFESSION_PAIRS.some(([a, b]) => (a === p.name && b === other) || (b === p.name && a === other));
+/** Un métier principal. Les bonus des métiers et le message de paire ne sont plus affichés (refonte du 09/11 : effets réels inconnus). */
+function ProfCard({ k, p, onSet, characterId, editable }: { k: string; p: Prof; other: string; onSet: (p: Prof) => void; characterId: string; editable: boolean }) {
   return (
     <div className="prof">
       <div className="two">
@@ -324,8 +326,6 @@ function ProfCard({ k, p, other, onSet, characterId, editable }: { k: string; p:
         <div style={{ ["--cc" as string]: "var(--gold)" }}><Bar pct={p.skill / 3} /></div>
         <div className="row between small"><span className="tier">{professionTier(p.skill)}</span><span className="num muted">{p.skill}/300</span></div>
       </div>
-      {p.name && <div className="bonus">{PRIMARY_PROFESSIONS[p.name]}</div>}
-      {pair && <div className="okmsg">Paire récolte + artisanat cohérente avec {other}.</div>}
       {CRAFTING.has(p.name) && <RecipeCard key={p.name} characterId={characterId} profession={p.name} skill={p.skill} editable={editable} />}
     </div>
   );
@@ -337,7 +337,7 @@ export function Metiers({ c, onChange, editable = false }: SubProps) {
   return (
     <>
       <div className="sec">
-        <h3>Métiers principaux <small>Apprenti 75 · Compagnon 150 · Expert 225 · Artisan 300</small></h3>
+        <h3>Métiers principaux</h3>
         <div className="profs">
           <ProfCard k="p1" p={pr.prof1} other={pr.prof2.name} onSet={p => set({ prof1: p })} characterId={c.id} editable={editable} />
           <ProfCard k="p2" p={pr.prof2} other={pr.prof1.name} onSet={p => set({ prof2: p })} characterId={c.id} editable={editable} />
@@ -355,7 +355,6 @@ export function Metiers({ c, onChange, editable = false }: SubProps) {
                 </div>
               </div>
               <div style={{ ["--cc" as string]: "var(--gold)" }}><Bar pct={pr[k] / 3} /></div>
-              <div className="bonus">{SECONDARY_PROFESSIONS[k].bonus}</div>
               {CRAFTING.has(SECONDARY_PROFESSIONS[k].name) && <RecipeCard characterId={c.id} profession={SECONDARY_PROFESSIONS[k].name} skill={pr[k]} editable={editable} />}
             </div>
           ))}

@@ -3,7 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, post, put, uploadImage, type Character, type GroupSummary } from "../api";
-import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, Metiers, TalentsSection, type EditorTab } from "../components/CharacterEditor";
+import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, TalentsSection, type EditorTab } from "../components/CharacterEditor";
+import { Professions } from "../components/Professions";
+import { RoleIcon } from "../components/RoleIcon";
+import { DialogHead, Modal } from "../components/Dialog";
 import { ClassIcon, SpecIcon } from "../components/Icons";
 import { ImageUpload, Portrait } from "../components/ImageUpload";
 import { LockedLevel, LockIcon, levelLockText } from "../components/LevelLock";
@@ -22,9 +25,13 @@ import { useAutosave } from "./CharactersPage";
  * niveau, race, classe ; spé, off-spec, guilde, main ou alt) ; les talents, que l'addon remplit, sont repliés.
  * « + Ajouter un perso » : /persos/nouveau, nom, classe et spé. Roster (WoW Retail) garde CharactersPage.
  * L'ordre de la liste se change en glissant la poignée ⋮⋮ (ou flèches haut/bas) : il sert aussi sur l'Accueil.
+ * Refonte du 09/11 (maquette-persos-modifier-le-profil.png) : plus d'onglet Profil ; l'en-tête montre l'identité en texte
+ * (nom ; Niv. 60 · Druide · Tauren ; guilde · ★ main ; spé, off-spec, « Talents 31 / 20 / 0 › ») et l'état de la synchro ;
+ * « ✎ Modifier le profil » déplie l'édition dans l'en-tête (identité, guilde, spé et off-spec en cartes, Ce perso), validée
+ * par « Valider le profil ». Onglets Équipement (par défaut) · Métiers · Notes ; /persos/:id/profil ouvre l'édition.
  */
 
-const TABS: [EditorTab, string][] = [["profil", "Profil"], ["metiers", "Métiers"], ["stuff", "Équipement"], ["legacy", "Notes"]];
+const TABS: [EditorTab, string][] = [["stuff", "Équipement"], ["metiers", "Métiers"], ["legacy", "Notes"]];
 const errorOf = (e: unknown, def: string) => (e instanceof ApiError ? e.message : def);
 
 export function MyCharsPage() {
@@ -40,8 +47,12 @@ export function MyCharsPage() {
   const creating = params.charId === "nouveau";
   const picked = !creating && params.charId && local.some(c => c.id === params.charId) ? params.charId : null;
   const sel = picked ?? local[0]?.id ?? null;
-  const tab = editorTabFromSlug(params.tab);
-  const urlFor = (id: string, t: EditorTab = "profil") => `/persos/${id}${t === "profil" ? "" : `/${EDITOR_TAB_SLUG[t]}`}`;
+  // Plus d'onglet Profil : Équipement par défaut, et /persos/:id/profil (anciens liens) ouvre « Modifier le profil »
+  const rawTab = editorTabFromSlug(params.tab);
+  const tab: EditorTab = rawTab === "profil" ? "stuff" : rawTab;
+  const urlFor = (id: string, t: EditorTab = "stuff") => `/persos/${id}${t === "stuff" ? "" : `/${EDITOR_TAB_SLUG[t]}`}`;
+  const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => { if (params.tab === "profil" && sel) setEditing(sel); }, [params.tab, sel]);
   const current = local.find(c => c.id === sel) ?? null;
   const saver = useAutosave(current?.id ?? null, saved => {
     qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => (c.id === saved.id ? saved : c)) });
@@ -64,7 +75,10 @@ export function MyCharsPage() {
   const head = (
     <div className="page-head">
       <div className="ph-t"><span className="eyebrow">Roster personnel</span><h1>Mes persos</h1></div>
-      {!creating && local.length > 0 && <div className="row ph-acts"><Link className="btn primary" to="/persos/nouveau">+ Ajouter un perso</Link></div>}
+      {/* Pendant « Modifier le profil », un seul doré : celui de « Valider le profil » */}
+      {!creating && local.length > 0 && <div className="row ph-acts">{editing
+        ? <button type="button" className="btn primary" disabled title="Valide ou annule d'abord le profil en cours">+ Ajouter un perso</button>
+        : <Link className="btn primary" to="/persos/nouveau">+ Ajouter un perso</Link>}</div>}
     </div>
   );
   if (creating || !local.length) return (
@@ -79,12 +93,13 @@ export function MyCharsPage() {
       <div className={`mp${picked ? " has-sel" : ""}`}>
         <div className="mp-list">
           <SortableChars items={local} onReorder={ids => void saveOrder(ids)}
-            render={c => <CharCard c={c} current={c.id === sel} onClick={() => nav(urlFor(c.id, picked ? tab : "profil"))} />} />
+            render={c => <CharCard c={c} current={c.id === sel} onClick={() => { setEditing(null); nav(urlFor(c.id, picked ? tab : "stuff")); }} />} />
         </div>
         {current && (
           <div className="stack mp-sheet" style={{ gap: 12 }}>
             <Link className="mp-back mp-phone" to="/persos">← Mes persos</Link>
             <CharSheet key={current.id} c={current} groups={groups} tab={tab} onTab={t => nav(urlFor(current.id, t))} onChange={edit} status={saver.status}
+              editing={editing === current.id} onEditing={on => { setEditing(on ? current.id : null); if (!on && params.tab === "profil") nav(urlFor(current.id), { replace: true }); }}
               onPortrait={portraitId => {
                 setLocal(list => list.map(c => (c.id === current.id ? { ...c, portraitId } : c)));
                 qc.setQueryData<{ characters: Character[] }>(["characters"], d => d && { characters: d.characters.map(c => (c.id === current.id ? { ...c, portraitId } : c)) });
@@ -143,116 +158,113 @@ function SortableChars({ items, render, onReorder }: { items: Character[]; rende
   );
 }
 
-/** Carte d'un perso dans la liste : niveau, main (★), nom ; classe et spés ; « À compléter » sans classe ou sans spé. */
+/**
+ * Carte d'un perso dans la liste (refonte du 09/11) : niveau, main (★), nom ; les spés sur la deuxième ligne, sans
+ * troncature ; à droite l'âge de la synchro (« ● À jour · il y a 3 h », « ● Il y a 12 j », « ● Jamais ») ; « Spé à choisir »
+ * en orange quand il manque la classe ou la spé.
+ */
 function CharCard({ c, current, onClick }: { c: Character; current: boolean; onClick: () => void }) {
   const t = useGameText();
-  const specs = [c.spec1, c.spec2].filter(Boolean).map(s => t.spec(c.cls, s)).join(" / ");
+  const specs = [c.spec1, c.spec2].filter(Boolean).map(s => t.spec(c.cls, s)).join(" · ");
   return (
     <button type="button" className="card" aria-current={current ? "true" : "false"} style={{ "--cc": t.color(c.cls) ?? "var(--line-2)" } as CSSProperties} onClick={onClick}>
       <span className="cav" aria-hidden="true">
         <Portrait id={c.portraitId} size={42} className="round"
-          fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
+          fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span>?</span>} />
       </span>
-      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title={`Main dans ${c.group.name}`}>★</span>}{c.name}</span>
-      {!c.cls || !c.spec1 ? <span className="tag warn">À compléter</span> : <SyncDot at={c.addonSyncedAt} />}
-      <span className="sub">{[t.cls(c.cls) || "Classe ?", specs || "pas de spé"].join(" · ")}</span>
+      <span className="nm">{c.group?.isMain && <span className="gm-star" title={`Main dans ${c.group.name}`}>★</span>}{c.name}<span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span></span>
+      <SyncDot at={c.addonSyncedAt} />
+      <span className={`sub${!c.cls || !c.spec1 ? " need" : ""}`}>{!c.cls || !c.spec1 ? "Spé à choisir" : specs}</span>
     </button>
   );
 }
 
-/**
- * Âge de la synchro sur la carte (refonte 09/11) : point vert à moins de 7 jours, orange avec l'âge au-delà (« 12 j »)
- * ou « Jamais ». Court, pour laisser la place au nom ; la fiche donne l'état complet.
- */
+/** Âge de la synchro sur la carte (refonte 09/11) : vert à moins de 7 jours (« À jour » et l'âge), orange au-delà ou « Jamais ». */
 function SyncDot({ at }: { at?: string | null }) {
   const s = syncState(at);
-  if (s.tone === "ok") return <span className="sy-age ok" title={`Synchro à jour · ${s.ago}`}>●<span className="sr-only"> Synchro à jour</span></span>;
-  return (
-    <span className="sy-age warn" title={s.ago ? `Synchro ${s.ago}` : "Jamais synchronisé"}>
-      ● <span className="sr-only">Synchro </span>{s.ago ? <><span className="sr-only">il y a </span>{s.label.replace("Il y a ", "")}</> : "Jamais"}
-    </span>
-  );
+  if (s.tone === "ok") return <span className="sy-age ok mc-age" title={`Synchro à jour · ${s.ago}`}>● À jour<small>{s.ago}</small></span>;
+  return <span className="sy-age warn mc-age" title={s.ago ? `Synchro ${s.ago}` : "Jamais synchronisé"}>● {s.ago ? s.label : "Jamais"}<span className="sr-only"> sans synchro</span></span>;
 }
 
 /* ---------- Fiche ---------- */
 
 type Status = { kind: "idle" | "saving" | "saved" | "error" | "held"; msg?: string };
 
-function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDeleted }: {
+function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDeleted, editing, onEditing }: {
   c: Character; groups: { id: string; name: string }[]; tab: EditorTab; onTab: (t: EditorTab) => void; onChange: (p: Partial<Character>) => void;
-  status: Status; onPortrait: (id: string | null) => void; onDeleted: () => void;
+  status: Status; onPortrait: (id: string | null) => void; onDeleted: () => void; editing: boolean; onEditing: (on: boolean) => void;
 }) {
-  const qc = useQueryClient();
   const gt = useGameText();
   const [portrait, setPortrait] = useState(false);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [giving, setGiving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [talents, setTalents] = useState(false);
+  const [talManual, setTalManual] = useState(false);
   const color = gt.color(c.cls) ?? "var(--gold)";
   const age = syncState(c.addonSyncedAt);
-  const face = <Portrait id={c.portraitId} size={44} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={34} /> : <ClassIcon cls={c.cls} size={34} />) : <span className="muted">?</span>} />;
-  /** Guilde du perso (une seule, ou aucune) ; main : il passe en tête pour les inscriptions. */
-  const moveTo = async (to: string, main = false) => {
-    setErr(null);
-    try {
-      if (to) await put(`/groups/${to}/characters/${c.id}`, { assigned: true, ...(main && { main: true }) });
-      else if (c.group) await put(`/groups/${c.group.id}/characters/${c.id}`, { assigned: false });
-    } catch (e) { setErr(errorOf(e, "Changement impossible.")); }
-    await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["group-chars"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
-  };
-  const remove = async () => {
-    try { await del(`/characters/${c.id}`); onDeleted(); } catch (e) { setErr(errorOf(e, "Suppression impossible.")); }
-  };
+  const face = <Portrait id={c.portraitId} size={44} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={34} /> : <ClassIcon cls={c.cls} size={34} />) : <span>?</span>} />;
   const saveText = { idle: null, saving: "Enregistrement…", saved: "Enregistré ✓", error: status.msg, held: status.msg }[status.kind];
+  const specLine = (sp: string) => (
+    <span className="fi-sp">{c.cls && <SpecIcon cls={c.cls} spec={sp} size={20} />}<b>{gt.spec(c.cls, sp)}</b>{roleOf(sp) && <RoleIcon role={roleOf(sp)} size={16} />}</span>
+  );
+  const split = (t: string) => (t ? t.split("/").map(x => x.trim()).join(" / ") : null);
   return (
-    <section className="panel lift fi" style={{ "--cc": color } as CSSProperties} aria-label={`Fiche de ${c.name}`}>
+    <section className={`panel lift fi${editing ? " editing" : ""}`} style={{ "--cc": color } as CSSProperties} aria-label={`Fiche de ${c.name}`}>
       <div className="fi-head">
         <button type="button" className="fi-face" aria-expanded={portrait} aria-label={`Changer le portrait de ${c.name}`} title="Changer le portrait" onClick={() => setPortrait(o => !o)}>{face}</button>
-        <div style={{ minWidth: 0 }}>
-          <h2>{c.name}</h2>
-          <div className="sub">Niv. {c.level} · <b className={`cn${c.cls === "Shaman" ? " sha" : ""}`}>{gt.cls(c.cls) || "Classe ?"}</b>{c.race && ` · ${c.race}`}{c.group && ` · ${c.group.name}${c.group.isMain ? " (main)" : ""}`}</div>
+        <div className="fi-id">
+          <h2>{c.name}{editing && <span className="tag gold fi-editing">Modifier le profil</span>}</h2>
+          {!editing && <>
+            <div className="sub">Niv. <b className="num">{c.level}</b> · <b className={`cn${c.cls === "Shaman" ? " sha" : ""}`}>{gt.cls(c.cls) || "Classe ?"}</b>{c.race && ` · ${c.race}`}</div>
+            <div className="sub fi-guild">{c.group ? <>{c.group.name} · {c.group.isMain ? <b className="fi-main">★ main</b> : "alt"}</> : "Sans guilde"}</div>
+            <div className="fi-specs">
+              {c.spec1 ? specLine(c.spec1) : <span className="fi-need">Spé à choisir</span>}
+              {c.spec2 && <><span>off-spec</span>{specLine(c.spec2)}</>}
+              {c.cls && <button type="button" className="fi-tal" aria-expanded={talents} aria-controls="fi-talents" onClick={() => setTalents(o => !o)}>
+                Talents {split(c.talents) ? <b className="num">{split(c.talents)}</b> : "à remplir"} <span aria-hidden="true">{talents ? "▾" : "›"}</span></button>}
+            </div>
+          </>}
         </div>
         <div className="fi-state">
-          <span className={`sy-age ${age.tone}`}>● {age.tone === "ok" ? `À jour · ${age.ago}` : age.ago ? `${age.label} sans synchro` : "Jamais synchronisé"}</span>
-          {age.tone === "warn" && <button type="button" className="btn sm" onClick={openSync}>Ouvrir la synchro</button>}
+          {editing
+            ? c.addonSyncedAt && <span className="sy-age ok">● nom, niveau, classe et race suivent le jeu</span>
+            : <>
+              <span className={`sy-age ${age.tone}`}>● {age.tone === "ok" ? "À jour" : age.ago ? `${age.label} sans synchro` : "Jamais synchronisé"}</span>
+              {c.addonSyncedAt && age.tone === "ok" && <span className="fi-src">relevé par l'addon {age.ago}</span>}
+              {age.tone === "warn" && <button type="button" className="btn sm" onClick={openSync}>Ouvrir la synchro</button>}
+              <button type="button" className="btn fi-edit" onClick={() => onEditing(true)}>✎ Modifier le profil</button>
+            </>}
           {saveText && <span className={status.kind === "error" || status.kind === "held" ? "warnmsg" : undefined} role="status">{saveText}</span>}
         </div>
       </div>
-      {c.origin && <OriginNote c={c} />}
+      {c.origin && !editing && <OriginNote c={c} />}
       {portrait && (
         <div className="portrait-panel">
           <ImageUpload title="Portrait du perso" hint="Une capture de la tête de ton perso en jeu, recadrée en 200 × 200. Visible par tes guildes." currentId={c.portraitId} round
             onUpload={async blob => { const r = await uploadImage<{ portraitId: string }>(`/characters/${c.id}/portrait`, blob); onPortrait(r.portraitId); setPortrait(false); }}
             onRemove={async () => { await del(`/characters/${c.id}/portrait`); onPortrait(null); }} />
-          <button type="button" className="btn sm ghost" onClick={() => setPortrait(false)}>Fermer</button>
+          <button type="button" className="btn sm" onClick={() => setPortrait(false)}>Fermer</button>
+        </div>
+      )}
+      {editing && <ProfileEditor c={c} groups={groups} onChange={onChange} onDone={() => onEditing(false)} onDeleted={onDeleted} />}
+      {talents && !editing && (
+        <div className="fi-talents" id="fi-talents">
+          <div className="fi-tal-head">
+            <h3>Talents</h3>
+            {c.talentNodes?.length
+              ? <span className={`sy-age ${age.tone}`}>● relevés par l'addon · {age.ago}</span>
+              : <span>Pas encore relevés · <button type="button" className="link" onClick={openSync}>fais ta synchro</button></span>}
+            <button type="button" className="btn sm" aria-pressed={talManual} onClick={() => setTalManual(m => !m)}>{talManual ? "Terminer la saisie" : c.talentNodes?.length ? "Modifier à la main" : "Remplir à la main ›"}</button>
+          </div>
+          <TalentsSection c={c} onChange={onChange} editable={talManual} readOnly={!talManual} folded />
         </div>
       )}
       <div className="tabs" role="tablist">
-        {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => onTab(k)}>{l}</button>)}
+        {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} disabled={editing} onClick={() => onTab(k)}>{l}</button>)}
       </div>
-      {tab === "profil" ? (
-        <div className="fi-body">
-          <Essentials c={c} groups={groups} onChange={onChange} onGroup={to => void moveTo(to)} onMain={() => c.group && void moveTo(c.group.id, true)} />
-          {err && <div className="alert error" role="alert">{err}</div>}
-          <details className="fi-fold">
-            <summary><h3>Talents</h3><span className="muted">{talentsLine(c)}</span></summary>
-            <div className="fi-fold-in"><TalentsSection c={c} onChange={onChange} editable folded /></div>
-          </details>
-          <div className="fi-foot">
-            {c.group && !confirmDel && <button type="button" className="btn ghost sm" onClick={() => setGiving(true)}>Donner à un autre joueur…</button>}
-            {confirmDel
-              ? <span className="row small">Supprimer {c.name} ? <button className="btn danger sm" type="button" onClick={() => void remove()}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
-              : <button type="button" className="btn ghost sm" onClick={() => setConfirmDel(true)}>Supprimer le perso</button>}
-          </div>
-        </div>
-      ) : (
-        <div className="pane">
-          {tab === "metiers" && <Metiers c={c} onChange={onChange} editable />}
-          {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable />}
-          {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
-        </div>
-      )}
-      {giving && c.group && <GiveFicheDialog groupId={c.group.id} groupName={c.group.name} c={{ ...c, isMain: c.group.isMain }} onClose={() => setGiving(false)} closeOnDone />}
+      <div className={`pane${editing ? " fi-off" : ""}`} inert={editing || undefined}>
+        {tab === "metiers" && <Professions c={c} onChange={onChange} />}
+        {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable fiche />}
+        {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
+      </div>
     </section>
   );
 }
@@ -273,73 +285,145 @@ function OriginNote({ c }: { c: Character }) {
   );
 }
 
-/** « Protection 5/5/41 · Fury 31/20/0 · remplis par l'addon » */
-function talentsLine(c: Character) {
-  const parts = [c.spec1 && c.talents ? `${c.spec1} ${c.talents}` : null, c.spec2 && c.talents2 ? `${c.spec2} ${c.talents2}` : null].filter(Boolean);
-  const src = c.talentNodes?.length ? "remplis par l'addon" : "remplis par l'addon à la prochaine synchro";
-  return [...parts, parts.length && !c.talentNodes?.length ? null : src].filter(Boolean).join(" · ");
-}
-
-/** L'essentiel en deux lignes : nom, niveau, race, classe ; spé, off-spec, guilde, main ou alt. */
-function Essentials({ c, groups, onChange, onGroup, onMain }: {
-  c: Character; groups: { id: string; name: string }[]; onChange: (p: Partial<Character>) => void; onGroup: (to: string) => void; onMain: () => void;
+/**
+ * « Modifier le profil » (refonte du 09/11) : Identité (nom, niveau, classe, race — en pointillé avec cadenas quand l'addon
+ * les relève), Guilde et [★ Main | Alt], Spé et Off-spec en cartes de même largeur (la spé choisie est désactivée dans
+ * l'off-spec), Ce perso (Donner… neutre, Supprimer… en rouge avec dialogue), puis [Annuler] [Valider le profil].
+ * Rien n'est enregistré avant « Valider le profil ».
+ */
+function ProfileEditor({ c, groups, onChange, onDone, onDeleted }: {
+  c: Character; groups: { id: string; name: string }[]; onChange: (p: Partial<Character>) => void; onDone: () => void; onDeleted: () => void;
 }) {
+  const qc = useQueryClient();
   const gt = useGameText();
-  const race = RACES[c.race];
+  const synced = !!c.addonSyncedAt;
+  const [d, setD] = useState({ name: c.name, level: c.level, race: c.race, cls: c.cls, spec1: c.spec1, spec2: c.spec2 });
+  const [guild, setGuild] = useState(c.group?.id ?? "");
+  const [main, setMain] = useState(c.group?.isMain ?? false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [giving, setGiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const set = (p: Partial<typeof d>) => setD(x => ({ ...x, ...p }));
+  const race = RACES[d.race];
   const classes = race ? race.classes : (Object.keys(CLASSES) as ClassName[]);
-  const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
-  const bad = !!(c.race && c.cls && !isValidCombo(c.race, c.cls));
+  const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[d.cls] ?? [];
+  const bad = !!(d.race && d.cls && !isValidCombo(d.race, d.cls));
   const setClass = (cls: string) => {
     const sp: readonly string[] = CLASSES[cls as ClassName]?.specs ?? [];
-    onChange({ cls, spec1: sp.includes(c.spec1) ? c.spec1 : "", spec2: sp.includes(c.spec2) ? c.spec2 : "" });
+    set({ cls, spec1: sp.includes(d.spec1) ? d.spec1 : "", spec2: sp.includes(d.spec2) ? d.spec2 : "" });
   };
-  const setRace = (r: string) => onChange(!c.cls || isValidCombo(r, c.cls) ? { race: r } : { race: r, cls: "", spec1: "", spec2: "" });
-  const role = (s: string) => { const r = roleOf(s); return r ? <span className={`role xs ${r}`}>{r}</span> : null; };
-  const specSelect = (id: string, label: string, value: string, key: "spec1" | "spec2", empty: string) => (
-    <div className="fld"><label htmlFor={id}>{label}</label>
-      <div className="sel-role">
-        <select id={id} value={value} onChange={e => onChange({ [key]: e.target.value })} disabled={!c.cls} className={key === "spec1" && c.cls && !value ? "need" : undefined}>
-          <option value="">{empty}</option>
-          {specs.map(s => <option key={s.name} value={s.name}>{gt.spec(c.cls, s.name)}</option>)}
-        </select>{value && role(value)}
-      </div>
-    </div>
+  const setRace = (r: string) => set(!d.cls || isValidCombo(r, d.cls) ? { race: r } : { race: r, cls: "", spec1: "", spec2: "" });
+  // L'Alt d'un main se choisit en prenant un autre perso comme main (le serveur garde un main par joueur)
+  const wasMainHere = !!c.group?.isMain && c.group.id === guild;
+
+  const save = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const patch = Object.fromEntries(Object.entries(d).filter(([k, v]) => c[k as keyof typeof d] !== v)) as Partial<Character>;
+      if (Object.keys(patch).length) onChange(patch);
+      const groupChanged = guild !== (c.group?.id ?? "");
+      if (groupChanged || (guild && main && !c.group?.isMain)) {
+        if (guild) await put(`/groups/${guild}/characters/${c.id}`, { assigned: true, ...(main && { main: true }) });
+        else if (c.group) await put(`/groups/${c.group.id}/characters/${c.id}`, { assigned: false });
+        await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["group-chars"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
+      }
+      onDone();
+    } catch (e) { setErr(errorOf(e, "Pas enregistré · connexion perdue. Réessaie.")); setBusy(false); }
+  };
+  const remove = async () => {
+    try { await del(`/characters/${c.id}`); onDeleted(); } catch (e) { setErr(errorOf(e, "Suppression impossible.")); setDeleting(false); }
+  };
+  const card = (sp: SpecDef, on: boolean, disabled: boolean, pick: () => void) => (
+    <button key={sp.name} type="button" className={`pe-spec${on ? " on" : ""}`} aria-pressed={on} disabled={disabled} onClick={pick}>
+      {d.cls && <SpecIcon cls={d.cls} spec={sp.name} size={22} />}<span>{gt.spec(d.cls, sp.name)}</span><RoleIcon role={sp.role} size={16} />
+    </button>
   );
+  const lockChip = (label: string, value: ReactNode) => <span className="pe-lock" title={`${label} relevé par l'addon`}>{value}<LockIcon /></span>;
   return (
-    <>
-      <div className="fi-grid">
-        <div className="fld"><label htmlFor="f-name">Nom</label><input id="f-name" type="text" maxLength={40} value={c.name} onChange={e => onChange({ name: e.target.value })} /></div>
-        <div className="fld"><label htmlFor="f-level">Niveau</label>
-          {c.levelLock ? <LockedLevel id="f-level" value={c.level} describedBy="f-level-src" />
-            : <NumberField id="f-level" min={1} max={60} value={c.level} onChange={level => onChange({ level })} />}</div>
-        <div className="fld"><label htmlFor="f-race">Race</label>
-          <select id="f-race" value={c.race} onChange={e => setRace(e.target.value)}>
-            <option value="">Choisir…</option>
-            {RACE_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
-          </select></div>
-        <div className="fld"><label htmlFor="f-cls">Classe</label>
-          <select id="f-cls" value={c.cls} onChange={e => setClass(e.target.value)} className={!c.cls ? "need" : undefined}>
-            <option value="">Choisir…</option>
-            {classes.map(k => <option key={k} value={k}>{gt.cls(k)}</option>)}
-          </select></div>
-        {specSelect("f-spec", "Spé", c.spec1, "spec1", "Choisir…")}
-        {specSelect("f-off", "Off-spec", c.spec2, "spec2", "Aucune")}
-        <div className="fld"><label htmlFor="f-guild">Guilde</label>
-          <select id="f-guild" value={c.group?.id ?? ""} onChange={e => onGroup(e.target.value)}>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-            <option value="">Aucune</option>
-          </select></div>
-        <div className="fld"><span className="lbl">Dans la guilde</span>
-          <div className="seg" role="group" aria-label="Main ou alt dans la guilde">
-            <button type="button" className={c.group?.isMain ? "on" : ""} aria-pressed={!!c.group?.isMain} disabled={!c.group} onClick={() => { if (c.group && !c.group.isMain) onMain(); }}>★ Main</button>
-            <button type="button" className={c.group && !c.group.isMain ? "on" : ""} aria-pressed={!!c.group && !c.group.isMain} disabled={!c.group || c.group.isMain}
-              title={c.group?.isMain ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined}>Alt</button>
-          </div></div>
+    <div className="pe" role="group" aria-label="Modifier le profil">
+      <div className="pe-row">
+        <span className="pe-lab">Identité</span>
+        {synced ? (
+          <div className="pe-locks">
+            {lockChip("Nom", c.name)}{lockChip("Niveau", <>Niv. <b className="num">{c.level}</b></>)}
+            {lockChip("Classe", <b className={`cn${c.cls === "Shaman" ? " sha" : ""}`}>{gt.cls(c.cls) || "Classe ?"}</b>)}{lockChip("Race", c.race || "Race ?")}
+            <span className="pe-note ok">relevés par l'addon</span>
+          </div>
+        ) : (
+          <div className="pe-id">
+            <div className="fld"><label htmlFor="f-name">Nom</label><input id="f-name" type="text" maxLength={40} value={d.name} onChange={e => set({ name: e.target.value })} /></div>
+            <div className="fld pe-lv"><label htmlFor="f-level">Niveau</label>
+              {c.levelLock ? <LockedLevel id="f-level" value={c.level} describedBy="f-level-src" />
+                : <NumberField id="f-level" min={1} max={60} value={d.level} onChange={level => set({ level })} />}</div>
+            <div className="fld"><label htmlFor="f-cls">Classe</label>
+              <select id="f-cls" value={d.cls} onChange={e => setClass(e.target.value)} className={!d.cls ? "need" : undefined} aria-describedby="f-cls-hint">
+                <option value="">Choisir…</option>
+                {classes.map(k => <option key={k} value={k}>{gt.cls(k)}</option>)}
+              </select></div>
+            <div className="fld"><label htmlFor="f-race">Race</label>
+              <select id="f-race" value={d.race} onChange={e => setRace(e.target.value)}>
+                <option value="">Choisir…</option>
+                {RACE_NAMES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select></div>
+            <p className="pe-hint" id="f-cls-hint">{race ? `Classes possibles pour ${d.race}. ` : ""}Changer de classe efface la spé et l'off-spec.</p>
+          </div>
+        )}
       </div>
       {c.levelLock && <p className="lv-src" id="f-level-src"><LockIcon /><span>{levelLockText(c.levelLock, c.name)}</span></p>}
-      {bad && <p className="warnmsg" style={{ margin: 0 }}>{c.race} ne peut pas être {gt.cls(c.cls)} dans WoW Forever.</p>}
-      {c.cls && !c.spec1 && <p className="hint warnmsg" style={{ margin: "-6px 0 0" }}>Il faut une spé pour s'inscrire aux raids et aux sorties.</p>}
-    </>
+      {bad && <p className="warnmsg" style={{ margin: 0 }}>{d.race} ne peut pas être {gt.cls(d.cls)} dans WoW Forever.</p>}
+      <div className="pe-row">
+        <label className="pe-lab" htmlFor="f-guild">Guilde</label>
+        <div className="pe-guild">
+          <select id="f-guild" value={guild} onChange={e => { setGuild(e.target.value); setMain(false); }}>
+            {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            <option value="">Aucune</option>
+          </select>
+          <div className="seg eq" role="group" aria-label="Main ou alt dans la guilde">
+            <button type="button" className={guild && (main || wasMainHere) ? "on" : ""} aria-pressed={!!guild && (main || wasMainHere)} disabled={!guild} onClick={() => setMain(true)}>★ Main</button>
+            <button type="button" className={guild && !main && !wasMainHere ? "on" : ""} aria-pressed={!!guild && !main && !wasMainHere} disabled={!guild || wasMainHere}
+              title={wasMainHere ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined} onClick={() => setMain(false)}>Alt</button>
+          </div>
+        </div>
+      </div>
+      <div className="pe-row">
+        <span className="pe-lab" id="pe-spec">Spé</span>
+        {d.cls ? <div className="pe-specs" role="group" aria-labelledby="pe-spec" style={{ "--n": specs.length } as CSSProperties}>
+          {specs.map(sp => card(sp, d.spec1 === sp.name, false, () => set({ spec1: sp.name, spec2: d.spec2 === sp.name ? "" : d.spec2 })))}
+        </div> : <p className="pe-hint">Choisis d'abord la classe.</p>}
+      </div>
+      {d.cls && !d.spec1 && <p className="warnmsg pe-need">Il faut une spé pour s'inscrire aux raids et aux sorties.</p>}
+      <div className="pe-row">
+        <span className="pe-lab" id="pe-off">Off-spec</span>
+        {d.cls ? <div className="pe-specs" role="group" aria-labelledby="pe-off" style={{ "--n": specs.length + 1 } as CSSProperties}>
+          <button type="button" className={`pe-spec none${!d.spec2 ? " on" : ""}`} aria-pressed={!d.spec2} onClick={() => set({ spec2: "" })}><span>Aucune</span></button>
+          {specs.map(sp => card(sp, d.spec2 === sp.name, d.spec1 === sp.name, () => set({ spec2: sp.name })))}
+        </div> : <p className="pe-hint">Choisis d'abord la classe.</p>}
+      </div>
+      <div className="pe-row">
+        <span className="pe-lab">Ce perso</span>
+        <div className="pe-acts">
+          {c.group && <button type="button" className="btn" onClick={() => setGiving(true)}>Donner à un autre joueur…</button>}
+          <button type="button" className="btn danger" onClick={() => setDeleting(true)}>Supprimer le perso…</button>
+        </div>
+      </div>
+      {err && <div className="alert error" role="alert">{err}</div>}
+      <div className="pe-foot">
+        <button type="button" className="btn" disabled={busy} onClick={onDone}>Annuler</button>
+        <button type="button" className="btn primary" disabled={busy || !d.name.trim() || bad} onClick={() => void save()}>Valider le profil</button>
+      </div>
+      {giving && c.group && <GiveFicheDialog groupId={c.group.id} groupName={c.group.name} c={{ ...c, isMain: c.group.isMain }} onClose={() => setGiving(false)} closeOnDone />}
+      {deleting && (
+        <Modal label="pe-del-t" onClose={() => setDeleting(false)}>
+          <DialogHead id="pe-del-t" title={`Supprimer ${c.name} ?`} onClose={() => setDeleting(false)} />
+          <p>Sa fiche, son équipement, ses métiers et ses inscriptions à venir disparaissent. Ce n'est pas réversible ; la prochaine synchro de l'addon recréerait la fiche.</p>
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <button type="button" className="btn" onClick={() => setDeleting(false)}>Annuler</button>
+            <button type="button" className="btn danger" onClick={() => void remove()}>Supprimer {c.name}</button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 

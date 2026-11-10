@@ -2613,3 +2613,158 @@ p.rp-meta { margin: 0; color: var(--ink); }
   .s60 li { grid-template-columns: 24px 24px minmax(0, 1fr); }
   .s60 .s60-d { grid-column: 3; text-align: left; white-space: normal; }
 }
+
+/* ==========================================================================
+   Refonte 09/11, lot 6 : Mes persos (maquettes persos-modifier-le-profil, persos-equipement, persos-metiers)
+   ========================================================================== */
+/* Liste : nom et spés sur deux lignes sans troncature, âge de la synchro à droite */
+.mp-list .card .cav { grid-row: span 2; }
+.mp-list .card .nm, .mp-list .card .sub { white-space: normal; overflow: visible; text-overflow: clip; }
+.mp-list .card .nm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.mp-list .card .sub { font-size: 13.5px; color: var(--ink); }
+.mp-list .card .sub.need { color: var(--warn); font-weight: 600; }
+.mc-age { grid-row: span 2; align-self: center; display: grid; justify-items: end; font-size: 13px; font-weight: 600; text-align: right; }
+.mc-age small { font-weight: 400; font-size: 12px; color: var(--ink); }
+
+/* En-tête en lecture : identité en texte, état de la synchro et « ✎ Modifier le profil » à droite */
+.fi-head { align-items: start; }
+.fi-id { display: grid; gap: 4px; min-width: 0; }
+.fi-head h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.fi-head .sub { color: var(--ink); }
+.fi-head .sub .num { color: var(--ink); }
+.fi-main { color: var(--gold) !important; }
+.fi-editing { font-family: var(--f-mono); font-size: 11px; }
+.fi-specs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 14.5px; margin-top: 2px; }
+.fi-sp { display: inline-flex; align-items: center; gap: 6px; }
+.fi-need { color: var(--warn); font-weight: 600; }
+.fi-tal { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 4px; border: 0; background: none; color: var(--ink); font: inherit; cursor: pointer; }
+.fi-tal:hover { color: var(--gold); }
+.fi-tal b { font-family: var(--f-mono); }
+.fi-state { color: var(--ink); font-size: 13.5px; }
+.fi-state .sy-age { font-size: 14px; }
+.fi-state .fi-src { font-size: 13px; }
+.fi-edit { min-height: 44px; margin-top: 6px; }
+.fi-talents { padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.fi-tal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; }
+.fi-tal-head h3 { margin: 0; font-size: 18px; color: var(--gold); }
+.fi-tal-head .btn { margin-left: auto; }
+.fi-talents .sec { border: 0; padding: 0; margin: 0; }
+.build-ro { margin: 0; font-size: 14px; }
+.fi .tabs .tab:disabled { cursor: not-allowed; opacity: .55; }
+.fi-off { opacity: .55; }
+
+/* « Modifier le profil » */
+.pe { display: grid; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--cc, var(--gold)) 6%, var(--panel)); }
+.pe-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 16px; align-items: center; }
+.pe-lab { font: 600 12px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink); }
+.pe-locks { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pe-lock { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; border: 1px dashed var(--line-2); border-radius: 6px; font-size: 14.5px; }
+.pe-lock svg { width: 13px; height: 13px; }
+.pe-note.ok { color: var(--ok); font-size: 13.5px; }
+.pe-id { display: grid; grid-template-columns: minmax(0, 1.3fr) 110px minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; align-items: end; }
+.pe-id input, .pe-id select { min-height: 44px; }
+.pe-hint { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+.pe-guild { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.pe-guild select { flex: 1 1 240px; min-height: 44px; }
+.pe-guild .seg.eq { flex: 0 0 auto; min-width: 220px; }
+.pe-specs { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; }
+.pe-spec { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel);
+  color: var(--ink); font: 600 14px var(--f-body); cursor: pointer; text-align: left; min-width: 0; }
+.pe-spec > span { min-width: 0; }
+.pe-spec:hover:not(:disabled) { border-color: var(--gold); }
+.pe-spec.on { border-color: var(--gold); background: var(--gold-soft); color: var(--gold); box-shadow: inset 0 0 0 1px var(--gold); }
+.pe-spec:disabled { cursor: not-allowed; border-style: dashed; opacity: .55; }
+.pe-need { margin: -6px 0 0 126px; }
+.pe-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.pe-acts .btn { min-height: 44px; }
+.pe-foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pe-foot .btn { min-height: 44px; padding-inline: 18px; }
+
+/* Équipement : en lecture, « Modifier à la main » en secours */
+.gear-top.fiche { justify-content: flex-start; gap: 10px 14px; }
+.gear-top.fiche .sy-age { font-size: 13.5px; }
+.gear-top.fiche .seg.eq { min-width: 280px; }
+.gear-top.fiche .btn { min-height: 44px; }
+.gear-none { margin: 10px 0 0; }
+.gslot.ro { cursor: default; }
+.gslot.ro:hover { background: transparent; border-color: transparent; }
+.gbis { margin-left: 6px; font-size: 9px; padding: 2px 4px; vertical-align: 2px; }
+.gmeta { color: var(--ink); }
+
+/* Métiers : liste + détail */
+.pf { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 420px; margin: -20px; }
+.pf-side { display: grid; align-content: start; gap: 8px; padding: 16px; border-right: 1px solid var(--line); }
+.pf-h { margin: 4px 0 0; font: 600 12px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--gold); }
+.pf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pf-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; width: 100%; min-height: 64px; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px;
+  background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.pf-row:hover { background: var(--panel-2); }
+.pf-row[aria-current="true"] { border-color: var(--gold); background: var(--gold-soft); box-shadow: inset 3px 0 0 var(--gold); }
+.pf-n { font-weight: 600; font-size: 15px; }
+.pf-s { font-size: 15px; }
+.pf-sub { grid-column: 1 / -1; font-size: 12.5px; }
+.pf-bar { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pf-bar i { display: block; height: 100%; background: var(--gold); }
+.pf-bar.none { background: none; border-top: 1px dashed var(--line-2); border-bottom: 1px dashed var(--line-2); height: 4px; }
+.pf-src { display: grid; justify-items: start; gap: 8px; margin-top: 8px; font-size: 13px; }
+.pf-src .btn { min-height: 40px; }
+.pf-main { display: grid; align-content: start; gap: 12px; padding: 16px 18px; min-width: 0; }
+.pf-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.pf-title h3 { margin: 0; font-size: 22px; color: var(--gold); }
+.pf-title .num { font-family: var(--f-mono); }
+.pf-edit { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; padding: 12px; border: 1px dashed var(--line-2); border-radius: 8px; }
+.pf-edit .fld { min-width: 200px; }
+.pf-empty { margin: 0; font-size: 14px; }
+.pf-recipes { display: grid; gap: 10px; }
+.pf-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.pf-tools > input[type="search"] { flex: 1 1 220px; min-height: 44px; }
+.pf-tools > .seg.eq { flex: 1 1 340px; }
+.pf-filters { position: relative; }
+.pf-filters > .btn { min-height: 44px; height: 100%; }
+.pf-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: min(320px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow); }
+.pf-rl { list-style: none; margin: 0; padding: 0 10px; display: grid; border: 1px solid var(--line); border-radius: 10px; }
+.pf-rl li { display: grid; grid-template-columns: minmax(0, 1fr) 90px 104px auto; gap: 10px; align-items: center; min-height: 52px; padding: 6px 0; border-top: 1px solid var(--line); }
+.pf-rl li:first-child { border-top: 0; }
+.pf-item { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; font-size: 14.5px; }
+.pf-noicon { width: 28px; height: 28px; border: 1px dashed var(--line-2); border-radius: 4px; flex: none; }
+.pf-req { font-size: 13px; }
+.pf-req.warn { color: var(--warn); }
+.pf-rl .tag { justify-self: start; }
+.pf-mark { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.pf-mark .btn { min-height: 40px; white-space: nowrap; }
+.pf-known { color: var(--ok); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.pf-w.on, .pf-k.on { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
+.pf-more { margin: 0; font-size: 14px; }
+
+@media (max-width: 860px) {
+  .pf { grid-template-columns: 1fr; margin: calc(var(--pane-pad, 20px) * -1); }
+  .pf-side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .pf-list { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .pe-id { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .pe { padding: 14px; }
+  .pe-row { grid-template-columns: 1fr; gap: 6px; }
+  .pe-specs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pe-need { margin-left: 0; }
+  .pe-guild .seg.eq { flex: 1 1 100%; }
+  .pe-foot .btn { flex: 1 1 0; }
+  .fi-state { justify-items: start; }
+  .gear-top.fiche .seg.eq { flex: 1 1 100%; min-width: 0; }
+  .gear-top.fiche .btn { flex: 1 1 100%; }
+  .pf-rl li { grid-template-columns: minmax(0, 1fr) auto; }
+  .pf-rl .pf-req, .pf-rl .tag { grid-row: 2; }
+  .pf-rl .pf-mark { grid-row: 1 / span 2; grid-column: 2; }
+}
+@media (max-width: 520px) { .pf { margin: -16px; } }
+/* Liste de Mes persos un peu plus large : nom et niveau sur une ligne, l'âge de la synchro à droite */
+@media (min-width: 861px) { .mp { grid-template-columns: 320px minmax(0, 1fr); } }
+.mp-list .card { gap: 2px 10px; padding-right: 10px; }
+.mp-list .card .nm { gap: 4px 6px; }
+.mc-age { font-size: 12.5px; }
+/* Nom de la spé jamais sous le rôle : le mot garde sa largeur, le rôle passe à la ligne s'il n'a plus la place */
+.pe-spec { flex-wrap: wrap; row-gap: 4px; }
+.pe-spec > span:not(.role) { overflow-wrap: normal; min-width: auto; }
+.pe-spec .role, .pe-spec .ricon { flex: none; overflow-wrap: normal; }
+.pe-spec .role { font-size: 9.5px; padding: 3px 5px; }
+.gbis { display: inline-block; white-space: nowrap; overflow-wrap: normal; }

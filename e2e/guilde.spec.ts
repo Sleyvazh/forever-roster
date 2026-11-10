@@ -735,7 +735,8 @@ test("guilde : niveau des fiches relevé en jeu, correction par un officier", as
     const panel = await pasteAndApply(page, sealText([`FRL;1;Les Niveaux;Horde;${now};Isolde Clairval;1;Officier;2;Forever EU;1.6.4`, ...lines, `END;${lines.length}`].join("\n")));
     await expect(panel).toContainText("Les Niveaux (liée) : liste de 2 membres (complète)");
     // Le joueur : niveau en lecture seule, et d'où il vient
-    await player.goto(`/persos/${neckoId}`);
+    // /persos/:id/profil ouvre « Modifier le profil » (refonte du 09/11)
+    await player.goto(`/persos/${neckoId}/profil`);
     await expect(player.locator("#f-level")).toHaveValue("34");
     await expect(player.locator("#f-level")).toHaveAttribute("readonly", "");
     await expect(player.locator("#f-level-src")).toContainText("Niveau relevé en jeu : Necko Brisefer est niveau 34 dans la liste de guilde du");
@@ -760,7 +761,7 @@ test("guilde : niveau des fiches relevé en jeu, correction par un officier", as
     await bar.getByRole("button", { name: "Enregistrer" }).click();
     await expect(bar).toContainText("niveau 45 fixé par toi");
     await shot(bar, "niveau-officier-fixe.png");
-    await player.goto(`/persos/${grumzId}`);
+    await player.goto(`/persos/${grumzId}/profil`);
     await expect(player.locator("#f-level")).toHaveValue("45");
     await expect(player.locator("#f-level-src")).toContainText(/Niveau fixé par Isolde, officier de ta guilde, le .+, tant que le jeu ne donne pas celui de Grumz\./);
     await shot(player.locator("section").filter({ has: player.locator("#f-level") }).first(), "niveau-joueur-officier.png");
