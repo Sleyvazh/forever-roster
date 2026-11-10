@@ -6,23 +6,24 @@ Addon WoW pour le client de WoW Forever (interface 16001). Il fait le lien avec 
 
 **Roster Companion** (appli en option, en bêta) : elle fait la synchro sans copier-coller. L'addon range ce qui est à envoyer dans sa sauvegarde à chaque déconnexion ou `/reload`, et lit les données que l'appli dépose dans l'addon `ForeverRoster_Data` à la connexion. Depuis la 1.5, les données de l'appli arrivent sans `/reload`, toutes seules (ouverture de la fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, au moins toutes les 15 minutes) ou avec « Charger les nouveautés » (onglet Synchro, une touche, `/fr actualiser`), jusqu'à 20 fois par session, puis l'addon propose de recharger l'interface ; « Synchroniser » (ou sa touche) recharge l'interface pour faire les deux sens d'un coup (`docs/addon-format.md`, section Roster Companion). Sans l'appli, rien ne change.
 
-La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a sept onglets :
+La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a une barre latérale comme le site (1.7) : Accueil, Raids (En raid et Compo dessous, selon le moment et le rôle), Sorties, Synchro, Patrons, puis Options à part. Pastille sur Raids (raids sans réponse), point sur Synchro (persos à envoyer), « Données du site · il y a 3 min » en bas. Elle se redimensionne (760 × 560 par défaut, de 640 × 480 à 1200 × 900, taille gardée) ; un seul habillage, celui du site.
 
-| Onglet | Rôle |
+| Page | Rôle |
 |---|---|
-| **Synchro** | En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul, et d'où viennent les données de chaque groupe (collées, Roster Companion, reçues d'un joueur). En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
+| **Accueil** | Ce soir : raids des 24 h (réponse en un clic) et sorties du jour ; à faire : persos à envoyer, raids sans réponse, demandes de retrait (cinq au plus) |
+| **Synchro** | Deux vues de même largeur, « Échanger avec le site » et « Persos de l'export » (retirer un perso supprimé). En haut : colle ce que tu as copié sur le site (données des groupes ou compo d'un raid), chargé tout seul, et d'où viennent les données de chaque groupe (collées, Roster Companion, reçues d'un joueur). En bas : ton export déjà sélectionné, seulement les persos qui ont changé ; Ctrl+C le marque envoyé |
 | **Raids** | Raids à venir de tes groupes et inscription du perso connecté : Présent, Peut-être, Absent, ou « Autre... » (En retard, Reroll, Banc) (sans Roster Companion, elle est confiée à un officier qui l'a, ou part avec ton export : la ligne dit à qui) |
 | **Sorties** | Sorties donjon du jour et de demain de tes groupes : places par rôle, inscrits, attente, note, ta place ; **Inviter les N** (ta sortie, le jour même) ou **Chuchoter <créateur>**. Inscription sur le site ou sur Discord |
-| **En raid** | Qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
-| **Compo** | La compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
+| **En raid** | Dans un groupe de raid seulement (la fenêtre s'ouvre dessus) : qui a l'addon dans le raid (et sa version), appel aux consommables et manques, objets à remettre (échange dans les 2 h), tes tâches sur les fiches de boss, fenêtre du butin |
+| **Compo** | Chef de raid, assistants et officiers : la compo collée : état de chaque perso (bon groupe, à déplacer, absent), **Inviter**, **Placer les groupes**, **Effacer la compo** (elle s'efface d'elle-même 12 h après l'heure du raid) |
 | **Patrons** | Patrons et BiS suivis dans tes sacs (**Annoncer**), autres patrons à marquer « recherché » |
-| **Options** | Touches (choisir, retirer), habillage (Forever ou site), bouton de la minicarte, rappel de raid, rappel de synchro dans le chat (1.6.6), relevé présence et butin (et seuil de qualité), partage des données du site avec la guilde et le raid, inscriptions confiées à un officier ou transmises au site (1.6.3), persos à retirer de l'export |
+| **Options** | Touches (choisir, retirer), langue, et des interrupteurs (1.7 : le bouton dit « Activé » ou « Coupé ») : bouton de la minicarte, rappel de raid, rappel de synchro dans le chat, relevé présence et butin (et seuil de qualité), partage des données du site avec la guilde et le raid, inscriptions confiées à un officier ou transmises au site |
 
 | Commande | Rôle |
 |---|---|
 | Raccourcis (AddOns > Forever Roster) | « Synchro rapide avec le site » et « Ouvrir ou fermer la fenêtre » (`Bindings.xml`) |
 | `/fr` | Ouvrir ou fermer la fenêtre |
-| `/fr synchro`, `raids`, `sorties`, `enraid`, `compo`, `patrons`, `options` | Ouvrir un onglet |
+| `/fr accueil`, `raids`, `sorties`, `synchro`, `patrons`, `options`, `enraid`, `compo` | Ouvrir une page |
 | `/fr butin` | Fenêtre du maître du butin (s'ouvre seule en ouvrant un corps en butin de maître) ; `/fr butin <lien>` pour un objet déjà dans tes sacs |
 | `/fr boss` | Fiche du boss ciblé, sinon la première du raid |
 | `/fr conso` | Appel aux consommables (chef de raid ou assistant) |
@@ -31,7 +32,6 @@ La fenêtre complète, ouverte par le **bouton de la minicarte** ou `/fr`, a sep
 | `/fr objet <lien>` | Ce que le jeu répond pour un objet (si un nom reste « objet 12345 ») : connu des fichiers du jeu, du serveur, ou pas |
 | `/fr oublier Nom-Royaume` | Retirer un perso supprimé de l'export (aussi dans Options) |
 | `/fr rappels` | Couper ou remettre le rappel de raid à la connexion (aussi dans Options) |
-| `/fr habillage` | Passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface ; aussi dans Options) |
 | `/fr minicarte` | Afficher ou masquer le bouton de la minicarte (clic : fenêtre, clic droit : synchro rapide, glisser : déplacer ; pastille : persos à envoyer ; aussi dans Options) |
 | `/fr guilde` | Relève de la guilde : ce que l'addon a relevé (liste, journal, banque, XP), son envoi au site et « Copier le relevé » (texte FRL seul) |
 | `/fr partage` | Diagnostic du partage et du relais (alias `/fr share`) : ce que l'addon a reçu, partagé, confié ou relayé pendant la session, en texte à copier |

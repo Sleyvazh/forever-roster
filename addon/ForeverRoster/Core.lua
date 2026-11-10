@@ -7,6 +7,9 @@ ns.LOGO = "Interface\\AddOns\\" .. (ADDON or "ForeverRoster") .. "\\Media\\Logo"
 
 -- Sauvegarde de l'addon, pour la boîte à outils commune avec Roster (addon/shared/Kit.lua : habillage, tailles des fenêtres)
 function ns.db() return ForeverRosterDB end
+-- 1.7 (refonte du 09/11) : un seul habillage, celui du site ; boutons de 28 au moins ; fenêtre principale redimensionnable
+-- (listes et zones de texte à la largeur de leur cadre). Voir addon/shared/Kit.lua.
+ns.siteOnly, ns.target, ns.fluid = true, 28, true
 
 local meta = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
 ns.version = meta and meta(ADDON, "Version") or "?"
@@ -129,8 +132,8 @@ end)
 
 -- Aide de /fr : traduite à l'affichage (en anglais, elle donne les commandes anglaises)
 local HELP = {
-  N("/fr : ouvrir la fenêtre (onglets Synchro, Raids, Sorties, En raid, Compo, Patrons, Options) ; aussi par le bouton de la minicarte"),
-  N("/fr synchro | raids | sorties | enraid | compo | patrons | options : ouvrir directement un onglet"),
+  N("/fr : ouvrir la fenêtre (Accueil, Raids, Sorties, Synchro, Patrons, Options) ; aussi par le bouton de la minicarte"),
+  N("/fr accueil | raids | sorties | synchro | patrons | options | enraid | compo : ouvrir directement une page"),
   N("/fr butin : fenêtre du maître du butin (jets SR, MS / OS, libre, conseil) ; /fr butin <lien> pour un objet déjà dans tes sacs"),
   N("/fr boss : fiche du boss ciblé (sinon la première du raid) ; /fr conso : appel aux consommables"),
   N("/fr test : raid d'essai (9 joueurs fictifs) pour tout essayer seul : butin, conseil, fiches de boss, consommables"),
@@ -142,7 +145,6 @@ local HELP = {
   N("/fr synchroniser : recharger l'interface pour envoyer au site et charger les nouveautés d'un coup (Roster Companion)"),
   N("/fr minicarte : afficher ou masquer le bouton de la minicarte"),
   N("/fr rappels : couper ou remettre le rappel de raid à la connexion"),
-  N("/fr habillage : passer de l'habillage Forever (jeu) à celui du site, et inversement (recharge l'interface)"),
   N("/fr langue fr | en | jeu : langue de l'addon (Français, English ou celle du jeu ; recharge l'interface)"),
   N("/fr guilde : ce que l'addon a relevé de ta guilde (liste, journal, banque, XP), son envoi au site et le relevé à copier"),
   N("/fr partage : ce que l'addon a reçu, partagé, confié ou relayé pendant la session (diagnostic à copier)"),
@@ -164,7 +166,7 @@ function ns.safe(label, fn, ...)
 end
 
 -- Onglets de /fr : mots français, et leurs équivalents anglais
-local TABS = { synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", enraid = "enraid", raid = "enraid", inraid = "enraid",
+local TABS = { accueil = "accueil", home = "accueil", synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", enraid = "enraid", raid = "enraid", inraid = "enraid",
   compo = "compo", comp = "compo", patrons = "patrons", recipes = "patrons", options = "options", sorties = "sorties", sortie = "sorties", runs = "sorties" }
 -- /fr langue : fr, en, ou la langue du jeu (false)
 local LANGS = { fr = "fr", french = "fr", francais = "fr", ["français"] = "fr", en = "en", english = "en", anglais = "en", -- nolocale
@@ -223,9 +225,6 @@ local function run(msg)
   elseif cmd == "rappels" or cmd == "reminders" then
     ForeverRosterDB.noReminder = not ForeverRosterDB.noReminder or nil
     ns.print(ForeverRosterDB.noReminder and L["rappels de raid coupés."] or L["rappels de raid remis : à la connexion, raids des prochaines 24 h."])
-  elseif cmd == "habillage" or cmd == "skin" then
-    ForeverRosterDB.skin = ForeverRosterDB.skin ~= "site" and "site" or nil -- nolocale (valeur sauvegardée)
-    ReloadUI()
   elseif cmd == "langue" or cmd == "language" or cmd == "lang" then
     -- Sans choix reconnu : onglet Options (réglage Langue) ; sinon choisie, et l'interface rechargée si elle change
     local v = LANGS[rest:lower()]

@@ -25,7 +25,11 @@ local function atlas(tex, name)
 end
 
 -- Habillage « site » : couleurs du thème sombre du site, titres en Marcellus SC (police livrée avec l'addon, licence OFL)
-local function site() local db = ns.db and ns.db() return db and db.skin == "site" end -- nolocale (valeur de la sauvegarde)
+-- ns.siteOnly (Forever Roster 1.7, refonte du 09/11) : un seul habillage, celui du site
+local function site() if ns.siteOnly then return true end local db = ns.db and ns.db() return db and db.skin == "site" end -- nolocale (valeur de la sauvegarde)
+-- Cibles des boutons : ns.target (Forever Roster 1.7 : 28 au lieu de 22-24, refonte du 09/11) ; ns.fluid : listes et zones
+-- de texte à la largeur de leur cadre (fenêtre redimensionnable)
+local function tall(h) return math.max(h, ns.target or 0) end
 local C = {
   bg = { 0.027, 0.039, 0.071 }, panel = { 0.055, 0.078, 0.153 }, panel2 = { 0.078, 0.106, 0.2 },
   line = { 0.137, 0.173, 0.278 }, line2 = { 0.204, 0.251, 0.373 }, frame = { 0.427, 0.353, 0.173 },
@@ -108,7 +112,7 @@ local function siteWindow(name, title, w, h, icon)
   titleFont(f.titleText, 15)
   f.titleText:SetPoint("LEFT", f.icon, "RIGHT", 8, 0)
   local close = CreateFrame("Button", nil, f)
-  close:SetSize(22, 22) close:SetPoint("TOPRIGHT", -4, -3)
+  close:SetSize(tall(22), tall(22)) close:SetPoint("TOPRIGHT", -4, ns.target and -1 or -3)
   local x = close:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
   x:SetPoint("CENTER") x:SetText(L["×"]) x:SetTextColor(C.ink[1], C.ink[2], C.ink[3]) -- croix de fermeture (la même dans toutes les langues)
   close:SetScript("OnEnter", function() x:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) end)
@@ -186,24 +190,34 @@ local function scrollFrame(parent)
   return CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate"), 26
 end
 
+-- w < 0 : la zone va jusqu'au bord droit du cadre, moins -w (fenêtre redimensionnable) ; renvoie aussi le cadre (box) pour
+-- changer sa hauteur
 local function textArea(parent, x, y, w, h)
   local sf, bar = scrollFrame(parent)
-  sf:SetPoint("TOPLEFT", x, y)
-  sf:SetSize(w - bar, h)
   local eb = CreateFrame("EditBox", nil, sf)
+  local box = CreateFrame("Frame", nil, parent)
+  sf:SetPoint("TOPLEFT", x, y)
+  box:SetPoint("TOPLEFT", x, y)
+  if w < 0 then
+    sf:SetPoint("TOPRIGHT", parent, "TOPRIGHT", w - bar, y) sf:SetHeight(h)
+    box:SetPoint("TOPRIGHT", parent, "TOPRIGHT", w, y) box:SetHeight(h)
+    eb:SetWidth(400)
+    if sf.HookScript then sf:HookScript("OnSizeChanged", function(self, sw) if sw and sw > 0 then eb:SetWidth(sw) end end) end
+  else
+    sf:SetSize(w - bar, h)
+    box:SetSize(w, h)
+    eb:SetWidth(w - bar)
+  end
   eb:SetMultiLine(true)
   eb:SetFontObject(ChatFontNormal)
-  eb:SetWidth(w - bar)
   eb:SetAutoFocus(false)
   eb:SetScript("OnEscapePressed", eb.ClearFocus)
   sf:SetScrollChild(eb)
-  local box = CreateFrame("Frame", nil, parent)
-  box:SetPoint("TOPLEFT", x, y) box:SetSize(w, h)
   inset(parent, box)
   -- Clic n'importe où dans la zone : le curseur va dans le champ
   sf:EnableMouse(true)
   sf:SetScript("OnMouseDown", function() eb:SetFocus() end)
-  return eb, sf
+  return eb, sf, box
 end
 
 -- Bouton plat du site : fond sombre, contour, texte clair ; contour doré au survol
@@ -223,7 +237,7 @@ end
 
 local function button(parent, label, w, onClick)
   local b = site() and flatButton(parent) or CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-  b:SetSize(w, 24)
+  b:SetSize(w, tall(24))
   b:SetText(label)
   b:SetScript("OnClick", onClick)
   return b
@@ -291,13 +305,13 @@ local function choices(anchor, items)
     local b = menu.buttons[i] or statusButton(menu)
     menu.buttons[i] = b
     styleStatus(b, it.label, it.color, it.selected)
-    b:SetSize(w - 8, 24)
-    b:ClearAllPoints() b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * 28)
+    b:SetSize(w - 8, tall(24))
+    b:ClearAllPoints() b:SetPoint("TOPLEFT", 4, -4 - (i - 1) * (tall(24) + 4))
     b:SetScript("OnClick", function() menu:Hide() it.onClick() end)
     b:Show()
   end
   for i = #items + 1, #menu.buttons do menu.buttons[i]:Hide() end
-  menu:SetSize(w, 4 + #items * 28)
+  menu:SetSize(w, 4 + #items * (tall(24) + 4))
   menu:ClearAllPoints() menu:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
   menu.anchor = anchor
   catcher:Show()
@@ -337,6 +351,12 @@ local function list(parent, top)
   local sf, bar = scrollFrame(parent)
   sf:SetPoint("TOPLEFT", 4, top) sf:SetPoint("BOTTOMRIGHT", -bar, 4)
   local width = 540 - bar
+  -- ns.fluid : largeur lue à chaque mise en page (fenêtre redimensionnable)
+  local function fit()
+    if not ns.fluid then return end
+    local w = sf.GetWidth and sf:GetWidth()
+    if type(w) == "number" and w > 100 then width = w - 4 end
+  end
   local body = CreateFrame("Frame", nil, sf)
   body:SetSize(width, 10)
   sf:SetScrollChild(body)
@@ -354,7 +374,7 @@ local function list(parent, top)
     rows[k] = r
     return r
   end
-  function L.Reset() y, i, odd = 0, 0, false end
+  function L.Reset() y, i, odd = 0, 0, false fit() end
   -- Barre de titre de section (comme « General » sur la fiche de perso)
   function L.Header(text)
     i = i + 1
@@ -375,11 +395,13 @@ local function list(parent, top)
     r.text:ClearAllPoints() r.text:SetPoint("CENTER", 0, 1) r.text:SetWidth(width - 20) r.text:SetJustifyH("CENTER")
     end
     r.text:SetText(text)
-    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetHeight(40) r:Show()
+    if r.SetScript then r:SetScript("OnEnter", nil) r:SetScript("OnLeave", nil) end
+    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetSize(width, 40) r:Show()
     y, odd = y + 42, false
   end
-  -- Ligne de texte ; buttons : { { label, largeur, action }, … } affichés en dessous
-  function L.Add(text, buttons)
+  -- Ligne de texte ; buttons : { { label, largeur, action }, … } affichés en dessous ; tip : détail au survol (texte, ou
+  -- fonction qui remplit GameTooltip)
+  function L.Add(text, buttons, tip)
     i = i + 1
     local r = row(i)
     for _, b in pairs(r.buttons) do b:Hide() end
@@ -404,23 +426,37 @@ local function list(parent, top)
         r.buttons[k] = b
         b:SetText(spec[1])
       end
-      b:SetSize(spec[2], 22) b:SetScript("OnClick", spec[3])
+      b:SetSize(spec[2], tall(22)) b:SetScript("OnClick", spec[3])
       b:ClearAllPoints() b:SetPoint("TOPLEFT", x, -(h + 9)) b:Show()
       x = x + spec[2] + 6
     end
-    local height = h + 10 + ((buttons and #buttons > 0) and 28 or 0)
+    local height = h + 10 + ((buttons and #buttons > 0) and (tall(22) + 6) or 0)
+    if r.SetScript then
+      if tip then
+        if r.EnableMouse then r:EnableMouse(true) end
+        r:SetScript("OnEnter", function(self)
+          if not GameTooltip then return end
+          GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+          if type(tip) == "function" then tip(GameTooltip) else GameTooltip:AddLine(tip, 1, 1, 1, true) end
+          GameTooltip:Show()
+        end)
+        r:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+      else
+        r:SetScript("OnEnter", nil) r:SetScript("OnLeave", nil)
+      end
+    end
     -- Une ligne sur deux sur fond clair, comme les statistiques de la fiche
     odd = not odd
     r.bg:ClearAllPoints() r.bg:SetAllPoints()
     if site() then
       if odd then solid(r.bg, C.panel2, 0.7) r.bg:Show() else r.bg:Hide() end
     elseif odd and atlas(r.bg, ART.line) then r.bg:Show() else r.bg:Hide() end
-    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetHeight(height) r:Show()
+    r:ClearAllPoints() r:SetPoint("TOPLEFT", 0, -y) r:SetSize(width, height) r:Show()
     y = y + height
   end
   function L.Done()
     for k = i + 1, #rows do rows[k]:Hide() end
-    body:SetHeight(y + 10)
+    body:SetSize(width, y + 10)
   end
   return L
 end

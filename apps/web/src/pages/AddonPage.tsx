@@ -131,10 +131,9 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 const COMMANDS: [string, string][] = [
   ["Ta touche de synchro", "Synchro rapide : ton export déjà sélectionné (Ctrl+C), ou tu y colles les données du site (Ctrl+V)."],
   ["/fr", "Ouvrir ou fermer la fenêtre (clic droit sur le bouton de la minicarte : synchro rapide)"],
-  ["/fr synchro · raids · enraid · compo · patrons · options", "Ouvrir directement un onglet"],
+  ["/fr accueil · raids · sorties · synchro · patrons · options", "Ouvrir directement une page (aussi enraid et compo)"],
   ["/fr butin · /fr boss · /fr conso", "Maître du butin, fiche du boss, appel aux consommables (en raid)"],
   ["/fr test", "Raid d'essai avec 9 joueurs fictifs, sans rien envoyer"],
-  ["/fr habillage", "Habillage du jeu ou du site (recharge l'interface)"],
   ["/fr cherche + Maj+clic sur un objet", "Marquer un patron comme recherché, ou l'en retirer"],
 ];
 

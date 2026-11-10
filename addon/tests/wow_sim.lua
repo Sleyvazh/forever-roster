@@ -129,6 +129,10 @@ for line in io.lines("addon/ForeverRoster/ForeverRoster.toc") do
 end
 -- Déclenche ADDON_LOADED par le gestionnaire enregistré
 fire("ADDON_LOADED", "ForeverRoster")
+-- 1.7 : Forever Roster n'a plus qu'un habillage, celui du site (ns.siteOnly) ; la simulation essaie aussi l'autre, celui de la
+-- boîte à outils commune avec Roster (Kit.lua), puis celui du site seul (section « Un seul habillage »)
+assert(ns.siteOnly == true and ns.target == 28 and ns.fluid == true, "1.7 : habillage du site seul, cibles de 28, listes à la largeur")
+ns.siteOnly = nil
 assert(#reassigned == 0, "variables de Blizzard réassignées par l'addon : " .. table.concat(reassigned, ", "))
 for _, line in ipairs(printed) do assert(not line:find("non chargés"), line) end
 
@@ -693,23 +697,40 @@ assert(not RA.test and #RA.items == 0 and #RA.asks == 0, "raid d'essai terminé"
 ns.version = simVersion
 UnitName = realUnitName
 
--- Habillage du site : fenêtres reconstruites (UI rechargée), chaque onglet, la synchro rapide, le rappel et l'alerte
-ForeverRosterDB.skin = "site"
+-- Un seul habillage (1.7, refonte du 09/11) : celui du site, fenêtres reconstruites (UI rechargée), chaque page de la barre
+-- latérale, les deux vues de Synchro, la synchro rapide, le rappel et l'alerte ; /fr habillage n'existe plus
+ns.siteOnly = true
 assert(loadfile("addon/ForeverRoster/UI.lua"))("ForeverRoster", ns)
-assert(ns.UI.site(), "habillage du site choisi")
+assert(ns.UI.site(), "habillage du site")
 local beforeSkin = errors()
-for _, tab in ipairs({ "synchro", "raids", "enraid", "compo", "patrons", "options" }) do ns.UI.Show(tab) end
+for _, tab in ipairs({ "accueil", "synchro", "raids", "enraid", "compo", "sorties", "patrons", "options" }) do ns.UI.Show(tab) end
+ns.UI.pages.synchro.view = "ch"
+ns.UI.Show("synchro")
+assert(TEXTS["Persos de l'export"] and ns.UI.pages.synchro.ch:IsShown() and not ns.UI.pages.synchro.ex:IsShown(), "Synchro : vue « Persos de l'export »")
+ns.UI.pages.synchro.view = "ex"
 ns.UI.Quick()
 ns.UI.LootAlert(16833, "|cffa335ee|Hitem:16833::::::::60:::::|h[Cenarion Vestments]|h|r")
-ForeverRosterDB.skin = nil -- changement d'habillage : proposé au rechargement
-ns.UI.Show("options")
-assert(not ns.UI.site() and errors() == beforeSkin and failures == 0, "habillage du site sans erreur")
+assert(errors() == beforeSkin and failures == 0, "habillage du site sans erreur")
 local reloaded = false
 ReloadUI = function() reloaded = true end
 run("habillage")
-assert(ForeverRosterDB.skin == "site" and reloaded, "/fr habillage : site, interface rechargée")
-run("habillage")
-assert(ForeverRosterDB.skin == nil, "/fr habillage : retour à Forever")
+assert(not reloaded, "/fr habillage : plus de commande (l'aide s'affiche)")
+-- Barre latérale (1.7) : Accueil (ce soir, à faire) ; En raid seulement dans un groupe de raid, et la fenêtre s'ouvre dessus ;
+-- revenu hors raid, Raids à sa place ; /fr enraid l'ouvre quand même
+ns.UI.Show("accueil")
+assert(ForeverRosterDB.tab == "accueil" and TEXTS["Ce soir"] and TEXTS["À faire"], "Accueil : ce soir, à faire")
+assert(not ns.UI.NavVisible("enraid") and ns.UI.NavVisible("raids") and ns.UI.NavVisible("options"), "hors raid : pas d'En raid")
+local realInRaid = IsInRaid
+IsInRaid = function() return true end
+ns.UI.Show()
+assert(ForeverRosterDB.tab == "enraid" and ns.UI.NavVisible("enraid"), "en raid : la fenêtre s'ouvre sur En raid")
+IsInRaid = realInRaid
+ns.UI.Show()
+assert(ForeverRosterDB.tab == "raids", "hors raid : En raid caché, Raids à sa place")
+run("enraid")
+assert(ForeverRosterDB.tab == "enraid", "/fr enraid : ouvert quand même")
+assert(type(ns.UI.Unanswered()) == "number" and errors() == beforeSkin, "pastille des raids sans réponse, sans erreur")
+ns.siteOnly = nil
 
 -- Client sans fonctions globales d'objets (GetItemInfo, GetItemInfoInstant, GetItemCount), seulement C_Item : le pire cas (Forever n'a plus GetItemInfo)
 do
@@ -1235,7 +1256,7 @@ local function sharing()
   -- 8. Option coupée (onglet Options) : ni annonce ni envoi ; la réception continue ; remise depuis l'onglet Options
   local function optionRow()
     for text, fr in pairs(TEXTS) do
-      if type(text) == "string" and fr:GetText() == text and text:find("Partager les données du site avec la guilde et le raid : ", 1, true) then return text end
+      if type(text) == "string" and fr:GetText() == text and text:find("Partager les données du site avec la guilde et le raid", 1, true) then return text end
     end
   end
   -- Bouton de la ligne du partage (les réglages du relais, en dessous, ont aussi « Couper » / « Activer », 1.6.3)
@@ -1243,7 +1264,7 @@ local function sharing()
     local p = ns.UI.pages.options
     local add, spec = p.list.Add, nil
     p.list.Add = function(text, buttons)
-      if text:find("Partager les données du site avec la guilde et le raid : ", 1, true) then spec = buttons and buttons[1] end
+      if text:find("Partager les données du site avec la guilde et le raid", 1, true) then spec = buttons and buttons[1] end
       return add(text, buttons)
     end
     ns.UI.Refresh()
@@ -1251,9 +1272,10 @@ local function sharing()
     return spec
   end
   run("options")
-  assert(optionRow() and optionRow():find("activé", 1, true) and shareButton()[1] == "Couper", "onglet Options : partage activé par défaut")
+  -- Interrupteur (1.7) : le bouton dit l'état, « Activé » ou « Coupé »
+  assert(optionRow() and shareButton()[1] == "Activé" and shareButton()[4].selected, "onglet Options : partage activé par défaut")
   shareButton()[3]()
-  assert(ForeverRosterDB.share == false and optionRow():find("coupé", 1, true), "partage coupé depuis l'onglet Options")
+  assert(ForeverRosterDB.share == false and shareButton()[1] == "Coupé" and not shareButton()[4].selected, "partage coupé depuis l'onglet Options")
   advance(Sh.QUIET + 5)
   local m7 = #mine
   assert(ns.UI.LoadFromSite(block(G1, T4 + 10, "Les Veilleurs", body, MEMBERS)))
@@ -1272,7 +1294,7 @@ local function sharing()
   assert(myGroup(G1).at == T5 and count(mine, "^SHQ;" .. esc(G1) .. ";" .. (T4 + 10) .. ";GUILD", m7 + 1) == 1, "coupé : réception (demande et application)")
   assert(count(mine, "^SH[VD]", m7 + 1) == 0, "coupé : rien relayé")
   run("options")
-  assert(optionRow():find("coupé", 1, true) and shareButton()[1] == "Activer", "onglet Options : partage coupé")
+  assert(optionRow() and shareButton()[1] == "Coupé", "onglet Options : partage coupé")
   advance(Sh.QUIET + 5)
   local m8 = #mine
   shareButton()[3]()
@@ -2605,13 +2627,14 @@ local function relaying()
     ns.UI.Show(tab)
     local p = ns.UI.pages[tab]
     local out, add = {}, p.list.Add
-    p.list.Add = function(text, buttons) out[#out + 1] = { text = text, buttons = buttons } return add(text, buttons) end
+    -- 1.7 : le détail d'une ligne est au survol (tip)
+    p.list.Add = function(text, buttons, tip) out[#out + 1] = { text = text, buttons = buttons, tip = tip } return add(text, buttons, tip) end
     ns.UI.Refresh()
     p.list.Add = add
     return out
   end
   local function row(tab, part)
-    for _, r in ipairs(rows(tab)) do if r.text:find(part, 1, true) then return r end end
+    for _, r in ipairs(rows(tab)) do if r.text:find(part, 1, true) or (type(r.tip) == "string" and r.tip:find(part, 1, true)) then return r end end
   end
   -- Fenêtre « Recharger / Plus tard » (UI.AskReload) : chaque appel noté, la vraie fenêtre affichée
   local asks = {}
@@ -2905,18 +2928,19 @@ local function relaying()
     local share, confide, relay
     for i, r in ipairs(all) do
       if r.text:find("Partager les données du site", 1, true) then share = i end
-      if r.text:find("Confier mes inscriptions faites en jeu à un officier qui a Roster Companion : ", 1, true) then confide = i end
-      if r.text:find("Transmettre au site les inscriptions de la guilde : ", 1, true) then relay = i end
+      if r.text:find("Confier mes inscriptions faites en jeu à un officier qui a Roster Companion", 1, true) then confide = i end
+      if r.text:find("Transmettre au site les inscriptions de la guilde", 1, true) then relay = i end
     end
     assert(share and confide == share + 1 and relay == share + 2, "deux réglages sous le partage")
-    assert(all[confide].text:find("activé", 1, true) and all[confide].text:find("Seulement sans l'appli. Coupé : elles partent avec ton export.", 1, true)
-      and all[relay].text:find("activé", 1, true) and all[relay].text:find("Officiers avec Roster Companion.", 1, true), "activés d'office, avec leur aide")
+    -- Interrupteurs (1.7) : le bouton dit l'état
+    assert(all[confide].buttons[1][1] == "Activé" and all[confide].text:find("Seulement sans l'appli. Coupé : elles partent avec ton export.", 1, true)
+      and all[relay].buttons[1][1] == "Activé" and all[relay].text:find("Officiers avec Roster Companion.", 1, true), "activés d'office, avec leur aide")
     all[relay].buttons[1][3]()
     assert(ForeverRosterDB.relaying == false and not ns.Relay.RelayOn() and not ns.Relay.Eligible(), "relais coupé")
     row("options", "Confier mes inscriptions").buttons[1][3]()
     assert(ForeverRosterDB.confide == false and not ns.Relay.ConfideOn(), "confier coupé")
-    local off = row("options", "Transmettre au site les inscriptions de la guilde : ")
-    assert(off and off.text:find("coupé", 1, true) and row("options", "Confier mes inscriptions").text:find("coupé", 1, true), "affichés coupés")
+    local off = row("options", "Transmettre au site les inscriptions de la guilde")
+    assert(off and off.buttons[1][1] == "Coupé" and row("options", "Confier mes inscriptions").buttons[1][1] == "Coupé", "affichés coupés")
     row("options", "Transmettre au site les inscriptions de la guilde").buttons[1][3]()
     row("options", "Confier mes inscriptions").buttons[1][3]()
     assert(ForeverRosterDB.relaying == nil and ForeverRosterDB.confide == nil, "remis (réglages par défaut)")
@@ -2964,7 +2988,9 @@ local function relaying()
     assert(G.SignupState(s) == "waiting", "état : en attente d'un officier")
     local r = row("raids", "Onyxia|r")
     -- L'export reste une voie : le texte le dit (« ou avec ton export »)
-    assert(r and r.text:find("en jeu : Présent, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un, ou avec ton export|r", 1, true), "onglet Raids : en attente : " .. tostring(r and r.text))
+    -- 1.7 : pastille courte, le détail au survol
+    assert(r and r.text:find("en jeu : Présent, en attente d'un officier|r", 1, true)
+      and r.tip == "en jeu : Présent, aucun officier avec l'appli en ligne : elle partira dès qu'il y en aura un, ou avec ton export", "onglet Raids : en attente : " .. tostring(r and r.text))
     assert(row("raids", "Inscription de Tournicoti : sans Roster Companion, elle est confiée à un officier qui a l'appli (ou part avec ton export)."), "ligne des groupes")
     advance(0.9)
     assert(#since(n, "^SUP") == 0, "pas avant 1 s")
@@ -2983,7 +3009,7 @@ local function relaying()
     ForeverRosterDB.groups[GA].officers = { "Tournicoti", "Brakka" }
     assert(s.confided.by == "Brakka", "le premier SUA reçu")
     r = row("raids", "Onyxia|r")
-    assert(r.text:find("en jeu : Présent, confiée à Brakka : part au site à son prochain /reload", 1, true), "onglet Raids : confiée : " .. r.text)
+    assert(r.text:find("en jeu : Présent, confiée à Brakka|r", 1, true) and r.tip:find("confiée à Brakka : part au site à son prochain /reload", 1, true), "onglet Raids : confiée : " .. r.text)
     assert(journalHas("Brakka", "confiée"), "journal : confiée")
     -- Le copier-coller marche toujours : la ligne S part avec l'export
     assert(E.Build({}):find("\nS;" .. GA .. ";" .. RA1 .. ";present\n", 1, true), "ligne S dans l'export")

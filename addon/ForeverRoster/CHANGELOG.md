@@ -2,6 +2,22 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.0
+
+- **A sidebar like the website**: Home, Raids, Runs, Sync, Recipes, then Options apart. A count on Raids (raids without an answer), a dot on Sync (characters to send), "Website data · 3 min ago" at the bottom.
+- **Home**: tonight (the next 24 h raids, answered in one click, and today's runs) and what's waiting (characters to send, raids without an answer, withdrawal requests to prepare), five items at most.
+- **In raid and Comp when they're useful**: In raid only in a raid group (the window opens on it), Comp for the raid leader, assistants and officers.
+- **Resizable window**: 760 × 560 by default, from 640 × 480 to 1200 × 900, size kept. One skin only, the website's (/fr skin is gone).
+- **Bigger buttons** (28 high), raid states shortened with the details on hover, Options with real switches ("On" / "Off") and same-width choices; "Export characters" moved to Sync.
+
+Français :
+
+- **Une barre latérale comme le site** : Accueil, Raids, Sorties, Synchro, Patrons, puis Options à part. Une pastille sur Raids (raids sans réponse), un point sur Synchro (persos à envoyer), « Données du site · il y a 3 min » en bas.
+- **Accueil** : ce soir (les raids des 24 h, réponse en un clic, et les sorties du jour) et ce qui t'attend (persos à envoyer, raids sans réponse, demandes de retrait à préparer), cinq éléments au plus.
+- **En raid et Compo quand ils servent** : En raid seulement dans un groupe de raid (la fenêtre s'ouvre dessus), Compo pour le chef de raid, ses assistants et les officiers.
+- **Fenêtre redimensionnable** : 760 × 560 par défaut, de 640 × 480 à 1200 × 900, taille gardée. Un seul habillage, celui du site (/fr habillage disparaît).
+- **Boutons plus grands** (28 de haut), états des inscriptions raccourcis avec le détail au survol, Options en vrais interrupteurs (« Activé » / « Coupé ») et choix de même largeur ; « Persos de l'export » passe dans Synchro.
+
 ## 1.6.6
 
 - **Raid answers: 3 + Other**, like on the website and Discord: Present, Tentative and Absent are always shown, same width, then "Other..." opens Late, Alt and Bench (Raids tab and the "Coming?" reminder). Alt and Bench can now be picked in game too.
