@@ -562,14 +562,25 @@ function RA.Keep(item, winner, method, response, detail)
   if RA.session and RA.session.item == item then RA.session = nil end
   refresh()
 end
--- Attribuer selon les jets de la session en cours
-function RA.AwardSession()
+-- Attribuer selon les jets de la session en cours ; expect (confirmation, refonte du 09/11) : le gagnant montré dans le
+-- dialogue, refusé si un jet arrivé entre-temps a changé le classement
+function RA.AwardSession(expect)
   local s = RA.session
-  if not s then return end
+  if not s then return false end
   local list, tied = RA.Ranking(s)
-  if #list == 0 or tied then return end
+  if #list == 0 or tied then return false end
   local w = list[1]
+  if expect and w.name ~= expect then return false end
   RA.Give(s.item, w.name, s.kind == "sr" and "sr" or "roll", nil, RA.RollDetail(s, w))
+  return true
+end
+-- Ce que fait « Donner » (dialogue de confirmation) : annonce au raid, objet donné tout de suite si le corps est ouvert,
+-- sinon objet à remettre
+function RA.GiveConsequence(item, winner)
+  if RA.test then return L["Raid d'essai : annoncé dans ton chat seulement, rien n'est noté pour le site."] end
+  if stillThere(item) and candidate(item.slot, winner) then return L["Annoncé en /raid, et l'objet lui est donné tout de suite."] end
+  if winner == me() then return L["Annoncé en /raid, et noté pour toi."] end
+  return L["Annoncé en /raid. Corps fermé : l'objet part dans les objets à remettre, à lui échanger."]
 end
 -- Détail noté avec l'objet : « 61 +20 = 81 » (SR), « MS 87 », « jet 54 », « 2 voix » (conseil). Il part au site en
 -- français (données) ; affiché en jeu, il passe par RA.DetailText
@@ -741,6 +752,21 @@ handlers.LV = function(sender, f)
   if not c then return end
   c.votes[sender] = (f[3] or "") ~= "" and f[3] or nil
   refresh()
+end
+-- Classement du conseil (ordre du tableau) : réponse (BiS, Upgrade, Off-Spec, Transmo, Passer), puis voix, puis nom
+local ORDER = { bis = 1, upgrade = 2, off = 3, transmo = 4, pass = 5 }
+function RA.CouncilRanking(sid)
+  local c = RA.councils[sid]
+  local votes = RA.Tally(sid)
+  local list = {}
+  for n, x in pairs(c and c.cands or {}) do list[#list + 1] = { name = n, x = x, votes = votes[n] or 0 } end
+  table.sort(list, function(a, b)
+    local oa, ob = ORDER[a.x.response] or 9, ORDER[b.x.response] or 9
+    if oa ~= ob then return oa < ob end
+    if a.votes ~= b.votes then return a.votes > b.votes end
+    return a.name < b.name
+  end)
+  return list
 end
 -- Voix par candidat, et qui a voté pour qui
 function RA.Tally(sid)

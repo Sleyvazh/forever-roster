@@ -1080,7 +1080,7 @@ local function buildReminder()
     ns.Group.SignUp(e.group.id, e.raid.id, key, e.raid.time)
     if ns.Minimap and ns.Minimap.Update then ns.Minimap.Update() end
     U.Refresh()
-    U.Reminder(true)
+    U.Reminder(true, key, e)
   end
   reminder.answer = answer
   reminder.buttons = {}
@@ -1103,27 +1103,58 @@ local function buildReminder()
   U.reminder = reminder
 end
 
--- after : appelé après une réponse (raid suivant sans réponse, sinon invitation à envoyer au site)
-function U.Reminder(after)
+-- Retour après une réponse (refonte du 09/11) : coche + réponse à sa couleur, « noté pour … » ; la fenêtre se ferme seule
+-- (pas tant que la souris est dessus). La coche est une texture du jeu : sa police n'a pas le caractère ✓.
+local READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:0|t "
+local function statusOf(key)
+  for _, st in ipairs(ns.Group.STATUSES) do if st.key == key then return st end end
+  for _, st in ipairs(ns.Group.OTHER) do if st.key == key then return st end end
+end
+local function closeSoon(delay)
+  local token = {}
+  reminder.token = token
+  C_Timer.After(delay, function()
+    if reminder.token ~= token or not reminder:IsShown() then return end
+    if reminder.IsMouseOver and reminder:IsMouseOver() then closeSoon(2) return end
+    reminder:Hide()
+  end)
+end
+U.REMINDER_CLOSE = 10
+
+-- after : appelé après une réponse (key, au raid done) : le retour, puis le raid suivant sans réponse (1,5 s après),
+-- sinon l'invitation à envoyer au site, et la fenêtre se ferme seule
+function U.Reminder(after, key, done)
   local ask = U.SoonRaids()
   if not reminder then buildReminder() end
   local e = ask[1]
-  if not e then
-    if after and reminder:IsShown() then
-      reminder.entry = false
-      -- Avec Roster Companion : l'inscription part au prochain rechargement de l'interface (le clic l'autorise)
-      reminder.send = ns.Companion and ns.Companion.Active() or false
-      if reminder.send then
-        reminder.text:SetText(GREEN .. L["Noté."] .. "|r " .. L["Pour que le site le sache tout de suite :\n« Envoyer maintenant » recharge l'interface, Roster Companion fait le reste."])
-        reminder.sync:SetText(L["Envoyer maintenant"]) reminder.sync:SetWidth(160)
-      else
-        reminder.text:SetText(GREEN .. L["Noté."] .. "|r " .. L["Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site."])
-      end
-      for _, b in ipairs(reminder.buttons) do b:Hide() end
+  if after then
+    if not reminder:IsShown() then return false end
+    local st = statusOf(key)
+    local fb = READY .. (st and (K.hex(st.color) .. L[st.label] .. "|r") or "") .. (done and (INK .. "  ·  " .. L("noté pour %s", done.raid.name) .. "|r") or "")
+    reminder.entry = false
+    for _, b in ipairs(reminder.buttons) do b:Hide() end
+    if e then
+      reminder.text:SetText(fb)
       reminder.foot:SetText("")
+      local token = {}
+      reminder.token = token
+      C_Timer.After(1.5, function() if reminder.token == token and reminder:IsShown() then U.Reminder() end end)
+      return false
     end
+    -- Avec Roster Companion : l'inscription part au prochain rechargement de l'interface (le clic l'autorise)
+    reminder.send = ns.Companion and ns.Companion.Active() or false
+    if reminder.send then
+      reminder.text:SetText(fb .. "\n" .. L["Pour que le site le sache tout de suite :\n« Envoyer maintenant » recharge l'interface, Roster Companion fait le reste."])
+      reminder.sync:SetText(L["Envoyer maintenant"]) reminder.sync:SetWidth(160)
+    else
+      reminder.text:SetText(fb .. "\n" .. L["Pour que le site le sache :\nta touche de synchro (ou « Synchro rapide »), Ctrl+C, puis Ctrl+V sur le site."])
+    end
+    reminder.foot:SetText(INK .. L["Se ferme toute seule dans quelques secondes."] .. "|r")
+    closeSoon(U.REMINDER_CLOSE)
     return false
   end
+  if not e then return false end
+  reminder.token = nil
   reminder.send = false
   reminder.sync:SetText(L["Synchro rapide"]) reminder.sync:SetWidth(120)
   reminder.entry = e

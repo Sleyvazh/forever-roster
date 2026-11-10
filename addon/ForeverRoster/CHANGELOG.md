@@ -2,6 +2,24 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.1
+
+- **"Award" always asks first**, in the council and for rolls: "Award X to Y?", what will happen (announced in /raid, given right away or added to the items to hand over), and a warning when the player isn't first in the council ranking. Enter awards, Escape cancels.
+- **Loot master window**: the raid's loot mode action is gold (Council, SR rolls when the item is reserved, otherwise MS / OS rolls), the other actions stay available, same width. During rolls, "Award to X" is gold, "Keep to hand over" neutral and "Cancel" a link.
+- **Loot council**: two-line header (the item in large type and the loot master; "Responses 12/20 · Votes 3/5" on the right), responses in colored pills, Vote and Award the same width, "Voted" shown as chosen, Pass rows at the bottom, dimmed.
+- **Your response**: the item in large type, what you wear as icons (tooltip on hover), a 1 / 3 counter, the note's label above its field, BiS, Upgrade, Off-Spec and Transmo the same width in the council colors, Pass apart.
+- **Boss sheet**: targeting the boss shows a compact "Your task" banner ("See the sheet", "Announce in /raid" for the raid leader); nothing for a member without a task. /fr boss still shows the whole sheet.
+- **"Coming?" reminder**: after your answer, a check mark and your answer ("Present · noted for …"), then the next raid or how to send it to the website; the window closes by itself.
+
+Français :
+
+- **« Donner » demande toujours confirmation**, au conseil comme aux jets : « Donner X à Y ? », ce qui va se passer (annonce en /raid, objet donné tout de suite ou ajouté aux objets à remettre), et un avertissement si le joueur n'est pas premier du classement du conseil. Entrée donne, Échap annule.
+- **Fenêtre du maître du butin** : l'action du mode du raid est dorée (Conseil, Jets SR si l'objet est réservé, sinon Jets MS / OS), les autres restent proposées, de même largeur. Pendant des jets, « Donner à X » est doré, « Garder, à remettre » neutre et « Annuler » un lien.
+- **Conseil du butin** : en-tête sur deux lignes (l'objet en grand et le maître du butin ; « Réponses 12/20 · Voix 3/5 » à droite), réponses en pastilles colorées, Voter et Donner de même largeur, « Voté » en état choisi, lignes « Passer » en bas, atténuées.
+- **Ta réponse** : l'objet en grand, ce que tu portes en icônes (infobulle au survol), un compteur 1 / 3, le libellé de la précision au-dessus du champ, BiS, Upgrade, Off-Spec et Transmo de même largeur aux couleurs du conseil, Passer à part.
+- **Fiche du boss** : en ciblant le boss, un bandeau compact « Ta tâche » (« Voir la fiche », « Annoncer en /raid » pour le chef de raid) ; rien pour un membre sans tâche. /fr boss montre toujours la fiche entière.
+- **Rappel « Tu viens ? »** : après ta réponse, une coche et ta réponse (« Présent · noté pour … »), puis le raid suivant ou comment l'envoyer au site ; la fenêtre se ferme seule.
+
 ## 1.7.0
 
 - **A sidebar like the website**: Home, Raids, Runs, Sync, Recipes, then Options apart. A count on Raids (raids without an answer), a dot on Sync (characters to send), "Website data · 3 min ago" at the bottom.

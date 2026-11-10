@@ -267,7 +267,12 @@ local chat = false
 for _, l in ipairs(printed) do if l:find("Zul'Gurub") and l:find("Présent") then chat = true end end
 assert(chat, "rappel : raid déjà répondu dans le chat")
 rawget(rm.buttons[1], "scripts").OnClick(rm.buttons[1])
-assert(ns.charDB().signups.r7.status == "present" and rm.entry == false and rm.text:GetText():find("Noté"), "rappel : inscription notée, invitation à synchroniser")
+-- Retour (refonte du 09/11) : coche (texture du jeu), « Présent » en vert, « noté pour … », puis la fenêtre se ferme seule
+-- (minuteries immédiates dans la simulation)
+local fb = rm.text:GetText()
+assert(ns.charDB().signups.r7.status == "present" and rm.entry == false and fb:find("ReadyCheck%-Ready") and fb:find(ns.UI.kit.hex(ns.Group.STATUSES[1].color) .. "Présent|r", 1, true)
+  and fb:find("noté pour Blackwing Lair") and fb:find("Ctrl%+V sur le site"), "rappel : retour « Présent · noté pour … », invitation à synchroniser")
+assert(not rm:IsShown(), "rappel : se ferme tout seul")
 assert(#select(1, ns.UI.SoonRaids()) == 0, "rappel : plus rien à demander")
 -- Réponses 3 + Autre (1.6.6, refonte du 09/11) : Présent, Peut-être, Absent, puis « Autre... » qui ouvre En retard, Reroll, Banc
 local picked
@@ -503,15 +508,36 @@ assert(frb:find("\nQ;%d+;Tournicoti\n") and frb:find("\nK;Gorrak;13457:5,13510:0
 TARGET = "Ragnaros"
 fire("PLAYER_TARGET_CHANGED")
 local sw = RA.sheetWindow()
-assert(sw and sw:IsShown() and sw.mine:GetText():find("Tank principal"), "fiche du boss au ciblage")
-assert(sw.text:GetText():find("Fils de la flamme : |rGroupes 3 et 4"), "reste de la fiche")
+-- Refonte du 09/11 : au ciblage, un bandeau compact « Ta tâche » (« Voir la fiche », « Annoncer en /raid » pour le chef)
+assert(sw and sw:IsShown() and sw.mine:GetText():find("Tank principal") and not sw.full and not sw.text:IsShown(), "bandeau « Ta tâche » au ciblage")
+assert(sw.more:IsShown() and sw.announce:IsShown(), "bandeau : Voir la fiche, Annoncer (chef de raid)")
+rawget(sw.more, "scripts").OnClick(sw.more)
+assert(sw.full and sw.text:IsShown() and not sw.more:IsShown() and sw.text:GetText():find("Fils de la flamme : |rGroupes 3 et 4"), "Voir la fiche : la fiche entière")
+fire("PLAYER_TARGET_CHANGED")
+assert(sw.full, "fiche entière gardée en reciblant le même boss")
+-- Membre sans tâche : pas de bandeau ; la fiche entière reste à /fr boss
+local leaderFn = UnitIsGroupLeader
+UnitIsGroupLeader = function() return false end
+sw:Hide()
+RA.dismissed = {}
+local noTask = { name = "Garr", rows = { { label = "Tank", names = { "Gorrak" }, text = "" } } }
+assert(RA.ShowSheet(noTask) == false and not sw:IsShown(), "pas de bandeau pour un membre sans tâche")
+assert(RA.ShowSheet(noTask, true) and sw:IsShown() and sw.mine:GetText():find("Pas de tâche pour toi") and not sw.announce:IsShown(), "fiche entière sans tâche, sans Annoncer")
+UnitIsGroupLeader = leaderFn
+-- Fermée par le joueur : plus proposée pendant 5 min ; fermée au pull : de nouveau au prochain ciblage
+sw:Hide()
+assert(RA.dismissed.Garr, "fermée à la main : écartée")
+RA.dismissed = {}
+fire("PLAYER_TARGET_CHANGED")
+assert(sw:IsShown() and not sw.full, "bandeau de nouveau")
 RA.AnnounceSheet(sw.sheet)
 assert(said[#said]:find("^RAID:Ragnaros · Tank principal : Tournicoti · Fils de la flamme : Groupes 3 et 4"), "fiche annoncée en /raid")
 fire("ENCOUNTER_START", 672, "Ragnaros", 9, 40)
 assert(not sw:IsShown() and ForeverRosterDB.bossNpcs[11502] == 672 and ForeverRosterDB.bossNames[672] == "Ragnaros", "fermée au pull, PNJ appris")
+assert(not RA.dismissed.Ragnaros, "fermée au pull : pas écartée")
 TARGET = nil
 run("boss")
-assert(sw:IsShown(), "/fr boss")
+assert(sw:IsShown() and sw.full, "/fr boss : la fiche entière")
 -- Butin : jets SR (réservants seulement, bonus ajouté), objet donné puis remis par échange
 run("butin |cffa335ee|Hitem:19865::::::::60:::::|h[Band of Accuria]|h|r")
 assert(#RA.items == 1 and RA.items[1].itemId == 19865, "objet ajouté à la fenêtre du butin")
@@ -523,9 +549,24 @@ fire("CHAT_MSG_SYSTEM", "Bob obtient un 99 (1-100).")
 fire("CHAT_MSG_SYSTEM", "Vesper obtient un 12 (1-100).")
 local rank, tied = RA.Ranking()
 assert(not tied and rank[1].name == "Vesper" and rank[1].total == 85 and rank[2].total == 81 and RA.session.ignored.Bob == 99, "classement SR (premier jet seul, Bob ignoré)")
+-- Fenêtre du butin (refonte du 09/11) : « Donner à Vesper » doré, « Garder, à remettre » neutre, « Annuler » en lien ;
+-- Donner passe toujours par la confirmation (Échap annule, Entrée donne)
 RA.ShowLoot()
-RA.AwardSession()
-assert(said[#said]:find("pour Vesper %(85%)") and #RA.Handover() == 1 and RA.Handover()[1].winner == "Vesper", "objet attribué, à remettre (corps fermé)")
+local LW = RA.lootWindow()
+local giveV = LW.list.Button("Donner à Vesper")
+assert(giveV and rawget(giveV, "selected") and rawget(giveV, "r") == ns.UI.kit.C.gold[1], "jets : « Donner à Vesper » doré")
+assert(LW.list.Button("Garder, à remettre") and not rawget(LW.list.Button("Garder, à remettre"), "selected") and LW.list.Button("Annuler"), "Garder neutre, Annuler en lien")
+assert(LW.list.Button("Jets SR") and not rawget(LW.list.Button("Jets SR"), "selected") and LW.list.Button("Conseil") and LW.list.Button("Jet libre"), "pendant les jets : plus rien de doré sur les objets, toutes les actions restent")
+rawget(giveV, "scripts").OnClick(giveV)
+local gw = RA.giveWindow()
+assert(gw:IsShown() and gw.ask:GetText():find("^Donner .*Band of Accuria.* à .*Vesper.* %?$") and gw.what:GetText():find("objets à remettre") and gw.warn:GetText() == "", "confirmation : Donner X à Y ?, ce qui va se passer")
+assert(#RA.Handover() == 0 and RA.session, "rien donné avant la confirmation")
+rawget(gw, "scripts").OnKeyDown(gw, "ESCAPE")
+assert(not gw:IsShown() and RA.session and #RA.Handover() == 0, "Échap : annulé")
+assert(RA.AwardSession("Gorrak") == false and RA.session, "classement changé pendant la confirmation : rien donné")
+rawget(giveV, "scripts").OnClick(giveV)
+rawget(gw, "scripts").OnKeyDown(gw, "ENTER")
+assert(not gw:IsShown() and said[#said]:find("pour Vesper %(85%)") and #RA.Handover() == 1 and RA.Handover()[1].winner == "Vesper", "Entrée : objet attribué, à remettre (corps fermé)")
 fire("CHAT_MSG_LOOT", "Vous recevez le butin : |cffa335ee|Hitem:19865::::::::60:::::|h[Band of Accuria]|h|r.", "Tournicoti", "", "", "Tournicoti")
 COUNTS[19865] = 1
 assert(RA.Trade(RA.Handover()[1]) and traded == "raid3", "échange avec le gagnant")
@@ -552,7 +593,16 @@ local sid = RA.session.sid
 assert(sent[#sent].msg == "LO;" .. sid .. ";18814;Choker", "objet proposé au conseil, avec son nom")
 fire("CHAT_MSG_ADDON", "FRoster", sent[#sent].msg, "RAID", "Tournicoti")
 assert(#RA.asks == 1, "fenêtre de réponse")
-RA.Respond(RA.asks[1], "bis", "pour mon set")
+-- « Ta réponse » (refonte du 09/11) : l'objet en grand, proposé par, précision avec son libellé, 4 réponses aux couleurs du
+-- conseil et « Passer » à part ; pas de compteur pour un seul objet
+local AW = RA.askWindow()
+assert(AW:IsShown() and AW.item:GetText():find("Hitem:18814") and AW.by:GetText():find("Proposé par Tournicoti") and AW.count:GetText() == ""
+  and AW.noteLabel:GetText() == "Une précision ? (facultatif)", "Ta réponse : objet, proposé par, libellé de la précision")
+assert(#AW.buttons == 4 and AW.buttons[1].label:GetText() == "BiS" and rawget(AW.buttons[1], "g") == RA.RESPONSE_COLOR.bis[2]
+  and AW.buttons[4].label:GetText() == "Transmo" and AW.pass:GetText() == "Passer", "4 réponses colorées, Passer à part")
+rawset(AW.note, "text", "pour mon set") -- saisi par le joueur (pas un texte de l'addon)
+rawget(AW.buttons[1], "scripts").OnClick(AW.buttons[1])
+assert(#RA.asks == 0 and not AW:IsShown(), "réponse envoyée, fenêtre fermée")
 fire("CHAT_MSG_ADDON", "FRoster", "LA;" .. sid .. ";upgrade;16866;", "WHISPER", "Gorrak")
 assert(RA.councils[sid].cands.Tournicoti.response == "bis" and RA.councils[sid].cands.Gorrak.response == "upgrade", "réponses reçues par le conseil")
 -- Réponse chuchotée par un joueur sans addon : mots anglais acceptés aussi
@@ -561,6 +611,14 @@ assert(RA.councils[sid].cands.Vesper.response == "transmo" and RA.councils[sid].
 RA.Vote(sid, "Gorrak")
 assert(RA.Tally(sid).Gorrak == 1, "vote compté")
 RA.ShowCouncil(sid)
+-- Conseil (refonte du 09/11) : en-tête sur deux lignes et compteurs, réponses en pastilles, « Voté » en état choisi
+local CW = RA.councilWindow()
+assert(CW.item:GetText():find("Choker") and CW.ml:GetText():find("Maître du butin : Tournicoti %(toi%)") and CW.counts:GetText():find("Réponses 3/%d+")
+  and CW.counts:GetText():find("Voix 1/%d"), "conseil : objet, maître du butin, compteurs")
+local CG = CW.grid
+assert(CG.RowOf("Tournicoti").pills[2].on and CG.RowOf("Vesper").pills[2].on, "réponses en pastilles")
+local votedG = CG.Button("Voté", "Gorrak")
+assert(votedG and rawget(votedG, "selected") and not rawget(CG.Button("Voter", "Tournicoti"), "selected"), "« Voté » en état choisi")
 -- Objets reçus (lot I) : compte du site (ligne N, persos d'un même joueur ensemble) + ce soir, spé principale seulement
 local nd = { counts = ns.Format.ParseFRG("FRG;1;g;1;G\nN;saison;depuis le 05/11/2026;Gorrak+Grumalt:2,Tournicoti:0\nEND;0")[1].counts }
 assert(nd.counts.short == "saison" and nd.counts.byName.Grumalt.n == 2 and #nd.counts.byName.Gorrak.names == 2, "ligne N lue")
@@ -570,7 +628,12 @@ local rs, rt = RA.Received("Grumalt", nd)
 assert(rs == 2 and rt == 0, "compte du site partagé par les persos du joueur")
 local vs, vt = RA.Received("Vesper", nd)
 assert(vs == 0 and vt >= 1, "objet de ce soir compté (soft reserve)")
-RA.AwardCouncil(sid, "Gorrak")
+-- Donner à Gorrak alors que Tournicoti (BiS) est premier du classement : avertissement, puis « Donner »
+local giveG = CG.Button("Donner", "Gorrak")
+rawget(giveG, "scripts").OnClick(giveG)
+assert(gw:IsShown() and gw.warn:GetText():find("Tournicoti est premier du classement %(BiS, 0 voix%)"), "avertissement : pas le premier du classement")
+rawget(gw.give, "scripts").OnClick(gw.give)
+assert(not gw:IsShown() and not RA.councils[sid], "conseil : donné après confirmation")
 assert(said[#said]:find("pour Gorrak %(1 voix%)") and RA.Handover()[1].winner == "Gorrak" and RA.Handover()[1].method == "council", "conseil : objet attribué")
 -- Onglet En raid et commandes, sans erreur
 local beforeG = errors()
@@ -658,7 +721,14 @@ local tc = RA.councils[tsid]
 assert(tc.cands.Mirelle.response == "bis" and tc.cands.Mirelle.note == "chuchoté" and tc.cands.Gorrak.response == "pass", "réponses simulées")
 assert(RA.Tally(tsid).Mirelle == 1 and RA.Tally(tsid).Ilyra == 1, "votes simulés")
 assert(#RA.asks == 1, "ma fenêtre de réponse")
-RA.Respond(RA.asks[1], "upgrade")
+-- Deux objets à la suite : compteur 1 / 2 puis 2 / 2 (refonte du 09/11)
+table.insert(RA.asks, { sid = "x2", itemId = 16866, ml = "Gorrak", at = time() })
+RA.ShowAsk()
+assert(AW:IsShown() and AW.count:GetText():find("1 / 2"), "compteur 1 / 2")
+rawget(AW.buttons[2], "scripts").OnClick(AW.buttons[2])
+assert(AW:IsShown() and AW.count:GetText():find("2 / 2"), "compteur 2 / 2")
+rawget(AW.pass, "scripts").OnClick(AW.pass)
+assert(#RA.asks == 0 and not AW:IsShown(), "file vidée, fenêtre fermée")
 RA.Vote(tsid, "Mirelle")
 assert(tc.cands.Tournicoti.response == "upgrade" and RA.Tally(tsid).Mirelle == 2, "ma réponse et mon vote")
 RA.ShowCouncil(tsid)

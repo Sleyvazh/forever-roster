@@ -275,6 +275,23 @@ local function styleStatus(b, label, color, selected)
   end
 end
 
+-- Bouton en lien (refonte du 09/11 : action secondaire, comme « Annuler » des jets) : texte à l'encre souligné, doré au
+-- survol, sans cadre
+local function linkButton(parent)
+  local b = CreateFrame("Button", nil, parent)
+  b:SetSize(100, tall(22))
+  local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+  fs:SetPoint("CENTER", 0, 1)
+  fs:SetTextColor(C.ink[1], C.ink[2], C.ink[3])
+  if b.SetFontString then b:SetFontString(fs) end
+  b.line = b:CreateTexture(nil, "ARTWORK")
+  b.line:SetHeight(1) b.line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -2) b.line:SetPoint("TOPRIGHT", fs, "BOTTOMRIGHT", 0, -2)
+  solid(b.line, C.ink)
+  b:SetScript("OnEnter", function(self) fs:SetTextColor(C.gold[1], C.gold[2], C.gold[3]) solid(self.line, C.gold) end)
+  b:SetScript("OnLeave", function(self) fs:SetTextColor(C.ink[1], C.ink[2], C.ink[3]) solid(self.line, C.ink) end)
+  return b
+end
+
 -- Petit menu de choix sous un bouton (« Autre » des réponses à un raid, refonte du 09/11) : une colonne de boutons de
 -- statut. Un choix, un clic ailleurs (cadre transparent sur tout l'écran, à l'addon) ou un second clic sur le bouton le
 -- ferme. items : { { label, color, selected, onClick }, … }
@@ -346,6 +363,15 @@ local function hint(parent, text)
   return h
 end
 
+-- Bouton visible d'après son texte (boutons plats, de statut ou en lien) ; sert aux vérifications hors jeu
+local function findButton(sets, label)
+  for _, set in ipairs(sets) do
+    for _, b in pairs(set) do
+      local fs = rawget(b, "label")
+      if b:IsShown() and ((type(fs) == "table" and fs:GetText()) or b:GetText()) == label then return b end
+    end
+  end
+end
 -- Liste défilante façon fiche de perso : barres de titre de section, lignes alternées, boutons sous le texte
 local function list(parent, top)
   local sf, bar = scrollFrame(parent)
@@ -369,7 +395,7 @@ local function list(parent, top)
     r.bg:SetAllPoints()
     r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     r.text:SetJustifyH("LEFT")
-    r.buttons, r.sbuttons = {}, {}
+    r.buttons, r.sbuttons, r.lbuttons = {}, {}, {}
     itemTips(r) -- objets des listes (butin, jets, objets à remettre…) : infobulle au survol
     rows[k] = r
     return r
@@ -381,6 +407,7 @@ local function list(parent, top)
     local r = row(i)
     for _, b in pairs(r.buttons) do b:Hide() end
     for _, b in pairs(r.sbuttons) do b:Hide() end
+    for _, b in pairs(r.lbuttons) do b:Hide() end
     if site() then
       -- Titre de section du site : texte doré à gauche, filet dessous
       r.bg:ClearAllPoints() r.bg:SetPoint("BOTTOMLEFT", 10, 6) r.bg:SetPoint("BOTTOMRIGHT", -10, 6) r.bg:SetHeight(1)
@@ -414,10 +441,16 @@ local function list(parent, top)
     local h = math.max(14, (r.text.GetStringHeight and r.text:GetStringHeight() or 14))
     local x = 10
     for _, b in pairs(r.sbuttons) do b:Hide() end
+    for _, b in pairs(r.lbuttons) do b:Hide() end
     for k, spec in ipairs(buttons or {}) do
       local b
-      -- spec[4] = { color = { r, g, b }, selected = bool } : bouton plat à la couleur du site (statuts, qualité)
-      if spec[4] then
+      -- spec[4] = { color = { r, g, b }, selected = bool } : bouton plat à la couleur du site (statuts, qualité) ;
+      -- spec[4] = { link = true } : bouton en lien (action secondaire)
+      if spec[4] and spec[4].link then
+        b = r.lbuttons[k] or linkButton(r)
+        r.lbuttons[k] = b
+        b:SetText(spec[1])
+      elseif spec[4] then
         b = r.sbuttons[k] or statusButton(r)
         r.sbuttons[k] = b
         styleStatus(b, spec[1], spec[4].color, spec[4].selected)
@@ -458,13 +491,38 @@ local function list(parent, top)
     for k = i + 1, #rows do rows[k]:Hide() end
     body:SetSize(width, y + 10)
   end
+  function L.Button(label)
+    for k = 1, i do local b = findButton({ rows[k].buttons, rows[k].sbuttons, rows[k].lbuttons }, label) if b then return b end end
+  end
   return L
 end
 
 -- Tableau défilant (lot I, conseil du butin) : en-têtes de colonnes, une ligne par entrée, boutons dans la dernière colonne.
 -- cols : { title, w = largeur fixe } ou { title, flex = poids, min = largeur mini } ; small = petite police, lines = lignes max,
--- tip = infobulle au survol de la cellule (opts.tip(colonne, cadre) à la création de la ligne).
+-- tip = infobulle au survol de la cellule (opts.tip(colonne, cadre) à la création de la ligne) ; pill = texte dans une
+-- pastille colorée (opts.pills[colonne] = { r, g, b }, refonte du 09/11 : réponses du conseil).
 local PAD = 8
+-- Pastille d'une cellule : textures de la ligne (sous son texte), placées sur un repère invisible qu'on dimensionne
+local function pill(r)
+  local p = CreateFrame("Frame", nil, r)
+  local parts = { r:CreateTexture(nil, "BACKGROUND", nil, 2) }
+  parts[1]:SetPoint("TOPLEFT", p) parts[1]:SetPoint("BOTTOMRIGHT", p)
+  for _, e in ipairs({ { "TOPLEFT", "TOPRIGHT", 0, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", 1, 0 } }) do
+    local t = r:CreateTexture(nil, "BORDER")
+    t:SetPoint(e[1], p) t:SetPoint(e[2], p)
+    if e[3] > 0 then t:SetWidth(e[3]) else t:SetHeight(e[4]) end
+    parts[#parts + 1] = t
+  end
+  function p.Paint(c)
+    parts[1]:SetColorTexture(c[1], c[2], c[3], 0.18)
+    for k = 2, #parts do parts[k]:SetColorTexture(c[1], c[2], c[3], 1) end
+    for _, t in ipairs(parts) do t:Show() end
+    p.on = true
+  end
+  function p.Off() for _, t in ipairs(parts) do t:Hide() end p.on = false end
+  p.Off()
+  return p
+end
 local function grid(parent, top, bottom, cols)
   local sf, bar = scrollFrame(parent)
   sf:SetPoint("TOPLEFT", 4, top - 24) sf:SetPoint("BOTTOMRIGHT", -bar, bottom)
@@ -492,10 +550,19 @@ local function grid(parent, top, bottom, cols)
       local hov = r.hover[i]
       if hov then hov:ClearAllPoints() hov:SetPoint("TOPLEFT", r, "TOPLEFT", G.x[i], 0) hov:SetSize(G.w[i], r:GetHeight() or 30) end
     end
+    for i, pill in pairs(r.pills) do
+      local cell = r.cells[i]
+      if pill.on and cell then
+        local tw = (cell.GetStringWidth and cell:GetStringWidth()) or 50
+        pill:ClearAllPoints() pill:SetPoint("LEFT", r, "LEFT", G.x[i], 0)
+        pill:SetSize(math.min(G.w[i], tw + 16), 20)
+        cell:ClearAllPoints() cell:SetPoint("LEFT", r, "LEFT", G.x[i] + 8, 0) cell:SetWidth(math.max(10, G.w[i] - 8))
+      end
+    end
     local bx = (G.x[#cols] or 0) + (G.w[#cols] or 0)
-    for k = #r.buttons, 1, -1 do
-      local b = r.buttons[k]
-      if b:IsShown() then b:ClearAllPoints() b:SetPoint("RIGHT", r, "LEFT", bx, 0) bx = bx - (b:GetWidth() or 80) - 6 end
+    for k = #r.btns, 1, -1 do
+      local b = r.btns[k]
+      b:ClearAllPoints() b:SetPoint("RIGHT", r, "LEFT", bx, 0) bx = bx - (b:GetWidth() or 80) - 6
     end
   end
   -- Largeurs : colonnes fixes, puis la place restante partagée entre les colonnes souples
@@ -526,8 +593,9 @@ local function grid(parent, top, bottom, cols)
       r = CreateFrame("Frame", nil, body)
       r.bg = r:CreateTexture(nil, "BACKGROUND")
       r.bg:SetAllPoints()
-      r.cells, r.hover, r.buttons = {}, {}, {}
+      r.cells, r.hover, r.buttons, r.sbuttons, r.pills, r.btns = {}, {}, {}, {}, {}, {}
       for i, c in ipairs(cols) do
+        if c.pill then r.pills[i] = pill(r) end
         if not c.buttons then
           local fs = r:CreateFontString(nil, "OVERLAY", c.small and "GameFontHighlightSmall" or "GameFontHighlight")
           fs:SetJustifyH(c.justify or "LEFT")
@@ -547,10 +615,26 @@ local function grid(parent, top, bottom, cols)
     r.tip = opts.tip
     for i in ipairs(cols) do if r.cells[i] then r.cells[i]:SetText(values[i] or "") end end
     for _, b in ipairs(r.buttons) do b:Hide() end
+    for _, b in pairs(r.sbuttons) do b:Hide() end
+    r.btns = {}
+    -- spec[4] = { color, selected } : bouton plat à la couleur d'un état (« Voté » en état choisi)
     for k, spec in ipairs(opts.buttons or {}) do
-      local b = r.buttons[k] or button(r, spec[1], spec[2], nil)
-      r.buttons[k] = b
-      b:SetText(spec[1]) b:SetSize(spec[2], 22) b:SetScript("OnClick", spec[3]) b:Show()
+      local b
+      if spec[4] then
+        b = r.sbuttons[k] or statusButton(r)
+        r.sbuttons[k] = b
+        styleStatus(b, spec[1], spec[4].color, spec[4].selected)
+      else
+        b = r.buttons[k] or button(r, spec[1], spec[2], nil)
+        r.buttons[k] = b
+        b:SetText(spec[1])
+      end
+      b:SetSize(spec[2], tall(22)) b:SetScript("OnClick", spec[3]) b:Show()
+      r.btns[#r.btns + 1] = b
+    end
+    for i, p in pairs(r.pills) do
+      local c = opts.pills and opts.pills[i]
+      if c and (values[i] or "") ~= "" then p.Paint(c) else p.Off() end
     end
     local h = opts.height or 30
     odd = not odd
@@ -569,6 +653,17 @@ local function grid(parent, top, bottom, cols)
     G.Layout()
   end
   function G.Height() return y end
+  -- Ligne dont la première colonne contient ce texte, et l'un de ses boutons (vérifications hors jeu)
+  function G.RowOf(text)
+    for k = 1, G.n do
+      local c = G.rows[k].cells[1]
+      if c and (c:GetText() or ""):find(text, 1, true) then return G.rows[k] end
+    end
+  end
+  function G.Button(label, text)
+    local r = G.RowOf(text)
+    return r and findButton({ r.buttons, r.sbuttons }, label)
+  end
   -- Largeur connue seulement une fois la fenêtre placée (et à chaque redimensionnement)
   if sf.HookScript then sf:HookScript("OnSizeChanged", function() G.Layout() end) end
   return G
@@ -629,6 +724,7 @@ end
 -- Outils exposés aux fichiers de chaque addon (fenêtre principale, butin, conseil, fiches…)
 K.window, K.button, K.list, K.grid, K.resizable, K.hint, K.colored, K.site = window, button, list, grid, resizable, hint, colored, site
 K.textArea, K.front, K.roleIcon, K.itemTips, K.styleStatus, K.statusButton, K.choices = textArea, front, roleIcon, itemTips, styleStatus, statusButton, choices
+K.linkButton, K.tall = linkButton, tall
 K.solid, K.edges, K.recolor, K.titleFont, K.diamond, K.gapX, K.atlas, K.inset, K.scrollFrame = solid, edges, recolor, titleFont, diamond, gapX, atlas, inset, scrollFrame
 K.C, K.ART, K.CLASS_COLOR = C, ART, CLASS_COLOR
 K.GOLD, K.INK, K.GREEN, K.BLUE = GOLD, INK, GREEN, BLUE
