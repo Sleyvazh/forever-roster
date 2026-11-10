@@ -59,6 +59,8 @@ export interface User {
   gameLang: import("@forever/game-data").GameLangPref; rosterPreview: boolean;
   /** Forever : mes inscriptions faites en jeu peuvent passer par un officier avec Roster Companion (activé d'office). */
   gameRelay: boolean;
+  /** Langue du site (auto = celle du navigateur). */
+  lang: import("./i18n").LangPref;
   /** Admin du site (page des signalements) ; dernière version de l'addon vue à l'import. */
   siteAdmin?: boolean; addonVersion?: string | null;
 }

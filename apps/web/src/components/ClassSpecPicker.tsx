@@ -2,6 +2,7 @@ import { CLASS_SPECS, CLASSES, type ClassName, type SpecDef } from "@forever/gam
 import type { CSSProperties } from "react";
 import { useGameText } from "../gameText";
 import { ClassDot } from "./Outings";
+import { t } from "../i18n";
 
 /** Classe en neuf boutons, puis la spé en trois ou quatre boutons (avec son rôle) : un clic chacun. */
 export function ClassSpecPicker({ cls, spec, onCls, onSpec, idPrefix = "cs" }: {
@@ -11,7 +12,7 @@ export function ClassSpecPicker({ cls, spec, onCls, onSpec, idPrefix = "cs" }: {
   const specs: readonly SpecDef[] = cls ? (CLASS_SPECS as Record<string, SpecDef[]>)[cls] ?? [] : [];
   return (
     <>
-      <div className="fld"><span className="lbl" id={`${idPrefix}-cls`}>Classe</span>
+      <div className="fld"><span className="lbl" id={`${idPrefix}-cls`}>{t("Classe")}</span>
         <div className="cls-pick" role="group" aria-labelledby={`${idPrefix}-cls`}>
           {(Object.keys(CLASSES) as ClassName[]).map(c => (
             <button key={c} type="button" className="cls-b" aria-pressed={cls === c} style={{ "--cc": CLASSES[c].color } as CSSProperties}
@@ -20,7 +21,7 @@ export function ClassSpecPicker({ cls, spec, onCls, onSpec, idPrefix = "cs" }: {
         </div>
       </div>
       {cls && (
-        <div className="fld"><span className="lbl" id={`${idPrefix}-spec`}>Spé</span>
+        <div className="fld"><span className="lbl" id={`${idPrefix}-spec`}>{t("Spé")}</span>
           <div className="spec-pick" role="group" aria-labelledby={`${idPrefix}-spec`}>
             {specs.map(s => (
               <button key={s.name} type="button" className="spec-b" aria-pressed={spec === s.name} onClick={() => onSpec(s.name)}>

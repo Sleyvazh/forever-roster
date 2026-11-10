@@ -14,11 +14,13 @@ import { SyncButton, SyncPanel } from "./SyncPanel";
 import { News } from "./News";
 import { useApplySite, useSite } from "../site";
 import { ReportDialog, useUnseenReports } from "./Report";
+import { LangSwitch } from "./LangSwitch";
+import { N, t, tn } from "../i18n";
 
 const Brand = () => {
   const site = useSite();
   return (
-    <Link to="/" className="brand" aria-label={`${site.name}, accueil`}>
+    <Link to="/" className="brand" aria-label={t("{site}, accueil", { site: site.name })}>
       {site.game === "retail" ? <RosterLogo size={32} /> : <Logo size={32} />}
       <strong>{site.name}</strong>
     </Link>
@@ -63,23 +65,24 @@ function AccountMenu() {
   return (
     <div className="acct" ref={ref}>
       <button type="button" className="acct-btn" aria-haspopup="true" aria-expanded={open} aria-controls="acct-menu" onClick={() => setOpen(o => !o)}
-        aria-label={unseen ? `${user.displayName} : ${unseen} réponse${unseen > 1 ? "s" : ""} à lire` : undefined}>
+        aria-label={unseen ? tn(unseen, "{name} : {n} réponse à lire", "{name} : {n} réponses à lire", { name: user.displayName }) : undefined}>
         <Avatar /><span className="who">{user.displayName}</span><span className="chev" aria-hidden="true" />
         {unseen > 0 && <span className="acct-dot" aria-hidden="true" />}
       </button>
       {open && (
-        <div className="acct-menu" id="acct-menu" aria-label="Compte">
-          <div className="head"><b>{user.displayName}</b>{main && <span>Perso principal : {main.name}</span>}</div>
-          <Link className="item" to="/account">Compte &amp; sécurité</Link>
-          {forever && <Link className="item" to="/addon">Addon</Link>}
-          {forever && <Link className="item" to="/bienvenue">Rejoindre ou créer une guilde</Link>}
-          <div className="mrow"><span>Thème</span><ThemeToggle /></div>
+        <div className="acct-menu" id="acct-menu" aria-label={t("Compte")}>
+          <div className="head"><b>{user.displayName}</b>{main && <span>{t("Perso principal : {name}", { name: main.name })}</span>}</div>
+          <Link className="item" to="/account">{t("Compte & sécurité")}</Link>
+          {forever && <Link className="item" to="/addon">{t("Addon")}</Link>}
+          {forever && <Link className="item" to="/bienvenue">{t("Rejoindre ou créer une guilde")}</Link>}
+          <div className="mrow"><span>{t("Thème")}</span><ThemeToggle /></div>
+          <div className="mrow"><span>{t("Langue")}</span><LangSwitch /></div>
           <hr />
-          <button type="button" className="item" onClick={() => { setOpen(false); setReporting(true); }}>Signaler un bug ou une idée</button>
-          <Link className="item" to="/signalements">Mes signalements{unseen > 0 && <span className="acct-count">{unseen} réponse{unseen > 1 ? "s" : ""}</span>}</Link>
-          {user.siteAdmin && <Link className="item" to="/admin/signalements">Signalements (admin)</Link>}
+          <button type="button" className="item" onClick={() => { setOpen(false); setReporting(true); }}>{t("Signaler un bug ou une idée")}</button>
+          <Link className="item" to="/signalements">{t("Mes signalements")}{unseen > 0 && <span className="acct-count">{tn(unseen, "{n} réponse", "{n} réponses")}</span>}</Link>
+          {user.siteAdmin && <Link className="item" to="/admin/signalements">{t("Signalements (admin)")}</Link>}
           <hr />
-          <button type="button" className="item danger" onClick={() => void logout()}>Se déconnecter</button>
+          <button type="button" className="item danger" onClick={() => void logout()}>{t("Se déconnecter")}</button>
         </div>
       )}
       {reporting && <ReportDialog onClose={() => setReporting(false)} />}
@@ -98,8 +101,8 @@ const TAB_ICONS = {
 
 /** Forever Roster (refonte du 23/10) : les mêmes cinq entrées au bureau et sur téléphone. */
 const FOREVER_NAV: [Exclude<NavKey, null>, string, string, keyof typeof TAB_ICONS][] = [
-  ["home", "Accueil", "Accueil", "accueil"], ["outings", "Sorties", "Sorties", "sorties"], ["raids", "Raids", "Raids", "raids"],
-  ["guild", "Guilde", "Guilde", "groupes"], ["chars", "Mes persos", "Persos", "persos"],
+  ["home", N("Accueil"), N("Accueil"), "accueil"], ["outings", N("Sorties"), N("Sorties"), "sorties"], ["raids", N("Raids"), N("Raids"), "raids"],
+  ["guild", N("Guilde"), N("Guilde"), "groupes"], ["chars", N("Mes persos"), N("Persos"), "persos"],
 ];
 function ForeverLinks({ bar }: { bar: boolean }) {
   const loc = useLocation();
@@ -107,7 +110,7 @@ function ForeverLinks({ bar }: { bar: boolean }) {
   const links = navLinks(g.id);
   const on = navKeyOf(loc.pathname);
   return <>{FOREVER_NAV.map(([k, label, short, icon]) => (
-    <Link key={k} to={links[k]} className={on === k ? "active" : undefined} aria-current={on === k ? "page" : undefined}>{bar && TAB_ICONS[icon]}{bar ? short : label}</Link>
+    <Link key={k} to={links[k]} className={on === k ? "active" : undefined} aria-current={on === k ? "page" : undefined}>{bar && TAB_ICONS[icon]}{t(bar ? short : label)}</Link>
   ))}</>;
 }
 /**
@@ -134,16 +137,16 @@ export function TopBar() {
         <div className="bar-in">
           <Brand />
           {app && !bare ? (
-            <nav className="nav" aria-label="Navigation principale">
+            <nav className="nav" aria-label={t("Navigation principale")}>
               {forever ? <ForeverLinks bar={false} /> : <>
-                <NavLink to="/persos">Mes persos</NavLink>
-                <NavLink to="/groups">Guildes</NavLink>
-                <NavLink to="/addon">Addon</NavLink>
+                <NavLink to="/persos">{t("Mes persos")}</NavLink>
+                <NavLink to="/groups">{t("Guildes")}</NavLink>
+                <NavLink to="/addon">{t("Addon")}</NavLink>
               </>}
             </nav>
           ) : <span />}
           <div className="bar-right">
-            {site.preview && <span className="tag warn" title="Roster n'est pas encore ouvert : ton compte y a accès en avance, pour tester.">Accès anticipé</span>}
+            {site.preview && <span className="tag warn" title={t("Roster n'est pas encore ouvert : ton compte y a accès en avance, pour tester.")}>{t("Accès anticipé")}</span>}
             {app && !bare && <SyncButton />}
             {app && forever && !bare && <News />}
             {user ? <AccountMenu /> : !me.isLoading && <ThemeToggle />}
@@ -152,11 +155,11 @@ export function TopBar() {
       </header>
       {app && <SyncPanel />}
       {app && !bare && (
-        <nav className={`tabbar${forever ? " five" : ""}`} aria-label="Navigation principale (mobile)">
+        <nav className={`tabbar${forever ? " five" : ""}`} aria-label={t("Navigation principale (mobile)")}>
           {forever ? <ForeverLinks bar /> : <>
-            <NavLink to="/persos">{TAB_ICONS.persos}Mes persos</NavLink>
-            <NavLink to="/groups">{TAB_ICONS.groupes}Guildes</NavLink>
-            <NavLink to="/addon">{TAB_ICONS.addon}Addon</NavLink>
+            <NavLink to="/persos">{TAB_ICONS.persos}{t("Mes persos")}</NavLink>
+            <NavLink to="/groups">{TAB_ICONS.groupes}{t("Guildes")}</NavLink>
+            <NavLink to="/addon">{TAB_ICONS.addon}{t("Addon")}</NavLink>
           </>}
         </nav>
       )}

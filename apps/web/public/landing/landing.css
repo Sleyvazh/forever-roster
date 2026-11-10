@@ -42,6 +42,9 @@ a { color: var(--gold); }
 .logo svg { flex: none; }
 .sp { flex: 1; }
 .top nav a { color: var(--ink-2); text-decoration: none; font-size: 14.5px; margin-right: 6px; }
+/* Langue (English / Français) : un lien discret, cible de 44 px */
+.top .lang { color: var(--ink-2); font-size: 14.5px; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; padding-inline: 4px; }
+.top .lang:hover { color: var(--gold); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; padding: 10px 18px; font-weight: 600; font-size: 15px; border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); text-decoration: none; }
 .btn:hover { border-color: var(--frame); }
 .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }

@@ -119,6 +119,15 @@ Côté serveur, `routes/devices.ts` (appairage, appareils reliés) et `routes/sy
 
 Source unique pour les races, classes, spés, métiers, emplacements d'équipement et règles de raid. L'API l'utilise pour valider les données et calculer la couverture d'un raid. Le front l'utilise pour les formulaires et pour recalculer la couverture en direct pendant le glisser-déposer. Il est distribué en TypeScript et embarqué dans le bundle de l'API par tsup.
 
+## Langues : français et anglais (version anglaise, 10/11/2026)
+
+- **Site** : le texte français reste dans le code et sert de clé, comme dans l'addon : `t("Se connecter")`, `t("{n} raids sans réponse", { n })`, `tx("Lis la {link}.", { link: <Link …/> })` (éléments React), `tn(n, "{n} raid", "{n} raids")` (pluriel : 0 et 1 au singulier en français, 1 seulement en anglais), `N("…")` pour un texte déclaré hors d'un composant (`apps/web/src/i18n.tsx`). Le catalogue `apps/web/src/i18n/en.json` (français → anglais) n'est chargé qu'en anglais.
+- **Vérification** : `npm test -w apps/web` (`scripts/i18n-check.mjs`) échoue si un texte n'a pas sa traduction, si une traduction ne sert plus ou si les `{variables}` diffèrent ; `node scripts/i18n-check.mjs --missing` liste les textes à traduire. L'e2e `anglais.spec.ts` vérifie qu'aucun texte français ne reste sur les pages visitées en anglais.
+- **Langue choisie** : cookie `fr-lang` (`fr` | `en`, un an), posé par FR | EN (pied de page, menu du compte) ou `/?lang=en` ; colonne `users.lang` (`auto` | `fr` | `en`) : un compte retrouve sa langue sur tous ses appareils. Sans choix : français tant que `AUTO_ENGLISH` est faux (traduction en cours), puis la langue du navigateur.
+- **Accueil public** : `landing/forever-en.html` et `retail-en.html`, choisies par Caddy (`/?lang=en` ou le cookie, snippet `landing` du Caddyfile ; `e2e/serve.mjs` fait pareil en test).
+- **Pages légales** : `LegalPagesEn.tsx`, le même texte en anglais ; la version française fait foi. Tout changement se fait dans les deux.
+- **Dates** : `dateLocale()` (`fr-FR`, ou `en-GB` : « 9 Nov », 24 h).
+
 ## Pistes pour la suite
 
 - Simulations DPS : un module `packages/sim` pourra réutiliser `game-data` (classes, spés, talents) et l'équipement déjà stocké.

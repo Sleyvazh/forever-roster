@@ -2851,3 +2851,8 @@ p.rp-meta { margin: 0; color: var(--ink); }
   .ac-foot .btn { flex: 1 1 0; }
   .ad-dl { width: 100%; justify-content: center; }
 }
+
+/* ==========================================================================
+   Version anglaise (10/11/2026) : FR | EN en bas de chaque page (le doré reste au contenu de la page)
+   ========================================================================== */
+.site-foot .lang-seg > [aria-pressed="true"] { background: var(--panel-2); color: var(--ink); font-weight: 700; }

@@ -1,6 +1,8 @@
 import { GlyphSprite } from "./components/ItemGlyphs";
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./auth";
+import { LangSwitch, useAccountLang } from "./components/LangSwitch";
+import { t } from "./i18n";
 import { TopBar } from "./components/TopBar";
 import { AccountPage } from "./pages/AccountPage";
 import { AddonPage } from "./pages/AddonPage";
@@ -23,7 +25,7 @@ function Home() {
   const site = useSite();
   const g = useCurrentGuild();
   if (site.game === "retail") return <Navigate to="/persos" replace />;
-  if (g.loading) return <p className="muted">Chargement…</p>;
+  if (g.loading) return <p className="muted">{t("Chargement…")}</p>;
   return <Navigate to={g.id ? `/groups/${g.id}` : "/bienvenue"} replace />;
 }
 /** Mes persos : liste puis fiche sur Forever ; Roster garde sa page. */
@@ -40,6 +42,7 @@ function Groups() {
 }
 
 export function App() {
+  useAccountLang();
   return (
     <>
       <GlyphSprite />
@@ -74,13 +77,14 @@ export function App() {
             <Route path="/appairer" element={<RequireAuth><PairPage /></RequireAuth>} />
             <Route path="/signalements" element={<RequireAuth><MyReportsPage /></RequireAuth>} />
             <Route path="/admin/signalements" element={<RequireAuth><AdminReportsPage /></RequireAuth>} />
-            <Route path="*" element={<div className="empty"><h2>Page introuvable</h2><Link to="/">Retour à l'accueil</Link></div>} />
+            <Route path="*" element={<div className="empty"><h2>{t("Page introuvable")}</h2><Link to="/">{t("Retour à l'accueil")}</Link></div>} />
           </Routes>
         </main>
         {/* Sur toutes les pages (Forever Roster et Roster) : crédit de l'artiste des icônes, pages légales */}
         <footer className="site-foot">
-          <span>Icônes de classes et de spécialisations réalisées par Pahpool</span>
-          <nav aria-label="Informations légales"><Link to="/mentions-legales">Mentions légales</Link><Link to="/confidentialite">Confidentialité</Link></nav>
+          <span>{t("Icônes de classes et de spécialisations réalisées par Pahpool")}</span>
+          <nav aria-label={t("Informations légales")}><Link to="/mentions-legales">{t("Mentions légales")}</Link><Link to="/confidentialite">{t("Confidentialité")}</Link></nav>
+          <LangSwitch />
         </footer>
       </div>
     </>

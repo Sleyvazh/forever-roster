@@ -34,7 +34,12 @@ http.createServer((req, res) => {
   for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
   // Accueil public (comme Caddy) : page statique propre à chaque adresse (RETAIL_ORIGIN : Roster, sinon Forever Roster)
   const retailHost = process.env.RETAIL_ORIGIN ? new URL(process.env.RETAIL_ORIGIN).host : null;
-  if (url.pathname === "/") url.pathname = `/landing/${req.headers.host === retailHost ? "retail" : "forever"}.html`;
+  // Version anglaise (comme Caddy) : /?lang=en, ou le cookie fr-lang=en
+  if (url.pathname === "/") {
+    const q = url.searchParams.get("lang");
+    const en = q === "en" || (q !== "fr" && /(?:^|;\s*)fr-lang=en(?:;|$)/.test(req.headers.cookie ?? ""));
+    url.pathname = `/landing/${req.headers.host === retailHost ? "retail" : "forever"}${en ? "-en" : ""}.html`;
+  }
   let file = path.join(dist, path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, ""));
   if (!file.startsWith(dist)) { res.writeHead(400); res.end(); return; }
   if (url.pathname.startsWith("/icons/") && !existsSync(file)) { res.writeHead(404); res.end(); return; }

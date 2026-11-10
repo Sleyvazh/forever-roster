@@ -8,6 +8,17 @@
   for (var i = 0; i < pills.length; i++) {
     if (Date.now() >= Date.parse(pills[i].getAttribute("data-launch"))) pills[i].textContent = pills[i].getAttribute("data-after");
   }
+  // Langue (version anglaise, 10/11/2026) : « English » / « Français » et /?lang=en gardent le choix dans le cookie fr-lang,
+  // lu par le serveur (cette page) et par le site (même langue après la connexion)
+  function keepLang(l) {
+    try { document.cookie = "fr-lang=" + l + "; Path=/; Max-Age=31536000; SameSite=Lax; Secure"; } catch (e) { /* cookies refusés */ }
+  }
+  var asked = /[?&]lang=(fr|en)(?:&|$)/.exec(location.search);
+  if (asked) keepLang(asked[1]);
+  var langs = document.querySelectorAll("a[data-lang]");
+  for (var j = 0; j < langs.length; j++) {
+    langs[j].addEventListener("click", function () { keepLang(this.getAttribute("data-lang")); });
+  }
   try {
     var t = localStorage.getItem("fr-theme");
     if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);

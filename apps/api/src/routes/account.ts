@@ -49,15 +49,16 @@ export async function accountRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Préférences : langue des noms du jeu sur Roster (auto = celle du navigateur) et relais des inscriptions faites en jeu
-   * par un officier (Forever). Au moins un réglage ; ceux qui manquent ne changent pas.
+   * Préférences : langue des noms du jeu sur Roster (auto = celle du navigateur), relais des inscriptions faites en jeu
+   * par un officier (Forever) et langue du site. Au moins un réglage ; ceux qui manquent ne changent pas.
    */
   app.patch("/preferences", async (req) => {
     const u = currentUser(req);
-    const body = parse(z.object({ gameLang: z.enum(GAME_LANGS).optional(), gameRelay: z.boolean().optional() })
-      .refine(b => b.gameLang !== undefined || b.gameRelay !== undefined, "Choisis au moins un réglage à changer."), req.body);
+    const body = parse(z.object({ gameLang: z.enum(GAME_LANGS).optional(), gameRelay: z.boolean().optional(), lang: z.enum(GAME_LANGS).optional() })
+      .refine(b => b.gameLang !== undefined || b.gameRelay !== undefined || b.lang !== undefined, "Choisis au moins un réglage à changer."), req.body);
     const [row] = await db.update(users).set({
-      ...(body.gameLang !== undefined && { gameLang: body.gameLang }), ...(body.gameRelay !== undefined && { gameRelay: body.gameRelay }), updatedAt: new Date(),
+      ...(body.gameLang !== undefined && { gameLang: body.gameLang }), ...(body.gameRelay !== undefined && { gameRelay: body.gameRelay }),
+      ...(body.lang !== undefined && { lang: body.lang }), updatedAt: new Date(),
     }).where(eq(users.id, u.id)).returning();
     return { user: publicUser(row!) };
   });

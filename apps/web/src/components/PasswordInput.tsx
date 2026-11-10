@@ -1,4 +1,5 @@
 import { useState, type InputHTMLAttributes } from "react";
+import { t } from "../i18n";
 
 /**
  * Champ de mot de passe avec un œil (refonte du 09/11) : afficher ou masquer ce qu'on tape, plutôt qu'un champ
@@ -9,8 +10,8 @@ export function PasswordInput({ id, ...rest }: InputHTMLAttributes<HTMLInputElem
   return (
     <div className="pw-field">
       <input id={id} {...rest} type={show ? "text" : "password"} spellCheck={false} autoCapitalize="off" autoCorrect="off" />
-      <button type="button" className="pw-eye" aria-controls={id} aria-pressed={show} aria-label={show ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-        title={show ? "Masquer" : "Afficher"} onClick={() => setShow(s => !s)}>
+      <button type="button" className="pw-eye" aria-controls={id} aria-pressed={show} aria-label={show ? t("Masquer le mot de passe") : t("Afficher le mot de passe")}
+        title={show ? t("Masquer") : t("Afficher")} onClick={() => setShow(s => !s)}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
           {show && <path d="M3 3l18 18" />}
@@ -32,8 +33,8 @@ export function PasswordRules({ value, id }: { value: string; id: string }) {
   const long = len >= 12, phrase = words(value) >= 3;
   return (
     <ul className="pw-rules" id={id} aria-live="polite">
-      <li className={long ? "ok" : ""}>{long ? "✓" : "○"} 12 caractères au moins <span className="num">({len})</span></li>
-      <li className={phrase ? "ok" : ""}>{phrase ? "✓ Une phrase de passe : idéal" : "○ Idéal : une phrase de passe, par exemple trois mots et un chiffre"}</li>
+      <li className={long ? "ok" : ""}>{long ? "✓" : "○"} {t("12 caractères au moins")} <span className="num">({len})</span></li>
+      <li className={phrase ? "ok" : ""}>{phrase ? `✓ ${t("Une phrase de passe : idéal")}` : `○ ${t("Idéal : une phrase de passe, par exemple trois mots et un chiffre")}`}</li>
     </ul>
   );
 }

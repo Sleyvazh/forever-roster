@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiError, post } from "../api";
 import { useMe } from "../auth";
 import { useSite } from "../site";
+import { t, tx } from "../i18n";
 
 const KEY = "fr-invite";
 
@@ -32,10 +33,10 @@ export function JoinPage() {
     if (!loggedIn || !token) return;
     post<{ group: { id: string; name: string }; site?: { game: string; name: string; origin: string } }>("/groups/invites/preview", { token })
       .then(r => { setGroup(r.group); setInviteSite(r.site ?? null); })
-      .catch(e => setError(e instanceof ApiError ? e.message : "Invitation illisible."));
+      .catch(e => setError(e instanceof ApiError ? e.message : t("Invitation illisible.")));
   }, [loggedIn, token]);
 
-  if (me.isLoading) return <p className="muted">Chargement…</p>;
+  if (me.isLoading) return <p className="muted">{t("Chargement…")}</p>;
   if (!loggedIn) return <Navigate to="/login?next=/join" replace />;
 
   const accept = async () => {
@@ -45,28 +46,28 @@ export function JoinPage() {
       sessionStorage.removeItem(KEY);
       await qc.invalidateQueries({ queryKey: ["groups"] });
       nav(`/groups/${r.groupId}`, { replace: true });
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Impossible de rejoindre."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Impossible de rejoindre.")); }
     finally { setBusy(false); }
   };
 
   return (
     <div className="auth panel lift pad stack">
-      <h1>Invitation</h1>
-      {!token && <div className="alert error">Lien d'invitation incomplet.</div>}
+      <h1>{t("Invitation")}</h1>
+      {!token && <div className="alert error">{t("Lien d'invitation incomplet.")}</div>}
       {error && <div className="alert error" role="alert">{error}</div>}
       {group && !error && inviteSite && inviteSite.game !== site.game && (
         <>
-          <p>Cette invitation pour <strong>{group.name}</strong> est sur <strong>{inviteSite.name}</strong>. Ton compte y est le même.</p>
-          <a className="btn primary" href={`${inviteSite.origin}/join#${token}`}>Ouvrir sur {inviteSite.name}</a>
+          <p>{tx("Cette invitation pour {guild} est sur {site}. Ton compte y est le même.", { guild: <strong>{group.name}</strong>, site: <strong>{inviteSite.name}</strong> })}</p>
+          <a className="btn primary" href={`${inviteSite.origin}/join#${token}`}>{t("Ouvrir sur {site}", { site: inviteSite.name })}</a>
         </>
       )}
       {group && !error && !(inviteSite && inviteSite.game !== site.game) && (
         <>
-          <p>Tu es invité à rejoindre <strong>{group.name}</strong>. Les membres verront tes personnages en lecture seule, et les officiers pourront les placer dans les raids.</p>
-          <button className="btn primary" type="button" disabled={busy} onClick={() => void accept()}>Rejoindre la guilde</button>
+          <p>{tx("Tu es invité à rejoindre {guild}. Les membres verront tes personnages en lecture seule, et les officiers pourront les placer dans les raids.", { guild: <strong>{group.name}</strong> })}</p>
+          <button className="btn primary" type="button" disabled={busy} onClick={() => void accept()}>{t("Rejoindre la guilde")}</button>
         </>
       )}
-      <Link to="/groups">Mes guildes</Link>
+      <Link to="/groups">{t("Mes guildes")}</Link>
     </div>
   );
 }

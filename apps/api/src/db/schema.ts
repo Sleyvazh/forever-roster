@@ -26,6 +26,8 @@ export const users = pgTable("users", {
   discordReminders: boolean("discord_reminders").notNull().default(true),
   /** Roster (R2) : langue des noms du jeu (classes, spés, raids) ; auto = celle du navigateur. */
   gameLang: text("game_lang").$type<GameLangPref>().notNull().default("auto"),
+  /** Langue du site (version anglaise, 10/11/2026) : auto = celle du navigateur ; sert aussi aux e-mails et au bot. */
+  lang: text("lang").$type<GameLangPref>().notNull().default("auto"),
   /** Forever : mes inscriptions faites en jeu peuvent passer par un officier qui a l'appli (relais vers le site). */
   gameRelay: boolean("game_relay").notNull().default(true),
   /** Roster encore fermé : accès anticipé (Flo et les officiers de la guilde), donné par roster-preview-cli. */
@@ -46,6 +48,7 @@ export const users = pgTable("users", {
   uniqueIndex("users_discord_uq").on(t.discordId),
   check("users_login_method", sql`${t.passwordHash} IS NOT NULL OR ${t.battlenetId} IS NOT NULL`),
   check("users_game_lang", sql`${t.gameLang} IN ('auto', 'fr', 'en')`),
+  check("users_lang", sql`${t.lang} IN ('auto', 'fr', 'en')`),
 ]);
 
 export const sessions = pgTable("sessions", {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t } from "../i18n";
 
 export type ThemeChoice = "system" | "light" | "dark";
 const KEY = "fr-theme";
@@ -19,10 +20,10 @@ export function ThemeToggle() {
     setTheme(t); applyTheme(t);
     try { if (t === "system") localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch { /* stockage indisponible : le choix vaut pour cet onglet */ }
   };
-  const opts: [ThemeChoice, string][] = [["system", "Auto"], ["light", "Clair"], ["dark", "Sombre"]];
+  const opts: [ThemeChoice, string][] = [["system", t("Auto")], ["light", t("Clair")], ["dark", t("Sombre")]];
   return (
-    <div className="theme-seg" role="group" aria-label="Thème">
-      {opts.map(([k, l]) => <button key={k} type="button" aria-pressed={theme === k} onClick={() => choose(k)} title={k === "system" ? "Suivre le réglage de Windows / du téléphone" : undefined}>{l}</button>)}
+    <div className="theme-seg" role="group" aria-label={t("Thème")}>
+      {opts.map(([k, l]) => <button key={k} type="button" aria-pressed={theme === k} onClick={() => choose(k)} title={k === "system" ? t("Suivre le réglage de Windows / du téléphone") : undefined}>{l}</button>)}
     </div>
   );
 }

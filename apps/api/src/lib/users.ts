@@ -14,6 +14,8 @@ export function publicUser(u: UserRow) {
     discordReminders: u.discordReminders,
     // Roster (R2) : langue des noms du jeu, accès anticipé tant que Roster est fermé
     gameLang: u.gameLang,
+    // Langue du site (auto = celle du navigateur)
+    lang: u.lang,
     // Forever : mes inscriptions faites en jeu peuvent passer par un officier (relais), activé d'office
     gameRelay: u.gameRelay,
     rosterPreview: u.rosterPreview,

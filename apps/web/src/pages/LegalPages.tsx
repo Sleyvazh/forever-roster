@@ -2,18 +2,21 @@ import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink } from "../components/ExternalLink";
 import { useSite, type SiteData } from "../site";
+import { useLang } from "../i18n";
+import { LegalNoticeEn, PrivacyEn } from "./LegalPagesEn";
 
 /**
  * Mentions légales et politique de confidentialité : pages publiques (sans connexion), sur les deux adresses, avec le
  * nom du site de l'adresse. L'adresse de contact vient du serveur (CONTACT_EMAIL, servie par /api/site).
  * Les durées de conservation décrivent ce que fait le code (purges : apps/api/src/lib/purges.ts) : à mettre à jour avec lui.
  */
-const UPDATED = "23 octobre 2026";
+// Version anglaise (10/11/2026) : LegalPagesEn.tsx, le même texte en anglais : tout changement ici se fait aussi là-bas.
+const UPDATED = "10 novembre 2026";
 
-const host = (origin: string) => origin.replace(/^https?:\/\//, "");
+export const host = (origin: string) => origin.replace(/^https?:\/\//, "");
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
 
-function useTitle(title: string) {
+export function useTitle(title: string) {
   const site = useSite();
   useEffect(() => {
     document.title = `${title} · ${site.name}`;
@@ -22,7 +25,7 @@ function useTitle(title: string) {
 }
 
 /** Adresse de contact (mailto), « … » tant que le serveur n'a pas répondu. */
-function Contact() {
+export function Contact() {
   const { contact } = useSite();
   return contact ? <a href={`mailto:${contact}`}>{contact}</a> : <span className="muted">…</span>;
 }
@@ -38,7 +41,7 @@ function Sites() {
 /** Les noms du site : « Forever Roster et Roster », ou un seul. */
 const names = (site: SiteData) => (site.other ? `${site.name} et ${site.other.name}` : site.name);
 
-function Sec({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+export function Sec({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return <section className="panel pad legal-sec" id={id} aria-labelledby={`${id}-t`}><h2 id={`${id}-t`}>{title}</h2>{children}</section>;
 }
 
@@ -55,6 +58,9 @@ function Head({ title }: { title: string }) {
 /* ---------- Mentions légales ---------- */
 
 export function LegalNoticePage() {
+  return useLang() === "en" ? <LegalNoticeEn /> : <LegalNoticeFr />;
+}
+function LegalNoticeFr() {
   const site = useSite();
   useTitle("Mentions légales");
   return (
@@ -147,7 +153,7 @@ interface Row { title: string; data: ReactNode; why: ReactNode; basis: Basis; ke
 const ROWS: Row[] = [
   {
     title: "Ton compte",
-    data: "Adresse e-mail, pseudo, mot de passe (haché : personne ne peut le relire), date de création, image du compte, langue des noms du jeu, dernière version de l'addon utilisée.",
+    data: "Adresse e-mail, pseudo, mot de passe (haché : personne ne peut le relire), date de création, image du compte, langue du site et des noms du jeu, dernière version de l'addon utilisée.",
     why: "Te connecter, t'envoyer les e-mails du compte, te montrer dans tes guildes.",
     basis: "Contrat",
     keep: "Tant que le compte existe.",
@@ -322,6 +328,7 @@ const COOKIES: [string, string, string][] = [
   ["__Host-fr_sid", "Ta session de connexion (jeton aléatoire, illisible par les scripts de la page).", "30 jours au plus ; fermée plus tôt à la déconnexion ou après 7 jours sans activité."],
   ["fr_oauth", "Protège la connexion avec Battle.net contre les attaques (lien entre ton navigateur et la demande en cours).", "10 minutes, seulement pendant la connexion."],
   ["fr_discord", "Protège de la même façon la liaison de ton compte Discord.", "10 minutes, seulement pendant la liaison."],
+  ["fr-lang", "Langue du site que tu as choisie (français ou anglais), lue aussi par le serveur pour la page d'accueil, ses messages et ses e-mails.", "1 an ; absent : la langue de ton navigateur."],
 ];
 const STORAGE: [string, string][] = [
   ["fr-theme", "Thème choisi (clair ou sombre) ; absent : celui de ton appareil."],
@@ -336,6 +343,9 @@ const STORAGE: [string, string][] = [
 ];
 
 export function PrivacyPage() {
+  return useLang() === "en" ? <PrivacyEn /> : <PrivacyFr />;
+}
+function PrivacyFr() {
   const site = useSite();
   useTitle("Confidentialité");
   return (

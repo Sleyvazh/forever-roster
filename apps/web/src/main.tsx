@@ -14,6 +14,7 @@ import { BrowserRouter } from "react-router-dom";
 import { ApiError } from "./api";
 import { App } from "./App";
 import { applyTheme, readTheme } from "./components/ThemeToggle";
+import { initialLang, loadLang, useLang } from "./i18n";
 
 // Thème choisi, appliqué avant le premier rendu (pas de script inline : la CSP l'interdit).
 applyTheme(readTheme());
@@ -27,12 +28,19 @@ const qc = new QueryClient({
   },
 });
 
-createRoot(document.getElementById("root")!).render(
+/** Changer de langue redessine tout le site (les données déjà chargées restent). */
+function Root() {
+  const lang = useLang();
+  return <App key={lang} />;
+}
+
+// Le catalogue de la langue est chargé avant le premier rendu : pas d'éclair de français pour qui a choisi l'anglais
+void loadLang(initialLang()).catch(() => loadLang("fr")).finally(() => createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={qc}>
       <BrowserRouter>
-        <App />
+        <Root />
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
-);
+));

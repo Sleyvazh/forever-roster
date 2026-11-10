@@ -5,6 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, get, post, type GroupSummary } from "../api";
 import { whenText } from "../components/Week";
 import { RoleTag } from "../components/RoleIcon";
+import { t } from "../i18n";
 
 export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member: "Membre" } as const;
 
@@ -22,16 +23,16 @@ export function CreateForm({ autoFocus, onCancel }: { autoFocus?: boolean; onCan
       const r = await post<{ group: { id: string } }>("/groups", { name });
       await qc.invalidateQueries({ queryKey: ["groups"] });
       nav(`/groups/${r.group.id}`);
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Création impossible."); }
+    } catch (err) { setError(err instanceof ApiError ? err.message : t("Création impossible.")); }
   };
   return (
     <form className="g-create" onSubmit={create}>
-      <div className="fld"><label htmlFor="g-name">Nom de la guilde</label>
-        <input id="g-name" type="text" required minLength={2} maxLength={48} autoFocus={autoFocus} value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Les Tournicotis" /></div>
+      <div className="fld"><label htmlFor="g-name">{t("Nom de la guilde")}</label>
+        <input id="g-name" type="text" required minLength={2} maxLength={48} autoFocus={autoFocus} value={name} onChange={e => setName(e.target.value)} placeholder={t("Ex. Les Tournicotis")} /></div>
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="row">
-        <button className="btn primary" type="submit">Créer</button>
-        {onCancel && <button className="btn ghost" type="button" onClick={onCancel}>Annuler</button>}
+        <button className="btn primary" type="submit">{t("Créer")}</button>
+        {onCancel && <button className="btn ghost" type="button" onClick={onCancel}>{t("Annuler")}</button>}
       </div>
     </form>
   );
