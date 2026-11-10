@@ -1,5 +1,5 @@
 import {
-  bankItemVerb, bankMoneyText, bankRequestOpen, dePrefix, bankSlotPos, BANK_COLS, BANK_REQUEST_MAX_OPEN, BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, BANK_REQUEST_STATUS_LABEL, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
+  bankMoneyText, bankRequestOpen, bankSlotPos, BANK_COLS, BANK_REQUEST_MAX_OPEN, BANK_REQUEST_NOTE_MAX, BANK_REQUEST_REASON_MAX, BANK_ROWS, BANK_SLOTS, moneyParts, nameKey,
   type BankItem, type BankRequest, type BankRequestAction, type BankRequests, type GuildBankMove, type GuildBankMoneyMove, type GuildBankResponse, type GuildBankTab,
 } from "@forever/game-data";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import { agoText, fetchBankLog, guildKeys, shortDay, useGuildBank, type BankLogC
 import { DialogHead, Modal, NotLinked, refreshGuild } from "./GuildMembers";
 import { ItemHover, ItemIcon } from "./ItemTooltip";
 import { NumberField } from "./NumberField";
+import { dateLocale, t, tn, tx } from "../i18n";
+import { bankItemVerbText, bankMoneyVerb, bankRequestStatusLabel } from "../i18n/game";
 
 /**
  * Guilde › Banque (lot « Banque », /groups/:id/membres/banque) : la banque de la guilde du jeu telle que l'addon l'a relevée
@@ -34,20 +36,19 @@ function usePhone() {
   );
 }
 
-const plural = (n: number, w: string, ws = `${w}s`) => `${n} ${n > 1 ? ws : w}`;
 /** Nom d'un onglet : celui du jeu, sinon « Onglet 3 ». */
-const tabLabel = (t: Pick<GuildBankTab, "tab" | "name">) => t.name || `Onglet ${t.tab}`;
-const itemName = (id: number, item?: BankItem) => item?.name ?? `Objet n° ${id}`;
-const fmt = new Intl.NumberFormat("fr-FR");
+const tabLabel = (tb: Pick<GuildBankTab, "tab" | "name">) => tb.name || t("Onglet {n}", { n: tb.tab });
+const itemName = (id: number, item?: BankItem) => item?.name ?? t("Objet n° {id}", { id });
+const nf = () => new Intl.NumberFormat(dateLocale());
 /** « 12 po 30 pa » : les pièces à zéro sont omises (« 0 pc » seulement pour un montant nul). */
 function moneyText(copper: number) {
   const { g, s, c } = moneyParts(copper);
-  return [g && `${fmt.format(g)} po`, s && `${s} pa`, c && `${c} pc`].filter(Boolean).join(" ") || "0 pc";
+  return [g && t("{n} po", { n: nf().format(g) }), s && t("{n} pa", { n: s }), c && t("{n} pc", { n: c })].filter(Boolean).join(" ") || t("{n} pc", { n: 0 });
 }
 /** Montant signé d'une ligne du journal de l'or (le jeu ne le dit pas toujours) et sa classe : in (entre), out (sort). */
 function signed(m: GuildBankMoneyMove) {
   const { sign } = bankMoneyText(m.type);
-  return { text: m.amount === null ? "un montant inconnu" : `${sign > 0 ? "+" : "−"}${moneyText(m.amount)}`, cls: m.amount === null ? "" : sign > 0 ? "in" : "out" };
+  return { text: m.amount === null ? t("un montant inconnu") : `${sign > 0 ? "+" : "−"}${moneyText(m.amount)}`, cls: m.amount === null ? "" : sign > 0 ? "in" : "out" };
 }
 
 /** Un objet dans un onglet (cases du même objet additionnées). */
@@ -55,13 +56,13 @@ interface Row { key: string; id: number; n: number; tab: number; item?: BankItem
 
 /** Ce qu'il faut pour « Demander » : mes demandes ouvertes par objet, si j'en ai déjà 5, et l'ouverture de la fenêtre. */
 interface AskCtx { mine: Map<number, BankRequest>; full: boolean; open: (itemId: number) => void }
-const errorOf = (e: unknown, def = "Action impossible.") => (e instanceof ApiError ? e.message : def);
+const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : t("Action impossible."));
 
-function tabRows(t: GuildBankTab, objects: Record<number, BankItem>): Row[] {
+function tabRows(tb: GuildBankTab, objects: Record<number, BankItem>): Row[] {
   const rows = new Map<number, Row>();
-  for (const s of [...t.slots].sort((a, b) => a.slot - b.slot)) {
+  for (const s of [...tb.slots].sort((a, b) => a.slot - b.slot)) {
     const r = rows.get(s.id);
-    if (r) r.n += s.n; else rows.set(s.id, { key: `${t.tab}-${s.id}`, id: s.id, n: s.n, tab: t.tab, item: objects[s.id], name: itemName(s.id, objects[s.id]) });
+    if (r) r.n += s.n; else rows.set(s.id, { key: `${tb.tab}-${s.id}`, id: s.id, n: s.n, tab: tb.tab, item: objects[s.id], name: itemName(s.id, objects[s.id]) });
   }
   return [...rows.values()];
 }
@@ -71,13 +72,13 @@ function tabRows(t: GuildBankTab, objects: Record<number, BankItem>): Row[] {
 export function GuildBank({ groupId, officer, onAdmin }: { groupId: string; officer: boolean; onAdmin?: () => void }) {
   const q = useGuildBank(groupId);
   const data = q.data;
-  if (!data) return <p className="muted">{q.error ? "Banque indisponible pour l'instant." : "Chargement…"}</p>;
+  if (!data) return <p className="muted">{q.error ? t("Banque indisponible pour l'instant.") : t("Chargement…")}</p>;
   if (!data.linked) return <NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} />;
   if (!data.bank) {
     return (
       <div className="so-empty">
-        <h3>Pas encore de banque</h3>
-        <p>La banque arrive quand un membre qui a l'addon à jour ouvre la banque de guilde en jeu, puis fait sa synchro.</p>
+        <h3>{t("Pas encore de banque")}</h3>
+        <p>{t("La banque arrive quand un membre qui a l'addon à jour ouvre la banque de guilde en jeu, puis fait sa synchro.")}</p>
       </div>
     );
   }
@@ -101,20 +102,20 @@ function Bank({ groupId, bank, objects, lastMoney, requests }: {
   const [query, setQuery] = useState("");
   // null : le premier onglet (choisi par défaut, et si l'onglet choisi n'existe plus)
   const [sel, setSel] = useState<TabSel | null>(null);
-  const cur: TabSel = sel === "all" ? "all" : (tabs.find(t => t.tab === sel) ?? tabs[0])?.tab ?? "all";
+  const cur: TabSel = sel === "all" ? "all" : (tabs.find(tb => tb.tab === sel) ?? tabs[0])?.tab ?? "all";
   const wanted = nameKey(query);
   const searching = wanted !== "";
-  const tabOf = (n: number) => tabs.find(t => t.tab === n);
-  const tabName = (n: number) => { const t = tabOf(n); return t ? tabLabel(t) : `Onglet ${n}`; };
+  const tabOf = (n: number) => tabs.find(tb => tb.tab === n);
+  const tabName = (n: number) => { const tb = tabOf(n); return tb ? tabLabel(tb) : t("Onglet {n}", { n }); };
 
   // Un objet par onglet, tous onglets confondus, triés par nom
-  const all = useMemo(() => tabs.flatMap(t => tabRows(t, objects)).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.tab - b.tab), [tabs, objects]);
+  const all = useMemo(() => tabs.flatMap(tb => tabRows(tb, objects)).sort((a, b) => a.name.localeCompare(b.name, "fr") || a.tab - b.tab), [tabs, objects]);
   const found = useMemo(() => (wanted ? all.filter(r => nameKey(r.name).includes(wanted)) : all), [all, wanted]);
 
   // Demandes : combien il y en a de chaque objet dans la banque (tous onglets), mes demandes ouvertes par objet
   const totals = useMemo(() => {
     const m = new Map<number, number>();
-    for (const t of tabs) for (const s of t.slots) m.set(s.id, (m.get(s.id) ?? 0) + s.n);
+    for (const tb of tabs) for (const s of tb.slots) m.set(s.id, (m.get(s.id) ?? 0) + s.n);
     return m;
   }, [tabs]);
   const ask: AskCtx = useMemo(() => ({
@@ -141,42 +142,42 @@ function Bank({ groupId, bank, objects, lastMoney, requests }: {
   };
 
   const choose = (k: TabSel) => { setSel(k); setPick(null); if (k !== "all") setQuery(""); };
-  const stale = tabs.filter(t => t.at !== null && Date.parse(bank.at) - Date.parse(t.at) > 3600e3);
-  const never = tabs.filter(t => t.at === null);
+  const stale = tabs.filter(tb => tb.at !== null && Date.parse(bank.at) - Date.parse(tb.at) > 3600e3);
+  const never = tabs.filter(tb => tb.at === null);
 
   let body: ReactNode;
   if (searching || cur === "all") {
     body = <>
-      {found.length ? <ItemList rows={found} tabName={tabName} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>{searching ? "Aucun objet ne correspond." : "Aucun objet relevé pour l'instant."}</p>}
+      {found.length ? <ItemList rows={found} tabName={tabName} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>{searching ? t("Aucun objet ne correspond.") : t("Aucun objet relevé pour l'instant.")}</p>}
       {searching && !!found.length && <SearchFoot rows={found} />}
     </>;
   } else {
-    const t = tabOf(cur)!;
-    body = t.at === null
-      ? <div className="so-empty"><p>Personne n'a encore relevé cet onglet : il faut qu'un membre dont le rang le voit ouvre la banque avec l'addon.</p></div>
+    const tb = tabOf(cur)!;
+    body = tb.at === null
+      ? <div className="so-empty"><p>{t("Personne n'a encore relevé cet onglet : il faut qu'un membre dont le rang le voit ouvre la banque avec l'addon.")}</p></div>
       : phone
-        ? (t.slots.length ? <ItemList rows={tabRows(t, objects)} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>Cet onglet est vide.</p>)
-        : <SlotGrid tab={t} objects={objects} onPick={onPick} picked={pick?.tab === t.tab ? pick.slot : null} />;
+        ? (tb.slots.length ? <ItemList rows={tabRows(tb, objects)} ask={ask} /> : <p className="muted" style={{ margin: 0 }}>{t("Cet onglet est vide.")}</p>)
+        : <SlotGrid tab={tb} objects={objects} onPick={onPick} picked={pick?.tab === tb.tab ? pick.slot : null} />;
   }
 
   return (
     <div className="stack">
       <div className="bk-head">
         <span className="muted small">
-          Relevée{bank.by && <> par <b>{bank.by}</b></>} {agoText(bank.at)}
-          {stale.map(t => <Fragment key={t.tab}> · onglet {tabLabel(t)} {agoText(t.at!)}</Fragment>)}
-          {never.map(t => <Fragment key={t.tab}> · onglet {tabLabel(t)} jamais relevé</Fragment>)}
-          {!!tabs.length && <> · {plural(tabs.length, "onglet")}</>}
+          {bank.by ? tx("Relevée par {name} {ago}", { name: <b>{bank.by}</b>, ago: agoText(bank.at) }) : t("Relevée {ago}", { ago: agoText(bank.at) })}
+          {stale.map(tb => <Fragment key={tb.tab}> · {t("onglet {tab} {ago}", { tab: tabLabel(tb), ago: agoText(tb.at!) })}</Fragment>)}
+          {never.map(tb => <Fragment key={tb.tab}> · {t("onglet {tab} jamais relevé", { tab: tabLabel(tb) })}</Fragment>)}
+          {!!tabs.length && <> · {tn(tabs.length, "{n} onglet", "{n} onglets")}</>}
         </span>
         <Gold copper={bank.money} at={bank.moneyAt} />
       </div>
-      <input type="search" placeholder="Chercher un objet dans tous les onglets…" aria-label="Chercher un objet dans la banque" value={query} onChange={e => setQuery(e.target.value)} />
+      <input type="search" placeholder={t("Chercher un objet dans tous les onglets…")} aria-label={t("Chercher un objet dans la banque")} value={query} onChange={e => setQuery(e.target.value)} />
       <div className="bk-tabs">
-        <div className="seg" role="group" aria-label="Onglets de la banque">
-          <button type="button" className={searching || cur === "all" ? "on" : ""} aria-pressed={searching || cur === "all"} onClick={() => choose("all")}>Tout <small>{tabs.reduce((s, t) => s + t.slots.length, 0)}</small></button>
-          {tabs.map(t => {
-            const on = !searching && cur === t.tab;
-            return <button key={t.tab} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => choose(t.tab)}>{tabLabel(t)} <small>{t.slots.length}</small></button>;
+        <div className="seg" role="group" aria-label={t("Onglets de la banque")}>
+          <button type="button" className={searching || cur === "all" ? "on" : ""} aria-pressed={searching || cur === "all"} onClick={() => choose("all")}>{t("Tout")} <small>{tabs.reduce((s, tt) => s + tt.slots.length, 0)}</small></button>
+          {tabs.map(tt => {
+            const on = !searching && cur === tt.tab;
+            return <button key={tt.tab} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => choose(tt.tab)}>{tabLabel(tt)} <small>{tt.slots.length}</small></button>;
           })}
         </div>
       </div>
@@ -199,12 +200,12 @@ function Bank({ groupId, bank, objects, lastMoney, requests }: {
 
 /** Or de la banque : po, pa, pc aux trois couleurs des pièces. */
 function Gold({ copper, at }: { copper: number | null; at: string | null }) {
-  const title = at ? `Or relevé ${agoText(at)}` : undefined;
-  if (copper === null) return <span className="bk-gold none small muted" role="group" aria-label="Or de la banque" title={title}>or inconnu</span>;
+  const title = at ? t("Or relevé {ago}", { ago: agoText(at) }) : undefined;
+  if (copper === null) return <span className="bk-gold none small muted" role="group" aria-label={t("Or de la banque")} title={title}>{t("or inconnu")}</span>;
   const { g, s, c } = moneyParts(copper);
   return (
-    <span className="bk-gold" role="group" aria-label="Or de la banque" title={title}>
-      <span className="bk-g">{fmt.format(g)}<i> po</i></span> <span className="bk-s">{s}<i> pa</i></span> <span className="bk-c">{c}<i> pc</i></span>
+    <span className="bk-gold" role="group" aria-label={t("Or de la banque")} title={title}>
+      <span className="bk-g">{nf().format(g)}<i> {t("po")}</i></span> <span className="bk-s">{s}<i> {t("pa")}</i></span> <span className="bk-c">{c}<i> {t("pc")}</i></span>
     </span>
   );
 }
@@ -214,7 +215,7 @@ function Gold({ copper, at }: { copper: number | null; at: string | null }) {
 /** Une ligne par objet (et par onglet quand tabName est donné) : icône, nom à la couleur de qualité, quantité. */
 function ItemList({ rows, tabName, ask }: { rows: Row[]; tabName?: (n: number) => string; ask: AskCtx }) {
   return (
-    <ul className="bk-list" aria-label="Objets">
+    <ul className="bk-list" aria-label={t("Objets")}>
       {rows.map(r => (
         <li key={r.key} className="ask">
           <ItemHover item={r.item}>
@@ -234,10 +235,10 @@ function ItemList({ rows, tabName, ask }: { rows: Row[]; tabName?: (n: number) =
 /** « Demander » d'une ligne : grisé quand j'ai déjà une demande ouverte pour cet objet, ou 5 demandes ouvertes. */
 function AskButton({ id, name, ask }: { id: number; name: string; ask: AskCtx }) {
   const have = ask.mine.get(id);
-  if (have) return <button type="button" className="btn sm" disabled title="Tu as déjà une demande ouverte pour cet objet" aria-label={`Demande en cours pour ${name}`}>Demandé</button>;
+  if (have) return <button type="button" className="btn sm" disabled title={t("Tu as déjà une demande ouverte pour cet objet")} aria-label={t("Demande en cours pour {name}", { name })}>{t("Demandé")}</button>;
   return (
-    <button type="button" className="btn sm" disabled={ask.full} title={ask.full ? `${BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus : attends qu'elles soient traitées` : undefined}
-      aria-label={`Demander ${name}`} onClick={() => ask.open(id)}>Demander</button>
+    <button type="button" className="btn sm" disabled={ask.full} title={ask.full ? t("{n} demandes ouvertes au plus : attends qu'elles soient traitées", { n: BANK_REQUEST_MAX_OPEN }) : undefined}
+      aria-label={t("Demander {name}", { name })} onClick={() => ask.open(id)}>{t("Demander")}</button>
   );
 }
 
@@ -251,7 +252,7 @@ function AskPop({ at, item, id, total, ask, onClose }: { at: PickedSlot; item?: 
   // Le focus passe au menu (et l'infobulle de la case s'efface) ; Échap le ferme, un clic ailleurs aussi
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
-    const down = (e: PointerEvent) => { const t = e.target as Element; if (!ref.current?.contains(t) && !t.closest(".bk-slot")) close.current(false); };
+    const down = (e: PointerEvent) => { const tt = e.target as Element; if (!ref.current?.contains(tt) && !tt.closest(".bk-slot")) close.current(false); };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); close.current(true); } };
     document.addEventListener("pointerdown", down);
     document.addEventListener("keydown", key);
@@ -261,11 +262,11 @@ function AskPop({ at, item, id, total, ask, onClose }: { at: PickedSlot; item?: 
     <div className="bk-pop" ref={ref} role="dialog" aria-label={name} style={{ left: at.left, top: at.top }}>
       <div className="top">
         <ItemIcon item={item} size={36} />
-        <span className="nm"><span className={item ? `q${item.quality}` : undefined}>{name}</span><small><b className="num">{fmt.format(total)}</b> dans la banque</small></span>
+        <span className="nm"><span className={item ? `q${item.quality}` : undefined}>{name}</span><small>{tx("{n} dans la banque", { n: <b className="num">{nf().format(total)}</b> })}</small></span>
       </div>
       <button type="button" className="btn primary sm" disabled={!!have || ask.full} onClick={() => ask.open(id)}
-        title={have ? "Tu as déjà une demande ouverte pour cet objet" : ask.full ? `${BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus` : undefined}>
-        {have ? "Demande en cours" : "Demander"}
+        title={have ? t("Tu as déjà une demande ouverte pour cet objet") : ask.full ? t("{n} demandes ouvertes au plus", { n: BANK_REQUEST_MAX_OPEN }) : undefined}>
+        {have ? t("Demande en cours") : t("Demander")}
       </button>
     </div>
   );
@@ -278,8 +279,8 @@ function SearchFoot({ rows }: { rows: Row[] }) {
   const same = first ? rows.filter(r => r.id === first.id) : [];
   return (
     <p className="hint" style={{ margin: 0 }}>
-      {rows.length} objet{rows.length > 1 ? "s" : ""} trouvé{rows.length > 1 ? "s" : ""} · {fmt.format(total)} au total
-      {first && ` (${first.name} : ${fmt.format(same.reduce((s, r) => s + r.n, 0))}, dans ${same.length} onglets)`}
+      {tn(rows.length, "{n} objet trouvé", "{n} objets trouvés")} · {t("{n} au total", { n: nf().format(total) })}
+      {first && t(" ({name} : {n}, dans {tabs} onglets)", { name: first.name, n: nf().format(same.reduce((s, r) => s + r.n, 0)), tabs: same.length })}
     </p>
   );
 }
@@ -288,7 +289,7 @@ function SearchFoot({ rows }: { rows: Row[] }) {
 function SlotGrid({ tab, objects, onPick, picked }: { tab: GuildBankTab; objects: Record<number, BankItem>; onPick: (p: { tab: number; slot: number; itemId: number }, el: HTMLElement) => void; picked: number | null }) {
   const bySlot = new Map(tab.slots.map(s => [s.slot, s]));
   return (
-    <div className="bk-grid" role="group" aria-label={tab.name ? `Onglet ${tab.name}` : tabLabel(tab)}
+    <div className="bk-grid" role="group" aria-label={tab.name ? t("Onglet {n}", { n: tab.name }) : tabLabel(tab)}
       style={{ gridTemplateColumns: `repeat(${BANK_COLS}, var(--bk-cell))`, gridTemplateRows: `repeat(${BANK_ROWS}, var(--bk-cell))` }}>
       {Array.from({ length: BANK_SLOTS }, (_, i) => {
         const slot = i + 1, { col, row } = bankSlotPos(slot), s = bySlot.get(slot);
@@ -321,18 +322,18 @@ function RequestsBox({ groupId, requests, objects }: { groupId: string; requests
   return (
     <section className="hm-card rq-box" aria-labelledby="rq-t">
       <div className="hm-h">
-        <h3 id="rq-t">Demandes en cours ({open.length})</h3>
-        <span className="hint">visibles par toute la guilde</span>
+        <h3 id="rq-t">{t("Demandes en cours ({n})", { n: open.length })}</h3>
+        <span className="hint">{t("visibles par toute la guilde")}</span>
       </div>
       {open.length
-        ? <ul className="rq-list" aria-label="Demandes en cours">{open.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={canHandle} />)}</ul>
-        : <p className="hm-none">Aucune demande en cours. Pour en faire une, choisis un objet de la banque.</p>}
+        ? <ul className="rq-list" aria-label={t("Demandes en cours")}>{open.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={canHandle} />)}</ul>
+        : <p className="hm-none">{t("Aucune demande en cours. Pour en faire une, choisis un objet de la banque.")}</p>}
       {done.length > 0 && (
         <>
           <button type="button" className="gm-fold rq-fold" aria-expanded={fold} aria-controls="rq-done" onClick={() => setFold(f => !f)}>
-            <span className="car" aria-hidden="true">{fold ? "▾" : "▸"}</span><b>Terminées ({done.length})</b>
+            <span className="car" aria-hidden="true">{fold ? "▾" : "▸"}</span><b>{t("Terminées ({n})", { n: done.length })}</b>
           </button>
-          {fold && <ul className="rq-list" id="rq-done" aria-label="Demandes terminées">{done.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={false} />)}</ul>}
+          {fold && <ul className="rq-list" id="rq-done" aria-label={t("Demandes terminées")}>{done.map(r => <RequestRow key={r.id} groupId={groupId} r={r} item={objects[r.itemId]} canHandle={false} />)}</ul>}
         </>
       )}
     </section>
@@ -370,35 +371,35 @@ function RequestRow({ groupId, r, item, canHandle }: { groupId: string; r: BankR
       <ItemIcon item={item} size={32} />
       <div className="rq-l1">
         <b>{r.who.name}</b>
-        {r.who.me && <span className="tag gold">Toi</span>}
-        <span className={`bk-n${item ? ` q${item.quality}` : ""}`}><span className="num">{fmt.format(r.quantity)} ×</span> {name}</span>
+        {r.who.me && <span className="tag gold">{t("Toi")}</span>}
+        <span className={`bk-n${item ? ` q${item.quality}` : ""}`}><span className="num">{nf().format(r.quantity)} ×</span> {name}</span>
         {timeTop && when}
       </div>
-      {r.note ? <p className="rq-n">« {r.note} »</p> : <span />}
+      {r.note ? <p className="rq-n">{t("« {note} »", { note: r.note })}</p> : <span />}
       <div className="rq-l3">
-        {r.status === "pending" && <span className="tag warn">{BANK_REQUEST_STATUS_LABEL.pending}</span>}
+        {r.status === "pending" && <span className="tag warn">{bankRequestStatusLabel("pending")}</span>}
         {r.status === "prepared" && <>
-          <span className="tag gold">{BANK_REQUEST_STATUS_LABEL.prepared}</span>
-          {by && <span className="why">par {by} · à récupérer auprès {dePrefix(r.handledBy!)}{by}</span>}
+          <span className="tag gold">{bankRequestStatusLabel("prepared")}</span>
+          {by && <span className="why">{tx(/^[aeiouyhàâäéèêëîïôöùûüœ]/i.test(r.handledBy!) ? "par {name} · à récupérer auprès d'{name}" : "par {name} · à récupérer auprès de {name}", { name: by })}</span>}
         </>}
-        {r.status === "done" && <><span className="tag ok">{BANK_REQUEST_STATUS_LABEL.done}</span>{by && <span className="why">par {by}</span>}</>}
-        {r.status === "refused" && <><span className="tag bad">{BANK_REQUEST_STATUS_LABEL.refused}</span><span className="why">{by && <>par {by}</>}{r.reason && <>{by && " · "}{r.reason}</>}</span></>}
-        {r.status === "cancelled" && <span className="tag">{BANK_REQUEST_STATUS_LABEL.cancelled}</span>}
+        {r.status === "done" && <><span className="tag ok">{bankRequestStatusLabel("done")}</span>{by && <span className="why">{tx("par {name}", { name: by })}</span>}</>}
+        {r.status === "refused" && <><span className="tag bad">{bankRequestStatusLabel("refused")}</span><span className="why">{by && tx("par {name}", { name: by })}{r.reason && <>{by && " · "}{r.reason}</>}</span></>}
+        {r.status === "cancelled" && <span className="tag">{bankRequestStatusLabel("cancelled")}</span>}
         {!timeTop && <span className="why">· {agoText(isOpen ? r.at : r.updatedAt)}</span>}
         {(handle || cancel) && !refusing && (
           <span className="rq-btns">
-            {handle && r.status === "pending" && <button type="button" className="btn sm primary" disabled={busy} aria-label={`Préparer ${name} pour ${r.who.name}`} onClick={() => void run("prepare")}>Préparer</button>}
-            {handle && <button type="button" className={`btn sm${r.status === "prepared" ? " primary" : ""}`} disabled={busy} aria-label={`Marquer ${name} remis à ${r.who.name}`} onClick={() => void run("done")}>Remise</button>}
-            {handle && <button type="button" className="btn sm danger" disabled={busy} aria-label={`Refuser ${name} à ${r.who.name}`} onClick={() => setRefusing(true)}>Refuser</button>}
-            {cancel && <button type="button" className="btn sm ghost" disabled={busy} aria-label={`Annuler ma demande de ${name}`} onClick={() => void run("cancel")}>Annuler</button>}
+            {handle && r.status === "pending" && <button type="button" className="btn sm primary" disabled={busy} aria-label={t("Préparer {item} pour {name}", { item: name, name: r.who.name })} onClick={() => void run("prepare")}>{t("Préparer")}</button>}
+            {handle && <button type="button" className={`btn sm${r.status === "prepared" ? " primary" : ""}`} disabled={busy} aria-label={t("Marquer {item} remis à {name}", { item: name, name: r.who.name })} onClick={() => void run("done")}>{t("Remise")}</button>}
+            {handle && <button type="button" className="btn sm danger" disabled={busy} aria-label={t("Refuser {item} à {name}", { item: name, name: r.who.name })} onClick={() => setRefusing(true)}>{t("Refuser")}</button>}
+            {cancel && <button type="button" className="btn sm ghost" disabled={busy} aria-label={t("Annuler ma demande de {item}", { item: name })} onClick={() => void run("cancel")}>{t("Annuler")}</button>}
           </span>
         )}
       </div>
       {refusing && (
         <form className="rq-refuse" onSubmit={e => { e.preventDefault(); void run("refuse", reason.trim()); }}>
-          <input type="text" value={reason} maxLength={BANK_REQUEST_REASON_MAX} placeholder="Motif (facultatif)" aria-label={`Motif du refus (facultatif) pour ${r.who.name}`} autoFocus onChange={e => setReason(e.target.value)} />
-          <button type="submit" className="btn sm danger" disabled={busy}>Refuser la demande</button>
-          <button type="button" className="btn sm ghost" disabled={busy} onClick={() => { setRefusing(false); setReason(""); }}>Retour</button>
+          <input type="text" value={reason} maxLength={BANK_REQUEST_REASON_MAX} placeholder={t("Motif (facultatif)")} aria-label={t("Motif du refus (facultatif) pour {name}", { name: r.who.name })} autoFocus onChange={e => setReason(e.target.value)} />
+          <button type="submit" className="btn sm danger" disabled={busy}>{t("Refuser la demande")}</button>
+          <button type="button" className="btn sm ghost" disabled={busy} onClick={() => { setRefusing(false); setReason(""); }}>{t("Retour")}</button>
         </form>
       )}
       {err && <div className="alert error rq-err" role="alert">{err}</div>}
@@ -424,26 +425,26 @@ function AskDialog({ groupId, id, item, total, onClose }: { groupId: string; id:
   return (
     <Modal label="rq-dt" onClose={onClose}>
       <form className="rq-form" onSubmit={e => void submit(e)}>
-        <DialogHead id="rq-dt" title="Demander à la banque" onClose={onClose}
-          sub={<><ItemIcon item={item} size={30} /><span><b className={item ? `q${item.quality}` : undefined}>{name}</b> · {fmt.format(total)} dans la banque</span></>} />
+        <DialogHead id="rq-dt" title={t("Demander à la banque")} onClose={onClose}
+          sub={<><ItemIcon item={item} size={30} /><span><b className={item ? `q${item.quality}` : undefined}>{name}</b> · {t("{n} dans la banque", { n: nf().format(total) })}</span></>} />
         <div className="fld">
-          <label htmlFor="rq-n">Quantité</label>
+          <label htmlFor="rq-n">{t("Quantité")}</label>
           <div className="rq-q">
-            <NumberField id="rq-n" value={Math.min(n, Math.max(total, 1))} min={1} max={Math.max(total, 1)} onChange={setN} label="Quantité" />
-            <span className="hint">de 1 à {fmt.format(total)} (tous les onglets)</span>
+            <NumberField id="rq-n" value={Math.min(n, Math.max(total, 1))} min={1} max={Math.max(total, 1)} onChange={setN} label={t("Quantité")} />
+            <span className="hint">{t("de 1 à {n} (tous les onglets)", { n: nf().format(total) })}</span>
           </div>
         </div>
         <div className="fld">
-          <label htmlFor="rq-m">Un mot (facultatif)</label>
-          <input id="rq-m" type="text" maxLength={BANK_REQUEST_NOTE_MAX} value={note} placeholder="À quoi ça sert, qui doit récupérer…" onChange={e => setNote(e.target.value)} />
-          <span className="hint">{BANK_REQUEST_NOTE_MAX} caractères au plus</span>
+          <label htmlFor="rq-m">{t("Un mot (facultatif)")}</label>
+          <input id="rq-m" type="text" maxLength={BANK_REQUEST_NOTE_MAX} value={note} placeholder={t("À quoi ça sert, qui doit récupérer…")} onChange={e => setNote(e.target.value)} />
+          <span className="hint">{t("{n} caractères au plus", { n: BANK_REQUEST_NOTE_MAX })}</span>
         </div>
-        <p className="gm-note"><i>i</i><span>Un officier ou un banquier prépare ta demande. Le bot te prévient en message privé quand elle est prête.</span></p>
-        <p className="hint" style={{ margin: 0 }}>{BANK_REQUEST_MAX_OPEN} demandes ouvertes au plus, une seule par objet.</p>
+        <p className="gm-note"><i>i</i><span>{t("Un officier ou un banquier prépare ta demande. Le bot te prévient en message privé quand elle est prête.")}</span></p>
+        <p className="hint" style={{ margin: 0 }}>{t("{n} demandes ouvertes au plus, une seule par objet.", { n: BANK_REQUEST_MAX_OPEN })}</p>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={busy || total < 1}>Envoyer la demande</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={busy || total < 1}>{t("Envoyer la demande")}</button>
         </div>
       </form>
     </Modal>
@@ -467,20 +468,20 @@ function Journal({ groupId, tabs, objects, lastMoney }: { groupId: string; tabs:
   const pages = q.data?.pages ?? [];
   const moves = pages.flatMap(p => p.moves), money = pages.flatMap(p => p.money);
   const known = useMemo(() => Object.assign({}, objects, ...pages.map(p => p.objects)) as Record<number, BankItem>, [objects, pages]);
-  const tabName = (n: number | null) => { const t = tabs.find(x => x.tab === n); return t ? tabLabel(t) : `Onglet ${n ?? "?"}`; };
+  const tabName = (n: number | null) => { const tt = tabs.find(x => x.tab === n); return tt ? tabLabel(tt) : t("Onglet {n}", { n: n ?? "?" }); };
   const empty = kind === "items" ? !moves.length : !money.length;
   return (
     <section className="bk-journal stack" aria-labelledby="bk-j-t">
-      <h4 className="gm-sec" id="bk-j-t">Journal</h4>
+      <h4 className="gm-sec" id="bk-j-t">{t("Journal")}</h4>
       <div className="row between">
-        <div className="seg" role="group" aria-label="Journal de la banque">
-          <button type="button" className={kind === "items" ? "on" : ""} aria-pressed={kind === "items"} onClick={() => setKind("items")}>Objets</button>
-          <button type="button" className={kind === "money" ? "on" : ""} aria-pressed={kind === "money"} onClick={() => setKind("money")}>Or</button>
+        <div className="seg" role="group" aria-label={t("Journal de la banque")}>
+          <button type="button" className={kind === "items" ? "on" : ""} aria-pressed={kind === "items"} onClick={() => setKind("items")}>{t("Objets")}</button>
+          <button type="button" className={kind === "money" ? "on" : ""} aria-pressed={kind === "money"} onClick={() => setKind("money")}>{t("Or")}</button>
         </div>
-        <span className="small muted">{kind === "items" ? "le jeu en montre 50 par onglet" : "le jeu en montre 50"}</span>
+        <span className="small muted">{kind === "items" ? t("le jeu en montre 50 par onglet") : t("le jeu en montre 50")}</span>
       </div>
-      {!q.data ? <p className="muted" style={{ margin: 0 }}>{q.error ? "Journal indisponible pour l'instant." : "Chargement…"}</p>
-        : empty ? <p className="muted" style={{ margin: 0 }}>Aucun mouvement relevé pour l'instant.</p>
+      {!q.data ? <p className="muted" style={{ margin: 0 }}>{q.error ? t("Journal indisponible pour l'instant.") : t("Chargement…")}</p>
+        : empty ? <p className="muted" style={{ margin: 0 }}>{t("Aucun mouvement relevé pour l'instant.")}</p>
         : (
           <ul className="bk-log">
             {kind === "items"
@@ -488,26 +489,26 @@ function Journal({ groupId, tabs, objects, lastMoney }: { groupId: string; tabs:
               : money.map(m => <MoneyMove key={m.id} m={m} />)}
           </ul>
         )}
-      {q.hasNextPage && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>Plus ancien</button>}
+      {q.hasNextPage && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{t("Plus ancien")}</button>}
       {kind === "items" && !!lastMoney.length && (
         <p className="bk-last small muted">
-          Or : {lastMoney.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}<MoneyText m={m} /> ({agoText(m.at)})</Fragment>)}
+          {t("Or :")} {lastMoney.map((m, i) => <Fragment key={m.id}>{i > 0 && " · "}<MoneyText m={m} /> ({agoText(m.at)})</Fragment>)}
         </p>
       )}
     </section>
   );
 }
 
-const When = ({ at }: { at: string }) => <time dateTime={at} title={`${shortDay(at)}, à l'heure près (journal du jeu)`}>{agoText(at)}</time>;
+const When = ({ at }: { at: string }) => <time dateTime={at} title={t("{day}, à l'heure près (journal du jeu)", { day: shortDay(at) })}>{agoText(at)}</time>;
 
 /** « Pikou a déposé 20 × Major Healing Potion », en dessous l'onglet (« Équipement → Officiers » pour un déplacement). */
 function ItemMove({ m, objects, tabName }: { m: GuildBankMove; objects: Record<number, BankItem>; tabName: (n: number | null) => string }) {
   // « 5 × objet inconnu » avec une quantité, « un objet inconnu » sans
-  const what = m.itemId ? itemName(m.itemId, objects[m.itemId]) : m.n ? "objet inconnu" : "un objet inconnu";
+  const what = m.itemId ? itemName(m.itemId, objects[m.itemId]) : m.n ? t("objet inconnu") : t("un objet inconnu");
   const cls = m.type === "deposit" ? "in" : m.type === "withdraw" ? "out" : "";
   return (
     <li>
-      <span><b>{m.who}</b> <span className={cls}>{bankItemVerb(m.type)}</span> {m.n ? `${m.n} × ` : ""}{what}</span>
+      <span><b>{m.who}</b> <span className={cls}>{bankItemVerbText(m.type)}</span> {m.n ? `${m.n} × ` : ""}{what}</span>
       <When at={m.at} />
       <small>{m.type === "move" && m.tab1 && m.tab2 ? `${tabName(m.tab1)} → ${tabName(m.tab2)}` : tabName(m.tab)}</small>
     </li>
@@ -517,7 +518,7 @@ function ItemMove({ m, objects, tabName }: { m: GuildBankMove; objects: Record<n
 /** « **Vex** a payé des réparations −12 po 30 pa » : le sens (l'or entre ou sort) donne la couleur du montant. */
 function MoneyText({ m }: { m: GuildBankMoneyMove }) {
   const s = signed(m);
-  return <><b>{m.who}</b> {bankMoneyText(m.type).verb} <span className={s.cls}>{s.text}</span></>;
+  return <><b>{m.who}</b> {bankMoneyVerb(m.type)} <span className={s.cls}>{s.text}</span></>;
 }
 
 function MoneyMove({ m }: { m: GuildBankMoneyMove }) {

@@ -4,7 +4,10 @@
 //                                            plus, ou si les {variables} diffèrent entre le français et l'anglais
 //   node scripts/i18n-check.mjs --missing  → écrit les textes sans traduction (JSON, valeurs vides) pour les remplir
 // Textes repérés : t("…"), tx("…"), N("…") et les deux textes de tn(n, "…", "…"), entre "", '' ou `` (sans ${}).
+// Refuse aussi t(), tx() et tn() appelés au chargement d'un module (hors de toute fonction) : le texte y resterait en
+// français ; hors d'un composant, on marque le texte avec N("…") et on le traduit à l'affichage avec t().
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,22 +24,32 @@ function files(dir) {
   });
 }
 
-const LIT = String.raw`("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|\`(?:[^\`\\$]|\\.)*\`)`;
-const ONE = new RegExp(String.raw`(?<![\w.$])(?:t|tx|N)\(\s*` + LIT, "g");
-const PLURAL = new RegExp(String.raw`(?<![\w.$])tn\(\s*[^,()]+(?:\([^()]*\))?\s*,\s*` + LIT + String.raw`\s*,\s*` + LIT, "g");
-
-function unquote(lit) {
-  const q = lit[0], body = lit.slice(1, -1);
-  if (q === '"') return JSON.parse(lit);
-  return body.replace(/\\(.)/g, (_, c) => ({ n: "\n", t: "\t" })[c] ?? c);
-}
-
+// Lecture du code par TypeScript : premier argument de t(), tx() et N(), deuxième et troisième de tn() ; un choix
+// « cond ? "a" : "b" » compte ses deux textes. Un argument calculé (variable, table) doit avoir été marqué N("…") ailleurs.
+const ts = createRequire(import.meta.url)("typescript");
 const used = new Map(); // texte → premier endroit vu
+const problems = [];
+const KEY_ARGS = { t: [0], tx: [0], N: [0], tn: [1, 2] };
 for (const f of files(src)) {
-  const text = readFileSync(f, "utf8");
-  const where = (i) => `${path.relative(root, f)}:${text.slice(0, i).split("\n").length}`;
-  for (const m of text.matchAll(ONE)) if (!used.has(unquote(m[1]))) used.set(unquote(m[1]), where(m.index));
-  for (const m of text.matchAll(PLURAL)) for (const lit of [m[1], m[2]]) if (!used.has(unquote(lit))) used.set(unquote(lit), where(m.index));
+  const sf = ts.createSourceFile(f, readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, f.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+  const at = (n) => `${path.relative(root, f)}:${sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1}`;
+  const keys = (n) => {
+    while (ts.isParenthesizedExpression(n)) n = n.expression;
+    if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) { if (!used.has(n.text)) used.set(n.text, at(n)); }
+    else if (ts.isConditionalExpression(n)) { keys(n.whenTrue); keys(n.whenFalse); }
+    else if (ts.isTemplateExpression(n)) problems.push(`${at(n)} : gabarit \`…\${}\` dans t() : mettre des {variables}`);
+  };
+  const visit = (n, inFn) => {
+    inFn ||= ts.isFunctionLike(n);
+    if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && Object.hasOwn(KEY_ARGS, n.expression.text)) {
+      const name = n.expression.text;
+      for (const i of KEY_ARGS[name]) if (n.arguments[i]) keys(n.arguments[i]);
+      // t() au chargement du module : le texte y resterait en français
+      if (!inFn && name !== "N") problems.push(`${at(n)} : ${name}() appelé au chargement du module (N("…") puis t() à l'affichage)`);
+    }
+    ts.forEachChild(n, c => visit(c, inFn));
+  };
+  visit(sf, false);
 }
 
 // Libellés français de packages/game-data affichés par le site à travers i18n/game.ts : leurs valeurs comptent comme des textes
@@ -45,12 +58,14 @@ const GAME_LABELS = [
   ["loot.ts", "LOOT_MODE_LABEL"], ["loot.ts", "LOOT_MODE_HINT"], ["loot.ts", "RETAIL_LOOT_MODE_LABEL"], ["loot.ts", "RETAIL_LOOT_MODE_HINT"],
   ["loot.ts", "LOOT_RESPONSE_LABEL"], ["loot.ts", "LOOT_METHOD_LABEL"], ["loot.ts", "LOOT_CATEGORY_LABEL"],
   ["prep.ts", "CONSUMABLE_TARGET_LABEL"], ["raidlog.ts", "ATTENDANCE_LABEL"],
+  ["bank.ts", "ITEM_VERBS"], ["bank.ts", "MONEY_TEXTS"], ["bank.ts", "BANK_REQUEST_STATUS_LABEL"],
 ];
 for (const [f, name] of GAME_LABELS) {
   const text = readFileSync(path.join(root, "packages/game-data/src", f), "utf8");
-  const start = text.search(new RegExp(String.raw`(?:export )?const ${name}\b[^=]*=\s*\{`));
-  if (start < 0) { console.log(`  ${f} : table ${name} introuvable`); process.exit(1); }
-  let i = text.indexOf("{", start), depth = 0, end = i;
+  const found = new RegExp(String.raw`(?:export )?const ${name}\b[^=]*=\s*\{`).exec(text);
+  if (!found) { console.log(`  ${f} : table ${name} introuvable`); process.exit(1); }
+  // L'accolade de la valeur, pas celle d'un type (Record<string, { verb: string }>)
+  let i = found.index + found[0].length - 1, depth = 0, end = i;
   for (; end < text.length; end++) { if (text[end] === "{") depth++; else if (text[end] === "}" && --depth === 0) break; }
   for (const m of text.slice(i, end).matchAll(/:\s*("(?:[^"\\]|\\.)*")/g)) {
     const k = JSON.parse(m[1]);
@@ -68,7 +83,6 @@ if (process.argv.includes("--missing")) {
   process.exit(0);
 }
 
-const problems = [];
 for (const [k, at] of used) {
   if (!catalog[k]) problems.push(`${at} : pas de traduction anglaise pour « ${k} »`);
   else if (vars(k) !== vars(catalog[k])) problems.push(`${at} : variables différentes pour « ${k} » (${vars(k) || "aucune"} / ${vars(catalog[k]) || "aucune"})`);

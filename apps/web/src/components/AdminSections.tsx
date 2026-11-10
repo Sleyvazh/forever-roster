@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { del, get, post, put, type Creators, type CraftersRecipe } from "../api";
 import { CRAFTING } from "./GameData";
+import { t, tn } from "../i18n";
 import { ItemHover, ItemIcon } from "./ItemTooltip";
 import { NumberField } from "./NumberField";
 import { CraftOrders, type OrderPrefill } from "./CraftOrders";
@@ -123,7 +124,7 @@ export type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 export function Crafters({ groupId, myId }: { groupId: string; myId?: string }) {
   const [input, setInput] = useState(""), [q, setQ] = useState(""), [prof, setProf] = useState("");
   const [prefill, setPrefill] = useState<OrderPrefill | null>(null);
-  useEffect(() => { const t = window.setTimeout(() => setQ(input.trim()), 300); return () => window.clearTimeout(t); }, [input]);
+  useEffect(() => { const timer = window.setTimeout(() => setQ(input.trim()), 300); return () => window.clearTimeout(timer); }, [input]);
   const params = new URLSearchParams({ ...(q.length >= 2 && { q }), ...(prof && { profession: prof }) });
   const { data, isLoading } = useQuery({
     queryKey: ["crafters", groupId, q, prof],
@@ -133,34 +134,34 @@ export function Crafters({ groupId, myId }: { groupId: string; myId?: string }) 
   return (
     <div className="sec">
       <CraftOrders groupId={groupId} myId={myId} prefill={prefill} />
-      <h3 style={{ margin: "8px 0 0" }}>Qui crafte quoi ?</h3>
+      <h3 style={{ margin: "8px 0 0" }}>{t("Qui crafte quoi ?")}</h3>
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="cr-q">Recette ou objet</label>
+        <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="cr-q">{t("Recette ou objet")}</label>
           <input id="cr-q" type="search" placeholder="Warbear Woolies, Flask…" value={input} onChange={e => setInput(e.target.value)} />
         </div>
-        <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="cr-p">Métier</label>
+        <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="cr-p">{t("Métier")}</label>
           <select id="cr-p" value={prof} onChange={e => setProf(e.target.value)}>
-            <option value="">Tous</option>{[...CRAFTING].map(p => <option key={p}>{p}</option>)}
+            <option value="">{t("Tous")}</option>{[...CRAFTING].map(p => <option key={p}>{p}</option>)}
           </select>
         </div>
       </div>
-      {isLoading ? <p className="muted">Chargement…</p> : !data?.recipes.length ? (
-        <p className="muted">{q || prof ? "Aucun membre n'a renseigné cette recette." : "Aucun patron renseigné pour l'instant. Chaque joueur les coche dans l'onglet Métiers de ses persos."}</p>
+      {isLoading ? <p className="muted">{t("Chargement…")}</p> : !data?.recipes.length ? (
+        <p className="muted">{q || prof ? t("Aucun membre n'a renseigné cette recette.") : t("Aucun patron renseigné pour l'instant. Chaque joueur les coche dans l'onglet Métiers de ses persos.")}</p>
       ) : (
         <div className="tscroll"><table className="data">
-          <thead><tr><th>Recette</th><th>Métier</th><th>Sait la faire</th><th>La recherche</th><th /></tr></thead>
+          <thead><tr><th>{t("Recette")}</th><th>{t("Métier")}</th><th>{t("Sait la faire")}</th><th>{t("La recherche")}</th><th /></tr></thead>
           <tbody>{data.recipes.map(r => (
             <tr key={r.spellId}>
               <td><ItemHover item={r.item} className="with-icon" link>{r.item && <ItemIcon item={r.item} size={22} />}<span className={r.item ? `q${r.item.quality}` : ""}>{r.name}</span></ItemHover>{r.enchant && <span className="muted small"> · {r.enchant}</span>}</td>
               <td className="small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} <span className="muted num">{r.reqSkill}</span></td>
               <td>{r.known.length ? names(r.known) : <span className="muted">—</span>}</td>
               <td className="small">{r.wanted.length ? names(r.wanted) : <span className="muted">—</span>}</td>
-              <td>{r.known.length > 0 && <button type="button" className="btn ghost sm" onClick={() => { setPrefill({ spellId: r.spellId, name: r.item?.name ?? r.name, key: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Commander</button>}</td>
+              <td>{r.known.length > 0 && <button type="button" className="btn ghost sm" onClick={() => { setPrefill({ spellId: r.spellId, name: r.item?.name ?? r.name, key: Date.now() }); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("Commander")}</button>}</td>
             </tr>
           ))}</tbody>
         </table></div>
       )}
-      {data && data.total > data.recipes.length && <p className="hint">{data.total} recettes : affine la recherche pour voir la suite.</p>}
+      {data && data.total > data.recipes.length && <p className="hint">{tn(data.total, "{n} recette : affine la recherche pour voir la suite.", "{n} recettes : affine la recherche pour voir la suite.")}</p>}
     </div>
   );
 }
@@ -296,11 +297,11 @@ export function TemplateChannels({ groupId, groupLinked, guard }: { groupId: str
       <h4 id="rc-title" style={{ margin: 0 }}>Salons des raids récurrents</h4>
       {data.templates.length === 0
         ? <p className="hint" style={{ margin: 0 }}>Aucun raid récurrent. Pour en créer un, coche «&nbsp;Chaque semaine&nbsp;» en créant un raid (<Link to={`/groups/${groupId}/raids`}>onglet Raids</Link>).</p>
-        : data.templates.map(t => (
-          <div key={t.id} className={`gr-recrow${t.active ? "" : " off"}`}>
-            <span><b>{t.name}</b> <span className="muted">chaque {WEEKDAYS[t.weekday - 1]?.toLowerCase()} {t.time}</span>
-              {!t.active && <span className="tag" style={{ marginLeft: 6 }}>En pause</span>}</span>
-            <TemplateChannel groupId={groupId} t={t} canEdit guard={guard} refresh={refresh} groupLinked={groupLinked} />
+        : data.templates.map(tpl => (
+          <div key={tpl.id} className={`gr-recrow${tpl.active ? "" : " off"}`}>
+            <span><b>{tpl.name}</b> <span className="muted">chaque {WEEKDAYS[tpl.weekday - 1]?.toLowerCase()} {tpl.time}</span>
+              {!tpl.active && <span className="tag" style={{ marginLeft: 6 }}>En pause</span>}</span>
+            <TemplateChannel groupId={groupId} t={tpl} canEdit guard={guard} refresh={refresh} groupLinked={groupLinked} />
           </div>
         ))}
     </section>

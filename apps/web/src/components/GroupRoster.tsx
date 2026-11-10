@@ -13,6 +13,8 @@ import { RetailCharacterView } from "./RetailCharacter";
 import { GiveFicheDialog } from "./GiveFiche";
 import { BnetGroupRefresh } from "./BnetImport";
 import { useGameText } from "../gameText";
+import { N, t, tn } from "../i18n";
+import { roleLabel } from "../pages/GroupsPage";
 
 /**
  * Onglet Personnages d'un groupe : les persos que chaque membre y joue (son main marqué ★, ses alts),
@@ -25,8 +27,8 @@ import { useGameText } from "../gameText";
 
 type Scope = "mains" | "all" | "split";
 type View = "list" | "tiles" | "roles" | "players";
-const SCOPES: [Scope, string][] = [["mains", "Mains"], ["all", "Mains + alts"], ["split", "Séparés"]];
-const VIEWS: [View, string][] = [["list", "Liste"], ["tiles", "Tuiles"], ["roles", "Par rôle"], ["players", "Par joueur"]];
+const SCOPES: [Scope, string][] = [["mains", N("Mains")], ["all", N("Mains + alts")], ["split", N("Séparés")]];
+const VIEWS: [View, string][] = [["list", N("Liste")], ["tiles", N("Tuiles")], ["roles", N("Par rôle")], ["players", N("Par joueur")]];
 
 /** Faction des persos d'un groupe : la même pour tous, sinon null (groupe aux deux factions, ou aucune race connue). */
 export function factionOf(chars: Pick<Character, "race">[]): "Alliance" | "Horde" | null {
@@ -50,28 +52,27 @@ function DisplayMenu({ scope, onScope, view, onView, views }: {
     document.addEventListener("pointerdown", down); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
   }, [open]);
-  const label = `${SCOPES.find(([k]) => k === scope)![1]}, ${views.find(([k]) => k === view)?.[1] ?? "Liste"}`;
+  const label = `${t(SCOPES.find(([k]) => k === scope)![1])}, ${t(views.find(([k]) => k === view)?.[1] ?? VIEWS[0]![1])}`;
   return (
     <div className="gm-disp" ref={box}>
       <button type="button" className="btn gm-disp-btn" aria-expanded={open} aria-controls="gm-disp-pop" onClick={() => setOpen(o => !o)}>
-        Affichage · {label} <span aria-hidden="true">▾</span>
+        {t("Affichage · {label}", { label })} <span aria-hidden="true">▾</span>
       </button>
       {open && (
         <div className="gm-disp-pop" id="gm-disp-pop">
-          <span className="gm-lab" id="gm-scope">Persos</span>
+          <span className="gm-lab" id="gm-scope">{t("Persos")}</span>
           <div className="seg eq" role="group" aria-labelledby="gm-scope">
-            {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => onScope(k)}>{l}</button>)}
+            {SCOPES.map(([k, l]) => <button key={k} type="button" className={scope === k ? "on" : ""} aria-pressed={scope === k} onClick={() => onScope(k)}>{t(l)}</button>)}
           </div>
-          <span className="gm-lab" id="gm-view">Vue</span>
+          <span className="gm-lab" id="gm-view">{t("Vue")}</span>
           <div className="seg eq" role="group" aria-labelledby="gm-view" style={{ "--n": views.length } as CSSProperties}>
-            {views.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => onView(k)}>{l}</button>)}
+            {views.map(([k, l]) => <button key={k} type="button" className={view === k ? "on" : ""} aria-pressed={view === k} onClick={() => onView(k)}>{t(l)}</button>)}
           </div>
         </div>
       )}
     </div>
   );
 }
-const ROLE_NAME: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 const RANK: Record<GroupRole, number> = { member: 0, officer: 1, owner: 2 };
 
 const color = (c: Character) => classColor(c.cls) ?? "var(--line-2)";
@@ -86,8 +87,8 @@ function Face({ c, size }: { c: Character; size: number }) {
 }
 
 const Mark = ({ c }: { c: Character }) => c.isMain
-  ? <span className="gm-star" title="Perso principal (main) dans cette guilde" aria-label="Main">★</span>
-  : <span className="gm-alt" title="Autre perso joué dans cette guilde">alt</span>;
+  ? <span className="gm-star" title={t("Perso principal (main) dans cette guilde")} aria-label={t("Main")}>★</span>
+  : <span className="gm-alt" title={t("Autre perso joué dans cette guilde")}>{t("alt")}</span>;
 
 /* ---------- Mes persos dans ce groupe ---------- */
 
@@ -105,36 +106,36 @@ function MyCharacters({ groupId, groupName, assigned, onError }: { groupId: stri
     try {
       await put(`/groups/${groupId}/characters/${id}`, { assigned: true });
       await Promise.all([qc.invalidateQueries({ queryKey: ["group-chars", groupId] }), qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
-    } catch (e) { onError(e instanceof ApiError ? e.message : "Modification impossible."); }
+    } catch (e) { onError(e instanceof ApiError ? e.message : t("Modification impossible.")); }
     finally { setBusy(null); }
   };
 
   if (!mineQ.data) return null;
   if (!mine.length) {
-    return <div className="gm-fold"><span className="muted small">Tu n'as encore aucun perso.</span><Link className="btn sm" to="/persos" style={{ marginLeft: "auto" }}>Créer un perso</Link></div>;
+    return <div className="gm-fold"><span className="muted small">{t("Tu n'as encore aucun perso.")}</span><Link className="btn sm" to="/persos" style={{ marginLeft: "auto" }}>{t("Créer un perso")}</Link></div>;
   }
   if (!assigned.length) {
     return (
-      <section className="gm-panel gm-empty" aria-label="Mes persos dans cette guilde">
-        <h3>Tu ne joues encore aucun perso dans {groupName}</h3>
-        <p className="hint">{free.length ? "Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer dans Mes persos)." : "Tes persos sont tous rangés dans une autre guilde. Change la guilde de l'un d'eux dans Mes persos."}</p>
+      <section className="gm-panel gm-empty" aria-label={t("Mes persos dans cette guilde")}>
+        <h3>{t("Tu ne joues encore aucun perso dans {guild}", { guild: groupName })}</h3>
+        <p className="hint">{free.length ? t("Choisis ceux que tu y joues : le premier devient ton main (tu pourras changer dans Mes persos).") : t("Tes persos sont tous rangés dans une autre guilde. Change la guilde de l'un d'eux dans Mes persos.")}</p>
         <div className="gm-chips">
           {free.map(c => (
             <button key={c.id} type="button" className="gm-chip" disabled={!!busy} onClick={() => void add(c.id)}>
               <Face c={c} size={20} /><span style={{ color: color(c) }}>{c.name}</span> +
             </button>
           ))}
-          <Link className="btn ghost sm" to="/persos">Mes persos</Link>
+          <Link className="btn ghost sm" to="/persos">{t("Mes persos")}</Link>
         </div>
       </section>
     );
   }
   return (
     <div className="gm-fold">
-      <span>Tes persos ici ·</span>
+      <span>{t("Tes persos ici ·")}</span>
       {main && <b style={{ color: color(main) }}>★ {main.name}</b>}
       {assigned.filter(c => !c.isMain).map(c => <span key={c.id}><span aria-hidden="true">· </span><b style={{ color: color(c) }}>{c.name}</b></span>)}
-      <Link className="link gm-manage" to="/persos">Gérer dans Mes persos <span aria-hidden="true">›</span></Link>
+      <Link className="link gm-manage" to="/persos">{t("Gérer dans Mes persos")} <span aria-hidden="true">›</span></Link>
     </div>
   );
 }
@@ -172,7 +173,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   /** « Donner la fiche à… » (Forever) : la fiche ouverte. */
   const [giving, setGiving] = useState<string | null>(null);
   const gt = useGameText();
-  if (!data) return <p className="muted">Chargement…</p>;
+  if (!data) return <p className="muted">{t("Chargement…")}</p>;
 
   const all = data.characters;
   const needle = filter.trim().toLowerCase();
@@ -201,7 +202,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
       await put(`/groups/${groupId}/characters/${c.id}`, body);
       if (!body.assigned) setOpen(null);
       await Promise.all([qc.invalidateQueries({ queryKey: ["group-chars", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Modification impossible."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Modification impossible.")); }
     finally { setBusy(false); }
   };
 
@@ -214,7 +215,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
       else await put(`/groups/${groupId}/characters/${c.id}/level`, { level });
       setLvEdit(null);
       await qc.invalidateQueries({ queryKey: ["group-chars", groupId] });
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Modification impossible."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Modification impossible.")); }
     finally { setBusy(false); }
   };
 
@@ -237,7 +238,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
         <button key={c.id} type="button" role="listitem" className={`grow${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
           <Face c={c} size={30} />
           <span className="gname"><Mark c={c} /><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
-          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">À configurer</span>}{mixed && RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
+          <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">{t("À configurer")}</span>}{mixed && RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
           <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
           {owner(c)}
         </button>
@@ -252,9 +253,9 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
           <button key={c.id} type="button" className={`gtile${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
             title={[gt.spec(c.cls, c.spec1), gt.spec(c.cls, c.spec2)].filter(Boolean).join(" / ")}>
             <Face c={c} size={34} />
-            <span className="n">{c.isMain && <span className="gm-star" aria-label="Main">★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
+            <span className="n">{c.isMain && <span className="gm-star" aria-label={t("Main")}>★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
             <span className="r">{r && <RoleIcon role={r} />}</span>
-            <span className="s">{(c.cls && gt.specOrClass(c.cls, c.spec1)) || "À configurer"} · {c.owner}{c.isMain ? "" : " · alt"}</span>
+            <span className="s">{(c.cls && gt.specOrClass(c.cls, c.spec1)) || t("À configurer")} · {c.owner}{c.isMain ? "" : t(" · alt")}</span>
           </button>
         );
       })}
@@ -271,7 +272,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
               <Face c={c} size={26} />
               <span className="gr-txt">
                 <span className="n" style={{ color: color(c) }}>{c.isMain && "★ "}{c.name}</span>
-                <span className="s">{gt.spec(c.cls, isOff ? c.spec2 : c.spec1)} · {c.owner}{c.isMain ? "" : " · alt"}{isOff ? " · off-spec" : ""}</span>
+                <span className="s">{gt.spec(c.cls, isOff ? c.spec2 : c.spec1)} · {c.owner}{c.isMain ? "" : t(" · alt")}{isOff ? t(" · off-spec") : ""}</span>
               </span>
               <span className="lvl-pill num">{c.level}</span>
             </button>
@@ -279,8 +280,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
         );
         return (
           <section key={r} className="gcol" aria-label={r}>
-            <h4 className={r}><RoleIcon role={r} size={18} /><span className="num">{mains}{alts > 0 && ` +${alts} alt`}{off.length > 0 && ` · ${off.length} off`}</span></h4>
-            {main.length + off.length ? <ul>{main.map(c => item(c, false))}{off.map(c => item(c, true))}</ul> : <p className="muted small" style={{ padding: "8px 12px", margin: 0 }}>Personne</p>}
+            <h4 className={r}><RoleIcon role={r} size={18} /><span className="num">{mains}{alts > 0 && ` +${tn(alts, "{n} alt", "{n} alts")}`}{off.length > 0 && ` · ${t("{n} off", { n: off.length })}`}</span></h4>
+            {main.length + off.length ? <ul>{main.map(c => item(c, false))}{off.map(c => item(c, true))}</ul> : <p className="muted small" style={{ padding: "8px 12px", margin: 0 }}>{t("Personne")}</p>}
           </section>
         );
       })}
@@ -295,8 +296,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
           <section key={m.userId} className="gm-player" aria-label={m.displayName}>
             <header>
               <span className="avatar" style={{ width: 26, height: 26 }}><Portrait id={m.avatarId} size={26} fallback={<span className="small">{m.displayName[0]}</span>} /></span>
-              <b>{m.displayName}</b><span className="tag">{ROLE_NAME[m.role]}</span>
-              <span className="muted small num" style={{ marginLeft: "auto" }}>{cs.length} perso{cs.length > 1 ? "s" : ""}</span>
+              <b>{m.displayName}</b><span className="tag">{roleLabel(m.role)}</span>
+              <span className="muted small num" style={{ marginLeft: "auto" }}>{tn(cs.length, "{n} perso", "{n} persos")}</span>
             </header>
             {list(cs)}
           </section>
@@ -307,7 +308,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   const layout = (chars: Character[]): ReactNode => view === "tiles" ? tiles(chars) : view === "roles" ? roles(chars) : view === "players" ? players(chars) : list(chars);
   // Séparés : les mains puis les alts (la vue par joueur les sépare déjà)
   const sections: [string | null, Character[]][] = scope === "split" && view !== "players"
-    ? [["Mains", shown.filter(c => c.isMain)], ["Alts", shown.filter(c => !c.isMain)]]
+    ? [[N("Mains"), shown.filter(c => c.isMain)], [N("Alts"), shown.filter(c => !c.isMain)]]
     : [[null, shown]];
   const noMain = members.filter(m => !all.some(c => c.userId === m.userId)).length;
 
@@ -316,27 +317,27 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
       <MyCharacters groupId={groupId} groupName={groupName} assigned={all.filter(c => c.userId === myId)} onError={setError} />
       {error && <div className="alert error" role="alert">{error}</div>}
       {!all.length ? (
-        <p className="muted" style={{ margin: 0 }}>Les membres n'ont pas encore choisi leurs persos pour cette guilde.</p>
+        <p className="muted" style={{ margin: 0 }}>{t("Les membres n'ont pas encore choisi leurs persos pour cette guilde.")}</p>
       ) : (
         <>
           <div className="gc-tools gm-tools">
-            <input type="search" aria-label="Chercher un perso" placeholder="Chercher un nom, une classe, une spé…" value={filter} onChange={e => setFilter(e.target.value)} />
-            <div className="seg eq" role="group" aria-label="Rôle">
+            <input type="search" aria-label={t("Chercher un perso")} placeholder={t("Chercher un nom, une classe, une spé…")} value={filter} onChange={e => setFilter(e.target.value)} />
+            <div className="seg eq" role="group" aria-label={t("Rôle")}>
               {(["", "Tank", "Heal", "DPS"] as const).map(r => (
-                <button key={r || "all"} type="button" className={role === r ? "on" : ""} aria-pressed={role === r} onClick={() => setRole(r)}>{r || "Tous"}</button>
+                <button key={r || "all"} type="button" className={role === r ? "on" : ""} aria-pressed={role === r} onClick={() => setRole(r)}>{r || t("Tous")}</button>
               ))}
             </div>
             <DisplayMenu scope={scope} onScope={setScope} view={view} onView={setView} views={views} />
           </div>
           {gt.game === "retail" && RANK[myRole] >= 1 && <BnetGroupRefresh groupId={groupId} onDone={() => void qc.invalidateQueries({ queryKey: ["group-chars", groupId] })} />}
-          {!shown.length && <p className="muted">Aucun perso ne correspond.</p>}
+          {!shown.length && <p className="muted">{t("Aucun perso ne correspond.")}</p>}
           {sections.map(([title, chars]) => chars.length > 0 && (
             <div key={title ?? "all"} className="stack" style={{ gap: 8 }}>
-              {title && <h4 className="gm-sec">{title} <span className="num">{chars.length}</span></h4>}
+              {title && <h4 className="gm-sec">{t(title)} <span className="num">{chars.length}</span></h4>}
               {layout(chars)}
             </div>
           ))}
-          {noMain > 0 && <p className="hint" style={{ margin: 0 }}>{noMain} membre{noMain > 1 ? "s n'ont" : " n'a"} encore choisi aucun perso pour cette guilde.</p>}
+          {noMain > 0 && <p className="hint" style={{ margin: 0 }}>{tn(noMain, "{n} membre n'a encore choisi aucun perso pour cette guilde.", "{n} membres n'ont encore choisi aucun perso pour cette guilde.")}</p>}
         </>
       )}
 
@@ -346,29 +347,30 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
           {canManage(opened) && (
             <div className="gm-act">
               <span className="gm-who"><Face c={opened} size={22} /><b style={{ color: color(opened) }}>{opened.name}</b>
-                <span className="muted">· {opened.userId === myId ? (opened.isMain ? "ton main" : "un de tes alts") : `${opened.isMain ? "main" : "alt"} de ${opened.owner}`} dans cette guilde</span>
-                {opened.levelLock?.by === "game" && <span className="muted">· niveau {opened.levelLock.level} relevé en jeu ({opened.levelLock.name})</span>}
-                {opened.levelLock?.by === "officer" && <span className="muted">· niveau {opened.level} fixé par {opened.levelLock.userId === myId ? "toi" : opened.levelLock.name}</span>}</span>
+                <span className="muted">· {opened.userId === myId ? (opened.isMain ? t("ton main dans cette guilde") : t("un de tes alts dans cette guilde"))
+                  : opened.isMain ? t("main de {name} dans cette guilde", { name: opened.owner ?? "" }) : t("alt de {name} dans cette guilde", { name: opened.owner ?? "" })}</span>
+                {opened.levelLock?.by === "game" && <span className="muted">· {t("niveau {n} relevé en jeu ({name})", { n: opened.levelLock.level, name: opened.levelLock.name })}</span>}
+                {opened.levelLock?.by === "officer" && <span className="muted">· {opened.levelLock.userId === myId ? t("niveau {n} fixé par toi", { n: opened.level }) : t("niveau {n} fixé par {name}", { n: opened.level, name: opened.levelLock.name })}</span>}</span>
               {lvEdit?.id === opened.id ? (
                 <form className="row gm-lv" style={{ gap: 8, marginLeft: "auto" }} onSubmit={e => { e.preventDefault(); void fixLevel(opened, lvEdit.level); }}>
-                  <label className="muted" htmlFor="gm-lv">Niveau de {opened.name}</label>
+                  <label className="muted" htmlFor="gm-lv">{t("Niveau de {name}", { name: opened.name })}</label>
                   <NumberField id="gm-lv" min={1} max={60} value={lvEdit.level} onChange={level => setLvEdit({ id: opened.id, level })} className="gm-lv-n" />
-                  <button type="submit" className="btn sm primary" disabled={busy}>Enregistrer</button>
-                  <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setLvEdit(null)}>Annuler</button>
+                  <button type="submit" className="btn sm primary" disabled={busy}>{t("Enregistrer")}</button>
+                  <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setLvEdit(null)}>{t("Annuler")}</button>
                 </form>
               ) : (
                 <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
-                  {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>★ En faire le main</button>}
+                  {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>{t("★ En faire le main")}</button>}
                   {fixable(opened) && (opened.levelLock?.by === "officer"
-                    ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(opened, null)}>Rendre la main sur le niveau</button>
-                    : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: opened.id, level: opened.level })}>Corriger le niveau</button>)}
-                  {gt.game !== "retail" && <button type="button" className="btn sm" disabled={busy} onClick={() => setGiving(opened.id)}>Donner la fiche à…</button>}
-                  <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>Retirer de la guilde</button>
+                    ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(opened, null)}>{t("Rendre la main sur le niveau")}</button>
+                    : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: opened.id, level: opened.level })}>{t("Corriger le niveau")}</button>)}
+                  {gt.game !== "retail" && <button type="button" className="btn sm" disabled={busy} onClick={() => setGiving(opened.id)}>{t("Donner la fiche à…")}</button>}
+                  <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>{t("Retirer de la guilde")}</button>
                 </span>
               )}
               {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>{lvEdit?.id === opened.id
-                ? `${data.gameLinked ? `${opened.name} n'est pas dans la liste de guilde du jeu` : "La guilde n'est pas encore liée au jeu"} : son niveau ne peut pas être relevé. Une fois fixé, ${opened.owner ?? "le joueur"} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.`
-                : "Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos."}</span>}
+                ? `${data.gameLinked ? t("{name} n'est pas dans la liste de guilde du jeu", { name: opened.name }) : t("La guilde n'est pas encore liée au jeu")} : ${t("son niveau ne peut pas être relevé. Une fois fixé, {who} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.", { who: opened.owner ?? t("le joueur") })}`
+                : t("Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.")}</span>}
             </div>
           )}
           {giving === opened.id && <GiveFicheDialog groupId={groupId} groupName={groupName} c={opened} members={members} onClose={() => setGiving(null)} />}

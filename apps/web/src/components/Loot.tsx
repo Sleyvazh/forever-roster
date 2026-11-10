@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiError, del, get, post, put, type Character } from "../api";
 import { useSite } from "../site";
 import { ExternalLink } from "./ExternalLink";
-import { dateLocale, getLang, N, t, tn, tx } from "../i18n";
+import { dateLocale, getLang, N, t, tn } from "../i18n";
 import { lootCountText, lootModeHintText, lootModeName } from "../i18n/game";
 
 /**

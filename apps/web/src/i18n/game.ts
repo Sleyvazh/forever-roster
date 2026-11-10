@@ -1,7 +1,7 @@
 import {
-  ATTENDANCE_LABEL, CONSUMABLE_TARGET_LABEL, LOOT_CATEGORY_LABEL, LOOT_COUNT_DAYS, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, SIGNUP_HINT,
+  ATTENDANCE_LABEL, BANK_REQUEST_STATUS_LABEL, bankItemVerb, bankMoneyText, CONSUMABLE_TARGET_LABEL, LOOT_CATEGORY_LABEL, LOOT_COUNT_DAYS, LOOT_METHOD_LABEL, LOOT_RESPONSE_LABEL, SIGNUP_HINT,
   SIGNUP_LABEL, lootCategoryText, lootModeHint, lootModeLabel,
-  type AttendanceStatus, type ConsumableTarget, type Game, type LootCategory, type LootCategoryCounts, type LootMethod, type LootMode,
+  type AttendanceStatus, type BankRequestStatus, type ConsumableTarget, type Game, type LootCategory, type LootCategoryCounts, type LootMethod, type LootMode,
   type LootResponse, type LootSettings, type SignupStatus,
 } from "@forever/game-data";
 import { N, t } from "../i18n";
@@ -20,6 +20,10 @@ export const lootMethodLabel = (m: LootMethod) => t(LOOT_METHOD_LABEL[m]);
 export const lootCategoryLabel = (c: LootCategory) => t(LOOT_CATEGORY_LABEL[c]);
 export const consumableTargetLabel = (c: ConsumableTarget) => t(CONSUMABLE_TARGET_LABEL[c]);
 export const attendanceLabel = (s: AttendanceStatus) => t(ATTENDANCE_LABEL[s]);
+/** Banque de guilde : statut d'une demande de retrait, verbes des journaux (« a déposé ») ; un type inconnu « (xyz) » reste tel quel. */
+export const bankRequestStatusLabel = (s: BankRequestStatus) => t(BANK_REQUEST_STATUS_LABEL[s]);
+export const bankItemVerbText = (type: string) => { const v = bankItemVerb(type); return v.startsWith("(") ? v : t(v); };
+export const bankMoneyVerb = (type: string) => { const v = bankMoneyText(type).verb; return v.startsWith("(") ? v : t(v); };
 
 // Textes écrits en dur dans les fonctions de game-data (lootModeLabel) : déclarés ici pour la traduction
 N("Conseil");

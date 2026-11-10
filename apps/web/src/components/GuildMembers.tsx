@@ -16,7 +16,7 @@ import { ClassDot } from "./Outings";
 import { PlayerSheet } from "./PlayerSheet";
 import { RowMenu } from "./RowMenu";
 
-import { t, tx } from "../i18n";
+import { N, t, tn, tx } from "../i18n";
 /**
  * Page Guilde de Forever (lot « Guilde », refonte du 23/10) : Membres, Course au 60 et Historique (journal de guilde).
  * Membres (disposition A, 31/10) : une barre fixe en haut, « Par perso / Par joueur » à gauche et, en Par perso avec la
@@ -41,26 +41,25 @@ const MODE_VALUES: readonly CharsMode[] = ["jeu", "fiches"];
 function MembersBar({ by, onBy, mode, onMode }: { by: GuildBy; onBy: (b: GuildBy) => void; mode?: CharsMode; onMode: (m: CharsMode) => void }) {
   return (
     <div className="gm-bar">
-      <div className="seg eq gm-by" role="group" aria-label="Par perso ou par joueur">
-        <button type="button" className={by === "persos" ? "on" : ""} aria-pressed={by === "persos"} onClick={() => onBy("persos")}>Par perso</button>
-        <button type="button" className={by === "joueurs" ? "on" : ""} aria-pressed={by === "joueurs"} onClick={() => onBy("joueurs")}>Par joueur</button>
+      <div className="seg eq gm-by" role="group" aria-label={t("Par perso ou par joueur")}>
+        <button type="button" className={by === "persos" ? "on" : ""} aria-pressed={by === "persos"} onClick={() => onBy("persos")}>{t("Par perso")}</button>
+        <button type="button" className={by === "joueurs" ? "on" : ""} aria-pressed={by === "joueurs"} onClick={() => onBy("joueurs")}>{t("Par joueur")}</button>
       </div>
       {mode && (
-        <div className="seg" role="group" aria-label="Persos : liste du jeu ou fiches du site">
-          <button type="button" className={mode === "jeu" ? "on" : ""} aria-pressed={mode === "jeu"} onClick={() => onMode("jeu")}>Liste du jeu</button>
-          <button type="button" className={mode === "fiches" ? "on" : ""} aria-pressed={mode === "fiches"} onClick={() => onMode("fiches")}>Fiches du site</button>
+        <div className="seg" role="group" aria-label={t("Persos : liste du jeu ou fiches du site")}>
+          <button type="button" className={mode === "jeu" ? "on" : ""} aria-pressed={mode === "jeu"} onClick={() => onMode("jeu")}>{t("Liste du jeu")}</button>
+          <button type="button" className={mode === "fiches" ? "on" : ""} aria-pressed={mode === "fiches"} onClick={() => onMode("fiches")}>{t("Fiches du site")}</button>
         </div>
       )}
     </div>
   );
 }
 
-const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : "Action impossible.");
-const ROLE_LABEL: Record<GroupRole, string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
+const errorOf = (e: unknown) => (e instanceof ApiError ? e.message : t("Action impossible."));
+const ROLE_LABEL: Record<GroupRole, string> = { owner: N("Propriétaire"), officer: N("Officier"), member: N("Membre") };
 /** Tout ce qui vient de la guilde du jeu est à relire après une action (l'événement en direct « guild » suit pour les autres). */
 export const refreshGuild = (qc: QueryClient, groupId: string) =>
   Promise.all(GUILD_QUERY_ROOTS.map(k => qc.invalidateQueries({ queryKey: [k, groupId] })));
-const plural = (n: number, w: string, ws = `${w}s`) => `${n} ${n > 1 ? ws : w}`;
 
 /* ---------- Petits morceaux communs ---------- */
 
@@ -73,23 +72,33 @@ export function NotLinked({ groupId, officer, onAdmin, compact }: { groupId: str
   const proposals = link.data?.proposals ?? [];
   if (compact) {
     return (
-      <p className="gm-note" title="Elle arrive à la première synchro d'un officier qui a l'addon à jour, puis se tient à jour toute seule.">
+      <p className="gm-note" title={t("Elle arrive à la première synchro d'un officier qui a l'addon à jour, puis se tient à jour toute seule.")}>
         <i aria-hidden="true">i</i>
-        <span><b>Liste du jeu pas encore reçue</b> · en attendant, les {compact === "persos" ? "fiches" : "membres"} du site.
-          {officer && proposals.length > 0 && <> {proposals.length > 1 ? `${proposals.length} guildes du jeu sont proposées` : <>La guilde du jeu <b>{proposals[0]!.name}</b> est proposée</>} : {onAdmin ? <button type="button" className="link" onClick={onAdmin}>la lier dans l'Administration</button> : "la lier dans l'Administration"}.</>}
+        <span><b>{t("Liste du jeu pas encore reçue")}</b> · {compact === "persos" ? t("en attendant, les fiches du site.") : t("en attendant, les membres du site.")}
+          {officer && proposals.length > 0 && <> {proposed(proposals, onAdmin)}</>}
         </span>
       </p>
     );
   }
   return (
     <div className="so-empty">
-      <h3>Pas encore de liste de guilde</h3>
-      <p>Elle arrive à la première synchro d'un officier de la guilde qui a l'addon à jour, puis se tient à jour toute seule.</p>
+      <h3>{t("Pas encore de liste de guilde")}</h3>
+      <p>{t("Elle arrive à la première synchro d'un officier de la guilde qui a l'addon à jour, puis se tient à jour toute seule.")}</p>
       {officer && (proposals.length
-        ? <p className="small">{proposals.length > 1 ? `${proposals.length} guildes du jeu sont proposées` : <>La guilde du jeu <b>{proposals[0]!.name}</b> est proposée</>} : {onAdmin ? <button type="button" className="link" onClick={onAdmin}>la lier dans l'Administration</button> : "la lier dans l'Administration"}.</p>
-        : <p className="small muted">Ce premier relevé lie la guilde du site à la guilde du jeu{onAdmin ? <> : tu le retrouves dans <button type="button" className="link" onClick={onAdmin}>l'Administration</button></> : null}.</p>)}
+        ? <p className="small">{proposed(proposals, onAdmin)}</p>
+        : <p className="small muted">{onAdmin
+          ? tx("Ce premier relevé lie la guilde du site à la guilde du jeu : tu le retrouves dans {admin}.", { admin: <button type="button" className="link" onClick={onAdmin}>{t("l'Administration")}</button> })
+          : t("Ce premier relevé lie la guilde du site à la guilde du jeu.")}</p>)}
     </div>
   );
+}
+
+/** « 2 guildes du jeu sont proposées : la lier dans l'Administration. » */
+function proposed(proposals: { name: string }[], onAdmin?: () => void) {
+  const link = onAdmin ? <button type="button" className="link" onClick={onAdmin}>{t("la lier dans l'Administration")}</button> : t("la lier dans l'Administration");
+  return proposals.length > 1
+    ? tx("{n} guildes du jeu sont proposées : {link}.", { n: proposals.length, link })
+    : tx("La guilde du jeu {name} est proposée : {link}.", { name: <b>{proposals[0]!.name}</b>, link });
 }
 
 /** « Est-ce ton perso ? » : un officier a rattaché ce perso à mon compte. */
@@ -128,7 +137,7 @@ export { DialogHead, Modal } from "./Dialog";
 /** Ce que dit la petite ligne d'un perso : classe et niveau, rang. */
 function useCharLine() {
   const gt = useGameText();
-  return (c: Pick<GuildChar, "cls" | "level">) => `${c.cls ? `${gt.cls(c.cls)} ` : "Niveau "}${c.level}`;
+  return (c: Pick<GuildChar, "cls" | "level">) => (c.cls ? `${gt.cls(c.cls)} ${c.level}` : t("Niveau {n}", { n: c.level }));
 }
 
 type Dialog = { kind: "attach"; guids: string[] } | { kind: "main"; key: string } | { kind: "claim"; guid: string } | { kind: "fiche"; guid: string } | null;
@@ -164,14 +173,14 @@ function AttachDialog({ groupId, data, guids, members, myId, onClose, onDone }: 
   type Opt = { key: string; main: GuildChar | null; name: string; sub: string; account: { userId: string; displayName: string; avatarId: string | null } | null };
   const players: Opt[] = data.players.filter(p => !(!many && p.key === c.player) && byGuid.has(p.main) && !pickedSet.has(p.main)).map(p => {
     const main = byGuid.get(p.main)!;
-    return { key: p.key, main, name: main.name, account: p.account, sub: [main.rank, p.account ? `compte ${p.account.displayName}` : "sans compte", p.alts.length ? plural(p.alts.length, "alt") : null].filter(Boolean).join(" · ") };
+    return { key: p.key, main, name: main.name, account: p.account, sub: [main.rank, p.account ? t("compte {name}", { name: p.account.displayName }) : t("sans compte"), p.alts.length ? tn(p.alts.length, "{n} alt", "{n} alts") : null].filter(Boolean).join(" · ") };
   });
   // Membres du site sans perso reconnu dans la liste : un compte à qui rattacher (« Est-ce ton perso ? » lui sera posé)
   const accounts = new Set(data.players.map(p => p.account?.userId).filter(Boolean));
   const site: Opt[] = members.filter(m => !accounts.has(m.userId)).map(m => ({
-    key: `u:${m.userId}`, main: null, name: m.displayName, account: { userId: m.userId, displayName: m.displayName, avatarId: m.avatarId }, sub: `compte du site · ${ROLE_LABEL[m.role]} · aucun perso reconnu`,
+    key: `u:${m.userId}`, main: null, name: m.displayName, account: { userId: m.userId, displayName: m.displayName, avatarId: m.avatarId }, sub: t("compte du site · {role} · aucun perso reconnu", { role: t(ROLE_LABEL[m.role]) }),
   }));
-  const band: Opt[] = data.unattached.filter(u => !pickedSet.has(u.guid) && byGuid.has(u.guid)).map(u => ({ key: `m:${u.guid}`, main: byGuid.get(u.guid)!, name: byGuid.get(u.guid)!.name, account: null, sub: `${byGuid.get(u.guid)!.rank} · à rattacher` }));
+  const band: Opt[] = data.unattached.filter(u => !pickedSet.has(u.guid) && byGuid.has(u.guid)).map(u => ({ key: `m:${u.guid}`, main: byGuid.get(u.guid)!, name: byGuid.get(u.guid)!.name, account: null, sub: `${byGuid.get(u.guid)!.rank} · ${t("à rattacher")}` }));
   const match = (o: Opt) => !needle || `${o.name} ${o.account?.displayName ?? ""}`.toLowerCase().includes(needle);
   const all = [...site, ...players, ...band];
   const top = all.filter(o => suggested.has(o.key));
@@ -196,31 +205,35 @@ function AttachDialog({ groupId, data, guids, members, myId, onClose, onDone }: 
       <span className="t"><span className="nm">{o.main ? <><CharName name={o.main.name} cls={o.main.cls} /><span className="lvn">{o.main.level}</span></> : <b>{o.name}</b>}</span><small>{o.sub}</small></span>
     </label></li>
   );
-  const why = suggestion ? `${suggestion.from === "officerNote" ? "note d'officier" : "note de guilde"} « ${suggestion.note} »` : c.note ? `note « ${c.note} »` : "pas de note de guilde";
-  const title = many ? `Rattacher ${picked.length} persos à…` : <>Rattacher {c.name} à…</>;
+  const why = suggestion ? (suggestion.from === "officerNote" ? t("note d'officier « {note} »", { note: suggestion.note }) : t("note de guilde « {note} »", { note: suggestion.note }))
+    : c.note ? t("note « {note} »", { note: c.note }) : t("pas de note de guilde");
+  const title = many ? t("Rattacher {n} persos à…", { n: picked.length }) : t("Rattacher {name} à…", { name: c.name });
   const sub = many ? <span>{picked.map(x => `${x.name} (${line(x)})`).join(", ")}</span> : <><ClassDot cls={c.cls} /><span>{line(c)} · {why}</span></>;
   const who = chosen?.account?.displayName ?? chosen?.main?.firstName;
   return (
     <Modal label="gd-t" onClose={onClose}>
       <form onSubmit={e => void submit(e)}>
         <DialogHead id="gd-t" title={title} sub={sub} onClose={onClose} />
-        <input type="search" placeholder="Chercher un joueur ou un perso…" aria-label="Chercher un joueur ou un perso" value={q} onChange={e => setQ(e.target.value)} />
-        <ul className="gd-list" aria-label="Joueurs de la guilde">
-          {top.length > 0 && <><li className="gd-group">Suggéré par la note</li>{top.map(opt)}</>}
-          {siteRest.length > 0 && <><li className="gd-group">Sur le site, sans perso dans la liste</li>{siteRest.map(opt)}</>}
-          {rest.length > 0 && (top.length > 0 || siteRest.length > 0) && <li className="gd-group">Joueurs de la liste</li>}
+        <input type="search" placeholder={t("Chercher un joueur ou un perso…")} aria-label={t("Chercher un joueur ou un perso")} value={q} onChange={e => setQ(e.target.value)} />
+        <ul className="gd-list" aria-label={t("Joueurs de la guilde")}>
+          {top.length > 0 && <><li className="gd-group">{t("Suggéré par la note")}</li>{top.map(opt)}</>}
+          {siteRest.length > 0 && <><li className="gd-group">{t("Sur le site, sans perso dans la liste")}</li>{siteRest.map(opt)}</>}
+          {rest.length > 0 && (top.length > 0 || siteRest.length > 0) && <li className="gd-group">{t("Joueurs de la liste")}</li>}
           {rest.map(opt)}
-          {!top.length && !siteRest.length && !rest.length && <li className="muted small">Personne ne correspond.</li>}
+          {!top.length && !siteRest.length && !rest.length && <li className="muted small">{t("Personne ne correspond.")}</li>}
         </ul>
         <label className="gd-opt new">
           <input type="radio" name="gd-to" value="new" checked={to === "new"} onChange={() => setTo("new")} />
-          <span className="t"><b>Nouveau joueur</b><small>{many ? `${c.name} est son main, ${picked.slice(1).map(x => x.name).join(", ")} ${picked.length > 2 ? "ses alts" : "son alt"}` : `${c.firstName} est son main`}</small></span>
+          <span className="t"><b>{t("Nouveau joueur")}</b><small>{many ? (picked.length > 2 ? t("{main} est son main, {alts} ses alts", { main: c.name, alts: picked.slice(1).map(x => x.name).join(", ") }) : t("{main} est son main, {alts} son alt", { main: c.name, alts: picked[1]!.name }))
+            : t("{main} est son main", { main: c.firstName })}</small></span>
         </label>
-        {chosen?.account && chosen.account.userId !== myId && <p className="hint" style={{ margin: 0 }}>{chosen.account.displayName} a un compte : « Est-ce ton perso ? » s'affichera {many ? "pour chacun " : ""}à sa prochaine visite (Oui / Non).</p>}
+        {chosen?.account && chosen.account.userId !== myId && <p className="hint" style={{ margin: 0 }}>{many
+          ? t("{name} a un compte : « Est-ce ton perso ? » s'affichera pour chacun à sa prochaine visite (Oui / Non).", { name: chosen.account.displayName })
+          : t("{name} a un compte : « Est-ce ton perso ? » s'affichera à sa prochaine visite (Oui / Non).", { name: chosen.account.displayName })}</p>}
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={!to || busy}>{to === "new" ? (many ? "En faire un joueur à part" : "En faire un joueur à part") : who ? (many ? `Rattacher les ${picked.length} à ${who}` : `Rattacher à ${who}`) : "Rattacher"}</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={!to || busy}>{to === "new" ? t("En faire un joueur à part") : who ? (many ? t("Rattacher les {n} à {name}", { n: picked.length, name: who }) : t("Rattacher à {name}", { name: who })) : t("Rattacher")}</button>
         </div>
       </form>
     </Modal>
@@ -259,26 +272,28 @@ function FicheDialog({ groupId, groupName, data, guid, members, myName, onClose 
   return (
     <Modal label="gfc-t" onClose={onClose}>
       <form className="stack" style={{ gap: 12 }} onSubmit={e => void submit(e)}>
-        <DialogHead id="gfc-t" title={<>Créer la fiche de {c.name}</>} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
-        <div className="fld"><label htmlFor="gfc-u">À qui est ce perso ?</label>
+        <DialogHead id="gfc-t" title={t("Créer la fiche de {name}", { name: c.name })} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
+        <div className="fld"><label htmlFor="gfc-u">{t("À qui est ce perso ?")}</label>
           <select id="gfc-u" value={userId} onChange={e => setUserId(e.target.value)} required>
-            <option value="" disabled>Choisir un membre du site…</option>
+            <option value="" disabled>{t("Choisir un membre du site…")}</option>
             {[...members].sort((a, b) => a.displayName.localeCompare(b.displayName)).map(m => <option key={m.userId} value={m.userId}>{m.displayName}</option>)}
           </select>
         </div>
         <div className="row" style={{ gap: 12, alignItems: "end" }}>
-          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="gfc-n">Nom de la fiche</label>
+          <div className="fld" style={{ flex: "2 1 220px" }}><label htmlFor="gfc-n">{t("Nom de la fiche")}</label>
             <input id="gfc-n" type="text" value={name} maxLength={40} onChange={e => setName(e.target.value)} required /></div>
-          <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="gfc-r">Race <span className="muted small">(facultatif)</span></label>
+          <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="gfc-r">{t("Race")} <span className="muted small">{t("(facultatif)")}</span></label>
             <select id="gfc-r" value={race} onChange={e => setRace(e.target.value)}>
               <option value="">—</option>{races.map(r => <option key={r} value={r}>{r}</option>)}
             </select></div>
         </div>
-        <p className="hint" style={{ margin: 0 }}>Classe et niveau viennent de la liste du jeu (le niveau la suivra). La fiche arrive tout de suite dans les persos de {who?.displayName ?? "ce membre"}, rangée dans {groupName} (son main s'il n'en a pas), avec « Créée par {myName} ». {who?.displayName ?? "Il"} la complète, la donne ou la supprime ; son addon la retrouvera à sa première synchro. Noté au journal de la guilde.</p>
+        <p className="hint" style={{ margin: 0 }}>{who
+          ? t("Classe et niveau viennent de la liste du jeu (le niveau la suivra). La fiche arrive tout de suite dans les persos de {name}, rangée dans {guild} (son main s'il n'en a pas), avec « Créée par {me} ». {name} la complète, la donne ou la supprime ; son addon la retrouvera à sa première synchro. Noté au journal de la guilde.", { name: who.displayName, guild: groupName, me: myName })
+          : t("Classe et niveau viennent de la liste du jeu (le niveau la suivra). La fiche arrive tout de suite dans les persos de ce membre, rangée dans {guild} (son main s'il n'en a pas), avec « Créée par {me} ». Il la complète, la donne ou la supprime ; son addon la retrouvera à sa première synchro. Noté au journal de la guilde.", { guild: groupName, me: myName })}</p>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={busy || !userId || !name.trim()}>{who ? `Créer la fiche pour ${who.displayName}` : "Créer la fiche"}</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={busy || !userId || !name.trim()}>{who ? t("Créer la fiche pour {name}", { name: who.displayName }) : t("Créer la fiche")}</button>
         </div>
       </form>
     </Modal>
@@ -305,8 +320,8 @@ function MainDialog({ groupId, data, pkey, onClose }: { groupId: string; data: G
   return (
     <Modal label="gm-t" onClose={onClose}>
       <form onSubmit={e => void submit(e)}>
-        <DialogHead id="gm-t" title={p.me ? "Ton main" : `Main de ${p.account?.displayName ?? byGuid.get(p.main)?.firstName ?? "ce joueur"}`} sub="Le main mène sa ligne dans la vue Par joueur et dans la course ; les autres persos sont ses alts." onClose={onClose} />
-        <ul className="gd-list" aria-label="Persos du joueur">{chars.map(c => (
+        <DialogHead id="gm-t" title={p.me ? t("Ton main") : t("Main de {name}", { name: p.account?.displayName ?? byGuid.get(p.main)?.firstName ?? t("ce joueur") })} sub={t("Le main mène sa ligne dans la vue Par joueur et dans la course ; les autres persos sont ses alts.")} onClose={onClose} />
+        <ul className="gd-list" aria-label={t("Persos du joueur")}>{chars.map(c => (
           <li key={c.guid}><label className="gd-opt">
             <input type="radio" name="gm-main" value={c.guid} checked={guid === c.guid} onChange={() => setGuid(c.guid)} />
             <ClassDot cls={c.cls} />
@@ -315,8 +330,8 @@ function MainDialog({ groupId, data, pkey, onClose }: { groupId: string; data: G
         ))}</ul>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={busy || guid === p.main}>Choisir comme main</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={busy || guid === p.main}>{t("Choisir comme main")}</button>
         </div>
       </form>
     </Modal>
@@ -337,12 +352,12 @@ function ClaimDialog({ groupId, c, onClose }: { groupId: string; c: GuildChar; o
   return (
     <Modal label="gc-t" onClose={onClose}>
       <div className="gd-body">
-        <DialogHead id="gc-t" title={<>{c.name} est à toi ?</>} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
-        <p style={{ margin: 0 }}>Il rejoint tes persos dans la guilde : ta ligne dans la vue Par joueur et dans la course. Un officier peut toujours corriger.</p>
+        <DialogHead id="gc-t" title={t("{name} est à toi ?", { name: c.name })} sub={<><ClassDot cls={c.cls} /><span>{line(c)} · {c.rank}</span></>} onClose={onClose} />
+        <p style={{ margin: 0 }}>{t("Il rejoint tes persos dans la guilde : ta ligne dans la vue Par joueur et dans la course. Un officier peut toujours corriger.")}</p>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="button" className="btn primary" disabled={busy} onClick={() => void claim()}>Oui, c'est mon perso</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="button" className="btn primary" disabled={busy} onClick={() => void claim()}>{t("Oui, c'est mon perso")}</button>
         </div>
       </div>
     </Modal>
@@ -365,7 +380,7 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
   const [dialog, setDialog] = useState<Dialog>(null);
   /** Persos cochés dans Liste du jeu (officiers, 8/11) : « Rattacher à… » une fois pour tous. */
   const [sel, setSel] = useState<ReadonlySet<string>>(new Set());
-  const myName = useMe().data?.user?.displayName ?? "toi";
+  const myName = useMe().data?.user?.displayName ?? t("toi");
   const officer = myRole !== "member";
   const data = q.data;
   // Ligne au-dessus de Course au 60 : un texte à droite (départ de la course…)
@@ -398,12 +413,12 @@ export function GuildMembersTab({ groupId, groupName, view, members, myRole, myI
   else body = (
     <div className="stack">
       <MembersBar by={by} onBy={chooseBy} mode={by === "persos" && linked ? mode : undefined} onMode={chooseMode} />
-      {!data ? <p className="muted">{q.error ? "Liste de guilde indisponible pour l'instant." : "Chargement…"}</p>
+      {!data ? <p className="muted">{q.error ? t("Liste de guilde indisponible pour l'instant.") : t("Chargement…")}</p>
         : by === "persos" ? <Chars groupId={groupId} groupName={groupName} data={data} sheets={mode === "fiches"} notLinked={<NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="persos" />} members={members} myRole={myRole} myId={myId} openDialog={setDialog} guard={guard} sel={sel} setSel={setSel} />
         : <>
           <QuestionBand groupId={groupId} questions={data.questions} />
           {data.link ? <Players groupId={groupId} data={data} members={members} myRole={myRole} myId={myId} guard={guard} openDialog={setDialog} />
-            : <><NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="joueurs" /><h4 className="gm-sec">Membres du site <span className="num">{members.length}</span></h4>
+            : <><NotLinked groupId={groupId} officer={officer} onAdmin={onAdmin} compact="joueurs" /><h4 className="gm-sec">{t("Membres du site")} <span className="num">{members.length}</span></h4>
               <SiteMembers groupId={groupId} members={members} myRole={myRole} myId={myId} guard={guard} bankers /></>}
         </>}
     </div>
@@ -449,11 +464,11 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
   return (
     <>
       <div className="row gc-tools">
-        <input type="search" placeholder="Chercher un joueur ou un perso…" aria-label="Chercher un joueur ou un perso" value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 220px" }} />
+        <input type="search" placeholder={t("Chercher un joueur ou un perso…")} aria-label={t("Chercher un joueur ou un perso")} value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 220px" }} />
       </div>
-      {!data.me.player && <p className="hint" style={{ margin: 0 }}>Tu n'es pas dans la liste ? Fais ta synchro avec l'addon à jour, ou « C'est mon perso » dans le menu « … ».</p>}
-      <div className="gp" role="table" aria-label="Joueurs de la guilde">
-        <div className="gp-h" role="row"><span role="columnheader">Joueur · main</span><span role="columnheader">Rang</span><span role="columnheader">Alts</span><span role="columnheader">Connexion</span><span role="columnheader">Compte du site</span><span /></div>
+      {!data.me.player && <p className="hint" style={{ margin: 0 }}>{t("Tu n'es pas dans la liste ? Fais ta synchro avec l'addon à jour, ou « C'est mon perso » dans le menu « … ».")}</p>}
+      <div className="gp" role="table" aria-label={t("Joueurs de la guilde")}>
+        <div className="gp-h" role="row"><span role="columnheader">{t("Joueur · main")}</span><span role="columnheader">{t("Rang")}</span><span role="columnheader">{t("Alts")}</span><span role="columnheader">{t("Connexion")}</span><span role="columnheader">{t("Compte du site")}</span><span /></div>
         {shown.map(p => {
           const main = byGuid.get(p.main)!;
           const alts = p.alts.map(g => byGuid.get(g)).filter((c): c is GuildChar => !!c);
@@ -465,16 +480,16 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
           const actions = (close: () => void) => {
             const out: ReactNode[] = [];
             const item = (key: string, label: string, fn: () => void, bad = false) => out.push(<button key={key} type="button" role="menuitem" className={bad ? "bad" : undefined} onClick={() => { close(); fn(); }}>{label}</button>);
-            if (p.account) item("sheet", sheet === p.account.userId ? "Fermer la fiche" : "Voir la fiche", () => setSheet(s => (s === p.account!.userId ? null : p.account!.userId)));
-            if (chars.length > 1 && (officer || p.me)) item("main", "Choisir le main…", () => openDialog({ kind: "main", key: p.key }));
-            if (officer) for (const c of chars) item(`a${c.guid}`, chars.length > 1 ? `Rattacher ${c.name} à…` : "Rattacher à…", () => openDialog({ kind: "attach", guids: [c.guid] }));
-            if (officer) for (const c of chars.filter(x => !x.fiche)) item(`f${c.guid}`, chars.length > 1 ? `Créer la fiche de ${c.name}…` : "Créer sa fiche…", () => openDialog({ kind: "fiche", guid: c.guid }));
-            if (!p.account && claimable(main)) item("claim", "C'est mon perso", () => openDialog({ kind: "claim", guid: main.guid }));
-            if (m && can.role && m.role === "member") item("off", "Nommer officier", () => void setRole(m, "officer"));
-            if (m && can.role && m.role === "officer") item("mem", "Repasser membre", () => void setRole(m, "member"));
-            if (m && can.banker) item("bq", m.banker ? "Retirer banquier" : "Nommer banquier", () => void setBanker(m, !m.banker));
-            if (m && can.role) item("own", "Transférer la propriété…", () => setAsk({ userId: m.userId, action: "owner" }));
-            if (m && can.remove) item("rm", "Retirer de la guilde…", () => setAsk({ userId: m.userId, action: "remove" }), true);
+            if (p.account) item("sheet", sheet === p.account.userId ? t("Fermer la fiche") : t("Voir la fiche"), () => setSheet(s => (s === p.account!.userId ? null : p.account!.userId)));
+            if (chars.length > 1 && (officer || p.me)) item("main", t("Choisir le main…"), () => openDialog({ kind: "main", key: p.key }));
+            if (officer) for (const c of chars) item(`a${c.guid}`, chars.length > 1 ? t("Rattacher {name} à…", { name: c.name }) : t("Rattacher à…"), () => openDialog({ kind: "attach", guids: [c.guid] }));
+            if (officer) for (const c of chars.filter(x => !x.fiche)) item(`f${c.guid}`, chars.length > 1 ? t("Créer la fiche de {name}…", { name: c.name }) : t("Créer sa fiche…"), () => openDialog({ kind: "fiche", guid: c.guid }));
+            if (!p.account && claimable(main)) item("claim", t("C'est mon perso"), () => openDialog({ kind: "claim", guid: main.guid }));
+            if (m && can.role && m.role === "member") item("off", t("Nommer officier"), () => void setRole(m, "officer"));
+            if (m && can.role && m.role === "officer") item("mem", t("Repasser membre"), () => void setRole(m, "member"));
+            if (m && can.banker) item("bq", m.banker ? t("Retirer banquier") : t("Nommer banquier"), () => void setBanker(m, !m.banker));
+            if (m && can.role) item("own", t("Transférer la propriété…"), () => setAsk({ userId: m.userId, action: "owner" }));
+            if (m && can.remove) item("rm", t("Retirer de la guilde…"), () => setAsk({ userId: m.userId, action: "remove" }), true);
             return out;
           };
           return (
@@ -487,16 +502,16 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
                       {/* Toute la ligne ouvre la fiche du joueur (refonte du 09/11) : le nom est un bouton étiré sur la ligne */}
                       {p.account
                         ? <button type="button" className="gp-open" aria-expanded={sheet === p.account.userId} onClick={() => setSheet(s => (s === p.account!.userId ? null : p.account!.userId))}
-                            title={`Fiche de ${p.account.displayName}`}><CharName name={main.name} cls={main.cls} /></button>
+                            title={t("Fiche de {name}", { name: p.account.displayName })}><CharName name={main.name} cls={main.cls} /></button>
                         : <CharName name={main.name} cls={main.cls} />}
-                      <span className="lvn">{main.level}</span>{p.me && <span className="tag gold">Toi</span>}{m?.banker && m.role === "member" && <span className="tag">Banquier</span>}</span>
-                    <small>{[main.cls ? gt.cls(main.cls) : null, main.race].filter(Boolean).join(" · ") || "Classe inconnue"}</small>
+                      <span className="lvn">{main.level}</span>{p.me && <span className="tag gold">{t("Toi")}</span>}{m?.banker && m.role === "member" && <span className="tag">{t("Banquier")}</span>}</span>
+                    <small>{[main.cls ? gt.cls(main.cls) : null, main.race].filter(Boolean).join(" · ") || t("Classe inconnue")}</small>
                   </span>
                 </span>
                 <span className={`gp-rank${main.rankIndex <= 1 ? " off" : ""}`} role="cell" title={main.rank}>{main.rank}</span>
                 <span className={`gp-alts${alts.length ? "" : " nil"}`} role="cell">
-                  {alts.length ? alts.map(a => <span key={a.guid} className="ac" title={`${a.name}, niveau ${a.level}`}><ClassDot cls={a.cls} /><CharName name={a.name} cls={a.cls} as="span" /><span className="lvn">{a.level}</span></span>)
-                    : <span className="none" aria-label="Aucun alt">—</span>}
+                  {alts.length ? alts.map(a => <span key={a.guid} className="ac" title={t("{name}, niveau {level}", { name: a.name, level: a.level })}><ClassDot cls={a.cls} /><CharName name={a.name} cls={a.cls} as="span" /><span className="lvn">{a.level}</span></span>)
+                    : <span className="none" aria-label={t("Aucun alt")}>—</span>}
                 </span>
                 <span className={`gp-seen ${seen.state}`} role="cell"><i aria-hidden="true" />{seen.text}</span>
                 {p.account
@@ -504,14 +519,14 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
                       <span className="avatar" style={{ width: 20, height: 20 }}><Portrait id={p.account.avatarId} size={20} fallback={<span style={{ fontSize: 10 }}>{p.account.displayName[0]}</span>} /></span>
                       <span>{p.account.displayName}</span>
                     </span>
-                  : <span className="gp-acc no" role="cell">sans compte</span>}
-                <PlayerMenu label={`Actions pour ${main.name}`} build={actions} />
+                  : <span className="gp-acc no" role="cell">{t("sans compte")}</span>}
+                <PlayerMenu label={t("Actions pour {name}", { name: main.name })} build={actions} />
               </div>
               {asking && m && (
                 <div className="gp-ask" role="row">
-                  {asking === "owner" ? <>Donner la guilde à {m.displayName} ? Tu deviens officier.<button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>Transférer</button></>
-                    : <>Retirer {m.displayName} de la guilde sur le site ? Rien ne change en jeu.<button type="button" className="btn danger sm" onClick={() => void remove(m)}>Retirer</button></>}
-                  <button type="button" className="btn ghost sm" onClick={() => setAsk(null)}>Annuler</button>
+                  {asking === "owner" ? <>{t("Donner la guilde à {name} ? Tu deviens officier.", { name: m.displayName })}<button type="button" className="btn danger sm" onClick={() => void setRole(m, "owner")}>{t("Transférer")}</button></>
+                    : <>{t("Retirer {name} de la guilde sur le site ? Rien ne change en jeu.", { name: m.displayName })}<button type="button" className="btn danger sm" onClick={() => void remove(m)}>{t("Retirer")}</button></>}
+                  <button type="button" className="btn ghost sm" onClick={() => setAsk(null)}>{t("Annuler")}</button>
                 </div>
               )}
               {p.account && sheet === p.account.userId && (
@@ -520,15 +535,15 @@ function Players({ groupId, data, members, myRole, myId, guard, openDialog }: {
             </Fragment>
           );
         })}
-        {!rows.length && <p className="muted" style={{ margin: 0, padding: "12px" }}>{needle ? "Personne ne correspond." : "Personne dans la liste pour l'instant."}</p>}
-        {rows.length > shown.length && <button type="button" className="rk-more" onClick={() => setAll(true)}>Voir les {rows.length - shown.length} autres joueurs</button>}
+        {!rows.length && <p className="muted" style={{ margin: 0, padding: "12px" }}>{needle ? t("Personne ne correspond.") : t("Personne dans la liste pour l'instant.")}</p>}
+        {rows.length > shown.length && <button type="button" className="rk-more" onClick={() => setAll(true)}>{t("Voir les {n} autres joueurs", { n: rows.length - shown.length })}</button>}
       </div>
       {officer && data.unattached.length > 0 && <AttachBand groupId={groupId} data={data} openDialog={openDialog} />}
       {siteOnly.length > 0 && (
         <section className="stack" style={{ gap: 8 }} aria-labelledby="gp-site">
-          <h4 className="gm-sec" id="gp-site">Sur le site, sans perso dans la liste du jeu <span className="num">{siteOnly.length}</span></h4>
+          <h4 className="gm-sec" id="gp-site">{t("Sur le site, sans perso dans la liste du jeu")} <span className="num">{siteOnly.length}</span></h4>
           <SiteMembers groupId={groupId} members={members} only={new Set(siteOnly.map(m => m.userId))} myRole={myRole} myId={myId} guard={guard} bankers
-            hint="Leurs persos n'ont pas encore été reconnus : l'addon à jour, ou une fiche du site à leur nom, les rattache ; un officier peut aussi le faire (« Rattacher à… »)." />
+            hint={t("Leurs persos n'ont pas encore été reconnus : l'addon à jour, ou une fiche du site à leur nom, les rattache ; un officier peut aussi le faire (« Rattacher à… »).")} />
         </section>
       )}
     </>
@@ -556,26 +571,27 @@ function AttachBand({ groupId, data, openDialog }: { groupId: string; data: Guil
   };
   return (
     <section className="gq" aria-labelledby="gq-t">
-      <div className="gq-h"><h3 id="gq-t">À rattacher <span className="num">{data.unattached.length}</span></h3>
-        <span className="muted small">Persos sans joueur ; les notes de guilde suggèrent leur main.</span></div>
+      <div className="gq-h"><h3 id="gq-t">{t("À rattacher")} <span className="num">{data.unattached.length}</span></h3>
+        <span className="muted small">{t("Persos sans joueur ; les notes de guilde suggèrent leur main.")}</span></div>
       <ul className="gq-list">
         {data.unattached.map(u => {
           const c = byGuid.get(u.guid);
           if (!c) return null;
           const s = u.suggestion;
-          const src = s ? `${s.from === "officerNote" ? "note d'officier" : "note de guilde"} « ${s.note} »` : `${c.joinedAt ? `arrivée ${c.joinedApprox ? "vers le" : "le"} ${dayMonth(c.joinedAt)}` : "nouveau"} · ${c.note ? `note « ${c.note} »` : "pas de note"}`;
+          const src = s ? (s.from === "officerNote" ? t("note d'officier « {note} »", { note: s.note }) : t("note de guilde « {note} »", { note: s.note }))
+            : `${c.joinedAt ? (c.joinedApprox ? t("arrivée vers le {date}", { date: dayMonth(c.joinedAt) }) : t("arrivée le {date}", { date: dayMonth(c.joinedAt) })) : t("nouveau")} · ${c.note ? t("note « {note} »", { note: c.note }) : t("pas de note")}`;
           return (
             <li key={u.guid} className="gq-item">
               <ClassDot cls={c.cls} size="md" />
               <span className="t"><span className="nm"><CharName name={c.name} cls={c.cls} /><span className="lvn">{c.level}</span></span><small>{src}</small></span>
-              {s?.target ? <span className="gq-sug">Alt de <b>{s.target.name}</b> ?</span>
-                : s?.candidates.length ? <span className="gq-sug">Alt de qui ? {s.candidates.length} persos portent ce nom.</span>
-                : <span className="gq-sug muted">Aucune suggestion</span>}
+              {s?.target ? <span className="gq-sug">{tx("Alt de {name} ?", { name: <b>{s.target.name}</b> })}</span>
+                : s?.candidates.length ? <span className="gq-sug">{t("Alt de qui ? {n} persos portent ce nom.", { n: s.candidates.length })}</span>
+                : <span className="gq-sug muted">{t("Aucune suggestion")}</span>}
               <span className="gq-acts">
                 {s?.target ? <>
-                  <button type="button" className="btn sm primary" disabled={busy === u.guid} onClick={() => void accept(u.guid)}>Accepter</button>
-                  <button type="button" className="btn ghost sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>Autre…</button>
-                </> : <button type="button" className="btn sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>{s?.candidates.length ? "Choisir…" : "Rattacher à…"}</button>}
+                  <button type="button" className="btn sm primary" disabled={busy === u.guid} onClick={() => void accept(u.guid)}>{t("Accepter")}</button>
+                  <button type="button" className="btn ghost sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>{t("Autre…")}</button>
+                </> : <button type="button" className="btn sm" onClick={() => openDialog({ kind: "attach", guids: [u.guid] })}>{s?.candidates.length ? t("Choisir…") : t("Rattacher à…")}</button>}
               </span>
             </li>
           );
@@ -588,7 +604,7 @@ function AttachBand({ groupId, data, openDialog }: { groupId: string; data: Guil
 
 /* ---------- Persos ---------- */
 
-const LEVELS: [string, number, number][] = [["Tous", 1, 60], ["1-29", 1, 29], ["30-49", 30, 49], ["50-60", 50, 60]];
+const LEVELS: [string, number, number][] = [[N("Tous"), 1, 60], ["1-29", 1, 29], ["30-49", 30, 49], ["50-60", 50, 60]];
 const CHARS_PAGE = 100;
 
 /** Par perso : la liste de guilde du jeu, ou (sheets) les fiches du site. Le choix se fait dans la barre de Membres. */
@@ -627,13 +643,13 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
     );
   }
   const playerText = (c: GuildChar) => {
-    if (!c.player) return <span className="tag warn">à rattacher</span>;
+    if (!c.player) return <span className="tag warn">{t("à rattacher")}</span>;
     const p = players.get(c.player);
     if (p?.account) return c.fiche?.byName && c.link?.source === "account"
-      ? <span>{p.account.displayName} <span className="muted small" title="Retrouvé par sa fiche du site, à son nom">· fiche</span></span>
+      ? <span>{p.account.displayName} <span className="muted small" title={t("Retrouvé par sa fiche du site, à son nom")}>{t("· fiche")}</span></span>
       : p.account.displayName;
-    if (p && p.main !== c.guid) return <span>{byGuid.get(p.main)?.name ?? "—"} <span className="muted small">sans compte</span></span>;
-    return <span className="muted">sans compte</span>;
+    if (p && p.main !== c.guid) return <span>{byGuid.get(p.main)?.name ?? "—"} <span className="muted small">{t("sans compte")}</span></span>;
+    return <span className="muted">{t("sans compte")}</span>;
   };
   // Cases à cocher (officiers) : persos encore dans la liste, dans l'ordre de la liste
   const picked = data.chars.filter(c => sel.has(c.guid));
@@ -643,31 +659,31 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
   return (
     <>
       <div className="row gc-tools">
-        <input type="search" placeholder="Nom, note…" aria-label="Chercher un perso" value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 180px" }} />
-        <select aria-label="Classe" value={cls} onChange={e => setCls(e.target.value)} style={{ width: "auto" }}>
-          <option value="">Toutes les classes</option>{CLASS_NAMES.map(c => <option key={c} value={c}>{gt.cls(c)}</option>)}
+        <input type="search" placeholder={t("Nom, note…")} aria-label={t("Chercher un perso")} value={q} onChange={e => setQ(e.target.value)} style={{ flex: "1 1 180px" }} />
+        <select aria-label={t("Classe")} value={cls} onChange={e => setCls(e.target.value)} style={{ width: "auto" }}>
+          <option value="">{t("Toutes les classes")}</option>{CLASS_NAMES.map(c => <option key={c} value={c}>{gt.cls(c)}</option>)}
         </select>
-        <div className="seg" role="group" aria-label="Niveau">
-          {LEVELS.map(([l], i) => <button key={l} type="button" className={lv === i ? "on" : ""} aria-pressed={lv === i} onClick={() => setLv(i)}>{l}</button>)}
+        <div className="seg" role="group" aria-label={t("Niveau")}>
+          {LEVELS.map(([l], i) => <button key={l} type="button" className={lv === i ? "on" : ""} aria-pressed={lv === i} onClick={() => setLv(i)}>{i === 0 ? t(l) : l}</button>)}
         </div>
-        <select aria-label="Rang" value={rank} onChange={e => setRank(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: "auto" }}>
-          <option value="">Tous les rangs</option>{ranks.map(([i, r]) => <option key={i} value={i}>{r}</option>)}
+        <select aria-label={t("Rang")} value={rank} onChange={e => setRank(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: "auto" }}>
+          <option value="">{t("Tous les rangs")}</option>{ranks.map(([i, r]) => <option key={i} value={i}>{r}</option>)}
         </select>
-        <label className="gr-tog" style={{ paddingTop: 0 }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /><i aria-hidden="true" />Actifs depuis moins de 7 jours</label>
+        <label className="gr-tog" style={{ paddingTop: 0 }}><input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} /><i aria-hidden="true" />{t("Actifs depuis moins de 7 jours")}</label>
       </div>
       {officer && picked.length > 0 && (
-        <div className="gm-act gx-sel" role="region" aria-label="Persos cochés">
-          <b>{plural(picked.length, "perso coché", "persos cochés")}</b>
+        <div className="gm-act gx-sel" role="region" aria-label={t("Persos cochés")}>
+          <b>{tn(picked.length, "{n} perso coché", "{n} persos cochés")}</b>
           <span className="muted gx-sel-names">{picked.map(c => c.name).join(", ")}</span>
           <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
-            <button type="button" className="btn sm primary" onClick={() => openDialog({ kind: "attach", guids: picked.map(c => c.guid) })}>Rattacher à…</button>
-            <button type="button" className="btn ghost sm" onClick={() => setSel(new Set())}>Tout décocher</button>
+            <button type="button" className="btn sm primary" onClick={() => openDialog({ kind: "attach", guids: picked.map(c => c.guid) })}>{t("Rattacher à…")}</button>
+            <button type="button" className="btn ghost sm" onClick={() => setSel(new Set())}>{t("Tout décocher")}</button>
           </span>
         </div>
       )}
       <div className="tscroll"><table className={`data gx-table${officer ? " ck" : ""}`}>
-        <thead><tr>{officer && <th className="gx-ck"><input type="checkbox" aria-label="Tout cocher" checked={allShown} onChange={toggleAll} /></th>}<th>Perso</th><th>Niv.</th><th>Rang</th><th>Joueur</th><th>Note de guilde</th>
-          {officer && <th>Note d'officier <span className="tag" style={{ fontSize: 9, padding: "2px 4px" }}>officiers</span></th>}<th>Connexion</th><th /></tr></thead>
+        <thead><tr>{officer && <th className="gx-ck"><input type="checkbox" aria-label={t("Tout cocher")} checked={allShown} onChange={toggleAll} /></th>}<th>{t("Perso")}</th><th>{t("Niv.")}</th><th>{t("Rang")}</th><th>{t("Joueur")}</th><th>{t("Note de guilde")}</th>
+          {officer && <th>{t("Note d'officier")} <span className="tag" style={{ fontSize: 9, padding: "2px 4px" }}>{t("officiers")}</span></th>}<th>{t("Connexion")}</th><th /></tr></thead>
         <tbody>{shown.map(c => {
           const seen = seenText(c.online, c.lastOnlineAt);
           const p = c.player ? players.get(c.player) : undefined;
@@ -675,17 +691,17 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
           const actions = (close: () => void) => {
             const out: ReactNode[] = [];
             const add = (k: string, label: string, fn: () => void) => out.push(<button key={k} type="button" role="menuitem" onClick={() => { close(); fn(); }}>{label}</button>);
-            if (officer) add("a", "Rattacher à…", () => openDialog({ kind: "attach", guids: [c.guid] }));
-            if (officer && !c.fiche) add("f", "Créer sa fiche…", () => openDialog({ kind: "fiche", guid: c.guid }));
-            if (c.link && c.link.source !== "account" && (officer || (c.mine && c.link.source === "declared"))) add("d", "Détacher de son joueur", () => void detach(c));
-            if (c.player && !c.isMain && count > 1 && (officer || c.mine)) add("m", "En faire le main", () => void setMain(c));
-            if (claimable(c)) add("c", "C'est mon perso", () => openDialog({ kind: "claim", guid: c.guid }));
+            if (officer) add("a", t("Rattacher à…"), () => openDialog({ kind: "attach", guids: [c.guid] }));
+            if (officer && !c.fiche) add("f", t("Créer sa fiche…"), () => openDialog({ kind: "fiche", guid: c.guid }));
+            if (c.link && c.link.source !== "account" && (officer || (c.mine && c.link.source === "declared"))) add("d", t("Détacher de son joueur"), () => void detach(c));
+            if (c.player && !c.isMain && count > 1 && (officer || c.mine)) add("m", t("En faire le main"), () => void setMain(c));
+            if (claimable(c)) add("c", t("C'est mon perso"), () => openDialog({ kind: "claim", guid: c.guid }));
             return out;
           };
           return (
             <tr key={c.guid} className={[c.mine ? "ps-sel" : "", sel.has(c.guid) ? "gx-on" : ""].filter(Boolean).join(" ") || undefined}>
-              {officer && <td className="gx-ck"><input type="checkbox" aria-label={`Cocher ${c.name}`} checked={sel.has(c.guid)} onChange={() => toggle(c.guid)} /></td>}
-              <td className="gx-nm"><span className="gx-name"><ClassDot cls={c.cls} />{c.player && !c.isMain && <span className="gm-alt">alt</span>}<CharName name={c.name} cls={c.cls} />{c.mine && <span className="tag gold">Toi</span>}</span></td>
+              {officer && <td className="gx-ck"><input type="checkbox" aria-label={t("Cocher {name}", { name: c.name })} checked={sel.has(c.guid)} onChange={() => toggle(c.guid)} /></td>}
+              <td className="gx-nm"><span className="gx-name"><ClassDot cls={c.cls} />{c.player && !c.isMain && <span className="gm-alt">{t("alt")}</span>}<CharName name={c.name} cls={c.cls} />{c.mine && <span className="tag gold">{t("Toi")}</span>}</span></td>
               <td className="num gx-lv">{c.level}</td>
               <td className="small gx-rank">{c.rank}</td>
               <td className="small gx-pl">{playerText(c)}</td>
@@ -693,15 +709,15 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
               {officer && <td className="small gx-note">{c.officerNote || <span className="muted">—</span>}</td>}
               <td className={`small nowrap gx-seen${seen.state === "on" ? " ok-c" : ""}`}>{seen.text}</td>
               <td className="mb-act">
-                <PlayerMenu label={`Actions pour ${c.name}`} build={actions} />
+                <PlayerMenu label={t("Actions pour {name}", { name: c.name })} build={actions} />
               </td>
             </tr>
           );
         })}</tbody>
       </table></div>
-      {!list.length && <p className="muted" style={{ margin: 0 }}>Aucun perso ne correspond.</p>}
-      {list.length > shown.length && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} onClick={() => setAll(true)}>Voir les {list.length - shown.length} autres</button>}
-      <p className="hint" style={{ margin: 0 }}>{plural(list.length, "perso")} sur {data.chars.length}{active ? " · actifs depuis moins de 7 jours" : ""}</p>
+      {!list.length && <p className="muted" style={{ margin: 0 }}>{t("Aucun perso ne correspond.")}</p>}
+      {list.length > shown.length && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} onClick={() => setAll(true)}>{t("Voir les {n} autres", { n: list.length - shown.length })}</button>}
+      <p className="hint" style={{ margin: 0 }}>{tn(list.length, "{n} perso sur {total}", "{n} persos sur {total}", { total: data.chars.length })}{active ? t(" · actifs depuis moins de 7 jours") : ""}</p>
     </>
   );
 }
@@ -709,22 +725,24 @@ function Chars({ groupId, groupName, data, sheets, notLinked, members, myRole, m
 /* ---------- Historique ---------- */
 
 const MOVE: Record<GuildMove["kind"], { cls: string; s: string; label: string }> = {
-  join: { cls: "in", s: "+", label: "Arrivée" }, leave: { cls: "out", s: "−", label: "Départ" }, remove: { cls: "out", s: "−", label: "Renvoi" },
-  promote: { cls: "up", s: "↑", label: "Promotion" }, demote: { cls: "down", s: "↓", label: "Rétrogradation" },
+  join: { cls: "in", s: "+", label: N("Arrivée") }, leave: { cls: "out", s: "−", label: N("Départ") }, remove: { cls: "out", s: "−", label: N("Renvoi") },
+  promote: { cls: "up", s: "↑", label: N("Promotion") }, demote: { cls: "down", s: "↓", label: N("Rétrogradation") },
 };
 /** Ce qui s'est passé, en peu de mots (les noms complets viennent du journal du jeu). */
 export function moveText(m: GuildMove) {
-  return m.kind === "join" ? "rejoint la guilde" : m.kind === "promote" || m.kind === "demote" ? `passe ${m.rank ?? (m.kind === "promote" ? "au rang supérieur" : "au rang inférieur")}` : "quitte la guilde";
+  if (m.kind === "join") return t("rejoint la guilde");
+  if (m.kind === "promote" || m.kind === "demote") return m.rank ? t("passe {rank}", { rank: m.rank }) : m.kind === "promote" ? t("passe au rang supérieur") : t("passe au rang inférieur");
+  return t("quitte la guilde");
 }
 function moveDetail(m: GuildMove) {
-  if (m.kind === "join") return m.by ? `invitation de ${m.by}` : null;
-  if (m.kind === "promote" || m.kind === "demote") return m.by ? `par ${m.by}` : null;
-  return [m.kind === "remove" && m.by ? `renvoi par ${m.by}` : null, m.who.level ? `niveau ${m.who.level}` : null, m.who.joinedAt ? `arrivée le ${dayMonth(m.who.joinedAt)}` : null].filter(Boolean).join(" · ") || null;
+  if (m.kind === "join") return m.by ? t("invitation de {name}", { name: m.by }) : null;
+  if (m.kind === "promote" || m.kind === "demote") return m.by ? t("par {name}", { name: m.by }) : null;
+  return [m.kind === "remove" && m.by ? t("renvoi par {name}", { name: m.by }) : null, m.who.level ? t("niveau {n}", { n: m.who.level }) : null, m.who.joinedAt ? t("arrivée le {date}", { date: dayMonth(m.who.joinedAt) }) : null].filter(Boolean).join(" · ") || null;
 }
-export const MoveSign = ({ m }: { m: GuildMove }) => <span className="s" aria-label={MOVE[m.kind].label}>{MOVE[m.kind].s}</span>;
+export const MoveSign = ({ m }: { m: GuildMove }) => <span className="s" aria-label={t(MOVE[m.kind].label)}>{MOVE[m.kind].s}</span>;
 export const moveClass = (m: GuildMove) => MOVE[m.kind].cls;
 /** Heure d'un événement du journal : le jeu ne la donne qu'à l'heure près (« il y a N heures »). */
-const hourText = (iso: string) => `vers ${zonedParts(new Date(iso)).hour} h`;
+const hourText = (iso: string) => t("vers {h} h", { h: zonedParts(new Date(iso)).hour });
 
 function History({ groupId, nav, empty, linked }: { groupId: string; nav: (right?: ReactNode) => ReactNode; empty: ReactNode; linked: boolean | null }) {
   const [kind, setKind] = useState<"all" | "joins" | "leaves" | "ranks">("all");
@@ -747,13 +765,13 @@ function History({ groupId, nav, empty, linked }: { groupId: string; nav: (right
     <div className="stack">
       {nav()}
       <div className="row between">
-        <div className="seg" role="group" aria-label="Événements">
-          {([["all", "Tout"], ["joins", "Arrivées"], ["leaves", "Départs"], ["ranks", "Rangs"]] as const).map(([k, l]) => <button key={k} type="button" className={kind === k ? "on" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>{l}</button>)}
+        <div className="seg" role="group" aria-label={t("Événements")}>
+          {([["all", t("Tout")], ["joins", t("Arrivées")], ["leaves", t("Départs")], ["ranks", t("Rangs")]] as const).map(([k, l]) => <button key={k} type="button" className={kind === k ? "on" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>{l}</button>)}
         </div>
-        {first && <span className="muted small">{first.journal ? `Journal de guilde relevé par l'addon${first.since ? ` · depuis le ${dayMonth(first.since)}` : ""}` : "Journal de guilde pas encore relevé"}</span>}
+        {first && <span className="muted small">{first.journal ? (first.since ? t("Journal de guilde relevé par l'addon · depuis le {date}", { date: dayMonth(first.since) }) : t("Journal de guilde relevé par l'addon")) : t("Journal de guilde pas encore relevé")}</span>}
       </div>
-      {!q.data ? <p className="muted">{q.error ? "Historique indisponible pour l'instant." : "Chargement…"}</p>
-        : !moves.length ? <p className="muted" style={{ margin: 0 }}>{first?.journal ? "Rien de ce genre dans le journal pour l'instant." : "Le journal de guilde arrive avec la synchro d'un membre qui a l'addon à jour."}</p>
+      {!q.data ? <p className="muted">{q.error ? t("Historique indisponible pour l'instant.") : t("Chargement…")}</p>
+        : !moves.length ? <p className="muted" style={{ margin: 0 }}>{first?.journal ? t("Rien de ce genre dans le journal pour l'instant.") : t("Le journal de guilde arrive avec la synchro d'un membre qui a l'addon à jour.")}</p>
         : (
           <div className="gh-wrap">{days.map(d => (
             <Fragment key={d.key}>
@@ -764,14 +782,14 @@ function History({ groupId, nav, empty, linked }: { groupId: string; nav: (right
                   <li key={m.id} className={moveClass(m)}>
                     <MoveSign m={m} /><ClassDot cls={m.who.cls} />
                     <span className="t"><CharName name={m.who.name} cls={m.who.cls} /> {moveText(m)}{detail && <small>{detail}</small>}</span>
-                    <time dateTime={m.at} title={`${shortDay(m.at)}, à l'heure près (journal du jeu)`}>{hourText(m.at)}</time>
+                    <time dateTime={m.at} title={t("{day}, à l'heure près (journal du jeu)", { day: shortDay(m.at) })}>{hourText(m.at)}</time>
                   </li>
                 );
               })}</ul>
             </Fragment>
           ))}</div>
         )}
-      {q.hasNextPage && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>Plus ancien</button>}
+      {q.hasNextPage && <button type="button" className="btn ghost sm" style={{ justifySelf: "start" }} disabled={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>{t("Plus ancien")}</button>}
     </div>
   );
 }

@@ -4,10 +4,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { ApiError, get, post, type GroupSummary } from "../api";
 import { whenText } from "../components/Week";
 import { RoleTag } from "../components/RoleIcon";
-import { t } from "../i18n";
+import { N, t } from "../i18n";
 import { signupLabel } from "../i18n/game";
 
-export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member: "Membre" } as const;
+const ROLE_LABEL = { owner: N("Propriétaire"), officer: N("Officier"), member: N("Membre") };
+/** « Propriétaire », « Officier », « Membre » dans la langue du site. */
+export const roleLabel = (r: keyof typeof ROLE_LABEL) => t(ROLE_LABEL[r]);
 
 const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
 
@@ -52,7 +54,7 @@ function GroupCard({ g }: { g: GroupSummary }) {
           <Link id={`g-${g.id}`} to={base} className="gc-name">{g.name}</Link>
           <div className="gc-meta"><b>{g.members}</b> membre{g.members > 1 ? "s" : ""} · {g.upcoming ? <><b>{g.upcoming}</b> raid{g.upcoming > 1 ? "s" : ""} à venir</> : "aucun raid à venir"}{g.discordLinked && " · Discord lié"}</div>
         </div>
-        <span className={`tag ${officer ? "gold" : ""}`}>{ROLE_LABEL[g.role]}</span>
+        <span className={`tag ${officer ? "gold" : ""}`}>{roleLabel(g.role)}</span>
       </div>
       {n ? (
         <Link to={`${base}/raids/${n.id}`} className="gc-next">

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { ApiError, del, get, patch, post, type Character } from "../api";
 import { NumberField } from "./NumberField";
+import { N, t, tx } from "../i18n";
 
 /**
  * Commandes d'artisanat (lot F), en haut de l'onglet Artisans : demander une fabrication, la prendre
@@ -20,7 +21,7 @@ interface Order {
 interface RecipeHit { spellId: number; name: string; skillLine: number; reqSkill: number; itemId: number | null; itemName: string | null; quality: number | null; reagents: { itemId: number; n: number; name: string }[]; crafters: Crafter[] }
 export interface OrderPrefill { spellId: number; name: string; key: number }
 
-const STATUS: Record<Order["status"], string> = { open: "Ouverte", taken: "Prise", done: "Faite" };
+const STATUS: Record<Order["status"], string> = { open: N("Ouverte"), taken: N("Prise"), done: N("Faite") };
 const names = (list: Crafter[], max = 3) => list.length ? list.slice(0, max).map(c => c.name).join(", ") + (list.length > max ? ` +${list.length - max}` : "") : "";
 
 export function CraftOrders({ groupId, myId, prefill }: { groupId: string; myId?: string; prefill?: OrderPrefill | null }) {
@@ -31,37 +32,37 @@ export function CraftOrders({ groupId, myId, prefill }: { groupId: string; myId?
   useEffect(() => { if (prefill) setForm(true); }, [prefill?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   const refresh = () => qc.invalidateQueries({ queryKey: ["orders", groupId] });
   const act = (o: Order, action: "take" | "release" | "done" | "reopen" | "reagents", provided?: number[]) => void patch(`/groups/${groupId}/orders/${o.id}`, { action, ...(provided && { provided }) })
-    .then(refresh).catch(e => setError(e instanceof ApiError ? e.message : "Action impossible."));
-  const remove = (o: Order) => void del(`/groups/${groupId}/orders/${o.id}`).then(refresh).catch(e => setError(e instanceof ApiError ? e.message : "Action impossible."));
+    .then(refresh).catch(e => setError(e instanceof ApiError ? e.message : t("Action impossible.")));
+  const remove = (o: Order) => void del(`/groups/${groupId}/orders/${o.id}`).then(refresh).catch(e => setError(e instanceof ApiError ? e.message : t("Action impossible.")));
   const orders = data?.orders ?? [];
   const open = orders.filter(o => o.status !== "done").length;
 
   return (
     <section className="stack co" aria-labelledby="co-title">
       <div className="co-head">
-        <h3 id="co-title">Commandes <span className={`tag ${open ? "gold" : ""}`}>{open} en cours</span></h3>
-        {!form && <button type="button" className="btn primary sm" onClick={() => setForm(true)}>+ Demander une fabrication</button>}
+        <h3 id="co-title">{t("Commandes")} <span className={`tag ${open ? "gold" : ""}`}>{t("{n} en cours", { n: open })}</span></h3>
+        {!form && <button type="button" className="btn primary sm" onClick={() => setForm(true)}>{t("+ Demander une fabrication")}</button>}
       </div>
       {form && <NewOrder key={prefill?.key ?? 0} groupId={groupId} prefill={prefill ?? null} onDone={() => { setForm(false); void refresh(); }} onCancel={() => setForm(false)} />}
       {error && <div className="alert error" role="alert">{error}</div>}
-      {orders.length === 0 ? <p className="hint" style={{ margin: 0 }}>Aucune commande. Demande une fabrication : les artisans de la guilde qui connaissent le patron la verront ici.</p> : (
+      {orders.length === 0 ? <p className="hint" style={{ margin: 0 }}>{t("Aucune commande. Demande une fabrication : les artisans de la guilde qui connaissent le patron la verront ici.")}</p> : (
         <div className="tscroll"><table className="data co-table">
-          <thead><tr><th>Objet</th><th>Demandé par</th><th>Artisans</th><th>Statut</th><th /></tr></thead>
+          <thead><tr><th>{t("Objet")}</th><th>{t("Demandé par")}</th><th>{t("Artisans")}</th><th>{t("Statut")}</th><th /></tr></thead>
           <tbody>{orders.map(o => (
             <tr key={o.id} className={o.status === "done" ? "co-done" : undefined}>
               <td><span className={o.item ? `q${o.item.quality}` : ""} style={{ fontWeight: 600 }}>[{o.item?.name ?? o.recipeName}]</span>{o.quantity > 1 && <span className="num"> ×{o.quantity}</span>}
                 {o.reagents.length > 0 && <Reagents o={o} myId={myId} onToggle={ids => act(o, "reagents", ids)} />}
                 {o.note && <div className="small muted co-note">{o.note}</div>}</td>
-              <td>{o.requester.name}{o.character && o.character !== o.requester.name && <span className="muted small"> · pour {o.character}</span>}</td>
-              <td className="small">{o.crafters.length ? names(o.crafters) : <span className="warnmsg">personne ne connaît le patron</span>}</td>
-              <td><span className={`rl-chip ${o.status === "done" ? "ok" : o.status === "taken" ? "" : "warn"}`}>{STATUS[o.status]}{o.taker && o.status !== "open" ? ` · ${o.taker.name}` : ""}</span></td>
+              <td>{o.requester.name}{o.character && o.character !== o.requester.name && <span className="muted small"> · {t("pour {name}", { name: o.character })}</span>}</td>
+              <td className="small">{o.crafters.length ? names(o.crafters) : <span className="warnmsg">{t("personne ne connaît le patron")}</span>}</td>
+              <td><span className={`rl-chip ${o.status === "done" ? "ok" : o.status === "taken" ? "" : "warn"}`}>{t(STATUS[o.status])}{o.taker && o.status !== "open" ? ` · ${o.taker.name}` : ""}</span></td>
               <td className="co-act">
                 {/* Un seul doré par écran : « + Demander une fabrication » ; ici des boutons neutres, les actions négatives en lien (refonte du 09/11) */}
-                {o.status === "open" && !o.mine && <button type="button" className="btn sm" onClick={() => act(o, "take")}>Je m'en charge</button>}
-                {o.status === "taken" && o.taker?.id === myId && <><button type="button" className="btn sm" onClick={() => act(o, "done")}>Faite</button><button type="button" className="link neg" onClick={() => act(o, "release")}>Rendre</button></>}
-                {o.status === "taken" && o.mine && o.taker?.id !== myId && <button type="button" className="btn sm" onClick={() => act(o, "done")}>Reçue</button>}
-                {o.status === "open" && o.canManage && <button type="button" className="link neg" onClick={() => remove(o)}>Annuler</button>}
-                {o.status === "done" && (o.canManage || o.taker?.id === myId) && <button type="button" className="link neg" onClick={() => remove(o)}>Archiver</button>}
+                {o.status === "open" && !o.mine && <button type="button" className="btn sm" onClick={() => act(o, "take")}>{t("Je m'en charge")}</button>}
+                {o.status === "taken" && o.taker?.id === myId && <><button type="button" className="btn sm" onClick={() => act(o, "done")}>{t("Faite")}</button><button type="button" className="link neg" onClick={() => act(o, "release")}>{t("Rendre")}</button></>}
+                {o.status === "taken" && o.mine && o.taker?.id !== myId && <button type="button" className="btn sm" onClick={() => act(o, "done")}>{t("Reçue")}</button>}
+                {o.status === "open" && o.canManage && <button type="button" className="link neg" onClick={() => remove(o)}>{t("Annuler")}</button>}
+                {o.status === "done" && (o.canManage || o.taker?.id === myId) && <button type="button" className="link neg" onClick={() => remove(o)}>{t("Archiver")}</button>}
               </td>
             </tr>
           ))}</tbody>
@@ -79,7 +80,7 @@ function Reagents({ o, myId, onToggle }: { o: Order; myId?: string; onToggle: (p
   return (
     <div className="co-reag">
       <button type="button" className="co-reag-sum" aria-expanded={open} onClick={() => setOpen(x => !x)}>
-        Composants : <b className={given === o.reagents.length ? "ok" : ""}>{given}/{o.reagents.length} fournis</b> {open ? "▴" : "▾"}
+        {tx("Composants : {n}", { n: <b className={given === o.reagents.length ? "ok" : ""}>{t("{given}/{total} fournis", { given, total: o.reagents.length })}</b> })} {open ? "▴" : "▾"}
       </button>
       {open && (
         <ul>{o.reagents.map(r => (
@@ -103,7 +104,7 @@ function NewOrder({ groupId, prefill, onDone, onCancel }: { groupId: string; pre
   const [provided, setProvided] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { const t = window.setTimeout(() => setDebounced(q.trim()), 300); return () => window.clearTimeout(t); }, [q]);
+  useEffect(() => { const timer = window.setTimeout(() => setDebounced(q.trim()), 300); return () => window.clearTimeout(timer); }, [q]);
   const hits = useQuery({ queryKey: ["order-recipes", groupId, debounced], enabled: debounced.length >= 2 && !pick,
     queryFn: () => get<{ recipes: RecipeHit[] }>(`/groups/${groupId}/orders/recipes?q=${encodeURIComponent(debounced)}`) });
   // Recette demandée depuis la liste des artisans : choisie d'office
@@ -118,43 +119,43 @@ function NewOrder({ groupId, prefill, onDone, onCancel }: { groupId: string; pre
     try {
       await post(`/groups/${groupId}/orders`, { spellId: pick.spellId, quantity: qty, characterId: charId || null, note, provided });
       onDone();
-    } catch (err) { setError(err instanceof ApiError ? err.message : "Commande impossible."); } finally { setBusy(false); }
+    } catch (err) { setError(err instanceof ApiError ? err.message : t("Commande impossible.")); } finally { setBusy(false); }
   };
   return (
     <form className="co-form" onSubmit={e => void submit(e)}>
       {!pick ? (
-        <div className="fld"><label htmlFor="co-q">Objet à fabriquer</label>
-          <input id="co-q" type="search" autoFocus placeholder="Flarecore Leggings, Major Healing Potion…" value={q} onChange={e => setQ(e.target.value)} />
+        <div className="fld"><label htmlFor="co-q">{t("Objet à fabriquer")}</label>
+          <input id="co-q" type="search" autoFocus placeholder={t("Flarecore Leggings, Major Healing Potion…")} value={q} onChange={e => setQ(e.target.value)} />
           {debounced.length >= 2 && hits.data && (
             hits.data.recipes.length ? (
               <ul className="co-hits">{hits.data.recipes.map(r => (
                 <li key={r.spellId}><button type="button" onClick={() => setPick(r)}>
                   <span className={r.quality != null ? `q${r.quality}` : ""} style={{ fontWeight: 600 }}>{r.itemName ?? r.name}</span>
-                  <span className="muted small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} {r.reqSkill} · {r.crafters.length ? `connu par ${names(r.crafters)}` : "personne ne connaît le patron"}</span>
+                  <span className="muted small">{SKILL_LINE_NAMES[r.skillLine] ?? "?"} {r.reqSkill} · {r.crafters.length ? t("connu par {names}", { names: names(r.crafters) }) : t("personne ne connaît le patron")}</span>
                 </button></li>
               ))}</ul>
-            ) : <p className="hint" style={{ margin: "6px 0 0" }}>Aucune recette trouvée.</p>
+            ) : <p className="hint" style={{ margin: "6px 0 0" }}>{t("Aucune recette trouvée.")}</p>
           )}
         </div>
       ) : (
         <div className="co-pick">
           <span><b className={pick.quality != null ? `q${pick.quality}` : ""}>[{pick.itemName ?? pick.name}]</b> <span className="muted small">{SKILL_LINE_NAMES[pick.skillLine] ?? "?"} {pick.reqSkill}</span><br />
-            <span className="small">{pick.crafters.length ? <>Peuvent le faire : <b>{names(pick.crafters, 5)}</b></> : <span className="warnmsg">Personne dans la guilde ne connaît ce patron pour l'instant.</span>}</span></span>
-          <button type="button" className="btn ghost sm" onClick={() => setPick(null)}>Changer</button>
+            <span className="small">{pick.crafters.length ? tx("Peuvent le faire : {names}", { names: <b>{names(pick.crafters, 5)}</b> }) : <span className="warnmsg">{t("Personne dans la guilde ne connaît ce patron pour l'instant.")}</span>}</span></span>
+          <button type="button" className="btn ghost sm" onClick={() => setPick(null)}>{t("Changer")}</button>
         </div>
       )}
       {pick && (
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <div className="fld" style={{ width: 130 }}><label htmlFor="co-qty">Quantité</label><NumberField id="co-qty" min={1} max={99} value={qty} onChange={setQty} /></div>
-          <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="co-char">Pour</label>
+          <div className="fld" style={{ width: 130 }}><label htmlFor="co-qty">{t("Quantité")}</label><NumberField id="co-qty" min={1} max={99} value={qty} onChange={setQty} /></div>
+          <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="co-char">{t("Pour")}</label>
             <select id="co-char" value={charId} onChange={e => setCharId(e.target.value)}><option value="">—</option>{myChars.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          <div className="fld" style={{ flex: "3 1 260px" }}><label htmlFor="co-note">Détails</label>
-            <input id="co-note" type="text" maxLength={300} placeholder="Délai, pourboire, précisions…" value={note} onChange={e => setNote(e.target.value)} /></div>
+          <div className="fld" style={{ flex: "3 1 260px" }}><label htmlFor="co-note">{t("Détails")}</label>
+            <input id="co-note" type="text" maxLength={300} placeholder={t("Délai, pourboire, précisions…")} value={note} onChange={e => setNote(e.target.value)} /></div>
         </div>
       )}
       {pick && pick.reagents.length > 0 && (
         <fieldset className="co-reagpick">
-          <legend className="lbl">Composants pour {qty} · coche ceux que tu fournis</legend>
+          <legend className="lbl">{t("Composants pour {n} · coche ceux que tu fournis", { n: qty })}</legend>
           {pick.reagents.map(r => (
             <label key={r.itemId}><input type="checkbox" checked={provided.includes(r.itemId)}
               onChange={() => setProvided(p => (p.includes(r.itemId) ? p.filter(x => x !== r.itemId) : [...p, r.itemId]))} />
@@ -163,7 +164,7 @@ function NewOrder({ groupId, prefill, onDone, onCancel }: { groupId: string; pre
         </fieldset>
       )}
       {error && <div className="alert error" role="alert">{error}</div>}
-      <div className="row"><button type="submit" className="btn primary sm" disabled={!pick || busy}>Envoyer la commande</button><button type="button" className="btn ghost sm" onClick={onCancel}>Annuler</button></div>
+      <div className="row"><button type="submit" className="btn primary sm" disabled={!pick || busy}>{t("Envoyer la commande")}</button><button type="button" className="btn ghost sm" onClick={onCancel}>{t("Annuler")}</button></div>
     </form>
   );
 }

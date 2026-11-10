@@ -50,9 +50,9 @@ function Level({ c }: { c: RaceChar }) {
       <b>{c.level}</b>
       <span className="barwrap">
         {done ? <span className="xp done"><i style={{ width: "100%" }} /></span>
-          : c.xpPct === null ? <span className="xp none" title="Sans l'addon : pas de pourcentage d'XP"><i style={{ width: 0 }} /></span>
-          : <span className="xp" role="img" aria-label={`${c.xpPct} % du niveau`}><i style={{ width: `${c.xpPct}%` }} /></span>}
-        <span className="pct">{done ? "✓" : c.xpPct === null ? "—" : `${c.xpPct} %`}</span>
+          : c.xpPct === null ? <span className="xp none" title={t("Sans l'addon : pas de pourcentage d'XP")}><i style={{ width: 0 }} /></span>
+          : <span className="xp" role="img" aria-label={t("{n} % du niveau", { n: c.xpPct })}><i style={{ width: `${c.xpPct}%` }} /></span>}
+        <span className="pct">{done ? "✓" : c.xpPct === null ? "—" : t("{n} %", { n: c.xpPct })}</span>
       </span>
     </span>
   );
@@ -67,14 +67,14 @@ function RankRow({ rank, tie, c, me, sub, alts, open, onToggle, className = "" }
   const marks = RACE_MILESTONES.map(lv => ({ lv, ...milestoneText(c.milestones[lv]) }));
   return (
     <div className={`rk-r${me ? " me" : ""}${className ? ` ${className}` : ""}`} role="row">
-      <span className={`rk-n${rank !== null && rank <= 3 ? " top" : ""}`} role="cell" title={tie ? "Ex æquo" : undefined}>{rank ?? ""}{tie ? <span className="sr-only"> ex æquo</span> : null}</span>
+      <span className={`rk-n${rank !== null && rank <= 3 ? " top" : ""}`} role="cell" title={tie ? t("Ex æquo") : undefined}>{rank ?? ""}{tie ? <span className="sr-only"> {t("ex æquo")}</span> : null}</span>
       <span className="rk-who" role="cell">
         <ClassDot cls={c.cls} size={className === "alt" ? undefined : "md"} />
         <span className="t">
           <span className="nm"><CharName name={c.name} cls={c.cls} />
-            {!!alts && onToggle && <button type="button" className="rk-alts" aria-expanded={open} onClick={onToggle}>{open ? "−" : "+"} {alts} alt{alts > 1 ? "s" : ""}</button>}
+            {!!alts && onToggle && <button type="button" className="rk-alts" aria-expanded={open} onClick={onToggle}>{open ? "−" : "+"} {tn(alts, "{n} alt", "{n} alts")}</button>}
           </span>
-          <small>{[c.cls ? gt.cls(c.cls) : null, c.race, sub].filter(Boolean).join(" · ")}{c.left ? " · parti" : ""}</small>
+          <small>{[c.cls ? gt.cls(c.cls) : null, c.race, sub].filter(Boolean).join(" · ")}{c.left ? t(" · parti") : ""}</small>
         </span>
       </span>
       <Level c={c} />
@@ -82,7 +82,7 @@ function RankRow({ rank, tie, c, me, sub, alts, open, onToggle, className = "" }
       <span className={`rk-last${last.est ? " est" : ""}`} role="cell">{last.text}</span>
       {marks.map(m => <span key={m.lv} className={`rk-ms${m.none ? " none" : m.est ? " est" : ""}`} role="cell">{m.text}</span>)}
       <span className="rk-meta">
-        <b>+{c.weekGain}</b> niveau{c.weekGain > 1 ? "x" : ""} cette semaine · dernière : <span className={last.est ? "ital" : ""}>{last.text}</span>
+        {tx(c.weekGain > 1 ? "{gain} niveaux cette semaine · dernière : {last}" : "{gain} niveau cette semaine · dernière : {last}", { gain: <b>+{c.weekGain}</b>, last: <span className={last.est ? "ital" : ""}>{last.text}</span> })}
         {marks.some(m => !m.none) && <><br />{marks.filter(m => !m.none).map((m, i) => <Fragment key={m.lv}>{i > 0 && " · "}<span className="ms">{m.lv} {m.text}</span></Fragment>)}</>}
       </span>
     </div>
@@ -113,7 +113,7 @@ export function Podium({ places, mini }: { places: RacePodiumPlace[]; mini?: boo
           <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? t("déjà 60 au premier relevé : {name}", { name: p.char.name }) : `${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
             <ClassDot cls={p.char.cls} size={mini ? "md" : "lg"} />
             <CharName name={p.char.name} cls={p.char.cls} as="span" />
-            <span className={`pod-lv${done ? " done" : ""}`}>{done ? `${MAX_LEVEL} ✓` : p.char.xpPct !== null ? `${p.char.level} · ${p.char.xpPct} %` : p.char.level}</span>
+            <span className={`pod-lv${done ? " done" : ""}`}>{done ? `${MAX_LEVEL} ✓` : p.char.xpPct !== null ? `${p.char.level} · ${t("{n} %", { n: p.char.xpPct })}` : p.char.level}</span>
             {!mini && <span className="pod-when">{p.racing ? t("encore en course") : seen ? <i>{tx("déjà 60 au{br}premier relevé", { br: <br /> })}</i> : <>
               {p.reached?.at ? (p.reached.exact ? t("{day} à {time}", { day: dayMonth(p.reached.at), time: hourMin(p.reached.at) }) : <i>{t("vers le {day}", { day: dayMonth(p.reached.at) })}</i>) : t("date inconnue")}
               {p.days !== null && <><br />{inDays(p.days)}</>}{p.char.left && <><br />{t("parti de la guilde")}</>}
@@ -147,15 +147,15 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
   const [all, setAll] = useState(false);
   const [full, setFull] = useState(false);
   const r = q.data;
-  if (!r) return <div className="stack">{nav()}<p className="muted">{q.error ? "Course indisponible pour l'instant." : "Chargement…"}</p></div>;
+  if (!r) return <div className="stack">{nav()}<p className="muted">{q.error ? t("Course indisponible pour l'instant.") : t("Chargement…")}</p></div>;
   if (!r.linked) return <div className="stack">{nav()}{empty}</div>;
   if (!r.started) return <div className="stack">{nav()}<RaceNotStarted startsAt={r.startsAt} /></div>;
 
   const ended = r.podium.frozen;
   const endAt = ended ? r.podium.places.reduce<string | null>((max, p) => (p.reached?.at && (!max || p.reached.at > max) ? p.reached.at : max), null) : null;
-  const start = <span className="small">Départ {dayTimeShort(r.startsAt)}{ended
-    ? endAt && <> · <b className="c60-day">finie le {dayMonth(endAt)}</b></>
-    : r.day && <> · <b className="c60-day">jour {r.day}</b></>}</span>;
+  const start = <span className="small">{t("Départ {when}", { when: dayTimeShort(r.startsAt) })}{ended
+    ? endAt && <> · <b className="c60-day">{t("finie le {date}", { date: dayMonth(endAt) })}</b></>
+    : r.day && <> · <b className="c60-day">{t("jour {n}", { n: r.day })}</b></>}</span>;
   const daysOf = (at: string | null) => (at ? Math.max(0, Math.floor((Date.parse(at) - Date.parse(r.startsAt)) / 86400e3)) : null);
   const myRow = r.rows.find(x => x.me);
   const myClass = myRow?.best.cls ?? null;
@@ -178,8 +178,8 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
 
   const total = flat ? chars.length : players.length;
   const count = flat
-    ? `${total} perso${total > 1 ? "s" : ""}${filter === "mains" ? " · les mains" : " · mains et alts mélangés"}`
-    : `${total} joueur${total > 1 ? "s" : ""} · une ligne chacun, avec ${filter === "mains" ? "son main" : "son perso le plus avancé"}`;
+    ? `${tn(total, "{n} perso", "{n} persos")} · ${filter === "mains" ? t("les mains") : t("mains et alts mélangés")}`
+    : `${tn(total, "{n} joueur", "{n} joueurs")} · ${filter === "mains" ? t("une ligne chacun, avec son main") : t("une ligne chacun, avec son perso le plus avancé")}`;
   const shown = flat ? chars.map(c => c.char) : players.map(p => p.line);
   const noAddon = shown.some(c => !c.addon);
   const seenDates = shown.some(c => Object.values(c.milestones).some(d => d?.seen));
@@ -188,8 +188,8 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
 
   const head = (
     <div className="rk-h" role="row">
-      <span className="c" role="columnheader">#</span><span role="columnheader">{flat ? "Perso" : "Joueur"}</span><span role="columnheader">Niveau</span>
-      <span className="c" role="columnheader" title="Niveaux pris sur les 7 derniers jours">Semaine</span><span role="columnheader">Dernière montée</span>
+      <span className="c" role="columnheader">#</span><span role="columnheader">{flat ? t("Perso") : t("Joueur")}</span><span role="columnheader">{t("Niveau")}</span>
+      <span className="c" role="columnheader" title={t("Niveaux pris sur les 7 derniers jours")}>{t("Semaine")}</span><span role="columnheader">{t("Dernière montée")}</span>
       {RACE_MILESTONES.map(lv => <span key={lv} className="c" role="columnheader">{lv}</span>)}
     </div>
   );
@@ -198,54 +198,54 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
     const mainName = [p.line, ...p.others].find(c => c.isMain)?.name ?? p.line.name;
     return (
       <Fragment key={key}>
-        <RankRow rank={p.rank} tie={p.tie} c={p.line} me={p.row.me} sub={[p.row.me ? "toi" : null, !p.line.addon ? "sans addon" : null].filter(Boolean).join(" · ")}
+        <RankRow rank={p.rank} tie={p.tie} c={p.line} me={p.row.me} sub={[p.row.me ? t("toi") : null, !p.line.addon ? t("sans addon") : null].filter(Boolean).join(" · ")}
           alts={p.others.length} open={open.has(key)} onToggle={() => toggle(key)} />
-        {open.has(key) && p.others.map(c => <RankRow key={c.guid} rank={null} c={c} me={false} className="alt" sub={c.isMain ? "main" : `alt de ${mainName}`} />)}
+        {open.has(key) && p.others.map(c => <RankRow key={c.guid} rank={null} c={c} me={false} className="alt" sub={c.isMain ? t("main") : t("alt de {name}", { name: mainName })} />)}
       </Fragment>
     );
   });
 
   const ranking = <>
       <div className="rk-tools">
-      <div className="seg" role="group" aria-label="Filtre du classement">
-        {([["all", "Tous"], ["class", "Ma classe"], ["mains", "Mains"]] as const).map(([k, l]) => (
+      <div className="seg" role="group" aria-label={t("Filtre du classement")}>
+        {([["all", t("Tous")], ["class", t("Ma classe")], ["mains", t("Mains")]] as const).map(([k, l]) => (
           <button key={k} type="button" className={filter === k ? "on" : ""} aria-pressed={filter === k} disabled={k === "class" && !myClass}
-            title={k === "class" && !myClass ? "Aucun de tes persos n'est dans la course" : undefined} onClick={() => setFilter(k)}>{l}</button>
+            title={k === "class" && !myClass ? t("Aucun de tes persos n'est dans la course") : undefined} onClick={() => setFilter(k)}>{l}</button>
         ))}
       </div>
       <span className="rk-count muted small">{count}</span>
-      <button type="button" className="btn ghost sm" aria-pressed={flat} onClick={() => setFlat(f => !f)}>{flat ? "Une ligne par joueur" : "Tous les persos"}</button>
+      <button type="button" className="btn ghost sm" aria-pressed={flat} onClick={() => setFlat(f => !f)}>{flat ? t("Une ligne par joueur") : t("Tous les persos")}</button>
     </div>
-    {total === 0 ? <p className="muted" style={{ margin: 0 }}>{filter === "class" ? "Personne d'autre de ta classe pour l'instant." : "Personne dans la course pour l'instant : les niveaux arrivent avec la liste de guilde."}</p> : (
-      <div className="rk" role="table" aria-label={flat ? "Classement, une ligne par perso" : "Classement, une ligne par joueur"}>
+    {total === 0 ? <p className="muted" style={{ margin: 0 }}>{filter === "class" ? t("Personne d'autre de ta classe pour l'instant.") : t("Personne dans la course pour l'instant : les niveaux arrivent avec la liste de guilde.")}</p> : (
+      <div className="rk" role="table" aria-label={flat ? t("Classement, une ligne par perso") : t("Classement, une ligne par joueur")}>
         {head}
         {flat ? <>
-          {chars.slice(0, cut).map(c => <RankRow key={c.char.guid} rank={c.rank} tie={c.tie} c={c.char} me={c.me} sub={[c.mainName ? `alt de ${c.mainName}` : null, c.me ? "toi" : null, !c.char.addon ? "sans addon" : null].filter(Boolean).join(" · ")} />)}
-          {mineHidden(chars) && chars.filter(c => c.me).slice(0, 1).map(c => <RankRow key={c.char.guid} rank={c.rank} tie={c.tie} c={c.char} me sub="toi" />)}
+          {chars.slice(0, cut).map(c => <RankRow key={c.char.guid} rank={c.rank} tie={c.tie} c={c.char} me={c.me} sub={[c.mainName ? t("alt de {name}", { name: c.mainName }) : null, c.me ? t("toi") : null, !c.char.addon ? t("sans addon") : null].filter(Boolean).join(" · ")} />)}
+          {mineHidden(chars) && chars.filter(c => c.me).slice(0, 1).map(c => <RankRow key={c.char.guid} rank={c.rank} tie={c.tie} c={c.char} me sub={t("toi")} />)}
         </> : <>
           {playerRows(players.slice(0, cut))}
           {mineHidden(players.map(p => ({ me: p.row.me }))) && playerRows(players.filter(p => p.row.me))}
         </>}
-        {total > PAGE && !all && <button type="button" className="rk-more" onClick={() => setAll(true)}>Voir les {total - PAGE} suivants</button>}
+        {total > PAGE && !all && <button type="button" className="rk-more" onClick={() => setAll(true)}>{t("Voir les {n} suivants", { n: total - PAGE })}</button>}
       </div>
     )}
-    {noAddon && <p className="rk-legend"><i>En italique</i> : sans l'addon, d'après la liste de guilde. « ≈ 8/11 » se lit « vers le 8/11 » : c'est le jour du relevé. Pas de % d'XP.
-      {seenDates && " « ≤ 8/11 » : déjà atteint au premier relevé de la guilde."}</p>}
+    {noAddon && <p className="rk-legend">{tx("{italic} : sans l'addon, d'après la liste de guilde. « ≈ 8/11 » se lit « vers le 8/11 » : c'est le jour du relevé. Pas de % d'XP.", { italic: <i>{t("En italique")}</i> })}
+      {seenDates && t(" « ≤ 8/11 » : déjà atteint au premier relevé de la guilde.")}</p>}
   </>;
 
   return (
     <div className="stack">
       {nav(start)}
-      {ended && <h3 className="c60-pal">Palmarès</h3>}
+      {ended && <h3 className="c60-pal">{t("Palmarès")}</h3>}
       <div className="c60-top">
         <section className="hm-card" aria-labelledby="pod-t">
-          <div className="hm-h"><h3 id="pod-t">Premiers 60</h3><span className="muted small">{r.podium.frozen ? "figé" : `${Math.min(3, r.podium.sixties)} sur 3`}</span></div>
+          <div className="hm-h"><h3 id="pod-t">{t("Premiers 60")}</h3><span className="muted small">{r.podium.frozen ? t("figé") : t("{n} sur 3", { n: Math.min(3, r.podium.sixties) })}</span></div>
           <Podium places={r.podium.places} />
-          <p className="pod-cap">{r.podium.frozen ? "Figé au troisième 60 : il reste en place après la course." : "Le podium se fige au troisième 60, puis reste en place après la course."}
-            {r.podium.places.some(p => p.reached?.seen) && " Ordre inconnu pour qui était déjà 60 au premier relevé de la liste de guilde."}</p>
+          <p className="pod-cap">{r.podium.frozen ? t("Figé au troisième 60 : il reste en place après la course.") : t("Le podium se fige au troisième 60, puis reste en place après la course.")}
+            {r.podium.places.some(p => p.reached?.seen) && t(" Ordre inconnu pour qui était déjà 60 au premier relevé de la liste de guilde.")}</p>
         </section>
         <section className="hm-card" aria-labelledby="pcls-t">
-          <div className="hm-h"><h3 id="pcls-t">Premiers par classe</h3></div>
+          <div className="hm-h"><h3 id="pcls-t">{t("Premiers par classe")}</h3></div>
           {r.firstByClass.length ? (
             <ul className="pcls">{r.firstByClass.map(f => (
               <li key={f.cls} className={f.me ? "me" : undefined}><ClassDot cls={f.cls} />
@@ -253,12 +253,12 @@ export function GuildRace({ groupId, nav, empty }: { groupId: string; nav: (righ
                   <small>{gt.cls(f.cls)}{ended && f.char.level >= MAX_LEVEL && f.char.milestones[60]?.at && <> · {raceDateText(f.char.milestones[60]).text}</>}</small></span>
                 <span className="num">{f.char.level >= MAX_LEVEL ? `${MAX_LEVEL} ✓` : f.char.level}</span></li>
             ))}</ul>
-          ) : <p className="hm-none">Personne pour l'instant.</p>}
+          ) : <p className="hm-none">{t("Personne pour l'instant.")}</p>}
         </section>
       </div>
       {ended ? <>
         <Sixties r={r} daysOf={daysOf} />
-        <button type="button" className="btn c60-full" aria-expanded={full} onClick={() => setFull(f => !f)}>{full ? "Masquer le classement complet" : "Voir le classement complet"}</button>
+        <button type="button" className="btn c60-full" aria-expanded={full} onClick={() => setFull(f => !f)}>{full ? t("Masquer le classement complet") : t("Voir le classement complet")}</button>
         {full && ranking}
       </> : ranking}
     </div>
@@ -271,7 +271,7 @@ function Sixties({ r, daysOf }: { r: GuildRaceResponse; daysOf: (at: string | nu
   const sixties = r.chars.filter(c => c.char.level >= MAX_LEVEL);
   return (
     <section className="hm-card" aria-labelledby="s60-t">
-      <div className="hm-h"><h3 id="s60-t">Les 60 de la guilde</h3><span className="small">{sixties.length}</span></div>
+      <div className="hm-h"><h3 id="s60-t">{t("Les 60 de la guilde")}</h3><span className="small">{sixties.length}</span></div>
       {sixties.length ? (
         <ol className="s60">
           {sixties.map(c => {
@@ -283,13 +283,13 @@ function Sixties({ r, daysOf }: { r: GuildRaceResponse; daysOf: (at: string | nu
                 <span className="s60-n">{c.rank}</span>
                 <ClassDot cls={c.char.cls} />
                 <span className="t"><CharName name={c.char.name} cls={c.char.cls} as="span" />
-                  <small>{[c.char.cls ? gt.cls(c.char.cls) : null, c.mainName ? `alt de ${c.mainName}` : null, c.char.left ? "parti" : null].filter(Boolean).join(" · ")}</small></span>
-                <span className={`s60-d${when.est ? " est" : ""}`}>{d?.seen ? "déjà 60 au premier relevé" : when.text}{n !== null && <small> · {inDays(n)}</small>}</span>
+                  <small>{[c.char.cls ? gt.cls(c.char.cls) : null, c.mainName ? t("alt de {name}", { name: c.mainName }) : null, c.char.left ? t("parti") : null].filter(Boolean).join(" · ")}</small></span>
+                <span className={`s60-d${when.est ? " est" : ""}`}>{d?.seen ? t("déjà 60 au premier relevé") : when.text}{n !== null && <small> · {inDays(n)}</small>}</span>
               </li>
             );
           })}
         </ol>
-      ) : <p className="hm-none">Personne pour l'instant.</p>}
+      ) : <p className="hm-none">{t("Personne pour l'instant.")}</p>}
     </section>
   );
 }

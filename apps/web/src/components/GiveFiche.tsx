@@ -5,13 +5,14 @@ import { useGameText } from "../gameText";
 import { shortDay } from "../guild";
 import { DialogHead, Modal } from "./Dialog";
 import { Portrait } from "./ImageUpload";
+import { t } from "../i18n";
+import { roleLabel } from "../pages/GroupsPage";
 
 /**
  * « Donner la fiche à… » (Forever, 8/11) : la fiche passe sur le compte d'un autre membre de la guilde où elle est rangée
  * (POST /groups/:id/characters/:cid/give). Le dialogue liste ses inscriptions à venir, qui la suivent (GET …/give).
  */
 
-const ROLE: Record<Member["role"], string> = { owner: "Propriétaire", officer: "Officier", member: "Membre" };
 interface Upcoming { kind: "raid" | "outing"; id: string; name: string; at: string | null }
 
 export function GiveFicheDialog({ groupId, groupName, c, members, onClose, closeOnDone }: {
@@ -48,47 +49,53 @@ export function GiveFicheDialog({ groupId, groupName, c, members, onClose, close
       if (closeOnDone) { onClose(); void qc.invalidateQueries({ predicate: x => x.queryKey[0] !== "give" }); return; }
       await qc.invalidateQueries({ predicate: x => x.queryKey[0] !== "give" });
       setDone(r);
-    } catch (x) { setErr(x instanceof ApiError ? x.message : "Don impossible."); }
+    } catch (x) { setErr(x instanceof ApiError ? x.message : t("Don impossible.")); }
     finally { setBusy(false); }
   };
   if (done) {
     return (
       <Modal label="gf-t" onClose={onClose}>
         <div className="gd-body">
-          <DialogHead id="gf-t" title={<>{c.name} est à {done.to}</>} onClose={onClose} />
-          <p style={{ margin: 0 }}>La fiche est dans ses persos, rangée dans {groupName}.
-            {done.moved.length > 0 && <> Inscriptions passées avec elle : {done.moved.join(", ")}.</>}
-            {done.dropped.length > 0 && <> {done.to} était déjà inscrit à {done.dropped.join(", ")} : son inscription est gardée.</>}</p>
-          <div className="row sg-actions"><button type="button" className="btn primary" onClick={onClose}>Fermer</button></div>
+          <DialogHead id="gf-t" title={t("{name} est à {to}", { name: c.name, to: done.to })} onClose={onClose} />
+          <p style={{ margin: 0 }}>{t("La fiche est dans ses persos, rangée dans {guild}.", { guild: groupName })}
+            {done.moved.length > 0 && <> {t("Inscriptions passées avec elle : {list}.", { list: done.moved.join(", ") })}</>}
+            {done.dropped.length > 0 && <> {t("{name} était déjà inscrit à {list} : son inscription est gardée.", { name: done.to, list: done.dropped.join(", ") })}</>}</p>
+          <div className="row sg-actions"><button type="button" className="btn primary" onClick={onClose}>{t("Fermer")}</button></div>
         </div>
       </Modal>
     );
   }
-  const sub = `${c.cls ? `${gt.cls(c.cls)} ` : "Niveau "}${c.level}${c.owner ? ` · ${c.isMain ? "main" : "alt"} de ${c.owner}` : ""} dans ${groupName}`;
+  const what = c.cls ? `${gt.cls(c.cls)} ${c.level}` : t("Niveau {n}", { n: c.level });
+  const sub = c.owner ? (c.isMain ? t("{what} · main de {owner} dans {guild}", { what, owner: c.owner, guild: groupName }) : t("{what} · alt de {owner} dans {guild}", { what, owner: c.owner, guild: groupName }))
+    : t("{what} dans {guild}", { what, guild: groupName });
   return (
     <Modal label="gf-t" onClose={onClose}>
       <form onSubmit={e => void submit(e)}>
-        <DialogHead id="gf-t" title={<>Donner {c.name} à…</>} sub={<span>{sub}</span>} onClose={onClose} />
-        <input type="search" placeholder="Chercher un membre…" aria-label="Chercher un membre" value={q} onChange={e => setQ(e.target.value)} />
-        <ul className="gd-list" aria-label="Membres de la guilde">
+        <DialogHead id="gf-t" title={t("Donner {name} à…", { name: c.name })} sub={<span>{sub}</span>} onClose={onClose} />
+        <input type="search" placeholder={t("Chercher un membre…")} aria-label={t("Chercher un membre")} value={q} onChange={e => setQ(e.target.value)} />
+        <ul className="gd-list" aria-label={t("Membres de la guilde")}>
           {shown.map(m => (
             <li key={m.userId}><label className="gd-opt">
               <input type="radio" name="gf-to" value={m.userId} checked={to === m.userId} onChange={() => setTo(m.userId)} />
               <span className="avatar" style={{ width: 22, height: 22 }}><Portrait id={m.avatarId} size={22} fallback={<span style={{ fontSize: 11 }}>{m.displayName[0]}</span>} /></span>
-              <span className="t"><span className="nm"><b>{m.displayName}</b></span><small>{ROLE[m.role]}</small></span>
+              <span className="t"><span className="nm"><b>{m.displayName}</b></span><small>{roleLabel(m.role)}</small></span>
             </label></li>
           ))}
-          {!shown.length && <li className="muted small">{list.length ? "Personne ne correspond." : "Personne d'autre dans la guilde."}</li>}
+          {!shown.length && <li className="muted small">{list.length ? t("Personne ne correspond.") : t("Personne d'autre dans la guilde.")}</li>}
         </ul>
         <p className="hint" style={{ margin: 0 }}>
-          La fiche passe sur le compte de {chosen?.displayName ?? "ce membre"}, rangée dans {groupName} (son main s'il n'en a pas).{" "}
-          {up.length ? <>Ses inscriptions à venir la suivent : {up.map(u => `${u.name}${when(u)}`).join(", ")} ; si {chosen?.displayName ?? "il"} y est déjà inscrit, son inscription à lui est gardée.</> : "Elle n'a pas d'inscription à venir."}{" "}
-          Présence et butin passés restent sur la fiche. Noté au journal de la guilde.
+          {chosen ? t("La fiche passe sur le compte de {name}, rangée dans {guild} (son main s'il n'en a pas).", { name: chosen.displayName, guild: groupName })
+            : t("La fiche passe sur le compte de ce membre, rangée dans {guild} (son main s'il n'en a pas).", { guild: groupName })}{" "}
+          {up.length ? (chosen
+            ? t("Ses inscriptions à venir la suivent : {list} ; si {name} y est déjà inscrit, son inscription à lui est gardée.", { list: up.map(u => `${u.name}${when(u)}`).join(", "), name: chosen.displayName })
+            : t("Ses inscriptions à venir la suivent : {list} ; s'il y est déjà inscrit, son inscription à lui est gardée.", { list: up.map(u => `${u.name}${when(u)}`).join(", ") }))
+            : t("Elle n'a pas d'inscription à venir.")}{" "}
+          {t("Présence et butin passés restent sur la fiche. Noté au journal de la guilde.")}
         </p>
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row sg-actions">
-          <button type="button" className="btn ghost" onClick={onClose}>Annuler</button>
-          <button type="submit" className="btn primary" disabled={!to || busy}>{chosen ? `Donner ${c.name} à ${chosen.displayName}` : "Donner"}</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={!to || busy}>{chosen ? t("Donner {name} à {to}", { name: c.name, to: chosen.displayName }) : t("Donner")}</button>
         </div>
       </form>
     </Modal>

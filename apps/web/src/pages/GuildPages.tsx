@@ -23,7 +23,7 @@ import { NumberField } from "../components/NumberField";
 import {
   AddBot, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
-import { t } from "../i18n";
+import { N, t, tn, tx } from "../i18n";
 
 /**
  * Pages d'une guilde de Forever Roster (refonte du 23/10) : Accueil (/groups/:id), Sorties, Raids (À venir · Passés ·
@@ -84,11 +84,11 @@ function OutingsPage({ groupId, d, creating, guard }: { groupId: string; d: Grou
       channelName={group.outingsLinked ? group.outingsChannelName : group.discordChannelName} discordLinked={group.outingsLinked || group.discordLinked}
       onCreate={() => nav(`/groups/${groupId}/sorties/nouvelle`)} onClose={() => nav(`/groups/${groupId}/sorties`)} />
   );
-  if (creating) return <div className="stack" style={{ gap: 12 }}><Link className="mp-back" to={`/groups/${groupId}/sorties`}>← Sorties</Link>{outings}</div>;
+  if (creating) return <div className="stack" style={{ gap: 12 }}><Link className="mp-back" to={`/groups/${groupId}/sorties`}>{t("← Sorties")}</Link>{outings}</div>;
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <GuildHead groupId={groupId} name={group.name} title="Sorties"
-        actions={group.creators.canCreateOuting && <Link className="btn primary" to={`/groups/${groupId}/sorties/nouvelle`}>+ Sortie</Link>} />
+      <GuildHead groupId={groupId} name={group.name} title={t("Sorties")}
+        actions={group.creators.canCreateOuting && <Link className="btn primary" to={`/groups/${groupId}/sorties/nouvelle`}>{t("+ Sortie")}</Link>} />
       {outings}
     </div>
   );
@@ -138,12 +138,16 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
 
 type GuildPageView = GuildView | "artisans" | "banque";
 const GUILD_TABS: [GuildPageView, ReactNode, string][] = [
-  ["membres", "Membres", ""], ["course", <>Course<span className="wide"> au 60</span></>, "/course"], ["artisans", "Artisans", "/artisans"],
-  ["banque", "Banque", "/banque"], ["historique", "Historique", "/historique"],
+  ["membres", N("Membres"), ""], ["course", "course", "/course"], ["artisans", N("Artisans"), "/artisans"],
+  ["banque", N("Banque"), "/banque"], ["historique", N("Historique"), "/historique"],
 ];
+/** « Course au 60 » ; sur téléphone « Course » seul (la fin est masquée). */
+const tabLabel = (l: ReactNode) => (l === "course"
+  ? tx("{race}{end}", { race: t("Course"), end: <span className="wide">{t(" au 60")}</span> })
+  : typeof l === "string" ? t(l) : l);
 /** Course finie (podium figé au troisième 60) : l'onglet devient « Palmarès » et passe en dernier (refonte du 09/11). */
 const guildTabs = (ended: boolean): [GuildPageView, ReactNode, string][] => ended
-  ? [...GUILD_TABS.filter(([k]) => k !== "course"), ["course", "Palmarès", "/course"]]
+  ? [...GUILD_TABS.filter(([k]) => k !== "course"), ["course", N("Palmarès"), "/course"]]
   : GUILD_TABS;
 
 function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetail; view: GuildPageView; guard: Guard }) {
@@ -162,21 +166,21 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   const faction = gg ? (gg.faction === "Horde" || gg.faction === "Alliance" ? gg.faction : null) : siteChars ? factionOf(siteChars) : null;
   const fac = faction && <><span aria-hidden="true">·</span><b className={`g-fac ${faction}`}>{faction}</b></>;
   const meta = gg ? <>
-    <span>{players} joueur{players > 1 ? "s" : ""}, {gm!.chars.length} perso{gm!.chars.length > 1 ? "s" : ""}</span>{fac}
-    {gg.roster && <><span aria-hidden="true">·</span><span>liste relevée par {gg.roster.by} {agoText(gg.roster.at)}</span></>}
-  </> : <><span>{members.length} membre{members.length > 1 ? "s" : ""} sur le site</span>{fac}</>;
+    <span>{tn(players, "{n} joueur", "{n} joueurs")}, {tn(gm!.chars.length, "{n} perso", "{n} persos")}</span>{fac}
+    {gg.roster && <><span aria-hidden="true">·</span><span>{t("liste relevée par {name} {ago}", { name: gg.roster.by, ago: agoText(gg.roster.at) })}</span></>}
+  </> : <><span>{tn(members.length, "{n} membre sur le site", "{n} membres sur le site")}</span>{fac}</>;
   const leave = () => void guard(async () => { await del(`/groups/${groupId}/members/${myId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/"); });
   const actions = officer
     // « Inviter » et « Administration » neutres : le doré va à l'action de l'onglet ouvert (refonte du 09/11)
-    ? <><InviteButton groupId={groupId} groupName={group.name} /><Link className="btn" to={`/groups/${groupId}/admin`}>Administration</Link></>
+    ? <><InviteButton groupId={groupId} groupName={group.name} /><Link className="btn" to={`/groups/${groupId}/admin`}>{t("Administration")}</Link></>
     : <LeaveButton onLeave={leave} />;
   const tabOn = view === "persos" || view === "joueurs" ? "membres" : view;
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <GuildHead groupId={groupId} name={group.name} title="Guilde" meta={meta} actions={actions} />
+      <GuildHead groupId={groupId} name={group.name} title={t("Guilde")} meta={meta} actions={actions} />
       <div className="panel lift">
         <div className="tabs bk-five" role="tablist">
-          {guildTabs(ended).map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{l}</button>)}
+          {guildTabs(ended).map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{tabLabel(l)}</button>)}
         </div>
         <div className="pane">
           {view === "artisans" ? <Crafters groupId={groupId} myId={myId} />
@@ -192,14 +196,14 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
 function LeaveButton({ onLeave }: { onLeave: () => void }) {
   const [ask, setAsk] = useState(false);
   return ask
-    ? <span className="row small">Quitter la guilde ? <button type="button" className="btn danger sm" onClick={onLeave}>Quitter</button><button type="button" className="btn ghost sm" onClick={() => setAsk(false)}>Annuler</button></span>
-    : <button type="button" className="btn ghost sm" onClick={() => setAsk(true)}>Quitter la guilde</button>;
+    ? <span className="row small">{t("Quitter la guilde ?")} <button type="button" className="btn danger sm" onClick={onLeave}>{t("Quitter")}</button><button type="button" className="btn ghost sm" onClick={() => setAsk(false)}>{t("Annuler")}</button></span>
+    : <button type="button" className="btn ghost sm" onClick={() => setAsk(true)}>{t("Quitter la guilde")}</button>;
 }
 
 /* ---------- Administration : 6 sections ---------- */
 
 type AdminKey = "invitations" | "guilde" | "discord" | "butin" | "avis" | "journal";
-const ADMIN: [AdminKey, string][] = [["invitations", "Invitations"], ["guilde", "Guilde"], ["discord", "Discord"], ["butin", "Butin"], ["avis", "Avis"], ["journal", "Journal"]];
+const ADMIN: [AdminKey, string][] = [["invitations", N("Invitations")], ["guilde", N("Guilde")], ["discord", "Discord"], ["butin", N("Butin")], ["avis", N("Avis")], ["journal", N("Journal")]];
 
 function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; guard: Guard }) {
   const [params, setParams] = useSearchParams();
@@ -219,18 +223,18 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
   const invites = useQuery({ queryKey: ["invites", groupId], queryFn: () => get<{ invites: Invite[] }>(`/groups/${groupId}/invites`) }).data?.invites;
   const link = useGuildLink(groupId).data?.link;
   const subs: Record<AdminKey, string> = {
-    invitations: invites ? (invites.length ? `${invites.length} lien${invites.length > 1 ? "s" : ""} actif${invites.length > 1 ? "s" : ""}` : "aucun lien actif") : "liens d'invitation",
-    guilde: link ? `nom, guilde du jeu ${link.name}${role === "owner" ? ", suppression" : ""}` : "nom, guilde du jeu, suppression",
-    discord: "salons, relances, annonces de la course",
-    butin: "compte des objets reçus",
-    avis: unseen ? `${unseen} à lire` : "avis du Discord",
-    journal: "qui a fait quoi",
+    invitations: invites ? (invites.length ? tn(invites.length, "{n} lien actif", "{n} liens actifs") : t("aucun lien actif")) : t("liens d'invitation"),
+    guilde: link ? (role === "owner" ? t("nom, guilde du jeu {name}, suppression", { name: link.name }) : t("nom, guilde du jeu {name}", { name: link.name })) : t("nom, guilde du jeu, suppression"),
+    discord: t("salons, relances, annonces de la course"),
+    butin: t("compte des objets reçus"),
+    avis: unseen ? t("{n} à lire", { n: unseen }) : t("avis du Discord"),
+    journal: t("qui a fait quoi"),
   };
   const sections: Record<AdminKey, ReactNode> = {
     invitations: <ForeverInvites groupId={groupId} guard={guard} invites={invites} />,
     guilde: <>
       <section className="stack admin-sec" aria-labelledby="gn-t">
-        <h3 id="gn-t">Nom de la guilde</h3>
+        <h3 id="gn-t">{t("Nom de la guilde")}</h3>
         <GroupName key={group.name} name={group.name} onSave={name => guard(async () => {
           await patch(`/groups/${groupId}`, { name });
           await Promise.all([qc.invalidateQueries({ queryKey: ["group", groupId] }), qc.invalidateQueries({ queryKey: ["groups"] }), qc.invalidateQueries({ queryKey: ["group-audit", groupId] })]);
@@ -239,8 +243,8 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
       <GuildLinkSection groupId={groupId} guard={guard} />
       {role === "owner" ? (
         <section className="stack admin-sec danger-zone">
-          <h3>Zone sensible</h3>
-          <p className="hint" style={{ margin: 0 }}>Supprime la guilde du site, ses raids, ses invitations et la liaison Discord. Les persos des membres restent.</p>
+          <h3>{t("Zone sensible")}</h3>
+          <p className="hint" style={{ margin: 0 }}>{t("Supprime la guilde du site, ses raids, ses invitations et la liaison Discord. Les persos des membres restent.")}</p>
           <div><DeleteGroup onDelete={() => guard(async () => { await del(`/groups/${groupId}`); await qc.invalidateQueries({ queryKey: ["groups"] }); nav("/"); })} /></div>
         </section>
       ) : (
@@ -257,21 +261,21 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
     </>,
     butin: <LootSettingsPanel groupId={groupId} />,
     avis: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,
-    journal: <section className="stack admin-sec"><h3>Journal de la guilde</h3><Journal groupId={groupId} /></section>,
+    journal: <section className="stack admin-sec"><h3>{t("Journal de la guilde")}</h3><Journal groupId={groupId} /></section>,
   };
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <GuildHead groupId={groupId} name={group.name} title="Administration" actions={<Link className="btn ghost sm" to={`/groups/${groupId}/membres`}>← Guilde</Link>} />
+      <GuildHead groupId={groupId} name={group.name} title={t("Administration")} actions={<Link className="btn ghost sm" to={`/groups/${groupId}/membres`}>{t("← Guilde")}</Link>} />
       <div className={`adm adm-f${picked ? " picked" : ""}`}>
-        <nav className="adm-nav" aria-label="Sections de l'administration">
+        <nav className="adm-nav" aria-label={t("Sections de l'administration")}>
           {ADMIN.map(([k, l]) => (
             <button key={k} type="button" className={cur === k ? "on" : ""} aria-current={cur === k ? "true" : undefined} onClick={() => go(k)}>
-              <b>{l}</b>{k === "avis" && !!unseen && <span className="av-badge">{unseen}</span>}<small>{subs[k]}</small><span className="adm-go" aria-hidden="true">›</span>
+              <b>{l === "Discord" ? l : t(l)}</b>{k === "avis" && !!unseen && <span className="av-badge">{unseen}</span>}<small>{subs[k]}</small><span className="adm-go" aria-hidden="true">›</span>
             </button>
           ))}
         </nav>
         <div className="adm-body admin">
-          {picked && <button type="button" className="mp-back adm-back" onClick={() => setParams({}, { replace: false })}>← Administration</button>}
+          {picked && <button type="button" className="mp-back adm-back" onClick={() => setParams({}, { replace: false })}>{t("← Administration")}</button>}
           {sections[cur]}
         </div>
       </div>
@@ -292,26 +296,26 @@ function ForeverInvites({ groupId, guard, invites }: { groupId: string; guard: G
   });
   return (
     <section className="stack admin-sec" aria-labelledby="inv-t">
-      <h3 id="inv-t">Invitations</h3>
+      <h3 id="inv-t">{t("Invitations")}</h3>
       {link ? (
         <div className="inv-row">
-          <div className="row nowrap"><input type="text" readOnly value={link} onFocus={e => e.currentTarget.select()} aria-label="Lien d'invitation" />
-            <button className="btn primary sm" type="button" onClick={() => { void navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
-          <p className="hint" style={{ margin: 0 }}>Copie-le maintenant : il ne sera plus affiché.</p>
+          <div className="row nowrap"><input type="text" readOnly value={link} onFocus={e => e.currentTarget.select()} aria-label={t("Lien d'invitation")} />
+            <button className="btn primary sm" type="button" onClick={() => { void navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? t("Copié") : t("Copier")}</button></div>
+          <p className="hint" style={{ margin: 0 }}>{t("Copie-le maintenant : il ne sera plus affiché.")}</p>
         </div>
-      ) : <div><button type="button" className="btn primary" onClick={create}>Créer un lien</button> <span className="hint">{maxUses} utilisation{maxUses > 1 ? "s" : ""} · {days} jour{days > 1 ? "s" : ""}</span></div>}
+      ) : <div><button type="button" className="btn primary" onClick={create}>{t("Créer un lien")}</button> <span className="hint">{tn(maxUses, "{n} utilisation", "{n} utilisations")} · {tn(days, "{n} jour", "{n} jours")}</span></div>}
       <details className="ad-more">
-        <summary>Réglages du lien</summary>
+        <summary>{t("Réglages du lien")}</summary>
         <div className="row" style={{ padding: "0 14px 14px", alignItems: "flex-end" }}>
-          <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">Utilisations</label><NumberField id="i-uses" min={1} max={100} value={maxUses} onChange={setMaxUses} /></div>
-          <div className="fld" style={{ width: 140 }}><label htmlFor="i-days">Durée (jours)</label><NumberField id="i-days" min={1} max={30} value={days} onChange={setDays} /></div>
-          {link && <button type="button" className="btn" onClick={create}>Nouveau lien</button>}
+          <div className="fld" style={{ width: 140 }}><label htmlFor="i-uses">{t("Utilisations")}</label><NumberField id="i-uses" min={1} max={100} value={maxUses} onChange={setMaxUses} /></div>
+          <div className="fld" style={{ width: 140 }}><label htmlFor="i-days">{t("Durée (jours)")}</label><NumberField id="i-days" min={1} max={30} value={days} onChange={setDays} /></div>
+          {link && <button type="button" className="btn" onClick={create}>{t("Nouveau lien")}</button>}
         </div>
       </details>
       {!!invites?.length && (
-        <ul className="inv-list" aria-label="Liens actifs">{invites.map(i => (
-          <li key={i.id}><span><b className="num">{i.uses}/{i.maxUses}</b> utilisé{i.uses > 1 ? "s" : ""} · expire {fmt.format(new Date(i.expiresAt))}</span>
-            <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/invites/${i.id}`); await refresh(); })}>Révoquer</button></li>
+        <ul className="inv-list" aria-label={t("Liens actifs")}>{invites.map(i => (
+          <li key={i.id}><span>{tx(i.uses > 1 ? "{n} utilisés · expire {when}" : "{n} utilisé · expire {when}", { n: <b className="num">{i.uses}/{i.maxUses}</b>, when: fmt.format(new Date(i.expiresAt)) })}</span>
+            <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/invites/${i.id}`); await refresh(); })}>{t("Révoquer")}</button></li>
         ))}</ul>
       )}
     </section>
