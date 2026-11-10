@@ -5,6 +5,13 @@ import { ApiError, get, post } from "../api";
 import { safeNext, useMe } from "../auth";
 import { readInvite } from "../invite";
 import { useSite } from "../site";
+import { PasswordInput, PasswordRules } from "../components/PasswordInput";
+
+/*
+ * Connexion (refonte du 09/11, variante C) : Battle.net bleu plein, « ou avec ton e-mail », mot de passe avec un œil,
+ * « Se connecter » doré, liens dorés. Nouveaux mots de passe : un œil et les règles cochées en direct, plus de champ
+ * « Confirmation ».
+ */
 
 const BNET_ERRORS: Record<string, string> = {
   bnet_cancelled: "Connexion Battle.net annulée.",
@@ -75,16 +82,16 @@ export function LoginPage() {
       )}
       <form className="stack" onSubmit={s.run}>
         <div className="fld"><label htmlFor="email">E-mail</label><input id="email" type="email" autoComplete="email" required value={email} onChange={e => setEmail(e.target.value)} /></div>
-        <div className="fld"><label htmlFor="password">Mot de passe</label><input id="password" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></div>
+        <div className="fld"><label htmlFor="password">Mot de passe</label><PasswordInput id="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></div>
         {s.error && <div className="alert error" role="alert">{s.error}</div>}
         {unverified && (
           <div className="alert info">
             Pas reçu l'e-mail ? <button type="button" className="btn sm" disabled={resend.busy} onClick={() => void resend.run()}>Renvoyer le lien</button>
           </div>
         )}
-        <button className="btn primary" type="submit" disabled={s.busy}>{s.busy ? "Connexion…" : "Se connecter"}</button>
+        <button className="btn primary auth-go" type="submit" disabled={s.busy}>{s.busy ? "Connexion…" : "Se connecter"}</button>
       </form>
-      <div className="row between small">
+      <div className="row between auth-links">
         <Link to="/forgot-password">Mot de passe oublié ?</Link>
         <Link to={forever && readInvite() ? "/bienvenue" : next !== "/" ? `/register?next=${encodeURIComponent(next)}` : "/register"}>Créer un compte</Link>
       </div>
@@ -98,10 +105,9 @@ export function RegisterPage() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
   const loginUrl = next !== "/" ? `/login?next=${encodeURIComponent(next)}` : "/login";
-  const [form, setForm] = useState({ displayName: "", email: "", password: "", confirm: "" });
+  const [form, setForm] = useState({ displayName: "", email: "", password: "" });
   const [done, setDone] = useState<string | null>(null);
   const s = useSubmit(async () => {
-    if (form.password !== form.confirm) throw new ApiError(400, "Les deux mots de passe ne correspondent pas.");
     const r = await post<{ message: string }>("/auth/register", { displayName: form.displayName, email: form.email, password: form.password });
     setDone(r.message);
   });
@@ -117,12 +123,11 @@ export function RegisterPage() {
         <div className="fld"><label htmlFor="em">E-mail</label><input id="em" type="email" required autoComplete="email" value={form.email} onChange={set("email")} /></div>
         <div className="fld">
           <label htmlFor="pw">Mot de passe</label>
-          <input id="pw" type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={set("password")} aria-describedby="pw-hint" />
-          <span id="pw-hint" className="hint">12 caractères minimum. Une phrase de passe est idéale. Les mots de passe apparus dans des fuites connues sont refusés.</span>
+          <PasswordInput id="pw" required minLength={12} maxLength={128} autoComplete="new-password" value={form.password} onChange={set("password")} aria-describedby="pw-rules" />
+          <PasswordRules id="pw-rules" value={form.password} />
         </div>
-        <div className="fld"><label htmlFor="pw2">Confirmation</label><input id="pw2" type="password" required autoComplete="new-password" value={form.confirm} onChange={set("confirm")} /></div>
         {s.error && <div className="alert error" role="alert">{s.error}</div>}
-        <button className="btn primary" type="submit" disabled={s.busy}>{s.busy ? "Création…" : "Créer mon compte"}</button>
+        <button className="btn primary auth-go" type="submit" disabled={s.busy}>{s.busy ? "Création…" : "Créer mon compte"}</button>
         <p className="hint" style={{ margin: 0 }}>Ton e-mail et ton pseudo servent seulement à faire marcher le site : voir la <Link to="/confidentialite">politique de confidentialité</Link>.</p>
       </form>
       <p className="small">Déjà un compte ? <Link to={loginUrl}>Se connecter</Link></p>
@@ -176,10 +181,9 @@ export function ForgotPasswordPage() {
 
 export function ResetPasswordPage() {
   const token = useHashToken();
-  const [pw, setPw] = useState(""), [pw2, setPw2] = useState("");
+  const [pw, setPw] = useState("");
   const [done, setDone] = useState<string | null>(null);
   const s = useSubmit(async () => {
-    if (pw !== pw2) throw new ApiError(400, "Les deux mots de passe ne correspondent pas.");
     setDone((await post<{ message: string }>("/auth/reset-password", { token, password: pw })).message);
   });
   if (!token) return <AuthCard title="Nouveau mot de passe"><div className="alert error">Lien incomplet. Ouvre-le directement depuis l'e-mail.</div></AuthCard>;
@@ -187,11 +191,12 @@ export function ResetPasswordPage() {
     <AuthCard title="Nouveau mot de passe">
       {done ? <><div className="alert ok" role="status">{done}</div><Link to="/login">Se connecter</Link></> : (
         <form className="stack" onSubmit={s.run}>
-          <p className="hint">Toutes tes sessions ouvertes seront fermées.</p>
-          <div className="fld"><label htmlFor="pw">Nouveau mot de passe</label><input id="pw" type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} /></div>
-          <div className="fld"><label htmlFor="pw2">Confirmation</label><input id="pw2" type="password" required autoComplete="new-password" value={pw2} onChange={e => setPw2(e.target.value)} /></div>
+          <p className="warnmsg" style={{ margin: 0 }}>Toutes tes sessions ouvertes seront fermées.</p>
+          <div className="fld"><label htmlFor="pw">Nouveau mot de passe</label>
+            <PasswordInput id="pw" required minLength={12} maxLength={128} autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} aria-describedby="pw-rules" />
+            <PasswordRules id="pw-rules" value={pw} /></div>
           {s.error && <div className="alert error" role="alert">{s.error}</div>}
-          <button className="btn primary" type="submit" disabled={s.busy}>Enregistrer</button>
+          <button className="btn primary" type="submit" disabled={s.busy}>Enregistrer le mot de passe</button>
         </form>
       )}
     </AuthCard>

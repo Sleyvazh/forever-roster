@@ -50,7 +50,6 @@ test("captures d'écran de la documentation", async ({ page, browser }) => {
   await page.fill("#dn", "Thalion");
   await page.fill("#em", EMAIL);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(lastVerifyToken).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken()}`);
@@ -117,7 +116,7 @@ test("captures d'écran de la documentation", async ({ page, browser }) => {
 
   // 3. Compte et sécurité
   await page.goto("/account");
-  await expect(page.getByRole("heading", { name: "Compte & sécurité" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compte et sécurité" })).toBeVisible();
   await page.screenshot({ path: `${OUT}/03-securite.png` });
 
   // 4. Mobile, thème clair « parchemin »

@@ -94,8 +94,7 @@ test("guilde en marche : image de l'accueil public, Accueil, Sorties, Course", a
 
   const email = `thalion-${Date.now()}@example.test`;
   await page.goto("/register");
-  await page.fill("#dn", "Thalion"); await page.fill("#em", email); await page.fill("#pw", PASSWORD); await page.fill("#pw2", PASSWORD);
-  await page.getByRole("button", { name: /créer/i }).click();
+  await page.fill("#dn", "Thalion"); await page.fill("#em", email); await page.fill("#pw", PASSWORD);  await page.getByRole("button", { name: /créer/i }).click();
   await page.waitForLoadState("networkidle");
   const v = new pg.Client({ connectionString: DB }); await v.connect();
   await expect.poll(async () => (await v.query("update users set email_verified_at = now() where email = $1", [email])).rowCount).toBe(1);

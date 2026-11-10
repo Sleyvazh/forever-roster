@@ -54,7 +54,6 @@ test("captures d'écran de Roster (WoW Retail)", async ({ page }) => {
   await page.fill("#dn", "Ysaline");
   await page.fill("#em", EMAIL);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(lastVerifyToken).not.toBe("");
   await page.goto(`${RETAIL}/verify-email#${lastVerifyToken()}`);

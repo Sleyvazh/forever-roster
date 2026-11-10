@@ -42,7 +42,6 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await page.fill("#dn", "Testeur");
     await page.fill("#em", email);
     await page.fill("#pw", password);
-    await page.fill("#pw2", password);
     await page.getByRole("button", { name: /créer/i }).click();
     await expect(page.getByText("Vérifie tes e-mails")).toBeVisible();
     await expect.poll(() => { try { return lastToken(email, "verify-email"); } catch { return ""; } }).not.toBe("");
@@ -274,9 +273,14 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/^FRG;1;[0-9a-f-]{36};\d+;Les Testeurs\nP;15090;Warbear Woolies;;Tournicoti\nM;\nZ;a3de5db8;[A-Za-z0-9+/]{342}==\nEND;1$/);
     await panel.getByRole("button", { name: "Fermer la synchro" }).click();
     await expect(panel).toHaveCount(0);
-    // Trois étapes ; la synchro au quotidien, les commandes et la sécurité sont repliées
-    await expect(page.locator(".ad-step")).toHaveCount(3);
-    await expect(page.locator("details.ad-more")).toHaveCount(3);
+    // Ton état en tête (refonte du 09/11) : la version de ta dernière synchro et la mise à jour ; deux étapes ;
+    // officier : Roster Companion en carte « recommandé pour toi » ; commandes et sécurité repliées
+    await expect(page.getByRole("region", { name: "Ton addon" })).toContainText(/Ton addon, d'après ta synchro du \d+ [a-zéû]+\./);
+    await expect(page.getByRole("region", { name: "Ton addon" })).toContainText(/Mise à jour [\d.]+ disponible/);
+    await expect(page.locator(".ad-step")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Copier le chemin" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Roster Companion · recommandé pour toi" })).toBeVisible();
+    await expect(page.locator("details.ad-more")).toHaveCount(2);
     await expect(page.locator(".ad").getByRole("button", { name: "Copier pour le jeu" })).toHaveCount(0);
     // Roster Companion : le dernier installateur signé, au nom fixe de chaque Release (scripts/companion-release.mjs)
     await expect(page.getByRole("link", { name: "Télécharger Roster Companion" }))
@@ -334,10 +338,15 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     expect(frg.status()).toBe(200);
     expect((await frg.json()).text).toContain("Les Testeurs");
     // Compte & sécurité : l'appareil, le journal, et « Délier »
-    await page.goto("/account");
+    // Menu à gauche (refonte du 09/11) : Appareils et sessions, Journal
+    await page.goto("/account?section=journal");
+    await expect(page.getByText("Appareil relié : PC-E2E")).toBeVisible();
+    // Le journal n'affiche jamais de code brut
+    await expect(page.locator("table.data")).not.toContainText("_");
+    await page.locator(".adm-nav").getByRole("button", { name: /Appareils et sessions/ }).click();
+    await expect(page).toHaveURL(/section=appareils/);
     const section = page.locator("#appareils");
     await expect(section).toContainText("PC-E2E");
-    await expect(page.getByText("Appareil relié : PC-E2E")).toBeVisible();
     await section.getByRole("button", { name: "Délier" }).click();
     await expect(page.getByText("PC-E2E délié.")).toBeVisible();
     expect((await page.request.get("/api/sync/frg", { headers: { authorization: `Bearer ${done.token}` } })).status()).toBe(401);
@@ -671,13 +680,13 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator("section[aria-labelledby=dc-title] .alert.info")).toContainText("lie d'abord ton propre Discord");
     // Salon des commandes d'artisanat (lot F) : même liaison, bloc à part
     await expect(page.getByRole("heading", { name: "Salon des commandes d'artisanat" })).toBeVisible();
-    await page.goto("/account");
-    await expect(page.getByRole("heading", { name: "Discord" })).toBeVisible();
-    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord" }) })).toContainText("Non lié");
+    await page.goto("/account?section=discord");
+    await expect(page.getByRole("heading", { name: "Discord et messages" })).toBeVisible();
+    await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: "Discord et messages" }) })).toContainText("Non lié");
   });
 
   await test.step("Compte & sécurité : les inscriptions faites en jeu peuvent passer par un officier (activé d'office, se coupe, se remet)", async () => {
-    await page.goto("/account");
+    await page.goto("/account?section=appareils");
     const block = page.locator("section").filter({ has: page.getByRole("heading", { name: "Inscriptions faites en jeu" }) });
     await expect(block).toContainText("Sans Roster Companion, ton addon confie tes inscriptions à un officier de ta guilde qui a l'appli : il les transmet au site.");
     const toggle = block.getByRole("checkbox", { name: /Mes inscriptions faites en jeu peuvent passer par un officier/ });

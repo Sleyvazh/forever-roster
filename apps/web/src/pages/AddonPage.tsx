@@ -1,5 +1,11 @@
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { get, type Character } from "../api";
+import { useMe } from "../auth";
 import { ExternalLink } from "../components/ExternalLink";
+import { useMyGuilds } from "../nav";
 import { useSite } from "../site";
+import { openSync } from "../syncPanel";
 
 declare const __ADDON_VERSION__: string;
 declare const __ADDON_SHA256__: string;
@@ -9,45 +15,92 @@ declare const __ROSTER_ADDON_SHA256__: string;
 /** Dernier installateur de Roster Companion : copie au nom fixe dans chaque GitHub Release (scripts/companion-release.mjs). */
 const COMPANION_URL = "https://github.com/Sleyvazh/forever-roster/releases/latest/download/Roster-Companion-setup.exe";
 
+/** « 1.6.10 » plus récent que « 1.6.9 » : comparaison nombre par nombre. */
+export function newerVersion(a: string, b: string) {
+  const x = a.split(".").map(n => parseInt(n, 10) || 0), y = b.split(".").map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
+}
+/** Depuis la 1.6.5 (8/11), le site refuse les textes de l'addon sans sceau. */
+const SEALED_SINCE = "1.6.5";
+const ADDONS_PATH = "World of Warcraft\\_forever_\\Interface\\AddOns";
+const DAY = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
+
 /**
- * Page Addon de Forever Roster (refonte du 23/10) : installer en trois étapes ; la synchro au quotidien, les commandes en jeu
- * et la sécurité sont repliées (le geste de la synchro est aussi dans la flèche de « Copier pour le jeu »).
+ * Page Addon de Forever Roster (refonte du 09/11, maquette-addon.png) : ton état en tête (version d'après ta dernière synchro,
+ * « ● Mise à jour 1.6.6 disponible » et la conséquence, « Télécharger l'addon » doré, ou « ✓ à jour ») ; deux étapes,
+ * Installer (chemin à copier) et Choisir ta touche (la synchro passe ensuite par le bouton Synchro) ; Roster Companion en ligne
+ * discrète « facultatif » pour les membres, en carte « recommandé pour toi » pour les officiers ; commandes et sécurité repliées.
  * Sur Roster : l'addon Roster, pour WoW Retail.
  */
 export function AddonPage() {
   const site = useSite();
   if (site.game === "retail") return <RosterAddonPage />;
-  const K = ({ k }: { k: string[] }) => <>{k.map((x, i) => <span key={x}>{i > 0 && "+"}<kbd>{x}</kbd></span>)}</>;
+  return <ForeverAddonPage />;
+}
+
+function ForeverAddonPage() {
+  const me = useMe();
+  const mine = me.data?.user?.addonVersion ?? null;
+  const officer = (useMyGuilds().data?.groups ?? []).some(g => g.role !== "member");
+  const chars = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters"), enabled: !!me.data?.user }).data?.characters ?? [];
+  const lastSync = chars.map(c => c.addonSyncedAt).filter((x): x is string => !!x).sort().at(-1) ?? null;
+  const latest = __ADDON_VERSION__;
+  const old = !!mine && newerVersion(latest, mine);
+  const unsealed = !!mine && newerVersion(SEALED_SINCE, mine);
+  const [copied, setCopied] = useState(false);
+  const download = (primary: boolean) => <a className={`btn${primary ? " primary" : ""} ad-dl`} href="/downloads/ForeverRoster.zip" download>Télécharger l'addon {latest}</a>;
+  const companion = <a className="btn" href={COMPANION_URL}>Télécharger Roster Companion</a>;
   return (
     <div className="stack ad" style={{ gap: 16 }}>
       <div className="page-head"><div className="ph-t"><span className="eyebrow">Addon Forever Roster</span><h1>Installer l'addon</h1></div></div>
       <div className="alert info ad-pc">L'addon s'installe sur ton PC : ouvre cette page sur ton ordinateur.</div>
-      <ol className="ad-steps">
-        <li className="ad-step"><h2><span className="n">1</span>Télécharger</h2>
-          <p><a className="btn primary" href="/downloads/ForeverRoster.zip" download>Télécharger l'addon {__ADDON_VERSION__}</a></p>
-          <p>Un zip de fichiers texte, pour WoW Forever.</p></li>
-        <li className="ad-step"><h2><span className="n">2</span>Installer</h2>
-          <p>Copie le dossier <code>ForeverRoster</code> dans <code>World of Warcraft\_forever_\Interface\AddOns</code>, puis relance le jeu.</p></li>
-        <li className="ad-step"><h2><span className="n">3</span>Choisir ta touche</h2>
-          <p>En jeu : <code>/fr options</code>, « Choisir une touche ». Elle sert à la synchro, dans les deux sens.</p></li>
-      </ol>
-      <section className="ad-app" aria-labelledby="ad-app-t">
-        <div className="stack" style={{ gap: 4 }}>
-          <h2 id="ad-app-t">Roster Companion <span className="ad-opt">facultatif</span></h2>
-          <p>L'appli Windows qui fait la synchro toute seule, sans copier-coller. Un ou deux officiers qui l'ont suffisent : l'addon transmet ensuite les données à toute la guilde. Elle se met à jour toute seule.</p>
-          <p className="hint">Windows peut afficher « Windows a protégé votre ordinateur » : « Informations complémentaires », puis « Exécuter quand même ». L'appli te donne ensuite un code à valider sur le site.</p>
+      <section className={`ad-state${old || !mine ? " todo" : " ok"}`} aria-label="Ton addon">
+        <div className="ad-state-t">
+          {mine ? <>
+            <span>Ton addon, d'après ta synchro{lastSync ? ` du ${DAY.format(new Date(lastSync))}` : ""}</span>
+            <span className="ad-ver"><b className="num">{mine}</b>{old ? <span className="ad-up">● Mise à jour {latest} disponible</span> : <span className="ad-ok">✓ à jour</span>}</span>
+            {old && <span>{unsealed ? `Sans la ${latest}, le site refuse tes persos et tes relevés (textes non scellés).` : `La ${latest} apporte les dernières nouveautés : remplace le dossier de l'addon.`}</span>}
+          </> : <>
+            <span className="ad-ver"><b>Pas encore d'addon sur ce compte</b></span>
+            <span>Version {latest}, pour WoW Forever : un zip de fichiers texte.</span>
+          </>}
         </div>
-        <a className="btn" href={COMPANION_URL}>Télécharger Roster Companion</a>
+        {old || !mine ? download(true) : download(false)}
       </section>
+      <ol className="ad-steps two">
+        <li className="ad-step"><h2><span className="n">1</span>Installer</h2>
+          <p>Dézippe et remplace le dossier <b>ForeverRoster</b> dans :</p>
+          <div className="ad-path">
+            <code>{ADDONS_PATH}</code>
+            <button type="button" className="btn" onClick={() => { void navigator.clipboard.writeText(ADDONS_PATH).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier le chemin"}</button>
+          </div>
+          <p>puis relance le jeu.</p></li>
+        <li className="ad-step"><h2><span className="n">2</span>Choisir ta touche de synchro</h2>
+          <p>En jeu : <code>/fr options</code> › Touches › Synchro rapide.</p>
+          <p>Ensuite, la synchro se fait avec le bouton <button type="button" className="link" onClick={openSync}>⟳ Synchro</button> en haut de chaque page du site.</p></li>
+      </ol>
+      {officer ? (
+        <section className="ad-app rec" aria-labelledby="ad-app-t">
+          <div className="stack" style={{ gap: 4 }}>
+            <h2 id="ad-app-t">Roster Companion · recommandé pour toi</h2>
+            <p>Tu es officier : avec l'appli, toute la guilde reçoit les données du site sans copier-coller, et les inscriptions faites en jeu arrivent sur le site.</p>
+            <p className="ad-warn">Windows peut afficher « Windows a protégé votre ordinateur » : « Informations complémentaires », puis « Exécuter quand même ». L'appli te donne ensuite un code à valider sur le site.</p>
+          </div>
+          {companion}
+        </section>
+      ) : (
+        <details className="ad-more ad-line">
+          <summary><b>Roster Companion</b> <span className="ad-opt">facultatif</span> <span>L'appli de synchro automatique, surtout utile aux officiers : un ou deux suffisent pour toute la guilde.</span> <span className="ad-more-l">En savoir plus ›</span></summary>
+          <div className="stack" style={{ padding: "0 14px 14px", gap: 8 }}>
+            <p style={{ margin: 0 }}>L'appli Windows fait la synchro toute seule, sans copier-coller, et se met à jour toute seule. Les officiers qui l'ont transmettent les données à toute la guilde par l'addon.</p>
+            <p className="ad-warn" style={{ margin: 0 }}>Windows peut afficher « Windows a protégé votre ordinateur » : « Informations complémentaires », puis « Exécuter quand même ».</p>
+            <div>{companion}</div>
+          </div>
+        </details>
+      )}
       <details className="ad-more">
-        <summary>Synchroniser au quotidien</summary>
-        <div className="stack" style={{ padding: "0 14px 14px", gap: 6 }}>
-          <p style={{ margin: 0 }}>Du site vers le jeu : bouton <strong>Synchro</strong>, « Copier pour le jeu », puis en jeu ta touche et <K k={["Ctrl", "V"]} />.</p>
-          <p style={{ margin: 0 }}>Du jeu vers le site : ta touche et <K k={["Ctrl", "C"]} />, puis <K k={["Ctrl", "V"]} /> sur n'importe quelle page du site.</p>
-        </div>
-      </details>
-      <details className="ad-more">
-        <summary>Commandes en jeu ({COMMANDS.length})</summary>
+        <summary>Commandes en jeu · {COMMANDS.length}</summary>
         <div className="tscroll" style={{ padding: "0 14px 14px" }}><table className="data">
           <tbody>{COMMANDS.map(([c, d]) => <tr key={c}><td><code>{c}</code></td><td>{d}</td></tr>)}</tbody>
         </table></div>

@@ -30,7 +30,7 @@ export async function assertStrongPassword(app: FastifyInstance, pwd: string, ma
   const policy = checkPasswordPolicy(pwd, mail);
   if (!policy.ok) throw badRequest(policy.reason!);
   if (app.ctx.cfg.HIBP_CHECK && (await isPwnedPassword(pwd, app.ctx.fetch))) {
-    throw badRequest("Ce mot de passe apparaît dans des fuites de données connues. Choisis-en un autre.");
+    throw badRequest("Ce mot de passe apparaît dans des fuites de données connues : choisis-en un autre, par exemple trois mots et un chiffre.");
   }
 }
 

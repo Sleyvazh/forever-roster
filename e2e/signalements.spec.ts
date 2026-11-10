@@ -28,7 +28,6 @@ async function account(page: Page, name: string) {
   await page.fill("#dn", name);
   await page.fill("#em", email);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   const token = () => readFileSync(LOG, "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
   await expect.poll(token).not.toBe("");

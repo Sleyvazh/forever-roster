@@ -26,8 +26,7 @@ const PASSWORD = "une phrase de passe pour les avis";
 async function account(page: Page, name: string) {
   const email = `e2e-${name.toLowerCase()}-${Date.now()}@example.test`;
   await page.goto("/register");
-  await page.fill("#dn", name); await page.fill("#em", email); await page.fill("#pw", PASSWORD); await page.fill("#pw2", PASSWORD);
-  await page.getByRole("button", { name: /créer/i }).click();
+  await page.fill("#dn", name); await page.fill("#em", email); await page.fill("#pw", PASSWORD);  await page.getByRole("button", { name: /créer/i }).click();
   const token = () => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
   await expect.poll(token).not.toBe("");
   await page.goto(`/verify-email#${token()}`);

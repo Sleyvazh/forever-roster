@@ -37,7 +37,6 @@ test("première visite : lien d'invitation, compte, e-mail, perso, Rejoindre, in
     await page.fill("#dn", "Thalion");
     await page.fill("#em", officer);
     await page.fill("#pw", PASSWORD);
-    await page.fill("#pw2", PASSWORD);
     await page.getByRole("button", { name: /créer/i }).click();
     await expect.poll(() => lastVerifyToken(officer)).not.toBe("");
     await page.goto(`/verify-email#${lastVerifyToken(officer)}`);

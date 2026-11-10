@@ -2768,3 +2768,82 @@ p.rp-meta { margin: 0; color: var(--ink); }
 .pe-spec .role, .pe-spec .ricon { flex: none; overflow-wrap: normal; }
 .pe-spec .role { font-size: 9.5px; padding: 3px 5px; }
 .gbis { display: inline-block; white-space: nowrap; overflow-wrap: normal; }
+
+/* ==========================================================================
+   Refonte 09/11, lot 7 : Connexion, Compte, page Addon
+   ========================================================================== */
+/* Croix des dialogues : 44 × 44 */
+.pi-close { min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; border: 1px solid var(--line-2); border-radius: 6px; color: var(--ink); font-size: 18px; padding: 0; }
+.pi-close:hover { border-color: var(--gold); color: var(--gold); }
+/* Thème : segments de même largeur */
+.theme-seg { display: inline-grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.theme-seg > * { min-height: 36px; padding: 6px 14px; color: var(--ink); text-align: center; }
+.theme-seg > [aria-pressed="true"] { background: var(--gold-soft); color: var(--gold); box-shadow: inset 0 -2px 0 var(--gold); }
+
+/* Connexion (variante C) : Battle.net bleu plein, « Se connecter » doré, liens dorés */
+.auth .btn { min-height: 44px; }
+.auth .btn.bnet { justify-content: center; }
+.divider { color: var(--ink); }
+.auth-go { width: 100%; }
+.auth-links { font-size: 14px; }
+.auth-links a { color: var(--gold); min-height: 36px; display: inline-flex; align-items: center; }
+/* Mot de passe : l'œil dans le champ, les règles en direct */
+.pw-field { position: relative; }
+.pw-field input { width: 100%; padding-right: 50px; min-height: 44px; }
+.pw-eye { position: absolute; top: 0; right: 0; width: 44px; height: 100%; min-height: 44px; display: grid; place-items: center; border: 0; background: none; color: var(--ink); cursor: pointer; }
+.pw-eye svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pw-eye[aria-pressed="true"] { color: var(--gold); }
+.pw-rules { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+.pw-rules li.ok { color: var(--ok); }
+/* Battle.net en contour bleu */
+.btn.bnet-o { border-color: #148eff; color: color-mix(in srgb, #148eff 70%, var(--ink)); font-weight: 600; }
+.btn.bnet-o:hover { background: color-mix(in srgb, #148eff 12%, transparent); }
+
+/* Compte : menu à gauche */
+.ac-priv { font-size: 14px; align-self: end; }
+.ac-page .adm-nav button { min-height: 44px; }
+.ac-page .ac-n { grid-column: 2; grid-row: 1; font-size: 13px; }
+.ac-sec { gap: 0; }
+.ac-sec h3 { margin-bottom: 8px; }
+.ac-row { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; min-height: 64px; padding: 10px 0; border-top: 1px solid var(--line); }
+.ac-sec h3 + .ac-row { border-top: 0; }
+.ac-lab { font: 600 12px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; }
+.ac-val { min-width: 0; overflow-wrap: anywhere; font-size: 14.5px; }
+.ac-row .btn { min-height: 44px; }
+.ac-ok { color: var(--ok); font-weight: 600; }
+.ac-warn { color: var(--warn); font-weight: 600; font-size: 14px; }
+.ac-form { display: grid; gap: 10px; padding: 4px 0 14px; }
+.ac-form input { min-height: 44px; }
+.ac-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: flex-end; }
+.ac-foot .ac-warn { margin-right: auto; font-weight: 400; }
+.ac-foot .btn { min-height: 44px; }
+
+/* Page Addon : ton état en tête */
+.ad-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.ad-state.todo { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); background: linear-gradient(120deg, color-mix(in srgb, var(--gold) 12%, var(--panel)), var(--panel) 65%); }
+.ad-state-t { display: grid; gap: 4px; font-size: 14px; min-width: 0; flex: 1 1 320px; }
+.ad-ver { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
+.ad-ver .num { font: 600 22px var(--f-mono); }
+.ad-up { color: var(--warn); font-weight: 600; font-size: 15px; }
+.ad-ok { color: var(--ok); font-weight: 600; font-size: 15px; }
+.ad-dl { min-height: 48px; padding-inline: 20px; }
+.ad-steps.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ad-step p { color: var(--ink); }
+.ad-path { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.ad-path code { flex: 1 1 260px; display: flex; align-items: center; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line-2); border-radius: 6px; font-size: 13.5px; }
+.ad-path .btn { min-height: 44px; }
+.ad-step .link { font-weight: 600; }
+.ad-app.rec { border-color: color-mix(in srgb, var(--gold) 55%, var(--line)); }
+.ad-app p, .ad-app .hint { color: var(--ink); }
+.ad-warn { color: var(--warn); font-size: 13.5px; margin: 0; }
+.ad-opt { color: var(--ink); font: 600 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; border-radius: 4px; padding: 3px 6px; }
+.ad-more summary { color: var(--ink); min-height: 48px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ad-line summary { padding: 12px 16px; font-size: 14px; }
+.ad-more-l { margin-left: auto; color: var(--gold); }
+@media (max-width: 860px) { .ad-steps.two { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .ac-row { grid-template-columns: 1fr; gap: 4px; }
+  .ac-row .btn { justify-self: start; }
+  .ac-foot .btn { flex: 1 1 0; }
+  .ad-dl { width: 100%; justify-content: center; }
+}

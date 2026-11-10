@@ -100,7 +100,6 @@ async function signUp(page: Page, name: string) {
   await page.fill("#dn", name);
   await page.fill("#em", email);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(() => lastVerifyToken(email)).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken(email)}`);
@@ -137,7 +136,6 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
   await page.fill("#dn", "Thalion");
   await page.fill("#em", email);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(() => lastVerifyToken(email)).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken(email)}`);

@@ -36,8 +36,7 @@ const guid = (n: number) => `Player-4620-${(RUN + n).toString(16).toUpperCase().
 async function signUp(page: Page, name: string) {
   const email = `${name.toLowerCase()}-${Date.now()}@example.test`;
   await page.goto("/register");
-  await page.fill("#dn", name); await page.fill("#em", email); await page.fill("#pw", PASSWORD); await page.fill("#pw2", PASSWORD);
-  await page.getByRole("button", { name: /créer/i }).click();
+  await page.fill("#dn", name); await page.fill("#em", email); await page.fill("#pw", PASSWORD);  await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(() => lastVerifyToken(email)).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken(email)}`);
   await expect(page.getByText("Adresse confirmée")).toBeVisible();

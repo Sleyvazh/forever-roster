@@ -82,7 +82,6 @@ test("même compte sur les deux adresses", async ({ page }) => {
     await page.fill("#dn", "Voyageuse");
     await page.fill("#em", email);
     await page.fill("#pw", password);
-    await page.fill("#pw2", password);
     await page.getByRole("button", { name: /créer/i }).click();
     await expect(page.getByText("Vérifie tes e-mails")).toBeVisible();
     await expect.poll(() => { try { return lastVerifyMail(email).token; } catch { return ""; } }).not.toBe("");
@@ -135,7 +134,6 @@ test.describe("Roster (WoW Retail)", () => {
       await page.fill("#dn", "Officière");
       await page.fill("#em", email);
       await page.fill("#pw", password);
-      await page.fill("#pw2", password);
       await page.getByRole("button", { name: /créer/i }).click();
       await expect.poll(() => { try { return lastVerifyMail(email).token; } catch { return ""; } }).not.toBe("");
       await page.goto(`${RETAIL}/verify-email#${lastVerifyMail(email).token}`);

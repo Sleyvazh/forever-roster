@@ -3,6 +3,8 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, del, get, patch, post, setCsrf, uploadImage } from "../api";
 import { ImageUpload } from "../components/ImageUpload";
+import { PasswordInput, PasswordRules } from "../components/PasswordInput";
+import { EVENT_LABEL } from "../components/AdminSections";
 import { useMe } from "../auth";
 import { useSite } from "../site";
 import type { GameLangPref } from "@forever/game-data";
@@ -10,7 +12,11 @@ import type { GameLangPref } from "@forever/game-data";
 interface SessionRow { id: string; ip: string | null; userAgent: string | null; createdAt: string; lastSeenAt: string; current: boolean }
 interface EventRow { id: number; type: string; ip: string | null; userAgent: string | null; meta: Record<string, unknown>; createdAt: string }
 
-const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+/** Dates courtes (refonte du 09/11) : « 9 nov., 21:14 », l'année seulement si ce n'est pas celle-ci. */
+const SHORT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const SHORT_Y = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const DAY = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short" });
+const fmt = { format: (d: Date) => (d.getFullYear() === new Date().getFullYear() ? SHORT : SHORT_Y).format(d) };
 const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   register: ["Compte créé", ""], email_verified: ["Adresse confirmée", "ok"], login_success: ["Connexion réussie", "ok"],
   login_failure: ["Échec de connexion", "warn"], login_locked: ["Compte verrouillé 15 min", "bad"], logout: ["Déconnexion", ""],
@@ -31,7 +37,21 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   character_level_fixed: ["Niveau d'un perso corrigé", ""], character_level_released: ["Niveau d'un perso rendu au joueur", ""],
   // Fiches (8/11) : fiche créée pour un joueur (officier), fiche donnée à un autre membre
   character_created_for: ["Fiche créée pour un joueur", ""], character_given: ["Fiche donnée à un autre joueur", ""],
+  // Bug du journal (refonte du 09/11) : actions de guilde sans libellé, qui s'affichaient en code (« loot_count_corrected »)
+  loot_count_corrected: ["Compte d'objets reçus corrigé", ""], group_loot_settings: ["Réglages du butin d'une guilde changés", ""],
+  raid_council: ["Conseil du butin d'un raid changé", ""], group_orders_linked: ["Salon des commandes lié", ""], group_orders_unlinked: ["Salon des commandes délié", ""],
 };
+/**
+ * Libellé d'une ligne du journal : ceux du compte, sinon ceux du journal de guilde à la deuxième personne (« a créé un raid »
+ * → « Tu as créé un raid ») ; jamais le code brut.
+ */
+function eventLabel(type: string): [string, "ok" | "warn" | "bad" | ""] {
+  const own = EVENT[type];
+  if (own) return own;
+  const g = EVENT_LABEL[type];
+  if (g) return [g.replace(/^a /, "Tu as "), ""];
+  return ["Action sur le site", ""];
+}
 
 /** Résumé lisible d'un user-agent, sans bibliothèque. */
 function device(ua: string | null) {
@@ -57,40 +77,80 @@ function useAction() {
   return { run, view };
 }
 
+type Key = "profil" | "securite" | "discord" | "appareils" | "journal" | "supprimer";
+const MENU: [Key, string][] = [["profil", "Profil"], ["securite", "Connexion et sécurité"], ["discord", "Discord et messages"], ["appareils", "Appareils et sessions"], ["journal", "Journal"], ["supprimer", "Supprimer le compte"]];
+
+/**
+ * Compte et sécurité (refonte du 09/11, maquette-compte.png) : un menu à gauche comme l'Administration — Profil · Connexion et
+ * sécurité · Discord et messages · Appareils et sessions · Journal · Supprimer le compte (en rouge). ?section= choisit la
+ * section ; les retours de Battle.net et de Discord ouvrent la leur. Sur téléphone, le menu puis la section.
+ */
 export function AccountPage() {
   const me = useMe();
   const user = me.data!.user!;
   const qc = useQueryClient();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const refreshMe = () => qc.invalidateQueries({ queryKey: ["me"] });
   const site = useSite();
-
+  const sessions = useQuery({ queryKey: ["sessions"], queryFn: () => get<{ sessions: SessionRow[] }>("/account/sessions") }).data?.sessions;
+  const devices = useQuery({ queryKey: ["devices"], queryFn: () => get<{ devices: DeviceRow[] }>("/devices") }).data?.devices;
+  const raw = params.get("section");
+  const back = params.get("bnet") ? "securite" : params.get("discord") || params.get("error")?.startsWith("discord") ? "discord" : params.get("error")?.startsWith("bnet") ? "securite" : null;
+  const picked = (MENU.some(([k]) => k === raw) ? raw : back) as Key | null;
+  const cur: Key = picked ?? "profil";
+  const go = (k: Key) => setParams({ section: k }, { replace: false });
+  const nDevices = (sessions?.length ?? 0) + (devices?.length ?? 0);
+  const subs: Record<Key, string> = {
+    profil: "pseudo, image" + (site.game === "retail" ? ", noms du jeu" : ""),
+    securite: [user.email ? "e-mail" : null, "Battle.net", user.hasPassword ? "mot de passe" : null].filter(Boolean).join(", "),
+    discord: user.discordUsername ? `lié · ${user.discordReminders ? "messages du bot" : "sans messages"}` : "non lié",
+    appareils: `${sessions?.length ?? "…"} session${(sessions?.length ?? 0) > 1 ? "s" : ""}${devices?.length ? `, ${devices.length} appli` : ""}`,
+    journal: "les 100 derniers événements",
+    supprimer: "définitivement",
+  };
+  const sections: Record<Key, ReactNode> = {
+    profil: <>
+      <Profile name={user.displayName} onDone={refreshMe} />
+      <Section title="Image du compte" hint="Visible par toi et les membres de tes guildes.">
+        <ImageUpload title="Avatar" hint="PNG, JPEG ou WebP. Recadrée en 200 × 200, métadonnées supprimées." currentId={user.avatarId} round
+          onUpload={async blob => { await uploadImage("/account/avatar", blob); await refreshMe(); }}
+          onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />
+      </Section>
+      {site.game === "retail" && <GameLanguage pref={user.gameLang} onDone={refreshMe} />}
+    </>,
+    securite: <Security email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet}
+      bnetEnabled={!!me.data?.battlenetEnabled} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />,
+    discord: <DiscordLink username={user.discordUsername} reminders={user.discordReminders} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />,
+    appareils: <>
+      <Sessions />
+      <Devices />
+      {site.game === "forever" && <GameRelay on={user.gameRelay} onDone={refreshMe} />}
+    </>,
+    journal: <AuditLog />,
+    supprimer: <DeleteAccount hasPassword={user.hasPassword} />,
+  };
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
-        <div><div className="eyebrow">Compte</div><h1>Compte &amp; sécurité</h1></div>
-        <p className="small muted" style={{ margin: 0 }}>Ce que le site garde sur toi, combien de temps, et tes droits : <Link to="/confidentialite">confidentialité</Link></p>
+        <div className="ph-t"><span className="eyebrow">Compte</span><h1>Compte et sécurité</h1></div>
+        <Link className="link ac-priv" to="/confidentialite">Ce que le site garde sur toi <span aria-hidden="true">›</span></Link>
       </div>
       {params.get("bnet") === "linked" && <div className="alert ok">Ton compte Battle.net est maintenant lié.</div>}
       {params.get("discord") === "linked" && <div className="alert ok">Ton compte Discord est maintenant lié : tes clics dans le bot t'inscrivent avec tes persos.</div>}
       {DISCORD_ERROR[params.get("error") ?? ""] && <div className="alert error" role="alert">{DISCORD_ERROR[params.get("error")!]}</div>}
-      <div className="grid acct-grid">
-        <Profile name={user.displayName} onDone={refreshMe} />
-        <Section title="Image du compte" hint="Visible par toi et les membres de tes guildes.">
-          <ImageUpload title="Avatar" hint="PNG, JPEG ou WebP. Recadrée en 200 × 200, métadonnées supprimées." currentId={user.avatarId} round
-            onUpload={async blob => { await uploadImage("/account/avatar", blob); await refreshMe(); }}
-            onRemove={async () => { await del("/account/avatar"); await refreshMe(); }} />
-        </Section>
-        <Identity email={user.email} verified={user.emailVerified} battletag={user.battletag} hasPassword={user.hasPassword} hasBnet={user.hasBattlenet} bnetEnabled={!!me.data?.battlenetEnabled} onDone={refreshMe} />
-        <DiscordLink username={user.discordUsername} reminders={user.discordReminders} enabled={!!me.data?.discordEnabled} onDone={refreshMe} />
-        <Password hasPassword={user.hasPassword} canSet={!!user.email && user.emailVerified} onDone={refreshMe} />
-        {site.game === "retail" && <GameLanguage pref={user.gameLang} onDone={refreshMe} />}
-        {site.game === "forever" && <GameRelay on={user.gameRelay} onDone={refreshMe} />}
+      <div className={`adm adm-f ac-page${picked ? " picked" : ""}`}>
+        <nav className="adm-nav" aria-label="Sections du compte">
+          {MENU.map(([k, l]) => (
+            <button key={k} type="button" className={`${cur === k ? "on" : ""}${k === "supprimer" ? " bad" : ""}`} aria-current={cur === k ? "true" : undefined} onClick={() => go(k)}>
+              <b>{l}</b>{k === "appareils" && nDevices > 0 && <span className="ac-n num">{nDevices}</span>}<small>{subs[k]}</small><span className="adm-go" aria-hidden="true">›</span>
+            </button>
+          ))}
+        </nav>
+        <div className="adm-body stack" style={{ gap: 16 }}>
+          {picked && <button type="button" className="mp-back adm-back" onClick={() => setParams({}, { replace: false })}>← Compte</button>}
+          {sections[cur]}
+        </div>
       </div>
-      <Sessions />
-      <Devices />
-      <AuditLog />
-      <DeleteAccount hasPassword={user.hasPassword} />
     </div>
   );
 }
@@ -109,36 +169,80 @@ function Profile({ name, onDone }: { name: string; onDone: () => void }) {
   );
 }
 
-function Identity(p: { email: string | null; verified: boolean; battletag: string | null; hasPassword: boolean; hasBnet: boolean; bnetEnabled: boolean; onDone: () => void }) {
+/**
+ * Connexion et sécurité : une ligne par moyen de connexion — E-mail (✓ confirmée, « Changer l'e-mail »), Battle.net (« Lier
+ * Battle.net » en contour bleu), Mot de passe (« Changé le 24 sept. », formulaire actuel + nouveau avec un œil).
+ */
+function Security(p: { email: string | null; verified: boolean; battletag: string | null; hasPassword: boolean; hasBnet: boolean; bnetEnabled: boolean; canSet: boolean; onDone: () => void }) {
   const [email, setEmail] = useState("");
+  const [mailOpen, setMailOpen] = useState(!p.email || !p.verified);
+  const [pwOpen, setPwOpen] = useState(false);
   const a = useAction();
+  const audit = useQuery({ queryKey: ["audit"], queryFn: () => get<{ events: EventRow[] }>("/account/audit") }).data?.events;
+  const changed = audit?.find(e => e.type === "password_changed" || e.type === "password_reset");
   return (
-    <Section title="Identifiants de connexion">
-      <div className="row between">
-        <span><span className="lbl">E-mail</span><br />{p.email ?? <span className="muted">Aucune adresse</span>}</span>
-        {p.email && <span className={`tag ${p.verified ? "ok" : "warn"}`}>{p.verified ? "Confirmée" : "À confirmer"}</span>}
+    <section className="panel pad stack ac-sec" aria-labelledby="ac-sec-t">
+      <h3 id="ac-sec-t">Connexion et sécurité</h3>
+      <div className="ac-row">
+        <span className="ac-lab">E-mail</span>
+        <span className="ac-val">{p.email ? <>{p.email} · {p.verified ? <b className="ac-ok">✓ confirmée</b> : <b className="ac-warn">à confirmer</b>}</> : "Aucune adresse"}</span>
+        {p.email && p.verified && <button className="btn" type="button" aria-expanded={mailOpen} onClick={() => setMailOpen(o => !o)}>Changer l'e-mail</button>}
       </div>
-      {/* Ajout, ou remplacement tant que l'adresse n'est pas confirmée (mauvaise adresse saisie) */}
-      {(!p.email || !p.verified) && (
-        <form className="stack" style={{ gap: 6 }} onSubmit={e => { e.preventDefault(); void a.run(async () => { const m = (await post<{ message: string }>("/account/email", { email })).message; setEmail(""); p.onDone(); return m; }); }}>
-          {p.email && <span className="muted small">Clique le lien reçu par e-mail pour la confirmer (regarde aussi dans les spams). Pas reçu, ou pas la bonne adresse ? Saisis-la ici : un nouveau lien part, l'ancien ne marche plus.</span>}
+      {/* Ajout, remplacement d'une adresse pas encore confirmée, ou changement */}
+      {mailOpen && (
+        <form className="ac-form" onSubmit={e => { e.preventDefault(); void a.run(async () => { const m = (await post<{ message: string }>("/account/email", { email })).message; setEmail(""); p.onDone(); return m; }); }}>
+          {p.email && !p.verified && <p className="small" style={{ margin: 0 }}>Clique le lien reçu par e-mail pour la confirmer (regarde aussi dans les spams). Pas reçu, ou pas la bonne adresse ? Saisis-la ici : un nouveau lien part, l'ancien ne marche plus.</p>}
           <div className="row">
             <input type="email" required aria-label={p.email ? "Nouvelle adresse e-mail" : "Adresse e-mail"} placeholder="ton@adresse.fr" value={email} onChange={e => setEmail(e.target.value)} style={{ flex: 1 }} />
-            <button className="btn sm" type="submit">{p.email ? "Envoyer le lien" : "Ajouter"}</button>
+            <button className="btn" type="submit">{p.email ? "Envoyer le lien" : "Ajouter"}</button>
           </div>
         </form>
       )}
-      <div className="row between">
-        <span><span className="lbl">Battle.net</span><br />{p.battletag ?? <span className="muted">Non lié</span>}</span>
+      <div className="ac-row">
+        <span className="ac-lab">Battle.net</span>
+        <span className="ac-val">{p.battletag ?? "Non lié · se connecter sans mot de passe"}</span>
         {p.hasBnet ? (
-          <button className="btn ghost sm" type="button" disabled={!p.hasPassword} title={p.hasPassword ? "" : "Ajoute d'abord un mot de passe"}
+          <button className="link neg" type="button" disabled={!p.hasPassword} title={p.hasPassword ? "" : "Ajoute d'abord un mot de passe"}
             onClick={() => void a.run(async () => { await del("/auth/battlenet"); p.onDone(); return "Battle.net délié."; })}>Délier</button>
         ) : p.bnetEnabled ? (
-          <button className="btn bnet sm" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/battlenet/link"); window.location.assign(r.url); })}>Lier Battle.net</button>
-        ) : <span className="muted small">Non configuré sur ce serveur</span>}
+          <button className="btn bnet-o" type="button" onClick={() => void a.run(async () => { const r = await post<{ url: string }>("/auth/battlenet/link"); window.location.assign(r.url); })}>Lier Battle.net</button>
+        ) : <span className="small">Non configuré sur ce serveur</span>}
       </div>
+      <div className="ac-row">
+        <span className="ac-lab">Mot de passe</span>
+        <span className="ac-val">{p.hasPassword ? (changed ? `Changé le ${DAY.format(new Date(changed.createdAt))}` : "Défini") : p.canSet ? "Aucun · connexion via Battle.net" : "Ajoute et confirme une adresse e-mail pour en définir un"}</span>
+        {(p.hasPassword || p.canSet) && !pwOpen && <button className="btn" type="button" onClick={() => setPwOpen(true)}>{p.hasPassword ? "Changer le mot de passe" : "Définir un mot de passe"}</button>}
+      </div>
+      {pwOpen && <PasswordForm hasPassword={p.hasPassword} onClose={() => setPwOpen(false)} onDone={p.onDone} />}
       {a.view}
-    </Section>
+    </section>
+  );
+}
+
+function PasswordForm({ hasPassword, onClose, onDone }: { hasPassword: boolean; onClose: () => void; onDone: () => void }) {
+  const qc = useQueryClient();
+  const [cur, setCur] = useState(""), [next, setNext] = useState("");
+  const a = useAction();
+  return (
+    <form className="ac-form stack" onSubmit={e => {
+      e.preventDefault();
+      void a.run(async () => {
+        await post("/account/password", { currentPassword: hasPassword ? cur : undefined, newPassword: next });
+        setCur(""); setNext(""); onDone(); void qc.invalidateQueries({ queryKey: ["audit"] }); void qc.invalidateQueries({ queryKey: ["sessions"] });
+        return "Mot de passe modifié.";
+      });
+    }}>
+      {hasPassword && <div className="fld"><label htmlFor="cp">Mot de passe actuel</label><PasswordInput id="cp" autoComplete="current-password" required value={cur} onChange={e => setCur(e.target.value)} /></div>}
+      <div className="fld"><label htmlFor="np">Nouveau mot de passe</label>
+        <PasswordInput id="np" autoComplete="new-password" minLength={12} maxLength={128} required value={next} onChange={e => setNext(e.target.value)} aria-describedby="np-rules" />
+        <PasswordRules id="np-rules" value={next} /></div>
+      {a.view}
+      <div className="ac-foot">
+        <span className="ac-warn">Tes autres appareils seront déconnectés.</span>
+        <button className="btn" type="button" onClick={onClose}>Annuler</button>
+        <button className="btn primary" type="submit">{hasPassword ? "Changer le mot de passe" : "Définir le mot de passe"}</button>
+      </div>
+    </form>
   );
 }
 
@@ -154,7 +258,7 @@ const DISCORD_ERROR: Record<string, string> = {
 function DiscordLink({ username, reminders, enabled, onDone }: { username: string | null; reminders: boolean; enabled: boolean; onDone: () => void }) {
   const a = useAction();
   return (
-    <Section title="Discord" hint="Lie ton Discord pour t'inscrire aux raids depuis le bot avec tes persos. Le site ne reçoit que ton identifiant et ton pseudo Discord.">
+    <Section title="Discord et messages" hint="Lie ton Discord pour t'inscrire aux raids depuis le bot avec tes persos. Le site ne reçoit que ton identifiant et ton pseudo Discord.">
       <div className="row between">
         <span><span className="lbl">Compte Discord</span><br />{username ? <b>{username}</b> : <span className="muted">Non lié</span>}</span>
         {username ? (
@@ -173,31 +277,6 @@ function DiscordLink({ username, reminders, enabled, onDone }: { username: strin
         </label>
       )}
       {a.view}
-    </Section>
-  );
-}
-
-function Password({ hasPassword, canSet, onDone }: { hasPassword: boolean; canSet: boolean; onDone: () => void }) {
-  const [cur, setCur] = useState(""), [next, setNext] = useState(""), [conf, setConf] = useState("");
-  const a = useAction();
-  if (!hasPassword && !canSet) return <Section title="Mot de passe" hint="Ajoute et confirme une adresse e-mail pour pouvoir définir un mot de passe."><span className="muted small">Connexion via Battle.net uniquement.</span></Section>;
-  return (
-    <Section title="Mot de passe" hint="Les autres appareils seront déconnectés.">
-      <form className="stack" onSubmit={e => {
-        e.preventDefault();
-        void a.run(async () => {
-          if (next !== conf) throw new ApiError(400, "Les deux mots de passe ne correspondent pas.");
-          await post("/account/password", { currentPassword: hasPassword ? cur : undefined, newPassword: next });
-          setCur(""); setNext(""); setConf(""); onDone();
-          return "Mot de passe modifié.";
-        });
-      }}>
-        {hasPassword && <div className="fld"><label htmlFor="cp">Mot de passe actuel</label><input id="cp" type="password" autoComplete="current-password" required value={cur} onChange={e => setCur(e.target.value)} /></div>}
-        <div className="fld"><label htmlFor="np">Nouveau (12 caractères min.)</label><input id="np" type="password" autoComplete="new-password" minLength={12} maxLength={128} required value={next} onChange={e => setNext(e.target.value)} /></div>
-        <div className="fld"><label htmlFor="np2">Confirmation</label><input id="np2" type="password" autoComplete="new-password" required value={conf} onChange={e => setConf(e.target.value)} /></div>
-        {a.view}
-        <button className="btn" type="submit" style={{ justifySelf: "start" }}>{hasPassword ? "Changer le mot de passe" : "Définir un mot de passe"}</button>
-      </form>
     </Section>
   );
 }
@@ -261,11 +340,11 @@ function Devices() {
 function AuditLog() {
   const { data } = useQuery({ queryKey: ["audit"], queryFn: () => get<{ events: EventRow[] }>("/account/audit") });
   return (
-    <Section title="Journal de sécurité" hint="Les 100 derniers événements liés à ton compte.">
+    <Section title="Journal" hint="Les 100 derniers événements liés à ton compte.">
       <div className="tscroll" style={{ maxHeight: 420, overflowY: "auto" }}><table className="data">
         <thead><tr><th>Date</th><th>Événement</th><th>Adresse IP</th><th>Appareil</th></tr></thead>
         <tbody>{data?.events.map(e => {
-          const [base, tone] = EVENT[e.type] ?? [e.type, ""];
+          const [base, tone] = eventLabel(e.type);
           // Appareils (Roster Companion) : leur nom suit le libellé
           const label = e.type.startsWith("device_") && typeof e.meta.name === "string" ? `${base} : ${e.meta.name}` : base;
           return (
@@ -288,7 +367,7 @@ function DeleteAccount({ hasPassword }: { hasPassword: boolean }) {
   const [v, setV] = useState("");
   const a = useAction();
   return (
-    <Section title="Supprimer mon compte" hint="Supprime définitivement ton compte, tes personnages et tes sessions.">
+    <Section title="Supprimer le compte" hint="Supprime définitivement ton compte, tes personnages et tes sessions.">
       {!open ? <div><button className="btn danger sm" type="button" onClick={() => setOpen(true)}>Supprimer mon compte…</button></div> : (
         <form className="row" onSubmit={e => {
           e.preventDefault();

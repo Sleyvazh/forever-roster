@@ -46,7 +46,6 @@ test("sorties : créer, s'inscrire d'un clic, liste d'attente, place libérée",
   await page.fill("#dn", "Thalion");
   await page.fill("#em", email);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(() => lastVerifyToken(email)).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken(email)}`);

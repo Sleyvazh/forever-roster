@@ -92,7 +92,6 @@ test("Compte & sécurité mène à la confidentialité", async ({ page }) => {
   await page.fill("#dn", "Lectrice");
   await page.fill("#em", email);
   await page.fill("#pw", password);
-  await page.fill("#pw2", password);
   await page.getByRole("button", { name: /créer/i }).click();
   const token = () => readFileSync(LOG, "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
   await expect.poll(token).not.toBe("");
@@ -104,7 +103,7 @@ test("Compte & sécurité mène à la confidentialité", async ({ page }) => {
   await page.getByRole("button", { name: /se connecter/i }).click();
   await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
   await page.goto("/account");
-  await page.locator(".page-head").getByRole("link", { name: "confidentialité" }).click();
+  await page.locator(".page-head").getByRole("link", { name: "Ce que le site garde sur toi" }).click();
   await expect(page).toHaveURL(/\/confidentialite$/);
   // Connecté : la page reste la même, avec la barre du site
   await expect(page.getByRole("heading", { level: 1, name: "Politique de confidentialité" })).toBeVisible();

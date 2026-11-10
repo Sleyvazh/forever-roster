@@ -62,7 +62,6 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   await page.fill("#dn", "Thalion");
   await page.fill("#em", EMAIL);
   await page.fill("#pw", PASSWORD);
-  await page.fill("#pw2", PASSWORD);
   await page.getByRole("button", { name: /créer/i }).click();
   await expect.poll(lastVerifyToken).not.toBe("");
   await page.goto(`/verify-email#${lastVerifyToken()}`);
@@ -457,7 +456,7 @@ test("aperçus du lot K1", async ({ page }) => {
   // 2. Compte & sécurité : appareils reliés (l'appli a reçu son jeton) et journal
   await new Promise(r => setTimeout(r, 4200));
   for (const s of [start, second]) await page.request.post("/api/devices/pair/poll", { data: { pairId: s.pairId } });
-  await page.goto("/account");
+  await page.goto("/account?section=appareils");
   await expect(page.locator("#appareils")).toContainText("PORTABLE");
   await page.locator("#appareils").screenshot({ path: `${OUT}/apercu-appareils.png` });
 });
@@ -477,8 +476,7 @@ test("aperçus des signalements", async ({ page, browser }) => {
   const register = async (p: Page, name: string) => {
     const email = `apercu-${name.toLowerCase()}@example.test`;
     await p.goto("/register");
-    await p.fill("#dn", name); await p.fill("#em", email); await p.fill("#pw", pass); await p.fill("#pw2", pass);
-    await p.getByRole("button", { name: /créer/i }).click();
+    await p.fill("#dn", name); await p.fill("#em", email); await p.fill("#pw", pass);    await p.getByRole("button", { name: /créer/i }).click();
     const tok = () => readFileSync(path.resolve("test-results/api.log"), "utf8").split("\n").filter(l => l.includes(email) && l.includes("verify-email")).at(-1)?.match(/verify-email#([A-Za-z0-9_-]{20,})/)?.[1] ?? "";
     await expect.poll(tok).not.toBe("");
     await p.goto(`/verify-email#${tok()}`);
@@ -571,7 +569,15 @@ test("tour des pages", async ({ page }) => {
   await page.context().route("**/icons/**", r => r.fulfill({ status: 404, body: "" }));
   await roleIcons(page);
   await page.emulateMedia({ colorScheme: "dark" });
+  // Connexion et inscription (refonte du 09/11, lot 7) : œil, règles du mot de passe en direct
+  await page.goto("/register");
+  await page.fill("#pw", "trois chats sur la lune 7");
+  await page.screenshot({ path: path.resolve("test-results/tour/inscription.png"), fullPage: true });
   await page.goto("/login");
+  await page.fill("#password", "exemple de phrase");
+  await page.getByRole("button", { name: "Afficher le mot de passe" }).click();
+  await page.screenshot({ path: path.resolve("test-results/tour/connexion.png"), fullPage: true });
+  await page.fill("#password", "");
   await page.fill("#email", EMAIL);
   await page.fill("#password", PASSWORD);
   await page.getByRole("button", { name: /se connecter/i }).click();
@@ -620,7 +626,7 @@ test("tour des pages", async ({ page }) => {
     ["groupe-membres", `/groups/${group}/membres`], ["groupe-joueurs", `/groups/${group}/membres/joueurs`], ["groupe-persos", `/groups/${group}/membres/persos`], ["groupe-artisans", `/groups/${group}/membres/artisans`],
     ["groupe-presence", `/groups/${group}/raids/presence`],
     ["groupe-admin", `/groups/${group}/admin`], ["raid", `/groups/${group}/raids/${raid}/compo`], ["raid-inscriptions", `/groups/${group}/raids/${raid}/inscriptions`],
-    ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account"], ["addon", "/addon"],
+    ["raid-butin", `/groups/${group}/raids/${raid}/butin`], ["raid-reglages", `/groups/${group}/raids/${raid}/reglages`], ["compte", "/account?section=securite"], ["addon", "/addon"],
   ];
   for (const [w, suffix] of [[1360, ""], [390, "-mobile"]] as const) {
     await page.setViewportSize({ width: w, height: 900 });
