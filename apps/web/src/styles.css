@@ -2620,7 +2620,11 @@ p.rp-meta { margin: 0; color: var(--ink); }
 /* Liste : nom et spés sur deux lignes sans troncature, âge de la synchro à droite */
 .mp-list .card .cav { grid-row: span 2; }
 .mp-list .card .nm, .mp-list .card .sub { white-space: normal; overflow: visible; text-overflow: clip; }
-.mp-list .card .nm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+/* Nom en texte qui coule (« ★ Tournicoti / Tournicoton 36 ») : l'étoile reste avec le premier mot, le niveau avec le dernier */
+.mp-list .card .nm { display: block; line-height: 1.35; min-width: 0; }
+.mp-list .card .nm .nw { white-space: nowrap; }
+.mp-list .card .nm .gm-star { margin-right: 5px; }
+.mp-list .card .nm .lvl-pill { margin: 0 0 0 7px; }
 .mp-list .card .sub { font-size: 13.5px; color: var(--ink); }
 .mp-list .card .sub.need { color: var(--warn); font-weight: 600; }
 .mc-age { grid-row: span 2; align-self: center; display: grid; justify-items: end; font-size: 13px; font-weight: 600; text-align: right; }

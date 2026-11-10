@@ -172,10 +172,28 @@ function CharCard({ c, current, onClick }: { c: Character; current: boolean; onC
         <Portrait id={c.portraitId} size={42} className="round"
           fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span>?</span>} />
       </span>
-      <span className="nm">{c.group?.isMain && <span className="gm-star" title={`Main dans ${c.group.name}`}>★</span>}{c.name}<span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span></span>
+      <CardName c={c} />
       <SyncDot at={c.addonSyncedAt} />
       <span className={`sub${!c.cls || !c.spec1 ? " need" : ""}`}>{!c.cls || !c.spec1 ? "Spé à choisir" : specs}</span>
     </button>
+  );
+}
+
+/**
+ * Nom sur la carte : texte qui coule (« ★ Tournicoti Tournicoton 36 »), l'étoile collée au premier mot et le niveau au
+ * dernier, pour qu'un nom de Forever avec son nom de famille passe à la ligne entre deux mots, jamais l'étoile ou le
+ * niveau seuls sur leur ligne.
+ */
+function CardName({ c }: { c: Character }) {
+  const star = c.group?.isMain ? <span className="gm-star" title={`Main dans ${c.group.name}`}>★</span> : null;
+  const lvl = <span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>;
+  const words = c.name.trim().split(/\s+/);
+  if (words.length < 2) return <span className="nm"><span className="nw">{star}{c.name}{lvl}</span></span>;
+  const middle = words.slice(1, -1).join(" ");
+  return (
+    <span className="nm">
+      <span className="nw">{star}{words[0]}</span> {middle && `${middle} `}<span className="nw">{words[words.length - 1]}{lvl}</span>
+    </span>
   );
 }
 
