@@ -2,6 +2,8 @@
  * Panneau Synchro (refonte du 09/11, lot 1) : ouverture depuis n'importe où (bouton de la barre du haut, Accueil, fiche),
  * touche de synchro du joueur retenue dans ce navigateur, et état de la synchro d'un perso (vert, ou orange à 7 jours).
  */
+import { t } from "./i18n";
+
 const OPEN = "fr-sync-open";
 
 /** Ouvre le panneau Synchro (écouté par SyncPanel, monté dans la barre du haut). */
@@ -39,10 +41,10 @@ export interface SyncState {
 }
 
 export function syncState(at: string | null | undefined, now = Date.now()): SyncState {
-  if (!at) return { tone: "warn", label: "Jamais", ago: null };
+  if (!at) return { tone: "warn", label: t("Jamais"), ago: null };
   const h = Math.max(0, (now - Date.parse(at)) / 3600e3);
   const d = Math.floor(h / 24);
-  const ago = h < 1 ? "à l'instant" : h < 24 ? `il y a ${Math.floor(h)} h` : d === 1 ? "hier" : `il y a ${d} j`;
-  return d >= STALE_DAYS ? { tone: "warn", label: `Il y a ${d} j`, ago } : { tone: "ok", label: "À jour", ago };
+  const ago = h < 1 ? t("à l'instant") : h < 24 ? t("il y a {n} h", { n: Math.floor(h) }) : d === 1 ? t("hier") : t("il y a {n} j", { n: d });
+  return d >= STALE_DAYS ? { tone: "warn", label: t("Il y a {n} j", { n: d }), ago } : { tone: "ok", label: t("À jour"), ago };
 }
 export const isStale = (at: string | null | undefined) => syncState(at).tone === "warn";

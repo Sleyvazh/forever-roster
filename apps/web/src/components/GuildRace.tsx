@@ -3,6 +3,7 @@ import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { useGameText } from "../gameText";
 import { daysUntil, dayMonth, dayTimeShort, hourMin, longDayTime, milestoneText, placeSuffix, raceDateText, useGuildRace } from "../guild";
 import { ClassDot } from "./Outings";
+import { t, tn, tx } from "../i18n";
 
 /**
  * Course au 60 (Forever, lot « Guilde », maquette du 15/10, écran 3) : podium « Premiers 60 », premiers par classe et
@@ -17,7 +18,7 @@ export function CharName({ name, cls, as: Tag = "b", className }: { name: string
   return <Tag className={`cn${cls === "Shaman" ? " sha" : ""}${className ? ` ${className}` : ""}`} style={cls ? { "--cc": classColor(cls) } as CSSProperties : undefined}>{name}</Tag>;
 }
 /** « en 9 jours », « en 1 jour », « en moins d'un jour » (depuis le départ de la course). */
-const inDays = (n: number) => (n < 1 ? "en moins d'un jour" : `en ${n} jour${n > 1 ? "s" : ""}`);
+const inDays = (n: number) => (n < 1 ? t("en moins d'un jour") : tn(n, "en {n} jour", "en {n} jours"));
 /** « 7e », « 1re » avec l'exposant. */
 export const Place = ({ n }: { n: number }) => <>{n}<sup>{placeSuffix(n)}</sup></>;
 
@@ -96,12 +97,12 @@ export function Podium({ places, mini }: { places: RacePodiumPlace[]; mini?: boo
   // Deuxième à gauche, premier au centre, troisième à droite (les ex æquo gardent leur place écrite sur la marche)
   const steps = [places[1] ?? null, places[0] ?? null, places[2] ?? null];
   return (
-    <div className={`pod${mini ? " mini" : ""}`} role="list" aria-label={mini ? "Les trois premiers" : "Premiers 60"}>
+    <div className={`pod${mini ? " mini" : ""}`} role="list" aria-label={mini ? t("Les trois premiers") : t("Premiers 60")}>
       {steps.map((p, i) => {
         const pos = ([2, 1, 3] as const)[i]!;
         if (!p) return (
           <div key={pos} className={`pod-step p${pos}`} role="listitem">
-            <span className="pod-lv">—</span>{!mini && <span className="pod-when">à prendre</span>}
+            <span className="pod-lv">—</span>{!mini && <span className="pod-when">{t("à prendre")}</span>}
             <span className="pod-base" aria-hidden="true">{pos}</span>
           </div>
         );
@@ -109,13 +110,13 @@ export function Podium({ places, mini }: { places: RacePodiumPlace[]; mini?: boo
         // Déjà 60 au premier relevé (guilde liée en cours de course) : ni rang ni date, l'ordre n'est pas connu
         const seen = !!p.reached?.seen;
         return (
-          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? `déjà 60 au premier relevé : ${p.char.name}` : `${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
+          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? t("déjà 60 au premier relevé : {name}", { name: p.char.name }) : `${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
             <ClassDot cls={p.char.cls} size={mini ? "md" : "lg"} />
             <CharName name={p.char.name} cls={p.char.cls} as="span" />
             <span className={`pod-lv${done ? " done" : ""}`}>{done ? `${MAX_LEVEL} ✓` : p.char.xpPct !== null ? `${p.char.level} · ${p.char.xpPct} %` : p.char.level}</span>
-            {!mini && <span className="pod-when">{p.racing ? "encore en course" : seen ? <i>déjà 60 au<br />premier relevé</i> : <>
-              {p.reached?.at ? (p.reached.exact ? `${dayMonth(p.reached.at)} à ${hourMin(p.reached.at)}` : <i>vers le {dayMonth(p.reached.at)}</i>) : "date inconnue"}
-              {p.days !== null && <><br />{inDays(p.days)}</>}{p.char.left && <><br />parti de la guilde</>}
+            {!mini && <span className="pod-when">{p.racing ? t("encore en course") : seen ? <i>{tx("déjà 60 au{br}premier relevé", { br: <br /> })}</i> : <>
+              {p.reached?.at ? (p.reached.exact ? t("{day} à {time}", { day: dayMonth(p.reached.at), time: hourMin(p.reached.at) }) : <i>{t("vers le {day}", { day: dayMonth(p.reached.at) })}</i>) : t("date inconnue")}
+              {p.days !== null && <><br />{inDays(p.days)}</>}{p.char.left && <><br />{t("parti de la guilde")}</>}
             </>}</span>}
             <span className="pod-base" aria-hidden="true">{seen ? "" : p.place}</span>
           </div>
@@ -130,8 +131,8 @@ export function RaceNotStarted({ startsAt }: { startsAt: string }) {
   const d = daysUntil(startsAt);
   return (
     <div className="so-empty">
-      <h3>{d > 1 ? `La course part dans ${d} jours` : d === 1 ? "La course part demain" : "La course part cette nuit"}</h3>
-      <p>Départ à la sortie, <b>{longDayTime(startsAt)}</b>. Rien à faire : les niveaux viennent de la liste de guilde, relevée par l'addon.</p>
+      <h3>{d > 1 ? t("La course part dans {n} jours", { n: d }) : d === 1 ? t("La course part demain") : t("La course part cette nuit")}</h3>
+      <p>{tx("Départ à la sortie, {when}. Rien à faire : les niveaux viennent de la liste de guilde, relevée par l'addon.", { when: <b>{longDayTime(startsAt)}</b> })}</p>
     </div>
   );
 }

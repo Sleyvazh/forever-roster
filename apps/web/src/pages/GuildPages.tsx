@@ -23,6 +23,7 @@ import { NumberField } from "../components/NumberField";
 import {
   AddBot, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
+import { t } from "../i18n";
 
 /**
  * Pages d'une guilde de Forever Roster (refonte du 23/10) : Accueil (/groups/:id), Sorties, Raids (À venir · Passés ·
@@ -49,7 +50,7 @@ function ForeverGroupPage({ tab: fixedTab, sub: fixedSub }: { tab?: string; sub?
   useEffect(() => { if (detail.data && detail.data.group.game === site.game) rememberGuild(groupId); }, [detail.data, groupId, site.game]);
   const guard: Guard = async fn => {
     setError(null);
-    try { await fn(); } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
+    try { await fn(); } catch (e) { setError(e instanceof ApiError ? e.message : t("Action impossible.")); }
   };
   const base = `/groups/${groupId}`;
   // Anciennes adresses des onglets
@@ -58,8 +59,8 @@ function ForeverGroupPage({ tab: fixedTab, sub: fixedSub }: { tab?: string; sub?
   if (tab === "presence") return <Navigate to={`${base}/raids/presence`} replace />;
   if (tab === "persos") return <Navigate to={`${base}/membres/persos${loc.search}`} replace />;
 
-  if (detail.isLoading) return <p className="muted">Chargement…</p>;
-  if (detail.error || !detail.data) return <div className="panel empty"><h2>Guilde introuvable</h2><Link to="/">Retour à l'accueil</Link></div>;
+  if (detail.isLoading) return <p className="muted">{t("Chargement…")}</p>;
+  if (detail.error || !detail.data) return <div className="panel empty"><h2>{t("Guilde introuvable")}</h2><Link to="/">{t("Retour à l'accueil")}</Link></div>;
   if (detail.data.group.game !== site.game) return <OtherSite group={detail.data.group} />;
   const d = detail.data;
   const err = error && <div className="alert error" role="alert">{error}</div>;
@@ -106,17 +107,17 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
   const now = Date.now();
   const past = (raids ?? []).filter(r => !!r.scheduledAt && Date.parse(r.scheduledAt) < now - PAST_AFTER_MS).length;
   const next = (raids?.length ?? 0) - past;
-  const tabs: [typeof view, string, string][] = [["next", raids ? `À venir (${next})` : "À venir", ""], ["past", raids ? `Passés (${past})` : "Passés", "/passes"], ["presence", "Présence", "/presence"]];
+  const tabs: [typeof view, string, string][] = [["next", raids ? t("À venir ({n})", { n: next }) : t("À venir"), ""], ["past", raids ? t("Passés ({n})", { n: past }) : t("Passés"), "/passes"], ["presence", t("Présence"), "/presence"]];
   // Mes absences (refonte du 09/11) : en haut de la page Raids, là où elles servent (elles quittent Mes persos)
   const absences = useQuery({ queryKey: ["absences"], queryFn: () => get<{ absences: Absence[] }>("/absences") }).data?.absences;
   const [abOpen, setAbOpen] = useState(false);
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <GuildHead groupId={groupId} name={d.group.name} title="Raids"
+      <GuildHead groupId={groupId} name={d.group.name} title={t("Raids")}
         actions={<>
           <button type="button" className="btn" aria-expanded={abOpen} aria-controls="rp-abs" onClick={() => setAbOpen(o => !o)}>
-            Mes absences{absences?.length ? ` · ${absences.length}` : ""}</button>
-          {d.group.creators.canCreateRaid && view !== "presence" && !creating && <button type="button" className="btn primary" onClick={() => setCreating(true)}>+ Raid</button>}
+            {t("Mes absences")}{absences?.length ? ` · ${absences.length}` : ""}</button>
+          {d.group.creators.canCreateRaid && view !== "presence" && !creating && <button type="button" className="btn primary" onClick={() => setCreating(true)}>{t("+ Raid")}</button>}
         </>} />
       {abOpen && <div className="panel pad" id="rp-abs"><MyAbsences /></div>}
       <div className="panel lift">

@@ -1,5 +1,7 @@
-import { SIGNUP_HINT, SIGNUP_LABEL, type SignupStatus } from "@forever/game-data";
+import { type SignupStatus } from "@forever/game-data";
 import { useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
+import { signupHint, signupLabel } from "../i18n/game";
 
 /**
  * Inscription à un raid (refonte du 23/10) : trois statuts visibles, les mêmes mots que les boutons Discord (Présent,
@@ -30,21 +32,21 @@ export function SignupButtons({ value, onPick, label, lg, busy, canCome = true, 
   return (
     <span className={lg ? "ans-btns" : "wk-seg"} role="group" aria-label={label} ref={ref}>
       {MAIN_STATUSES.map(st => (
-        <button key={st} type="button" className={`su-btn ${st}${lg ? " lg" : ""}`} aria-pressed={value === st} title={SIGNUP_HINT[st]}
-          disabled={busy || (st !== "absent" && !canCome)} onClick={() => pick(st)}>{SIGNUP_LABEL[st]}</button>
+        <button key={st} type="button" className={`su-btn ${st}${lg ? " lg" : ""}`} aria-pressed={value === st} title={signupHint(st)}
+          disabled={busy || (st !== "absent" && !canCome)} onClick={() => pick(st)}>{signupLabel(st)}</button>
       ))}
       <span className="su-more-wrap">
         <button type="button" className={`su-more${lg ? "" : " sm"}${other ? ` on ${other}` : ""}`} aria-haspopup="menu" aria-expanded={open}
-          aria-label={other ? `Autre réponse : ${SIGNUP_LABEL[other]}` : "Autre réponse : en retard, reroll, banc"} disabled={busy} onClick={() => setOpen(o => !o)}>
-          {other ? <span>{SIGNUP_LABEL[other]}</span> : <span className={lg ? "wide" : "sr-only"}>Autre</span>}<span className="chev" aria-hidden="true" />
+          aria-label={other ? t("Autre réponse : {status}", { status: signupLabel(other) }) : t("Autre réponse : en retard, reroll, banc")} disabled={busy} onClick={() => setOpen(o => !o)}>
+          {other ? <span>{signupLabel(other)}</span> : <span className={lg ? "wide" : "sr-only"}>{t("Autre")}</span>}<span className="chev" aria-hidden="true" />
         </button>
         {open && (
           <span className="su-menu" role="menu">
             {OTHER_STATUSES.map(st => (
               <button key={st} type="button" role="menuitemradio" aria-checked={value === st} className={`su-mi ${st}`} disabled={!canCome}
-                onClick={() => pick(st)}><b>{SIGNUP_LABEL[st]}</b><small>{SIGNUP_HINT[st]}</small></button>
+                onClick={() => pick(st)}><b>{signupLabel(st)}</b><small>{signupHint(st)}</small></button>
             ))}
-            {onClear && value && <button type="button" role="menuitem" className="su-mi clear" onClick={() => { setOpen(false); onClear(); }}><b>Me désinscrire</b></button>}
+            {onClear && value && <button type="button" role="menuitem" className="su-mi clear" onClick={() => { setOpen(false); onClear(); }}><b>{t("Me désinscrire")}</b></button>}
           </span>
         )}
       </span>

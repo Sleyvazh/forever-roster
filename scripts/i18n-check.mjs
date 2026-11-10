@@ -39,6 +39,25 @@ for (const f of files(src)) {
   for (const m of text.matchAll(PLURAL)) for (const lit of [m[1], m[2]]) if (!used.has(unquote(lit))) used.set(unquote(lit), where(m.index));
 }
 
+// Libellés français de packages/game-data affichés par le site à travers i18n/game.ts : leurs valeurs comptent comme des textes
+const GAME_LABELS = [
+  ["core.ts", "SIGNUP_LABEL"], ["core.ts", "SIGNUP_HINT"],
+  ["loot.ts", "LOOT_MODE_LABEL"], ["loot.ts", "LOOT_MODE_HINT"], ["loot.ts", "RETAIL_LOOT_MODE_LABEL"], ["loot.ts", "RETAIL_LOOT_MODE_HINT"],
+  ["loot.ts", "LOOT_RESPONSE_LABEL"], ["loot.ts", "LOOT_METHOD_LABEL"], ["loot.ts", "LOOT_CATEGORY_LABEL"],
+  ["prep.ts", "CONSUMABLE_TARGET_LABEL"], ["raidlog.ts", "ATTENDANCE_LABEL"],
+];
+for (const [f, name] of GAME_LABELS) {
+  const text = readFileSync(path.join(root, "packages/game-data/src", f), "utf8");
+  const start = text.search(new RegExp(String.raw`(?:export )?const ${name}\b[^=]*=\s*\{`));
+  if (start < 0) { console.log(`  ${f} : table ${name} introuvable`); process.exit(1); }
+  let i = text.indexOf("{", start), depth = 0, end = i;
+  for (; end < text.length; end++) { if (text[end] === "{") depth++; else if (text[end] === "}" && --depth === 0) break; }
+  for (const m of text.slice(i, end).matchAll(/:\s*("(?:[^"\\]|\\.)*")/g)) {
+    const k = JSON.parse(m[1]);
+    if (!used.has(k)) used.set(k, `packages/game-data/src/${f} (${name})`);
+  }
+}
+
 const catalog = JSON.parse(readFileSync(catalogFile, "utf8"));
 const vars = (s) => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort().join(",");
 

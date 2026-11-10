@@ -1,12 +1,11 @@
-import {
-  classColor, CLASSES, itemLinks, lootCategoryText, LOOT_COUNT_DAYS, lootCountLabel, lootModeHint, lootModeLabel, lootModesOf, retailLootMode,
-  type ClassName, type LootCategoryCounts, type LootCountBy, type LootCountMode, type LootMode, type LootSettings,
-} from "@forever/game-data";
+import { classColor, CLASSES, itemLinks, lootCategoryText, LOOT_COUNT_DAYS, lootModesOf, retailLootMode, type ClassName, type LootCategoryCounts, type LootCountBy, type LootCountMode, type LootMode, type LootSettings } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, post, put, type Character } from "../api";
 import { useSite } from "../site";
 import { ExternalLink } from "./ExternalLink";
+import { dateLocale, getLang, N, t, tn, tx } from "../i18n";
+import { lootCountText, lootModeHintText, lootModeName } from "../i18n/game";
 
 /**
  * Butin des raids (lot C2) : choix du mode, soft reserve d'un raid, réglages du groupe. Classes CSS « lt- ».
@@ -14,7 +13,7 @@ import { ExternalLink } from "./ExternalLink";
  */
 
 const clsColor = (cls: string) => classColor(cls);
-const hm = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const hm = () => new Intl.DateTimeFormat(dateLocale(), { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
 /* ---------- Choix du mode (création du raid, raids récurrents, page du raid) ---------- */
 
@@ -27,15 +26,15 @@ export function LootModePicker({ mode: raw, hidden, onChange, idPrefix = "lt" }:
   // Trois choix (deux sur Roster) en un sélecteur ; l'explication seulement pour le choix fait (lot E)
   return (
     <div className="lt-pick">
-      <div className="seg" role="radiogroup" aria-label="Butin" id={`${idPrefix}-mode`}>
+      <div className="seg" role="radiogroup" aria-label={t("Butin")} id={`${idPrefix}-mode`}>
         {lootModesOf(game).map(m => (
-          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""} onClick={() => onChange(m, hidden)}>{lootModeLabel(m, game)}</button>
+          <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""} onClick={() => onChange(m, hidden)}>{lootModeName(m, game)}</button>
         ))}
       </div>
-      <p className="hint lt-hint">{lootModeHint(mode, game)}</p>
+      <p className="hint lt-hint">{lootModeHintText(mode, game)}</p>
       {mode === "softres" && (
         <label className="lt-check"><input type="checkbox" checked={hidden} onChange={e => onChange(mode, e.target.checked)} />
-          Réservations cachées jusqu'à la fermeture <span className="muted small">(sinon visibles de tous)</span></label>
+          {t("Réservations cachées jusqu'à la fermeture")} <span className="muted small">{t("(sinon visibles de tous)")}</span></label>
       )}
     </div>
   );
@@ -44,13 +43,13 @@ export function LootModePicker({ mode: raw, hidden, onChange, idPrefix = "lt" }:
 export function LootModeTag({ mode }: { mode: LootMode }) {
   const game = useSite().game;
   const m = game === "retail" ? retailLootMode(mode) : mode;
-  return m === "journal" ? null : <span className="tag gold">{lootModeLabel(m, game, true)}</span>;
+  return m === "journal" ? null : <span className="tag gold">{lootModeName(m, game, true)}</span>;
 }
 
 /** Détail des objets reçus, après le total : « 2 BiS · 3 Up · 1 MS » ; rien si tout est à 0. Classe « lc-det ». */
 export function LootDetail({ detail }: { detail: LootCategoryCounts | undefined }) {
   const text = detail ? lootCategoryText(detail) : "";
-  return text ? <span className="lc-det" title="Conseil BiS · conseil Upgrade · jets MS (le reste compte dans le total seulement)">{text}</span> : null;
+  return text ? <span className="lc-det" title={t("Conseil BiS · conseil Upgrade · jets MS (le reste compte dans le total seulement)")}>{text}</span> : null;
 }
 
 /* ---------- Soft reserve d'un raid ---------- */
@@ -70,7 +69,7 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
   const [q, setQ] = useState(""), [debounced, setDebounced] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 250); return () => clearTimeout(t); }, [q]);
+  useEffect(() => { const timer = setTimeout(() => setDebounced(q.trim()), 250); return () => clearTimeout(timer); }, [q]);
   useEffect(() => { if (!charId && myChars[0]) setCharId(myChars[0].id); }, [myChars, charId]);
   const options = useQuery({
     queryKey: ["loot-options", raidId, debounced], enabled: adding,
@@ -86,12 +85,12 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
   const run = async (fn: () => Promise<SoftResView>) => {
     setError(null);
     try { qc.setQueryData(["softres", raidId], await fn()); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); }
+    catch (e) { setError(e instanceof ApiError ? e.message : t("Action impossible.")); }
   };
   const reserve = (itemId: number) => char && run(() => put<SoftResView>(`/groups/${groupId}/raids/${raidId}/soft-reserves`, { characterId: char.id, itemId }));
   const remove = (characterId: string, itemId: number) => run(() => del<SoftResView>(`/groups/${groupId}/raids/${raidId}/soft-reserves?characterId=${characterId}&itemId=${itemId}`));
   const reserved = new Set(v.items.filter(i => i.reservers.some(r => r.characterId === char?.id)).map(i => i.item.id));
-  const closes = v.closesAt ? hm.format(new Date(v.closesAt)) : null;
+  const closes = v.closesAt ? hm().format(new Date(v.closesAt)) : null;
 
   const pickList = (list: { id: number; name: string; quality: number; boss?: string }[], title: string) => list.length > 0 && (
     <div className="lt-opts">
@@ -102,7 +101,7 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
             <ExternalLink className={`q${o.quality}`} href={itemLinks(o.id).wowhead}>[{o.name}]</ExternalLink>
             {o.boss && <span className="muted small"> · {o.boss}</span>}
             <button type="button" className="btn sm" style={{ marginLeft: "auto" }} disabled={!char || full || reserved.has(o.id) || !v.open}
-              onClick={() => void reserve(o.id)}>{reserved.has(o.id) ? "★ Réservé" : "Réserver"}</button>
+              onClick={() => void reserve(o.id)}>{reserved.has(o.id) ? t("★ Réservé") : t("Réserver")}</button>
           </li>
         ))}
       </ul>
@@ -112,34 +111,34 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
   return (
     <section className="panel pad stack" aria-labelledby="sr-title">
       <div className="row between">
-        <h3 id="sr-title" style={{ margin: 0 }}>Soft reserve</h3>
-        <span className="hint">{v.settings.count} réservation{v.settings.count > 1 ? "s" : ""} par perso{v.settings.srPlus && ` · SR+ : +${v.settings.step} par raid réservé sans l'avoir eu`}
-          {" · "}{v.open ? (closes ? `ferme ${closes}` : "ouvert") : <b>fermé</b>}</span>
+        <h3 id="sr-title" style={{ margin: 0 }}>{t("Soft reserve")}</h3>
+        <span className="hint">{tn(v.settings.count, "{n} réservation par perso", "{n} réservations par perso")}{v.settings.srPlus && t(" · SR+ : +{step} par raid réservé sans l'avoir eu", { step: v.settings.step })}
+          {" · "}{v.open ? (closes ? t("ferme {when}", { when: closes }) : t("ouvert")) : <b>{t("fermé")}</b>}</span>
       </div>
-      {v.hidden && <p className="hint" style={{ margin: 0 }}>Réservations cachées jusqu'à la fermeture : tu ne vois que les tiennes ({v.total} au total).</p>}
+      {v.hidden && <p className="hint" style={{ margin: 0 }}>{t("Réservations cachées jusqu'à la fermeture : tu ne vois que les tiennes ({n} au total).", { n: v.total })}</p>}
 
       {myChars.length > 0 && v.open && (
         <div className="row lt-me">
-          <b>Mes réservations</b><span className="tag gold num">{used}/{v.settings.count}</span>
+          <b>{t("Mes réservations")}</b><span className="tag gold num">{used}/{v.settings.count}</span>
           {myChars.length > 1 && (
-            <select aria-label="Perso qui réserve" value={charId} onChange={e => setCharId(e.target.value)}>
+            <select aria-label={t("Perso qui réserve")} value={charId} onChange={e => setCharId(e.target.value)}>
               {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name}</option>)}
             </select>
           )}
           {!adding
-            ? <button type="button" className="btn sm primary" disabled={full} onClick={() => setAdding(true)}>{full ? "Limite atteinte" : "Réserver un objet"}</button>
-            : <button type="button" className="btn ghost sm" onClick={() => { setAdding(false); setQ(""); }}>Fermer</button>}
+            ? <button type="button" className="btn sm primary" disabled={full} onClick={() => setAdding(true)}>{full ? t("Limite atteinte") : t("Réserver un objet")}</button>
+            : <button type="button" className="btn ghost sm" onClick={() => { setAdding(false); setQ(""); }}>{t("Fermer")}</button>}
         </div>
       )}
       {adding && (
         <div className="lt-add stack">
-          <input type="search" aria-label="Chercher un objet" placeholder="Nom de l'objet (2 lettres au moins)…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+          <input type="search" aria-label={t("Chercher un objet")} placeholder={t("Nom de l'objet (2 lettres au moins)…")} value={q} onChange={e => setQ(e.target.value)} autoFocus />
           {options.data && (
             <>
-              {pickList(options.data.catalog, "Vus tomber dans ce raid")}
-              {pickList(options.data.search, "Autres objets")}
+              {pickList(options.data.catalog, t("Vus tomber dans ce raid"))}
+              {pickList(options.data.search, t("Autres objets"))}
               {!options.data.catalog.length && !options.data.search.length && (
-                <p className="hint" style={{ margin: 0 }}>{debounced.length >= 2 ? "Aucun objet trouvé." : "Le site apprend le butin de chaque raid grâce aux bilans de l'addon. En attendant, cherche l'objet par son nom."}</p>
+                <p className="hint" style={{ margin: 0 }}>{debounced.length >= 2 ? t("Aucun objet trouvé.") : t("Le site apprend le butin de chaque raid grâce aux bilans de l'addon. En attendant, cherche l'objet par son nom.")}</p>
               )}
             </>
           )}
@@ -147,26 +146,26 @@ export function SoftReservePanel({ groupId, raidId, myChars, officer }: { groupI
       )}
       {error && <div className="alert error" role="alert">{error}</div>}
 
-      {v.items.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucune réservation pour l'instant.</p> : (
+      {v.items.length === 0 ? <p className="muted" style={{ margin: 0 }}>{t("Aucune réservation pour l'instant.")}</p> : (
         <div className="tscroll"><table className="data lt-table">
-          <thead><tr><th>Objet</th><th>Boss</th><th>Réservé par</th></tr></thead>
+          <thead><tr><th>{t("Objet")}</th><th>{t("Boss")}</th><th>{t("Réservé par")}</th></tr></thead>
           <tbody>{v.items.map(i => (
             <tr key={i.item.id}>
               <td><ExternalLink className={`q${i.item.quality}`} href={itemLinks(i.item.id).wowhead}>[{i.item.name}]</ExternalLink>
                 {i.reservers.length > 1 && <span className="tag warn" style={{ marginLeft: 8 }}>{i.reservers.length} SR</span>}</td>
               <td className="muted small">{i.boss || "—"}</td>
               <td><span className="lt-who">{i.reservers.map(r => (
-                <span key={r.characterId} className={`lt-res${r.mine ? " mine" : ""}`} title={`${r.owner}${r.isMain ? " · main" : " · alt"}`}>
+                <span key={r.characterId} className={`lt-res${r.mine ? " mine" : ""}`} title={`${r.owner}${r.isMain ? t(" · main") : t(" · alt")}`}>
                   {r.isMain ? "★ " : ""}<b style={{ color: clsColor(r.cls) }}>{r.name}</b>
                   {r.bonus > 0 && <span className="lt-bonus">+{r.bonus}</span>}
-                  {(r.mine || officer) && (v.open || officer) && <button type="button" className="lt-x" aria-label={`Retirer la réservation de ${r.name}`} onClick={() => void remove(r.characterId, i.item.id)}>×</button>}
+                  {(r.mine || officer) && (v.open || officer) && <button type="button" className="lt-x" aria-label={t("Retirer la réservation de {name}", { name: r.name })} onClick={() => void remove(r.characterId, i.item.id)}>×</button>}
                 </span>
               ))}</span></td>
             </tr>
           ))}</tbody>
         </table></div>
       )}
-      <p className="hint" style={{ margin: 0 }}>En raid, les réservants d'un objet le jouent aux dés (bonus SR+ ajouté). Plusieurs réservations du même objet : « 2 SR ».</p>
+      <p className="hint" style={{ margin: 0 }}>{t("En raid, les réservants d'un objet le jouent aux dés (bonus SR+ ajouté). Plusieurs réservations du même objet : « 2 SR ».")}</p>
     </section>
   );
 }
@@ -190,55 +189,55 @@ export function LootSettingsPanel({ groupId }: { groupId: string }) {
     try {
       const r = await put<{ settings: LootSettings }>(`/groups/${groupId}/loot-settings`, next);
       qc.setQueryData(["loot-settings", groupId], r); setS(r.settings);
-      setMsg({ ok: true, text: "Enregistré." });
-    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Enregistrement impossible." }); }
+      setMsg({ ok: true, text: t("Enregistré.") });
+    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : t("Enregistrement impossible.") }); }
   };
   const setS2 = (next: LootSettings) => void change(next);
   return (
     <section className="stack admin-sec" aria-labelledby="lt-set">
-      <h3 id="lt-set">Butin</h3>
+      <h3 id="lt-set">{t("Butin")}</h3>
       {retail
-        ? <p className="hint" style={{ margin: 0 }}>Le mode (journal, ou conseil : distribution par l'addon Roster) se choisit à la création de chaque raid. Pas de soft reserve sur Roster. Ici, le compte des objets reçus.</p>
-        : <p className="hint" style={{ margin: 0 }}>Le mode (journal, loot council, soft reserve) se choisit à la création de chaque raid. Ici, les réglages communs.</p>}
+        ? <p className="hint" style={{ margin: 0 }}>{t("Le mode (journal, ou conseil : distribution par l'addon Roster) se choisit à la création de chaque raid. Pas de soft reserve sur Roster. Ici, le compte des objets reçus.")}</p>
+        : <p className="hint" style={{ margin: 0 }}>{t("Le mode (journal, loot council, soft reserve) se choisit à la création de chaque raid. Ici, les réglages communs.")}</p>}
       {!retail && <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="lt-count">Réservations par perso</label>
+        <div className="fld" style={{ flex: "0 1 170px" }}><label htmlFor="lt-count">{t("Réservations par perso")}</label>
           <select id="lt-count" value={s.srCount} onChange={e => setS2({ ...s, srCount: Number(e.target.value) })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}</select></div>
-        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-close">Fermeture SR</label>
+        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-close">{t("Fermeture SR")}</label>
           <select id="lt-close" value={s.srCloseMinutes} onChange={e => setS2({ ...s, srCloseMinutes: Number(e.target.value) })}>
-            {[[0, "à l'heure du raid"], [30, "30 min avant"], [60, "1 h avant"], [120, "2 h avant"], [1440, "la veille"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {[[0, t("à l'heure du raid")], [30, t("30 min avant")], [60, t("1 h avant")], [120, t("2 h avant")], [1440, t("la veille")]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select></div>
-        <label className="lt-check"><input type="checkbox" checked={s.srPlus} onChange={e => setS2({ ...s, srPlus: e.target.checked })} /> SR+ : bonus au jet</label>
-        {s.srPlus && <div className="fld" style={{ flex: "0 1 140px" }}><label htmlFor="lt-step">Bonus par raid</label>
+        <label className="lt-check"><input type="checkbox" checked={s.srPlus} onChange={e => setS2({ ...s, srPlus: e.target.checked })} /> {t("SR+ : bonus au jet")}</label>
+        {s.srPlus && <div className="fld" style={{ flex: "0 1 140px" }}><label htmlFor="lt-step">{t("Bonus par raid")}</label>
           <select id="lt-step" value={s.srPlusStep} onChange={e => setS2({ ...s, srPlusStep: Number(e.target.value) })}>{[5, 10, 15, 20, 25].map(n => <option key={n} value={n}>+{n}</option>)}</select></div>}
-        <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS2({ ...s, mainsFirst: e.target.checked })} /> Mains avant alts</label>
+        <label className="lt-check"><input type="checkbox" checked={s.mainsFirst} onChange={e => setS2({ ...s, mainsFirst: e.target.checked })} /> {t("Mains avant alts")}</label>
       </div>}
-      <h4 className="gm-sec" style={{ marginTop: 6 }}>Objets reçus</h4>
+      <h4 className="gm-sec" style={{ marginTop: 6 }}>{t("Objets reçus")}</h4>
       {retail
-        ? <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (colonne « Reçus » de l'addon Roster) et dans l'onglet Présence &amp; butin, d'après les bilans des raids. Comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés ; pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>
-        : <p className="hint" style={{ margin: 0 }}>Compte montré au conseil du butin (addon) et dans l'onglet Présence &amp; butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.</p>}
+        ? <p className="hint" style={{ margin: 0 }}>{t("Compte montré au conseil du butin (colonne « Reçus » de l'addon Roster) et dans l'onglet Présence & butin, d'après les bilans des raids. Comptent le conseil BiS et Upgrade, les jets MS, les objets donnés par le chef de butin et ceux seulement notés ; pas les jets OS, le jet libre, Off-Spec, Transmo ni les objets gardés par le chef de butin. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.")}</p>
+        : <p className="hint" style={{ margin: 0 }}>{t("Compte montré au conseil du butin (addon) et dans l'onglet Présence & butin. Comptent la soft reserve, les jets MS, le conseil BiS et Upgrade, et les objets notés sans méthode ; pas les jets OS, le jet libre, Off-Spec ni Transmo. Détail sous le total : BiS, Upgrade et jets MS. Corrections : fiche du joueur (onglet Membres) et bilan de chaque raid.")}</p>}
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-cm">Période</label>
+        <div className="fld" style={{ flex: "0 1 200px" }}><label htmlFor="lt-cm">{t("Période")}</label>
           <select id="lt-cm" value={s.countMode} onChange={e => setS2({ ...s, countMode: e.target.value as LootCountMode })}>
-            <option value="season">Saison</option><option value="days">{LOOT_COUNT_DAYS} derniers jours</option><option value="raids">Derniers raids</option>
+            <option value="season">{t("Saison")}</option><option value="days">{t("{n} derniers jours", { n: LOOT_COUNT_DAYS })}</option><option value="raids">{t("Derniers raids")}</option>
           </select></div>
         {s.countMode === "season" && <>
-          <div className="fld" style={{ flex: "0 1 180px" }}><label htmlFor="lt-ss">Début de la saison</label>
+          <div className="fld" style={{ flex: "0 1 180px" }}><label htmlFor="lt-ss">{t("Début de la saison")}</label>
             <input id="lt-ss" type="date" value={s.seasonStart ?? ""} max={todayParis()} onChange={e => setS2({ ...s, seasonStart: e.target.value || null })} /></div>
-          <button type="button" className="btn sm" onClick={() => setS2({ ...s, seasonStart: todayParis() })} title="Le compte repart de zéro aujourd'hui ; l'historique reste">Nouvelle saison aujourd'hui</button>
+          <button type="button" className="btn sm" onClick={() => setS2({ ...s, seasonStart: todayParis() })} title={t("Le compte repart de zéro aujourd'hui ; l'historique reste")}>{t("Nouvelle saison aujourd'hui")}</button>
         </>}
-        {s.countMode === "raids" && <div className="fld" style={{ flex: "0 1 160px" }}><label htmlFor="lt-cr">Nombre de raids</label>
-          <select id="lt-cr" value={s.countRaids} onChange={e => setS2({ ...s, countRaids: Number(e.target.value) })}>{[3, 5, 8, 10, 15, 20].map(n => <option key={n} value={n}>{n} derniers</option>)}</select></div>}
-        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-cb">Compter par</label>
+        {s.countMode === "raids" && <div className="fld" style={{ flex: "0 1 160px" }}><label htmlFor="lt-cr">{t("Nombre de raids")}</label>
+          <select id="lt-cr" value={s.countRaids} onChange={e => setS2({ ...s, countRaids: Number(e.target.value) })}>{[3, 5, 8, 10, 15, 20].map(n => <option key={n} value={n}>{t("{n} derniers", { n })}</option>)}</select></div>}
+        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-cb">{t("Compter par")}</label>
           <select id="lt-cb" value={s.countBy} onChange={e => setS2({ ...s, countBy: e.target.value as LootCountBy })}>
-            <option value="player">Joueur (main et alts)</option><option value="character">Perso</option>
+            <option value="player">{t("Joueur (main et alts)")}</option><option value="character">{t("Perso")}</option>
           </select></div>
       </div>
-      <p className="small muted" style={{ margin: 0 }}>Compte actuel : objets reçus {lootCountLabel(s)}{s.countBy === "player" ? ", main et alts ensemble" : ", perso par perso"}.</p>
+      <p className="small muted" style={{ margin: 0 }}>{s.countBy === "player" ? t("Compte actuel : objets reçus {period}, main et alts ensemble.", { period: lootCountText(s) }) : t("Compte actuel : objets reçus {period}, perso par perso.", { period: lootCountText(s) })}</p>
       {msg && (msg.ok ? <span className="small muted" role="status">{msg.text}</span> : <div className="alert error" role="alert">{msg.text}</div>)}
       <LootHistoryImport groupId={groupId} />
       {retail
-        ? <p className="hint" style={{ margin: 0 }}>Conseil : les officiers de la guilde le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).</p>
-        : <p className="hint" style={{ margin: 0 }}>Loot council : les officiers de la guilde forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.</p>}
+        ? <p className="hint" style={{ margin: 0 }}>{t("Conseil : les officiers de la guilde le forment, sauf choix fait pour un raid (onglet Butin du raid). En jeu, le chef de butin reçoit les objets ; chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo, le conseil vote, ou le chef de butin lance les jets (MS / OS, jet libre).")}</p>
+        : <p className="hint" style={{ margin: 0 }}>{t("Loot council : les officiers de la guilde forment le conseil. En jeu, chaque joueur répond BiS, Upgrade, Off-Spec ou Transmo ; le conseil vote, objet par objet.")}</p>}
     </section>
   );
 }
@@ -252,10 +251,11 @@ interface HistoryRow {
 }
 interface HistoryResult { label: string; rows: HistoryRow[]; created: number; ignored: string[] }
 const HISTORY_STATUS: Record<HistoryRow["status"], [string, string]> = {
-  new: ["à ajouter", "tag ok"], exists: ["déjà importé", "tag"], unknown: ["pas dans la guilde", "tag warn"],
-  ambiguous: ["plusieurs persos", "tag warn"], empty: ["rien à compter", "tag"],
+  new: [N("à ajouter"), "tag ok"], exists: [N("déjà importé"), "tag"], unknown: [N("pas dans la guilde"), "tag warn"],
+  ambiguous: [N("plusieurs persos"), "tag warn"], empty: [N("rien à compter"), "tag"],
 };
 const HISTORY_SAMPLE = "Season loot count - 64 items (Season 2)\n\nQuinlan - BiS 3, Spé 1 4 (total 7)\n  - Crochet de malveillance ombreuse\n  - Crispins roussis par le venin\n…";
+const HISTORY_SAMPLE_EN = "Season loot count - 64 items (Season 2)\n\nQuinlan - BiS 3, Spec 1 4 (total 7)\n  - Onslaught Girdle\n  - Band of Accuria\n…";
 
 /** Liste d'objets reçus avant le site (autre outil, tableur) : une correction du compte par joueur reconnu. */
 function LootHistoryImport({ groupId }: { groupId: string }) {
@@ -270,53 +270,50 @@ function LootHistoryImport({ groupId }: { groupId: string }) {
     try {
       const r = await post<HistoryResult>(`/groups/${groupId}/loot-history`, { text, label: label.trim() || undefined, apply });
       setRes(r);
-      if (apply) setMsg({ ok: true, text: r.created ? `${r.created} joueur${r.created > 1 ? "s" : ""} ajouté${r.created > 1 ? "s" : ""} au compte (${r.label}).` : "Rien de nouveau : ces joueurs ont déjà leur correction." });
-    } catch (e) { setRes(null); setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Import impossible." }); }
+      if (apply) setMsg({ ok: true, text: r.created ? tn(r.created, "{n} joueur ajouté au compte ({label}).", "{n} joueurs ajoutés au compte ({label}).", { label: r.label }) : t("Rien de nouveau : ces joueurs ont déjà leur correction.") });
+    } catch (e) { setRes(null); setMsg({ ok: false, text: e instanceof ApiError ? e.message : t("Import impossible.") }); }
     finally { setBusy(false); }
   };
   const toAdd = res?.rows.filter(r => r.status === "new").length ?? 0;
   if (!open) {
     return (
       <div className="row" style={{ alignItems: "center" }}>
-        <button type="button" className="btn sm" onClick={() => setOpen(true)}>Importer un historique</button>
-        <span className="small muted">Objets reçus avant le site (autre outil, tableur) : ajoutés au compte de chaque joueur.</span>
+        <button type="button" className="btn sm" onClick={() => setOpen(true)}>{t("Importer un historique")}</button>
+        <span className="small muted">{t("Objets reçus avant le site (autre outil, tableur) : ajoutés au compte de chaque joueur.")}</span>
       </div>
     );
   }
   return (
     <div className="lt-add stack" style={{ gap: 8 }}>
-      <div className="lt-sub">Importer un historique</div>
+      <div className="lt-sub">{t("Importer un historique")}</div>
       <p className="hint" style={{ margin: 0 }}>
-        Colle la liste telle quelle : une ligne par joueur « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ».
-        Chaque joueur reconnu parmi les persos de la guilde (nom, avec ou sans royaume) reçoit une correction BiS et une correction Upgrade (« Spé 1 »), visibles sur sa fiche ; sans ce détail, une correction du total.
-        Un joueur pas encore dans la guilde : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.
-      </p>
-      <textarea rows={8} value={text} onChange={e => { setText(e.target.value); setRes(null); }} placeholder={HISTORY_SAMPLE} aria-label="Liste des objets reçus" />
+        {t("Colle la liste telle quelle : une ligne par joueur « Nom - BiS 3, Spé 1 4 (total 7) », puis ses objets en « - objet ». Chaque joueur reconnu parmi les persos de la guilde (nom, avec ou sans royaume) reçoit une correction BiS et une correction Upgrade (« Spé 1 »), visibles sur sa fiche ; sans ce détail, une correction du total. Un joueur pas encore dans la guilde : recolle la même liste plus tard, ceux déjà importés ne sont pas comptés deux fois.")}</p>
+      <textarea rows={8} value={text} onChange={e => { setText(e.target.value); setRes(null); }} placeholder={getLang() === "en" ? HISTORY_SAMPLE_EN : HISTORY_SAMPLE} aria-label={t("Liste des objets reçus")} />
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-hl">Nom de l'historique</label>
-          <input id="lt-hl" value={label} maxLength={40} onChange={e => { setLabel(e.target.value); setRes(null); }} placeholder="Season 2 (lu dans la liste)" /></div>
-        <button type="button" className="btn sm" disabled={busy || !text.trim()} onClick={() => void run(false)}>Vérifier</button>
-        {res && toAdd > 0 && <button type="button" className="btn sm primary" disabled={busy} onClick={() => void run(true)}>Ajouter {toAdd} joueur{toAdd > 1 ? "s" : ""}</button>}
-        <button type="button" className="btn sm ghost" onClick={() => { setOpen(false); setRes(null); setMsg(null); }}>Fermer</button>
+        <div className="fld" style={{ flex: "0 1 220px" }}><label htmlFor="lt-hl">{t("Nom de l'historique")}</label>
+          <input id="lt-hl" value={label} maxLength={40} onChange={e => { setLabel(e.target.value); setRes(null); }} placeholder={t("Season 2 (lu dans la liste)")} /></div>
+        <button type="button" className="btn sm" disabled={busy || !text.trim()} onClick={() => void run(false)}>{t("Vérifier")}</button>
+        {res && toAdd > 0 && <button type="button" className="btn sm primary" disabled={busy} onClick={() => void run(true)}>{tn(toAdd, "Ajouter {n} joueur", "Ajouter {n} joueurs")}</button>}
+        <button type="button" className="btn sm ghost" onClick={() => { setOpen(false); setRes(null); setMsg(null); }}>{t("Fermer")}</button>
       </div>
       {msg && <div className={`alert ${msg.ok ? "ok" : "error"}`} role={msg.ok ? "status" : "alert"}>{msg.text}</div>}
       {res && <>
-        <p className="small muted" style={{ margin: 0 }}>Motif des corrections : « {res.label} : … ». Elles comptent tant que la période du compte inclut aujourd'hui (Saison : laisse le début de saison avant aujourd'hui).</p>
+        <p className="small muted" style={{ margin: 0 }}>{t("Motif des corrections : « {label} : … ». Elles comptent tant que la période du compte inclut aujourd'hui (Saison : laisse le début de saison avant aujourd'hui).", { label: res.label })}</p>
         <div style={{ overflowX: "auto" }}>
           <table className="data">
-            <thead><tr><th>Dans la liste</th><th>Objets</th><th>Perso de la guilde</th><th>État</th></tr></thead>
+            <thead><tr><th>{t("Dans la liste")}</th><th>{t("Objets")}</th><th>{t("Perso de la guilde")}</th><th>{t("État")}</th></tr></thead>
             <tbody>{res.rows.map((r, i) => (
               <tr key={i}>
                 <td>{r.name}</td>
-                <td>{r.total}{r.bis !== null && r.ms !== null && <span className="small muted"> · {r.bis} BiS, {r.ms} Spé 1</span>}</td>
+                <td>{r.total}{r.bis !== null && r.ms !== null && <span className="small muted">{t(" · {bis} BiS, {ms} Spé 1", { bis: r.bis, ms: r.ms })}</span>}</td>
                 <td>{r.character ? <>{r.character.name} <span className="small muted">({r.character.owner})</span></> : r.candidates ? <span className="small muted">{r.candidates.join(", ")}</span> : <span className="small muted">—</span>}</td>
-                <td><span className={HISTORY_STATUS[r.status][1]}>{HISTORY_STATUS[r.status][0]}</span></td>
+                <td><span className={HISTORY_STATUS[r.status][1]}>{t(HISTORY_STATUS[r.status][0])}</span></td>
               </tr>
             ))}</tbody>
           </table>
         </div>
-        {res.rows.some(r => r.status === "ambiguous") && <p className="small muted" style={{ margin: 0 }}>Plusieurs persos de ce nom : écris « Nom-Royaume » dans la liste pour choisir.</p>}
-        {res.ignored.length > 0 && <p className="small muted" style={{ margin: 0 }}>Lignes ignorées : {res.ignored.slice(0, 3).join(" · ")}{res.ignored.length > 3 ? "…" : ""}</p>}
+        {res.rows.some(r => r.status === "ambiguous") && <p className="small muted" style={{ margin: 0 }}>{t("Plusieurs persos de ce nom : écris « Nom-Royaume » dans la liste pour choisir.")}</p>}
+        {res.ignored.length > 0 && <p className="small muted" style={{ margin: 0 }}>{t("Lignes ignorées : {list}", { list: res.ignored.slice(0, 3).join(" · ") + (res.ignored.length > 3 ? "…" : "") })}</p>}
       </>}
     </div>
   );

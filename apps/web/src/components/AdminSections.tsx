@@ -1,4 +1,4 @@
-import { gameName, SIGNUP_LABEL, SKILL_LINE_NAMES, WEEKDAYS, type SignupStatus } from "@forever/game-data";
+import { gameName, SKILL_LINE_NAMES, WEEKDAYS, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -10,6 +10,7 @@ import { CraftOrders, type OrderPrefill } from "./CraftOrders";
 import { useSite } from "../site";
 import { LinkCodeBox, linkCommand } from "./DiscordLink";
 import { TemplateChannel, useRaidTemplates } from "./TemplateChannel";
+import { signupLabel } from "../i18n/game";
 
 /**
  * Sections de l'administration d'une guilde et onglet Artisans, communs à Roster (pages/GroupPage.tsx) et à Forever Roster
@@ -71,7 +72,7 @@ export function eventDetail(e: GroupEvent) {
     // « · Greta : Peut-être (Onyxia, ven. 14/11) » : prénom du perso, réponse, raid et sa date (absente si le raid n'en a pas)
     const status = str("status"), at = str("at");
     const day = at && !Number.isNaN(Date.parse(at)) ? `, ${RELAY_DAY.format(new Date(at))}` : "";
-    return ` · ${gameName(str("character") ?? "") || "?"} : ${status ? SIGNUP_LABEL[status as SignupStatus] ?? status : "?"} (${str("raid") ?? "?"}${day})`;
+    return ` · ${gameName(str("character") ?? "") || "?"} : ${status ? signupLabel(status as SignupStatus) ?? status : "?"} (${str("raid") ?? "?"}${day})`;
   }
   return str("name") ? ` · ${str("name")}` : "";
 }

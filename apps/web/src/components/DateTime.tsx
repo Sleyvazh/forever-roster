@@ -1,9 +1,11 @@
 import { zonedParts, zonedTime } from "@forever/game-data";
 import { useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
+import { dayInitials, dayMonth, dayMonthShort, dayShort, monthTitle } from "../i18n/dates";
 
 /**
- * Dates et heures des raids (lot E) : toujours en français, semaine du lundi, 24 h, à l'heure de Paris (le serveur de
- * jeu), quel que soit le navigateur. Remplace les champs date/heure natifs (mm/dd/yyyy, AM/PM selon le système).
+ * Dates et heures des raids (lot E) : dans la langue du site (i18n/dates.ts), semaine du lundi, 24 h, à l'heure de Paris
+ * (le serveur de jeu), quel que soit le navigateur. Remplace les champs date/heure natifs (mm/dd/yyyy, AM/PM selon le système).
  * Classes CSS « dt- ».
  */
 
@@ -18,18 +20,15 @@ export const partsOf = (iso: string | null | undefined): Parts | null => {
 export const isoOf = (p: Parts) => zonedTime(p.y, p.m, p.d, p.h, p.mi)?.toISOString() ?? null;
 /** 1 = lundi … 7 = dimanche */
 const weekdayOf = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7;
-const addDays = (y: number, m: number, d: number, n: number) => { const t = new Date(Date.UTC(y, m - 1, d + n)); return { y: t.getUTCFullYear(), m: t.getUTCMonth() + 1, d: t.getUTCDate() }; };
+const addDays = (y: number, m: number, d: number, n: number) => { const dt = new Date(Date.UTC(y, m - 1, d + n)); return { y: dt.getUTCFullYear(), m: dt.getUTCMonth() + 1, d: dt.getUTCDate() }; };
 const today = () => { const z = zonedParts(new Date()); return { y: z.year, m: z.month, d: z.day }; };
 const key = (x: { y: number; m: number; d: number }) => x.y * 10000 + x.m * 100 + x.d;
 
-export const DAY_SHORT: readonly string[] = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
-const DAY_LONG: readonly string[] = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
-const MONTHS: readonly string[] = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-/** « mercredi 7 octobre, 20:30 » (année seulement si ce n'est pas l'année en cours). */
+/** « mercredi 7 octobre, 20:30 » / « Wednesday 7 October, 20:30 » (année seulement si ce n'est pas l'année en cours). */
 export function longDate(p: Parts | null) {
-  if (!p) return "Date à choisir";
+  if (!p) return t("Date à choisir");
   const y = p.y !== today().y ? ` ${p.y}` : "";
-  return `${DAY_LONG[weekdayOf(p.y, p.m, p.d) - 1]!} ${p.d} ${MONTHS[p.m - 1]!}${y}, ${hhmm(p)}`;
+  return `${dayMonth(weekdayOf(p.y, p.m, p.d), p.d, p.m)}${y}, ${hhmm(p)}`;
 }
 export const QUARTERS = Array.from({ length: 96 }, (_, i) => `${pad(Math.floor(i / 4))}:${pad((i % 4) * 15)}`);
 
@@ -49,27 +48,27 @@ export function habits(dates: (string | null)[]) {
 
 /** Boutons des 14 prochains jours (jours habituels soulignés) et « Autre date » (calendrier). */
 export function DayStrip({ value, onChange, habitDays = [] }: { value: Parts | null; onChange: (d: { y: number; m: number; d: number }) => void; habitDays?: number[] }) {
-  const t = today();
-  const days = Array.from({ length: 14 }, (_, i) => addDays(t.y, t.m, t.d, i));
+  const td = today();
+  const days = Array.from({ length: 14 }, (_, i) => addDays(td.y, td.m, td.d, i));
   const inStrip = value && days.some(d => key(d) === key(value));
   const [cal, setCal] = useState(false);
   return (
     <div className="dt-strip-wrap">
-      <div className="dt-strip" role="group" aria-label="Jour du raid">
+      <div className="dt-strip" role="group" aria-label={t("Jour du raid")}>
         {days.map((d, i) => {
           const wd = weekdayOf(d.y, d.m, d.d);
           const on = !!value && key(value) === key(d);
           return (
             <button key={key(d)} type="button" className={`dt-day${on ? " on" : ""}${habitDays.includes(wd) ? " hab" : ""}`} aria-pressed={on}
-              aria-label={`${DAY_LONG[wd - 1]} ${d.d} ${MONTHS[d.m - 1]}`} onClick={() => onChange(d)}>
-              <small>{i === 0 ? "auj." : DAY_SHORT[wd - 1]}</small>{d.d}
+              aria-label={dayMonth(wd, d.d, d.m)} onClick={() => onChange(d)}>
+              <small>{i === 0 ? t("auj.") : dayShort(wd)}</small>{d.d}
             </button>
           );
         })}
       </div>
       <Popover open={cal} onClose={() => setCal(false)} button={
           <button type="button" className={`dt-chip${value && !inStrip ? " on" : ""}`} aria-expanded={cal} onClick={() => setCal(o => !o)}>
-            {value && !inStrip ? `${value.d} ${MONTHS[value.m - 1]!.slice(0, 4)}.` : "Autre date"}
+            {value && !inStrip ? dayMonthShort(value.d, value.m) : t("Autre date")}
           </button>
         }>
           <Calendar value={value} habitDays={habitDays} onPick={d => { onChange(d); setCal(false); }} />
@@ -79,19 +78,19 @@ export function DayStrip({ value, onChange, habitDays = [] }: { value: Parts | n
 }
 
 /** Heures fréquentes en un clic, et toutes les autres (au quart d'heure) dans un menu. */
-export function TimeChips({ value, onChange, fav = [] }: { value: string | null; onChange: (t: string) => void; fav?: string[] }) {
+export function TimeChips({ value, onChange, fav = [] }: { value: string | null; onChange: (hm: string) => void; fav?: string[] }) {
   const chips = [...new Set([...fav, "20:30", "21:00"])].slice(0, 4).sort();
   return (
-    <div className="dt-times" role="group" aria-label="Heure du raid">
-      {chips.map(t => <button key={t} type="button" className={`dt-chip num${value === t ? " on" : ""}`} aria-pressed={value === t} onClick={() => onChange(t)}>{t}</button>)}
-      <TimeSelect value={value && !chips.includes(value) ? value : ""} onChange={onChange} placeholder="Autre heure…" />
+    <div className="dt-times" role="group" aria-label={t("Heure du raid")}>
+      {chips.map(hm => <button key={hm} type="button" className={`dt-chip num${value === hm ? " on" : ""}`} aria-pressed={value === hm} onClick={() => onChange(hm)}>{hm}</button>)}
+      <TimeSelect value={value && !chips.includes(value) ? value : ""} onChange={onChange} placeholder={t("Autre heure…")} />
     </div>
   );
 }
 
-export function TimeSelect({ value, onChange, placeholder, id }: { value: string; onChange: (t: string) => void; placeholder?: string; id?: string }) {
+export function TimeSelect({ value, onChange, placeholder, id }: { value: string; onChange: (hm: string) => void; placeholder?: string; id?: string }) {
   return (
-    <select id={id} className="dt-select num" value={value} onChange={e => e.target.value && onChange(e.target.value)} aria-label={id ? undefined : "Heure"}>
+    <select id={id} className="dt-select num" value={value} onChange={e => e.target.value && onChange(e.target.value)} aria-label={id ? undefined : t("Heure")}>
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {QUARTERS.map(q => <option key={q} value={q}>{q}</option>)}
     </select>
@@ -102,8 +101,8 @@ export function TimeSelect({ value, onChange, placeholder, id }: { value: string
 export function Calendar({ value, onPick, habitDays = [], allowPast = false }: {
   value: Parts | null; onPick: (d: { y: number; m: number; d: number }) => void; habitDays?: number[]; allowPast?: boolean;
 }) {
-  const t = today();
-  const [view, setView] = useState({ y: value?.y ?? t.y, m: value?.m ?? t.m });
+  const td = today();
+  const [view, setView] = useState({ y: value?.y ?? td.y, m: value?.m ?? td.m });
   const first = weekdayOf(view.y, view.m, 1);
   const len = new Date(Date.UTC(view.y, view.m, 0)).getUTCDate();
   const cells: ({ y: number; m: number; d: number } | null)[] = [...Array(first - 1).fill(null), ...Array.from({ length: len }, (_, i) => ({ y: view.y, m: view.m, d: i + 1 }))];
@@ -112,19 +111,19 @@ export function Calendar({ value, onPick, habitDays = [], allowPast = false }: {
   return (
     <div className="dt-cal">
       <div className="dt-cal-head">
-        <button type="button" aria-label="Mois précédent" onClick={() => move(-1)}>‹</button>
-        <b>{MONTHS[view.m - 1]![0]!.toUpperCase() + MONTHS[view.m - 1]!.slice(1)} {view.y}</b>
-        <button type="button" aria-label="Mois suivant" onClick={() => move(1)}>›</button>
+        <button type="button" aria-label={t("Mois précédent")} onClick={() => move(-1)}>‹</button>
+        <b>{monthTitle(view.m, view.y)}</b>
+        <button type="button" aria-label={t("Mois suivant")} onClick={() => move(1)}>›</button>
       </div>
       <div className="dt-grid" role="grid">
-        {["lu", "ma", "me", "je", "ve", "sa", "di"].map(d => <small key={d}>{d}</small>)}
+        {dayInitials().map(d => <small key={d}>{d}</small>)}
         {cells.map((c, i) => {
           if (!c) return <span key={`x${i}`} />;
-          const past = !allowPast && key(c) < key(t);
+          const past = !allowPast && key(c) < key(td);
           const on = !!value && key(value) === key(c);
           return (
             <button key={key(c)} type="button" disabled={past} aria-pressed={on}
-              className={`dt-d${on ? " on" : ""}${key(c) === key(t) ? " today" : ""}${habitDays.includes(weekdayOf(c.y, c.m, c.d)) ? " hab" : ""}`}
+              className={`dt-d${on ? " on" : ""}${key(c) === key(td) ? " today" : ""}${habitDays.includes(weekdayOf(c.y, c.m, c.d)) ? " hab" : ""}`}
               onClick={() => onPick(c)}>{c.d}</button>
           );
         })}
@@ -166,17 +165,17 @@ export function DateTimeField({ value, onChange, id, habitDays }: { value: strin
     }>
       <div className="dt-full">
         <Calendar value={draft} habitDays={habitDays} allowPast onPick={d => setDraft(p => ({ ...d, h: p?.h ?? 20, mi: p?.mi ?? 30 }))} />
-        <div className="dt-tl" ref={list} role="listbox" aria-label="Heure">
+        <div className="dt-tl" ref={list} role="listbox" aria-label={t("Heure")}>
           {QUARTERS.map(q => (
             <button key={q} type="button" role="option" aria-selected={q === time} className={`dt-t num${q === time ? " on" : ""}`}
               onClick={() => setDraft(p => { const [h, mi] = q.split(":").map(Number) as [number, number]; const b = p ?? { ...today(), h, mi }; return { ...b, h, mi }; })}>{q}</button>
           ))}
         </div>
         <div className="dt-foot">
-          <span>{draft ? longDate(draft) : "Choisis un jour"} <span className="muted">(heure de Paris)</span></span>
+          <span>{draft ? longDate(draft) : t("Choisis un jour")} <span className="muted">{t("(heure de Paris)")}</span></span>
           <span className="row" style={{ gap: 6 }}>
-            {value && <button type="button" className="btn ghost sm" onClick={() => { onChange(null); setOpen(false); }}>Sans date</button>}
-            <button type="button" className="btn primary sm" disabled={!draft} onClick={() => { if (draft) onChange(isoOf(draft)); setOpen(false); }}>Valider</button>
+            {value && <button type="button" className="btn ghost sm" onClick={() => { onChange(null); setOpen(false); }}>{t("Sans date")}</button>}
+            <button type="button" className="btn primary sm" disabled={!draft} onClick={() => { if (draft) onChange(isoOf(draft)); setOpen(false); }}>{t("Valider")}</button>
           </span>
         </div>
       </div>
@@ -185,10 +184,10 @@ export function DateTimeField({ value, onChange, id, habitDays }: { value: strin
 }
 
 const isoDay = (d: { y: number; m: number; d: number }) => `${d.y}-${pad(d.m)}-${pad(d.d)}`;
-/** « lundi 10 novembre » depuis « 2026-11-10 ». */
+/** « lundi 10 novembre » / « Monday 10 November » depuis « 2026-11-10 ». */
 export function dayLabel(day: string) {
   const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  return `${DAY_LONG[weekdayOf(y, m, d) - 1]!} ${d} ${MONTHS[m - 1]!}${y !== today().y ? ` ${y}` : ""}`;
+  return `${dayMonth(weekdayOf(y, m, d), d, m)}${y !== today().y ? ` ${y}` : ""}`;
 }
 
 /** Champ date seule (absences) : « AAAA-MM-JJ », calendrier au clic. */
@@ -198,7 +197,7 @@ export function DateField({ value, onChange, id, min }: { value: string; onChang
   return (
     <Popover open={open} onClose={() => setOpen(false)} button={
       <button id={id} type="button" className="dt-field" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-        <span>{value ? dayLabel(value) : "Choisir"}</span><span aria-hidden="true">▾</span>
+        <span>{value ? dayLabel(value) : t("Choisir")}</span><span aria-hidden="true">▾</span>
       </button>
     }>
       <Calendar value={cur} onPick={d => { if (!min || isoDay(d) >= min) { onChange(isoDay(d)); setOpen(false); } }} />

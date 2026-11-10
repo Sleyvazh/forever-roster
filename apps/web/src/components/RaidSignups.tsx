@@ -1,4 +1,4 @@
-import { roleOf, SIGNUP_HINT, SIGNUP_LABEL, SIGNUP_STATUSES, specsOf, type SignupStatus } from "@forever/game-data";
+import { roleOf, SIGNUP_STATUSES, specsOf, type SignupStatus } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ApiError, del, get, patch, put, type Character, type RaidSignup } from "../api";
@@ -9,6 +9,8 @@ import { RoleIcon, RoleTag } from "./RoleIcon";
 import { SignupButtons } from "./SignupButtons";
 import { ClassDot } from "./Outings";
 import { Link } from "react-router-dom";
+import { t, tn, tx } from "../i18n";
+import { signupHint, signupLabel } from "../i18n/game";
 
 const ROLES = ["Tank", "Heal", "DPS"] as const;
 const COMING: SignupStatus[] = ["present", "late"];
@@ -48,7 +50,7 @@ export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { g
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError(null);
     try { await fn(); await Promise.all([qc.invalidateQueries({ queryKey: ["raid", raidId] }), qc.invalidateQueries({ queryKey: ["raids", groupId] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["guild-home", groupId] })]); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); } finally { setBusy(false); }
+    catch (e) { setError(e instanceof ApiError ? e.message : t("Action impossible.")); } finally { setBusy(false); }
   };
   const signUp = (status: SignupStatus) => run(() => put(`/groups/${groupId}/raids/${raidId}/signup`, {
     status, characterId: status === "absent" && !charId ? null : charId || null, spec: spec || undefined, note,
@@ -57,37 +59,37 @@ export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { g
   return (
     <section className="ans" aria-labelledby="ans-t">
       {/* Une ligne (refonte du 09/11) : le perso choisi à côté, quatre réponses de même largeur, la note au bout */}
-      <h3 id="ans-t">Ta réponse</h3>
+      <h3 id="ans-t">{t("Ta réponse")}</h3>
       {char ? (
-        <button type="button" className="ans-with" aria-expanded={editing} aria-label="Changer de perso ou de spé" onClick={() => setEditing(e => !e)}>
+        <button type="button" className="ans-with" aria-expanded={editing} aria-label={t("Changer de perso ou de spé")} onClick={() => setEditing(e => !e)}>
           <ClassDot cls={char.cls} /><span>{char.isMain ? "★ " : ""}{char.name}{spec ? ` · ${gt.spec(char.cls, spec)}` : ""}</span>{role && <span className={`role xs ${role}`}>{role}</span>}<span className="chev" aria-hidden="true" />
         </button>
       ) : all && (all.length
-        ? <span className="ans-note">Ton perso n'a pas de classe : <Link className="link" to={`/persos/${all[0]!.id}`}>complète sa fiche</Link>.</span>
-        : <span className="ans-note">Pas encore de perso : <Link className="link" to="/persos/nouveau">ajoute-le</Link>.</span>)}
+        ? <span className="ans-note">{tx("Ton perso n'a pas de classe : {link}.", { link: <Link className="link" to={`/persos/${all[0]!.id}`}>{t("complète sa fiche")}</Link> })}</span>
+        : <span className="ans-note">{tx("Pas encore de perso : {link}.", { link: <Link className="link" to="/persos/nouveau">{t("ajoute-le")}</Link> })}</span>)}
       <span className="ans-eq ans-main">
-        <SignupButtons lg value={mine?.status} onPick={s => void signUp(s)} busy={busy} canCome={!!char} label={`Ma réponse pour ${raidName}`}
+        <SignupButtons lg value={mine?.status} onPick={s => void signUp(s)} busy={busy} canCome={!!char} label={t("Ma réponse pour {raid}", { raid: raidName })}
           onClear={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))} />
       </span>
       {char && !editing && (
-        <button type="button" className="link ans-note" onClick={() => setEditing(true)}>{mine?.note ? <>Note : « {mine.note} »</> : "+ Ajouter une note"}</button>
+        <button type="button" className="link ans-note" onClick={() => setEditing(true)}>{mine?.note ? t("Note : « {note} »", { note: mine.note }) : t("+ Ajouter une note")}</button>
       )}
-      <span className="ans-state sr-only" role="status">{mine ? <>{SIGNUP_LABEL[mine.status]}{mine.characterName ? ` avec ${mine.characterName}` : ""}{mine.note ? ` · « ${mine.note} »` : ""}</> : "Pas encore de réponse."}</span>
+      <span className="ans-state sr-only" role="status">{mine ? <>{signupLabel(mine.status)}{mine.characterName ? ` ${t("avec {name}", { name: mine.characterName })}` : ""}{mine.note ? t(" · « {note} »", { note: mine.note }) : ""}</> : t("Pas encore de réponse.")}</span>
       {editing && char && (
         <div className="row ans-edit" style={{ alignItems: "flex-end" }}>
-          {myChars.length > 1 && <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="ans-char">Perso</label>
+          {myChars.length > 1 && <div className="fld" style={{ flex: "1 1 160px" }}><label htmlFor="ans-char">{t("Perso")}</label>
             <select id="ans-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
               {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({gt.cls(c.cls)})</option>)}
             </select></div>}
-          <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="ans-spec">Spé</label>
+          <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="ans-spec">{t("Spé")}</label>
             <select id="ans-spec" value={spec} onChange={e => setSpec(e.target.value)}>
               <option value="">—</option>
               {specs.map(d => <option key={d.name} value={d.name}>{gt.spec(char.cls, d.name)} ({d.role})</option>)}
             </select></div>
-          <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="ans-note">Note</label>
-            <input id="ans-note" type="text" maxLength={100} placeholder="Ex. j'arrive vers 21 h 15" value={note} onChange={e => setNote(e.target.value)} /></div>
-          {mine && <button type="button" className="btn sm" disabled={busy} onClick={() => void signUp(mine.status).then(() => setEditing(false))}>Enregistrer</button>}
-          <button type="button" className="btn ghost sm" onClick={() => setEditing(false)}>Fermer</button>
+          <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="ans-note">{t("Note")}</label>
+            <input id="ans-note" type="text" maxLength={100} placeholder={t("Ex. j'arrive vers 21 h 15")} value={note} onChange={e => setNote(e.target.value)} /></div>
+          {mine && <button type="button" className="btn sm" disabled={busy} onClick={() => void signUp(mine.status).then(() => setEditing(false))}>{t("Enregistrer")}</button>}
+          <button type="button" className="btn ghost sm" onClick={() => setEditing(false)}>{t("Fermer")}</button>
         </div>
       )}
       {error && <div className="alert error" role="alert">{error}</div>}
@@ -129,7 +131,7 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError(null);
-    try { await fn(); await refresh(); } catch (e) { setError(e instanceof ApiError ? e.message : "Action impossible."); } finally { setBusy(false); }
+    try { await fn(); await refresh(); } catch (e) { setError(e instanceof ApiError ? e.message : t("Action impossible.")); } finally { setBusy(false); }
   };
   const signUp = (status: SignupStatus) => run(() => put(`/groups/${groupId}/raids/${raidId}/signup`, {
     status, characterId: status === "absent" && !charId ? null : charId || null, spec: spec || undefined, note,
@@ -143,45 +145,45 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
   return (
     <section className="panel pad stack" aria-labelledby="su-title">
       <div className="row between">
-        <h3 id="su-title" style={{ margin: 0 }}>Inscriptions</h3>
+        <h3 id="su-title" style={{ margin: 0 }}>{t("Inscriptions")}</h3>
         <div className="counts">
-          <span className="tag ok num">{coming.length} viennent</span>
+          <span className="tag ok num">{tn(coming.length, "{n} vient", "{n} viennent")}</span>
           {ROLES.map(r => <RoleTag key={r} role={r} text={`${byRole(r).length} ${r}`}>{byRole(r).length}</RoleTag>)}
-          {others("tentative").length > 0 && <span className="tag num">{others("tentative").length} peut-être</span>}
+          {others("tentative").length > 0 && <span className="tag num">{t("{n} peut-être", { n: others("tentative").length })}</span>}
         </div>
       </div>
 
       {gt.game !== "forever" && <div className="su-me">
         {myChars.length === 0 ? (
-          <p className="hint" style={{ margin: 0 }}>Ajoute un perso (avec sa classe) dans « Mes persos » pour t'inscrire. Tu peux quand même te déclarer absent.</p>
+          <p className="hint" style={{ margin: 0 }}>{t("Ajoute un perso (avec sa classe) dans « Mes persos » pour t'inscrire. Tu peux quand même te déclarer absent.")}</p>
         ) : (
           <div className="row" style={{ alignItems: "flex-end" }}>
-            <div className="fld" style={{ flex: "1 1 180px" }}><label htmlFor="su-char">Perso</label>
+            <div className="fld" style={{ flex: "1 1 180px" }}><label htmlFor="su-char">{t("Perso")}</label>
               <select id="su-char" value={charId} onChange={e => { setCharId(e.target.value); setSpec(myChars.find(c => c.id === e.target.value)?.spec1 ?? ""); }}>
                 {myChars.map(c => <option key={c.id} value={c.id}>{c.isMain ? "★ " : ""}{c.name} ({gt.cls(c.cls)})</option>)}
               </select>
             </div>
-            <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="su-spec">Spé pour ce raid</label>
+            <div className="fld" style={{ flex: "1 1 150px" }}><label htmlFor="su-spec">{t("Spé pour ce raid")}</label>
               <select id="su-spec" value={spec} onChange={e => setSpec(e.target.value)}>
                 <option value="">—</option>
                 {specs.map(d => <option key={d.name} value={d.name}>{gt.spec(char!.cls, d.name)} ({d.role})</option>)}
               </select>
             </div>
-            <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="su-note">Note (facultatif)</label>
-              <input id="su-note" type="text" maxLength={100} placeholder="Ex. j'arrive vers 21 h 15" value={note} onChange={e => setNote(e.target.value)} />
+            <div className="fld" style={{ flex: "2 1 200px" }}><label htmlFor="su-note">{t("Note (facultatif)")}</label>
+              <input id="su-note" type="text" maxLength={100} placeholder={t("Ex. j'arrive vers 21 h 15")} value={note} onChange={e => setNote(e.target.value)} />
             </div>
           </div>
         )}
-        <div className="su-status" role="group" aria-label="Mon statut">
+        <div className="su-status" role="group" aria-label={t("Mon statut")}>
           {SIGNUP_STATUSES.map(st => (
-            <button key={st} type="button" className={`su-btn ${st}`} aria-pressed={mine?.status === st} title={SIGNUP_HINT[st]}
+            <button key={st} type="button" className={`su-btn ${st}`} aria-pressed={mine?.status === st} title={signupHint(st)}
               disabled={busy || (st !== "absent" && myChars.length === 0)} onClick={() => void signUp(st)}>
-              {SIGNUP_LABEL[st]}
+              {signupLabel(st)}
             </button>
           ))}
-          {mine && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))}>Me désinscrire</button>}
+          {mine && <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))}>{t("Me désinscrire")}</button>}
         </div>
-        {mine && <p className="small muted" style={{ margin: 0 }}>Tu es inscrit : <b>{SIGNUP_LABEL[mine.status]}</b>{mine.characterName ? ` avec ${mine.characterName}${mine.spec ? ` (${gt.spec(mine.cls, mine.spec)})` : ""}` : ""}. Clique un autre statut pour changer.</p>}
+        {mine && <p className="small muted" style={{ margin: 0 }}>{tx("Tu es inscrit : {status}{with}. Clique un autre statut pour changer.", { status: <b>{signupLabel(mine.status)}</b>, with: mine.characterName ? ` ${t("avec {name}", { name: mine.characterName })}${mine.spec ? ` (${gt.spec(mine.cls, mine.spec)})` : ""}` : "" })}</p>}
         {error && <div className="alert error" role="alert">{error}</div>}
       </div>}
 
@@ -189,13 +191,13 @@ export function RaidSignups({ groupId, raidId, signups, groupChars, canEdit }: {
         {ROLES.map(r => (
           <div key={r} className="su-col">
             <h4><RoleIcon role={r} size={18} /> <span className="num muted">{byRole(r).length}</span></h4>
-            {byRole(r).length ? byRole(r).map(s => <Row key={s.id} s={s} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} />) : <p className="small muted" style={{ margin: 0 }}>Personne</p>}
+            {byRole(r).length ? byRole(r).map(s => <Row key={s.id} s={s} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} />) : <p className="small muted" style={{ margin: 0 }}>{t("Personne")}</p>}
           </div>
         ))}
       </div>
-      {noRole.length > 0 && <Group title="Sans spé" list={noRole} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} />}
+      {noRole.length > 0 && <Group title={t("Sans spé")} list={noRole} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} />}
       {(["tentative", "alt", "bench", "absent"] as SignupStatus[]).map(st => others(st).length > 0 && (
-        <Group key={st} title={SIGNUP_LABEL[st]} list={others(st)} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} compact={st === "absent"} />
+        <Group key={st} title={signupLabel(st)} list={others(st)} canEdit={canEdit} groupId={groupId} raidId={raidId} onDone={refresh} compact={st === "absent"} />
       ))}
     </section>
   );
@@ -217,17 +219,17 @@ function Row({ s, canEdit, groupId, raidId, onDone, compact }: { s: RaidSignup; 
     <div className={`su-row${s.mine ? " mine" : ""}`} title={s.note || undefined}>
       {s.cls ? (s.spec ? <SpecIcon cls={s.cls} spec={s.spec} size={20} /> : <ClassIcon cls={s.cls} size={20} />) : <span className="su-dot" aria-hidden="true" />}
       <span className="su-who">
-        <b>{s.characterName ?? s.displayName}{!s.userId && <span className="su-guest" title="Inscrit depuis Discord, sans compte sur le site" aria-label=" (sans compte)"> ✱</span>}</b>
-        {!compact && <small>{[s.spec && gt.spec(s.cls, s.spec), s.characterName ? s.displayName : null, !s.userId ? "Discord" : null].filter(Boolean).join(" · ")}</small>}
+        <b>{s.characterName ?? s.displayName}{!s.userId && <span className="su-guest" title={t("Inscrit depuis Discord, sans compte sur le site")} aria-label={` (${t("sans compte")})`}> ✱</span>}</b>
+        {!compact && <small>{[s.spec && gt.spec(s.cls, s.spec), s.characterName ? s.displayName : null, !s.userId ? t("Discord") : null].filter(Boolean).join(" · ")}</small>}
       </span>
-      {s.status === "late" && <span className="tag warn">Retard</span>}
-      {s.note && !compact && <span className="su-note" aria-label={`Note : ${s.note}`}>✎</span>}
+      {s.status === "late" && <span className="tag warn">{t("Retard")}</span>}
+      {s.note && !compact && <span className="su-note" aria-label={t("Note : {note}", { note: s.note })}>✎</span>}
       {canEdit && !compact && (
         <span className="su-admin">
-          <select aria-label={`Statut de ${s.displayName}`} value={s.status} onChange={e => void patch(base, { status: e.target.value }).then(onDone)}>
-            {SIGNUP_STATUSES.map(st => <option key={st} value={st}>{SIGNUP_LABEL[st]}</option>)}
+          <select aria-label={t("Statut de {name}", { name: s.displayName })} value={s.status} onChange={e => void patch(base, { status: e.target.value }).then(onDone)}>
+            {SIGNUP_STATUSES.map(st => <option key={st} value={st}>{signupLabel(st)}</option>)}
           </select>
-          <button type="button" className="x" aria-label={`Retirer l'inscription de ${s.displayName}`} onClick={() => void del(base).then(onDone)}>×</button>
+          <button type="button" className="x" aria-label={t("Retirer l'inscription de {name}", { name: s.displayName })} onClick={() => void del(base).then(onDone)}>×</button>
         </span>
       )}
     </div>

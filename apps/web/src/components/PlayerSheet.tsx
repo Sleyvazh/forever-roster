@@ -1,7 +1,4 @@
-import {
-  classColor, ATTENDANCE_LABEL, CLASSES, itemLinks, LOOT_CATEGORIES, LOOT_CATEGORY_LABEL, retailItemLink,
-  type AttendanceStatus, type ClassName, type GearStats, type LootCategory, type LootCategoryCounts,
-} from "@forever/game-data";
+import { classColor, CLASSES, itemLinks, LOOT_CATEGORIES, retailItemLink, type AttendanceStatus, type ClassName, type GearStats, type LootCategory, type LootCategoryCounts } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -13,6 +10,7 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { absenceLabel } from "./Absences";
 import { LootDetail } from "./Loot";
+import { attendanceLabel, lootCategoryLabel } from "../i18n/game";
 
 /** Fiche d'un joueur dans le groupe (lot D1) : persos joués ici, présence, banc, butin reçu. Classes CSS « ps- ». */
 
@@ -93,7 +91,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
           {a.raids > 0 && (
             <div className="ps-cells">
               {a.cells.map(c => (
-                <Link key={c.raidId} to={`/groups/${groupId}/raids/${c.raidId}`} className={`ps-cell ${c.status ?? "none"}`} title={`${c.name} · ${day.format(new Date(c.scheduledAt))} · ${c.status ? ATTENDANCE_LABEL[c.status] : "ni inscrit ni vu"}`}>
+                <Link key={c.raidId} to={`/groups/${groupId}/raids/${c.raidId}`} className={`ps-cell ${c.status ?? "none"}`} title={`${c.name} · ${day.format(new Date(c.scheduledAt))} · ${c.status ? attendanceLabel(c.status) : "ni inscrit ni vu"}`}>
                   {c.status ? CELL[c.status] : "·"}
                 </Link>
               ))}
@@ -149,7 +147,7 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
           {count.corrections.map(c => (
             <li key={c.id} className={c.inPeriod ? undefined : "out"} title={c.inPeriod ? undefined : "Avant le début de la période : ne compte plus"}>
               <span className={`d num ${c.delta > 0 ? "plus" : "minus"}`}>{c.delta > 0 ? `+${c.delta}` : c.delta}</span>
-              {c.kind && <span className="lc-kind">{LOOT_CATEGORY_LABEL[c.kind]}</span>}
+              {c.kind && <span className="lc-kind">{lootCategoryLabel(c.kind)}</span>}
               <span>{nameOf.get(c.characterId) ?? "?"} · {c.note} <span className="muted small">· {c.by}, {day.format(new Date(c.at))}</span></span>
               {officer && <button type="button" className="btn ghost xs" onClick={() => void run(() => del(`/groups/${groupId}/loot-corrections/${c.id}`))} aria-label={`Retirer la correction ${c.note}`}>Retirer</button>}
             </li>
@@ -164,7 +162,7 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
             <select id="lc-delta" value={delta} onChange={e => setDelta(Number(e.target.value))}>{[3, 2, 1, -1, -2, -3].map(n => <option key={n} value={n}>{n > 0 ? `+${n}` : n}</option>)}</select></div>
           <div className="fld"><label htmlFor="lc-kind">Catégorie</label>
             <select id="lc-kind" value={kind} onChange={e => setKind(e.target.value as LootCategory | "")}>
-              <option value="">Aucune</option>{LOOT_CATEGORIES.map(k => <option key={k} value={k}>{LOOT_CATEGORY_LABEL[k]}</option>)}
+              <option value="">Aucune</option>{LOOT_CATEGORIES.map(k => <option key={k} value={k}>{lootCategoryLabel(k)}</option>)}
             </select></div>
           <div className="fld" style={{ flex: "1 1 200px" }}><label htmlFor="lc-note">Motif</label>
             <input id="lc-note" type="text" maxLength={120} required minLength={2} value={note} onChange={e => setNote(e.target.value)} placeholder="Ex. objet donné hors addon" /></div>

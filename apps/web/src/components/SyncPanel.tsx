@@ -13,6 +13,7 @@ import { copyGameData } from "./CopyForGame";
 import { DialogHead, Modal } from "./Dialog";
 import { CharName } from "./GuildRace";
 import { ClassIcon } from "./Icons";
+import { t, tn } from "../i18n";
 import { ClassDot } from "./Outings";
 
 /**
@@ -45,9 +46,9 @@ export function SyncButton() {
   const late = forever ? chars.filter(c => c.cls && c.addonSyncedAt && isStale(c.addonSyncedAt)).length : 0;
   return (
     <button type="button" className="btn sm sync-btn" aria-haspopup="dialog" onClick={openSync}
-      aria-label={late ? `Synchro : ${plural(late, "perso")} à mettre à jour` : "Synchro"} title={late ? `${plural(late, "perso")} pas synchronisé${late > 1 ? "s" : ""} depuis 7 jours` : "Synchro avec l'addon"}>
+      aria-label={late ? tn(late, "Synchro : {n} perso à mettre à jour", "Synchro : {n} persos à mettre à jour") : t("Synchro")} title={late ? tn(late, "{n} perso pas synchronisé depuis 7 jours", "{n} persos pas synchronisés depuis 7 jours") : t("Synchro avec l'addon")}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9M4 13a8 8 0 0 0 14.3 4.9" /><path d="M5 3v4h4M19 21v-4h-4" /></svg>
-      <span>Synchro</span>{late > 0 && <i className="sdot warn" aria-hidden="true" />}
+      <span>{t("Synchro")}</span>{late > 0 && <i className="sdot warn" aria-hidden="true" />}
     </button>
   );
 }

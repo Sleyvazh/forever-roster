@@ -1,7 +1,9 @@
-import { SIGNUP_LABEL, type SignupStatus } from "@forever/game-data";
+import { type SignupStatus } from "@forever/game-data";
 import { useState } from "react";
 import { ApiError, put, type Character } from "../api";
 import { SignupButtons } from "./SignupButtons";
+import { t } from "../i18n";
+import { signupLabel } from "../i18n/game";
 
 /**
  * Réponse rapide à un raid, hors de sa page (refonte du 09/11 : Accueil, liste des raids). Présent, Peut-être, Absent et
@@ -32,7 +34,7 @@ export function useQuickAnswer({ groupId, raidId, mine, mainId, chars, refresh }
       await put(`/groups/${groupId}/raids/${raidId}/signup`, { status, characterId: status === "absent" && !charId ? null : charId, ...(spec && { spec }) });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? { msg: e.message, retry: false } : { msg: "Pas enregistré · connexion perdue.", retry: true });
+      setErr(e instanceof ApiError ? { msg: e.message, retry: false } : { msg: t("Pas enregistré · connexion perdue."), retry: true });
     } finally { setBusy(false); setShown(null); }
   };
   const status = shown ?? (mine?.status as SignupStatus | undefined) ?? null;
@@ -40,8 +42,8 @@ export function useQuickAnswer({ groupId, raidId, mine, mainId, chars, refresh }
 }
 
 /** « ● Présent », « ● Sans réponse » (orange) : la réponse, à droite d'un raid. */
-export function AnswerState({ status, none = "Sans réponse" }: { status: SignupStatus | null; none?: string }) {
-  return <span className={`ans-st ${status ?? "none"}`}>● {status ? SIGNUP_LABEL[status] : none}</span>;
+export function AnswerState({ status, none }: { status: SignupStatus | null; none?: string }) {
+  return <span className={`ans-st ${status ?? "none"}`}>● {status ? signupLabel(status) : none ?? t("Sans réponse")}</span>;
 }
 
 /** Les quatre boutons de même largeur, puis l'erreur et sa solution. */
@@ -50,7 +52,7 @@ export function QuickAnswerButtons({ qa, label, className = "" }: { qa: ReturnTy
     <span className={`ans-eq ${className}`}>
       <SignupButtons lg value={qa.status} onPick={s => void qa.pick(s)} canCome={qa.canCome} label={label} />
       {qa.err && (
-        <span className="ans-err" role="alert">{qa.err.msg}{qa.err.retry && <> <button type="button" className="link" onClick={qa.retry}>Réessayer</button></>}</span>
+        <span className="ans-err" role="alert">{qa.err.msg}{qa.err.retry && <> <button type="button" className="link" onClick={qa.retry}>{t("Réessayer")}</button></>}</span>
       )}
     </span>
   );

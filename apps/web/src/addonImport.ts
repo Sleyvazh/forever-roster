@@ -5,6 +5,7 @@
  */
 import { addonKeyOf, IMPORT_PARTS, sameCharacter, type CharacterExport, type ImportPart, type ImportResult } from "@forever/game-data";
 import { post, type Character } from "./api";
+import { t } from "./i18n";
 
 export type Part = ImportPart;
 const PART_LABEL: Record<Part, string> = {
@@ -66,10 +67,10 @@ export function blockSummary(d: CharacterExport) {
 
 /** « il y a 2 h », « hier », « il y a 9 jours » ; stale : plus d'une semaine. */
 export function syncAge(at?: string | null) {
-  if (!at) return { text: "jamais synchronisé", stale: true };
+  if (!at) return { text: t("jamais synchronisé"), stale: true };
   const h = (Date.now() - new Date(at).getTime()) / 3600_000;
-  if (h < 1) return { text: "synchro il y a moins d'une heure", stale: false };
-  if (h < 24) return { text: `synchro il y a ${Math.floor(h)} h`, stale: false };
+  if (h < 1) return { text: t("synchro il y a moins d'une heure"), stale: false };
+  if (h < 24) return { text: t("synchro il y a {n} h", { n: Math.floor(h) }), stale: false };
   const d = Math.floor(h / 24);
-  return { text: d === 1 ? "synchro hier" : `synchro il y a ${d} jours`, stale: d > 7 };
+  return { text: d === 1 ? t("synchro hier") : t("synchro il y a {n} jours", { n: d }), stale: d > 7 };
 }

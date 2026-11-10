@@ -2,6 +2,7 @@ import { addonExport, buildRRR, fullName, inviteMacros, retailRoleOf, roleOf, ro
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { Character, RaidSignup, RaidSlot } from "../api";
+import { t, tx } from "../i18n";
 
 /**
  * Export du raid pour l'addon (format FRR v1, voir docs/addon-format.md) et macros « /inv ».
@@ -58,26 +59,29 @@ export function RaidExport({ raid, slots, chars, signups, retail }: {
 
   return (
     <details className="panel pad export">
-      <summary><h3 style={{ display: "inline", margin: 0 }}>Export pour le jeu</h3> <span className="muted small">addon et macros d'invitation</span></summary>
+      <summary><h3 style={{ display: "inline", margin: 0 }}>{t("Export pour le jeu")}</h3> <span className="muted small">{t("addon et macros d'invitation")}</span></summary>
       <div className="stack" style={{ marginTop: 12 }}>
         <div className="fld">
-          <div className="row between"><label htmlFor="ex-addon">{retail ? "Texte pour l'addon Roster (format RRR v1)" : "Texte pour l'addon Forever Roster (format FRR v1)"}</label>
-            <button className="btn sm" type="button" onClick={() => copy("addon", text)}>{copied === "addon" ? "Copié" : "Copier"}</button></div>
+          <div className="row between"><label htmlFor="ex-addon">{retail ? t("Texte pour l'addon Roster (format RRR v1)") : t("Texte pour l'addon Forever Roster (format FRR v1)")}</label>
+            <button className="btn sm" type="button" onClick={() => copy("addon", text)}>{copied === "addon" ? t("Copié") : t("Copier")}</button></div>
           <textarea id="ex-addon" readOnly className="num" rows={Math.min(12, text.split("\n").length)} value={text} onFocus={e => e.currentTarget.select()} />
           {retail
-            ? <p className="hint" style={{ margin: 0 }}>Pour le chef de raid. Placés (groupe 1 à 8), puis inscrits non placés (groupe 0), chacun en <code>Prénom-Royaume</code>. En jeu : <code>/roster</code>, onglet <strong>Synchro</strong> (ou <strong>Compo</strong>), colle ce texte, puis invite et place les groupes depuis l'onglet <strong>Compo</strong>. Raids à venir et inscriptions : <strong>Copier pour le jeu</strong>, en haut de la page (voir la page <Link to="/addon">Addon</Link>).</p>
-            : <p className="hint" style={{ margin: 0 }}>Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). En jeu : <code>/fr</code>, onglet <strong>Compo</strong>, colle ce texte, « Charger », puis « Inviter » et « Placer les groupes ». Seul le prénom est envoyé (le jeu ignore le nom de famille). Inscriptions et patrons suivis : page <Link to="/addon">Addon</Link>.</p>}
+            ? <p className="hint" style={{ margin: 0 }}>{tx("Pour le chef de raid. Placés (groupe 1 à 8), puis inscrits non placés (groupe 0), chacun en {format}. En jeu : {cmd}, onglet {sync} (ou {compo}), colle ce texte, puis invite et place les groupes depuis l'onglet {compo}. Raids à venir et inscriptions : {copy}, en haut de la page (voir la page {addon}).", {
+                format: <code>{t("Prénom-Royaume")}</code>, cmd: <code>/roster</code>, sync: <strong>{t("Synchro")}</strong>, compo: <strong>{t("Compo")}</strong>,
+                copy: <strong>{t("Copier pour le jeu")}</strong>, addon: <Link to="/addon">{t("Addon")}</Link> })}</p>
+            : <p className="hint" style={{ margin: 0 }}>{tx("Placés (groupe 1 à 8), puis inscrits non placés (groupe 0). En jeu : {cmd}, onglet {compo}, colle ce texte, « Charger », puis « Inviter » et « Placer les groupes ». Seul le prénom est envoyé (le jeu ignore le nom de famille). Inscriptions et patrons suivis : page {addon}.", {
+                cmd: <code>/fr</code>, compo: <strong>{t("Compo")}</strong>, addon: <Link to="/addon">{t("Addon")}</Link> })}</p>}
         </div>
         <div className="stack" style={{ gap: 8 }}>
-          <span className="lbl">Macros d'invitation ({macros.length})</span>
-          {macros.length === 0 ? <p className="muted small" style={{ margin: 0 }}>Place des persos dans la compo pour générer les macros.</p> : macros.map((m, i) => (
+          <span className="lbl">{t("Macros d'invitation ({n})", { n: macros.length })}</span>
+          {macros.length === 0 ? <p className="muted small" style={{ margin: 0 }}>{t("Place des persos dans la compo pour générer les macros.")}</p> : macros.map((m, i) => (
             <div key={i} className="row" style={{ alignItems: "flex-start" }}>
-              <textarea readOnly aria-label={`Macro d'invitation ${i + 1}`} className="num" rows={Math.min(8, m.split("\n").length)} value={m} style={{ flex: 1 }} onFocus={e => e.currentTarget.select()} />
-              <button className="btn sm" type="button" onClick={() => copy(`m${i}`, m)}>{copied === `m${i}` ? "Copié" : "Copier"}</button>
+              <textarea readOnly aria-label={t("Macro d'invitation {n}", { n: i + 1 })} className="num" rows={Math.min(8, m.split("\n").length)} value={m} style={{ flex: 1 }} onFocus={e => e.currentTarget.select()} />
+              <button className="btn sm" type="button" onClick={() => copy(`m${i}`, m)}>{copied === `m${i}` ? t("Copié") : t("Copier")}</button>
             </div>
           ))}
-          {guestsPlaced.length > 0 && <p className="hint" style={{ margin: 0 }}>À inviter à la main (inscrits sans compte, pseudo Discord) : {guestsPlaced.join(", ")}.</p>}
-          {macros.length > 0 && <p className="hint" style={{ margin: 0 }}>Une macro WoW fait 255 caractères au plus : colle chacune dans une macro (Échap → Macros), puis clique-les une à une.</p>}
+          {guestsPlaced.length > 0 && <p className="hint" style={{ margin: 0 }}>{t("À inviter à la main (inscrits sans compte, pseudo Discord) : {names}.", { names: guestsPlaced.join(", ") })}</p>}
+          {macros.length > 0 && <p className="hint" style={{ margin: 0 }}>{t("Une macro WoW fait 255 caractères au plus : colle chacune dans une macro (Échap → Macros), puis clique-les une à une.")}</p>}
         </div>
       </div>
     </details>

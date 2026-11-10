@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, post } from "../api";
 import { useMyGuilds } from "../nav";
+import { t, tx } from "../i18n";
 
 /**
  * En-tête d'une page de guilde (refonte du 23/10) : le nom de la guilde en sur-titre, puis le titre de la page.
@@ -39,7 +40,7 @@ function GuildPicker({ groupId, name }: { groupId: string; name: string }) {
   const go = (id: string) => { setOpen(false); nav(`/groups/${id}${section ? `/${section}` : ""}`); };
   return (
     <div className="g-pick-wrap" ref={ref}>
-      <button type="button" className="g-pick" aria-haspopup="menu" aria-expanded={open} aria-label={`Changer de guilde : ${name}`} onClick={() => setOpen(o => !o)}>
+      <button type="button" className="g-pick" aria-haspopup="menu" aria-expanded={open} aria-label={t("Changer de guilde : {name}", { name })} onClick={() => setOpen(o => !o)}>
         {name}<span className="chev" aria-hidden="true" />
       </button>
       {open && (
@@ -48,7 +49,7 @@ function GuildPicker({ groupId, name }: { groupId: string; name: string }) {
             <button key={g.id} type="button" role="menuitemradio" aria-checked={g.id === groupId} className="item" onClick={() => go(g.id)}>{g.name}</button>
           ))}
           <hr />
-          <Link className="item" role="menuitem" to="/bienvenue" onClick={() => setOpen(false)}>Rejoindre ou créer une guilde</Link>
+          <Link className="item" role="menuitem" to="/bienvenue" onClick={() => setOpen(false)}>{t("Rejoindre ou créer une guilde")}</Link>
         </div>
       )}
     </div>
@@ -79,23 +80,23 @@ export function InviteButton({ groupId, groupName, primary }: { groupId: string;
       setErr(null);
       post<{ invite: { url: string } }>(`/groups/${groupId}/invites`, { maxUses: 5, expiresInHours: 72 })
         .then(r => setLink(r.invite.url))
-        .catch(e => setErr(e instanceof ApiError ? e.message : "Lien impossible à créer."));
+        .catch(e => setErr(e instanceof ApiError ? e.message : t("Lien impossible à créer.")));
     }
   };
   const copy = () => { if (link) void navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false)); };
   return (
     <div className="inv-wrap" ref={ref}>
-      <button type="button" className={`btn${primary ? " primary" : ""}`} aria-expanded={open} aria-controls="inv-pop" onClick={toggle}>Inviter</button>
+      <button type="button" className={`btn${primary ? " primary" : ""}`} aria-expanded={open} aria-controls="inv-pop" onClick={toggle}>{t("Inviter")}</button>
       {open && (
-        <div className="inv-pop" id="inv-pop" role="dialog" aria-label={`Inviter dans ${groupName}`}>
-          <h3>Inviter dans {groupName}</h3>
+        <div className="inv-pop" id="inv-pop" role="dialog" aria-label={t("Inviter dans {name}", { name: groupName })}>
+          <h3>{t("Inviter dans {name}", { name: groupName })}</h3>
           {err ? <div className="alert error" role="alert">{err}</div> : (
             <div className="row nowrap">
-              <input type="text" readOnly value={link ?? "Création du lien…"} aria-label="Lien d'invitation" onFocus={e => e.currentTarget.select()} />
-              <button type="button" className="btn primary sm" disabled={!link} onClick={copy}>{copied ? "Copié" : "Copier"}</button>
+              <input type="text" readOnly value={link ?? t("Création du lien…")} aria-label={t("Lien d'invitation")} onFocus={e => e.currentTarget.select()} />
+              <button type="button" className="btn primary sm" disabled={!link} onClick={copy}>{copied ? t("Copié") : t("Copier")}</button>
             </div>
           )}
-          <p className="hint">5 utilisations · valable 3 jours · <Link className="link" to={`/groups/${groupId}/admin?section=invitations`}>Changer</Link></p>
+          <p className="hint">{tx("5 utilisations · valable 3 jours · {change}", { change: <Link className="link" to={`/groups/${groupId}/admin?section=invitations`}>{t("Changer")}</Link> })}</p>
         </div>
       )}
     </div>

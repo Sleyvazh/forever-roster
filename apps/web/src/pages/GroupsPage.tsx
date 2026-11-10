@@ -1,4 +1,3 @@
-import { SIGNUP_LABEL } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -6,6 +5,7 @@ import { ApiError, get, post, type GroupSummary } from "../api";
 import { whenText } from "../components/Week";
 import { RoleTag } from "../components/RoleIcon";
 import { t } from "../i18n";
+import { signupLabel } from "../i18n/game";
 
 export const ROLE_LABEL = { owner: "Propriétaire", officer: "Officier", member: "Membre" } as const;
 
@@ -57,7 +57,7 @@ function GroupCard({ g }: { g: GroupSummary }) {
       {n ? (
         <Link to={`${base}/raids/${n.id}`} className="gc-next">
           <span><span className="lbl">Prochain raid</span><br /><b>{n.name}</b> · {whenText(n.scheduledAt)} · {plural(n.coming, "inscrit")}</span>
-          {n.mine ? <span className={`tag su-tag ${n.mine}`}>{SIGNUP_LABEL[n.mine]}</span> : <span className="tag warn">Pas de réponse</span>}
+          {n.mine ? <span className={`tag su-tag ${n.mine}`}>{signupLabel(n.mine)}</span> : <span className="tag warn">Pas de réponse</span>}
         </Link>
       ) : (
         <div className="gc-next none">Aucun raid prévu.{officer && <> <Link to={base}>Créer un raid</Link></>}</div>

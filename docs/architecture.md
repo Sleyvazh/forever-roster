@@ -126,7 +126,9 @@ Source unique pour les races, classes, spés, métiers, emplacements d'équipeme
 - **Langue choisie** : cookie `fr-lang` (`fr` | `en`, un an), posé par FR | EN (pied de page, menu du compte) ou `/?lang=en` ; colonne `users.lang` (`auto` | `fr` | `en`) : un compte retrouve sa langue sur tous ses appareils. Sans choix : français tant que `AUTO_ENGLISH` est faux (traduction en cours), puis la langue du navigateur.
 - **Accueil public** : `landing/forever-en.html` et `retail-en.html`, choisies par Caddy (`/?lang=en` ou le cookie, snippet `landing` du Caddyfile ; `e2e/serve.mjs` fait pareil en test).
 - **Pages légales** : `LegalPagesEn.tsx`, le même texte en anglais ; la version française fait foi. Tout changement se fait dans les deux.
-- **Dates** : `dateLocale()` (`fr-FR`, ou `en-GB` : « 9 Nov », 24 h).
+- **Dates** : `dateLocale()` (`fr-FR`, ou `en-GB` : « 9 Nov », 24 h) ; noms des jours et des mois, listes « a, b et c » : `i18n/dates.ts`. Un `Intl.DateTimeFormat` se crée à l'affichage (fonction), jamais au chargement du module, pour suivre la langue.
+- **Libellés du jeu** (`packages/game-data` : statuts d'inscription, modes de butin, réponses, présence…) : restés en français, traduits à l'affichage par `i18n/game.ts` (`signupLabel`, `lootModeName`…) ; `i18n-check` lit aussi ces tables.
+- **Avancement** : E1 (accueil public, connexion, Bienvenue, pages légales), E2 (Accueil de la guilde, Raids). Restent : Sorties et Guilde (E3), Mes persos, Compte, Addon, Synchro, Administration (E4), messages de l'API et e-mails (E5), bot Discord (E6), nouveautés (E7) ; puis `AUTO_ENGLISH` passe à vrai.
 
 ## Pistes pour la suite
 

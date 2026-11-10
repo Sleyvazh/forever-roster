@@ -1,9 +1,11 @@
-import { classColor, benchSuggestion, CLASSES, roleGaps, roleOf, SIGNUP_LABEL, targetOf, type ClassName, type Role, type RoleTargets, type SignupStatus } from "@forever/game-data";
+import { classColor, benchSuggestion, CLASSES, roleGaps, roleOf, targetOf, type ClassName, type Role, type RoleTargets, type SignupStatus } from "@forever/game-data";
 import { useState } from "react";
 import { useGameText } from "../gameText";
 import type { Character, RaidSignup } from "../api";
 import { AskChip, type Reach } from "./RaidReach";
 import { RoleIcon, RoleTag } from "./RoleIcon";
+import { t, tn } from "../i18n";
+import { signupLabel } from "../i18n/game";
 
 /**
  * Compo assistée (lot D1) : rôles visés selon le format du raid, ce qui manque, qui peut combler (inscrits non placés,
@@ -43,7 +45,7 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
     if (gaps[r] <= 0) continue;
     // 1. Inscrits pas encore placés, dans ce rôle
     for (const e of entries.filter(x => !x.placed && x.signup && x.signup.status !== "absent" && x.signup.status !== "bench" && roleOf(x.spec) === r)) {
-      sugg.push({ key: `p-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.specOrClass(e.cls, e.spec)} · ${e.owner}`, why: `inscrit « ${SIGNUP_LABEL[e.signup!.status]} », pas placé`, action: { label: "Placer", run: () => onPlace(e.key) } });
+      sugg.push({ key: `p-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.specOrClass(e.cls, e.spec)} · ${e.owner}`, why: t("inscrit « {status} », pas placé", { status: signupLabel(e.signup!.status) }), action: { label: t("Placer"), run: () => onPlace(e.key) } });
     }
     // 2. Inscrits qui ont ce rôle en off-spec (non placés, ou placés dans un rôle en trop)
     for (const e of entries.filter(x => x.signup && x.characterId && x.signup.status !== "absent" && roleOf(x.spec) !== r)) {
@@ -51,17 +53,17 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
       const off = [c?.spec1, c?.spec2].find(sp => sp && sp !== e.spec && roleOf(sp) === r);
       const cur = roleOf(e.spec);
       if (!off || (e.placed && cur && gaps[cur] >= 0)) continue;
-      sugg.push({ key: `o-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.spec(e.cls, off)} (off-spec) · ${e.owner}`, why: `inscrit en ${gt.specOrClass(e.cls, e.spec)}${e.placed ? ", déjà placé" : ""}`, action: { label: `Passer en ${gt.spec(e.cls, off)}`, run: () => onSpec(e.signup!.id, off) } });
+      sugg.push({ key: `o-${e.key}`, role: r, name: e.name, cls: e.cls, what: `${gt.spec(e.cls, off)} (off-spec) · ${e.owner}`, why: e.placed ? t("inscrit en {spec}, déjà placé", { spec: gt.specOrClass(e.cls, e.spec) }) : t("inscrit en {spec}", { spec: gt.specOrClass(e.cls, e.spec) }), action: { label: t("Passer en {spec}", { spec: gt.spec(e.cls, off) }), run: () => onSpec(e.signup!.id, off) } });
     }
     // 3. Alts des joueurs inscrits : le bot peut leur demander (lot D2)
     for (const c of groupChars.filter(x => !signedChars.has(x.id) && signedUsers.has(x.userId) && (roleOf(x.spec1) === r || roleOf(x.spec2) === r))) {
       const sp = roleOf(c.spec1) === r ? c.spec1 : c.spec2;
       const s = signedUsers.get(c.userId)!;
-      sugg.push({ key: `a-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${sp} · ${c.isMain ? "main" : "alt"} de ${c.owner}`, why: `${c.owner} vient avec ${s.characterName ?? "un autre perso"} : à lui demander`, ask: { characterId: c.id, spec: sp, userId: c.userId } });
+      sugg.push({ key: `a-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${gt.spec(c.cls, sp)} · ${c.isMain ? t("main de {name}", { name: c.owner ?? "" }) : t("alt de {name}", { name: c.owner ?? "" })}`, why: t("{name} vient avec {char} : à lui demander", { name: c.owner ?? "", char: s.characterName ?? t("un autre perso") }), ask: { characterId: c.id, spec: sp, userId: c.userId } });
     }
     // 4. Mains des membres qui n'ont pas répondu
     for (const c of groupChars.filter(x => x.isMain && !answered.has(x.userId) && roleOf(x.spec1) === r)) {
-      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${gt.specOrClass(c.cls, c.spec1)} · main de ${c.owner}`, why: "pas encore répondu", ask: { characterId: c.id, spec: c.spec1, userId: c.userId } });
+      sugg.push({ key: `n-${c.id}`, role: r, name: c.name, cls: c.cls, what: `${gt.specOrClass(c.cls, c.spec1)} · ${t("main de {name}", { name: c.owner ?? "" })}`, why: t("pas encore répondu"), ask: { characterId: c.id, spec: c.spec1, userId: c.userId } });
     }
   }
 
@@ -90,9 +92,9 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
     const done = askOf.get(s.ask.characterId);
     if (done) return <span className="ra-ask"><AskChip state={done.state} /></span>;
     if (!askable) return null;
-    if (!dmOk.has(s.ask.userId)) return <span className="ra-ask small muted" title="Discord non lié ou messages du bot désactivés">pas de MP</span>;
+    if (!dmOk.has(s.ask.userId)) return <span className="ra-ask small muted" title={t("Discord non lié ou messages du bot désactivés")}>{t("pas de MP")}</span>;
     const a = s.ask;
-    return <button type="button" className="btn sm ghost" title="Le bot lui écrit en MP ; « Oui » l'inscrit avec ce perso" onClick={() => onAsk!(a.characterId, a.spec)}>Demander</button>;
+    return <button type="button" className="btn sm ghost" title={t("Le bot lui écrit en MP ; « Oui » l'inscrit avec ce perso")} onClick={() => onAsk!(a.characterId, a.spec)}>{t("Demander")}</button>;
   };
   const item = (s: Sugg) => (
     <li key={s.key}>
@@ -104,11 +106,11 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
   return (
     <section className="panel pad stack ra" aria-labelledby="ra-title">
       <div className="ra-head">
-        <h3 id="ra-title">Besoins <span className="muted small">raid à {size}</span></h3>
-        {coming.length > 0 && <span className="hint">{coming.length} inscrit{coming.length > 1 ? "s" : ""} « présent / en retard » pour {size} places</span>}
-        <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? "Replier" : "Voir les propositions"}</button>
+        <h3 id="ra-title">{t("Besoins")} <span className="muted small">{t("raid à {n}", { n: size })}</span></h3>
+        {coming.length > 0 && <span className="hint">{tn(coming.length, "{n} inscrit « présent / en retard » pour {size} places", "{n} inscrits « présent / en retard » pour {size} places", { size })}</span>}
+        <button type="button" className="btn ghost sm" style={{ marginLeft: "auto" }} aria-expanded={open} onClick={() => setOpen(o => !o)}>{open ? t("Replier") : t("Voir les propositions")}</button>
         {onPublish && <button type="button" className="btn sm" onClick={onPublish}
-          title={published ? "L'annonce Discord revient aux colonnes par rôle" : "L'annonce Discord affichera les groupes, mis à jour à chaque changement"}>{published ? "Retirer de Discord" : "Publier la compo"}</button>}
+          title={published ? t("L'annonce Discord revient aux colonnes par rôle") : t("L'annonce Discord affichera les groupes, mis à jour à chaque changement")}>{published ? t("Retirer de Discord") : t("Publier la compo")}</button>}
       </div>
       {!open && (
         <div className="ra-sum">
@@ -117,11 +119,11 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
             return (
               <button key={r} type="button" className={`ra-sumr ${gaps[r] > 0 ? "low" : gaps[r] < 0 ? "over" : "ok"}`} onClick={() => setOpen(true)}>
                 <RoleIcon role={r} /><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
-                <small>{gaps[r] > 0 ? `il en manque ${gaps[r]}${n ? ` · ${n} proposition${n > 1 ? "s" : ""}` : ""}` : gaps[r] < 0 ? `${-gaps[r]} de trop` : "complet"}</small>
+                <small>{gaps[r] > 0 ? `${t("il en manque {n}", { n: gaps[r] })}${n ? ` · ${tn(n, "{n} proposition", "{n} propositions")}` : ""}` : gaps[r] < 0 ? t("{n} de trop", { n: -gaps[r] }) : t("complet")}</small>
               </button>
             );
           })}
-          {toBench.length > 0 && <button type="button" className="ra-sumr low" onClick={() => setOpen(true)}><b>Banc</b><small>{toBench.length} à y mettre</small></button>}
+          {toBench.length > 0 && <button type="button" className="ra-sumr low" onClick={() => setOpen(true)}><b>{t("Banc")}</b><small>{t("{n} à y mettre", { n: toBench.length })}</small></button>}
         </div>
       )}
       {open && <>
@@ -132,9 +134,9 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
           return (
             <div key={r} className={`ra-col ${gaps[r] > 0 ? "low" : gaps[r] < 0 ? "over" : "ok"}`}>
               <div className="ra-gap"><RoleIcon role={r} /><b className="num">{counts[r] ?? 0}/{targetOf(targets, r)}</b>
-                <small>{gaps[r] > 0 ? `il en manque ${gaps[r]}` : gaps[r] < 0 ? `${-gaps[r]} de trop` : "complet"}</small></div>
-              {gaps[r] > 0 && (list.length ? <ul className="ra-list">{shown.map(item)}</ul> : <p className="hint" style={{ margin: 0 }}>Personne d'autre pour ce rôle.</p>)}
-              {list.length > 4 && <button type="button" className="btn ghost sm" onClick={() => setMore(m => (m === r ? null : r))}>{more === r ? "Moins" : `${list.length - 4} autre${list.length - 4 > 1 ? "s" : ""}`}</button>}
+                <small>{gaps[r] > 0 ? t("il en manque {n}", { n: gaps[r] }) : gaps[r] < 0 ? t("{n} de trop", { n: -gaps[r] }) : t("complet")}</small></div>
+              {gaps[r] > 0 && (list.length ? <ul className="ra-list">{shown.map(item)}</ul> : <p className="hint" style={{ margin: 0 }}>{t("Personne d'autre pour ce rôle.")}</p>)}
+              {list.length > 4 && <button type="button" className="btn ghost sm" onClick={() => setMore(m => (m === r ? null : r))}>{more === r ? t("Moins") : tn(list.length - 4, "{n} autre", "{n} autres")}</button>}
             </div>
           );
         })}
@@ -142,8 +144,8 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
 
       {toBench.length > 0 && (
         <div className="ra-bench stack">
-          <div><b>Banc : {coming.length} inscrits pour {size} places</b>
-            <span className="hint"> · ceux qui y sont allés le moins souvent{history?.raids ? ` (sur les ${history.raids} derniers raids)` : ""}, jamais deux fois de suite</span></div>
+          <div><b>{t("Banc : {n} inscrits pour {size} places", { n: coming.length, size })}</b>
+            <span className="hint"> · {history?.raids ? t("ceux qui y sont allés le moins souvent (sur les {n} derniers raids), jamais deux fois de suite", { n: history.raids }) : t("ceux qui y sont allés le moins souvent, jamais deux fois de suite")}</span></div>
           <ul className="ra-list ra-inline">
             {toBench.map(k => {
               const e = byKey.get(k)!;
@@ -151,12 +153,12 @@ export function RaidAssist({ size, targets, entries, groupChars, signups, histor
               return (
                 <li key={k}>
                   <RoleIcon role={roleOf(e.spec)} />
-                  <span className="ra-txt"><b style={{ color: color(e.cls) }}>{e.name}</b><small>{e.owner} · banc {st?.bench ?? 0} fois{st?.lastBenched ? " · au dernier banc" : ""}</small></span>
+                  <span className="ra-txt"><b style={{ color: color(e.cls) }}>{e.name}</b><small>{e.owner} · {t("banc {n} fois", { n: st?.bench ?? 0 })}{st?.lastBenched ? t(" · au dernier banc") : ""}</small></span>
                 </li>
               );
             })}
             <li className="ra-go"><button type="button" className="btn sm primary" onClick={() => onBench(toBench.map(k => byKey.get(k)!.signup!.id))}>
-              Mettre {toBench.length > 1 ? `ces ${toBench.length} persos` : "ce perso"} sur le banc
+              {toBench.length > 1 ? t("Mettre ces {n} persos sur le banc", { n: toBench.length }) : t("Mettre ce perso sur le banc")}
             </button></li>
           </ul>
         </div>

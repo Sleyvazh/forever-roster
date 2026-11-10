@@ -6,6 +6,7 @@ import { del, get, patch, post } from "../api";
 import { useMe } from "../auth";
 import { useSite } from "../site";
 import { LinkCodeBox } from "./DiscordLink";
+import { t, tx } from "../i18n";
 
 /**
  * Salon Discord d'un raid récurrent, réglé au même endroit dans l'onglet Raids (« ↻ Récurrents »)
@@ -29,7 +30,7 @@ export function useRaidTemplates(groupId: string) {
  * Salon Discord d'un raid récurrent : celui du groupe, ou un salon à part (lié par code comme celui du groupe) que le bot
  * renomme chaque semaine avec la date du raid courant (ex. jeudi-15-10). Les raids ponctuels restent dans le salon du groupe.
  */
-export function TemplateChannel({ groupId, t, canEdit, guard, refresh, groupLinked }: {
+export function TemplateChannel({ groupId, t: tpl, canEdit, guard, refresh, groupLinked }: {
   groupId: string; t: Pick<RaidTemplate, "id" | "name" | "discord">; canEdit: boolean; guard: Guard; refresh: () => Promise<unknown>; groupLinked: boolean;
 }) {
   const game = useSite().game;
@@ -37,35 +38,35 @@ export function TemplateChannel({ groupId, t, canEdit, guard, refresh, groupLink
   const hasDiscord = !!me.data?.user?.discordUsername;
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [wantCode, setWantCode] = useState(false);
-  const d = t.discord;
+  const d = tpl.discord;
   // Salon lié (ou changé) depuis Discord : le code a servi
   useEffect(() => { setCode(null); setWantCode(false); }, [d.linked, d.channelName]);
   const askCode = () => {
     setWantCode(true);
-    if (hasDiscord) void guard(async () => { setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/raid-templates/${t.id}/discord/code`)); });
+    if (hasDiscord) void guard(async () => { setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/raid-templates/${tpl.id}/discord/code`)); });
   };
   return (
     <div className="stack" style={{ flexBasis: "100%", gap: 6 }}>
       <div className="row" style={{ gap: 8 }}>
-        <span className="small"><span className="muted">Salon Discord :</span>{" "}
-          {d.linked ? <><b>{d.channelName ? `#${d.channelName}` : "salon à part"}</b> <span className="muted">(à part)</span></>
-            : <>celui de la guilde{!groupLinked && <span className="muted"> (aucun salon lié pour l'instant)</span>}</>}</span>
+        <span className="small"><span className="muted">{t("Salon Discord :")}</span>{" "}
+          {d.linked ? <><b>{d.channelName ? `#${d.channelName}` : t("salon à part")}</b> <span className="muted">{t("(à part)")}</span></>
+            : <>{t("celui de la guilde")}{!groupLinked && <span className="muted"> {t("(aucun salon lié pour l'instant)")}</span>}</>}</span>
         {canEdit && <span className="row" style={{ gap: 6 }}>
-          <button type="button" className="btn ghost sm" onClick={askCode}>{d.linked ? "Changer de salon…" : "Salon à part…"}</button>
-          {d.linked && <button type="button" className="btn ghost sm" onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${t.id}/discord`); await refresh(); })}>Revenir au salon de la guilde</button>}
+          <button type="button" className="btn ghost sm" onClick={askCode}>{d.linked ? t("Changer de salon…") : t("Salon à part…")}</button>
+          {d.linked && <button type="button" className="btn ghost sm" onClick={() => void guard(async () => { await del(`/groups/${groupId}/raid-templates/${tpl.id}/discord`); await refresh(); })}>{t("Revenir au salon de la guilde")}</button>}
         </span>}
       </div>
       {canEdit && (d.linked || code) && (
         <label className="gr-tog" style={{ paddingTop: 0 }}>
-          <input type="checkbox" checked={d.rename} onChange={e => { const discordRename = e.target.checked; void guard(async () => { await patch(`/groups/${groupId}/raid-templates/${t.id}`, { discordRename }); await refresh(); }); }} />
-          <i aria-hidden="true" />Renommer le salon avec la date du prochain raid (ex. jeudi-15-10)
+          <input type="checkbox" checked={d.rename} onChange={e => { const discordRename = e.target.checked; void guard(async () => { await patch(`/groups/${groupId}/raid-templates/${tpl.id}`, { discordRename }); await refresh(); }); }} />
+          <i aria-hidden="true" />{t("Renommer le salon avec la date du prochain raid (ex. jeudi-15-10)")}
         </label>
       )}
-      {canEdit && d.linked && d.renameError && <span className="small"><span role="alert" style={{ color: "var(--bad)" }}>{d.renameError}</span> <span className="muted">Le bot réessaie toutes les heures.</span></span>}
-      {canEdit && d.linked && d.rename && !d.renameError && <span className="hint">Le bot a besoin de « Gérer les salons » sur ce salon.</span>}
-      {canEdit && wantCode && !hasDiscord && <div className="alert info">Pour lier un salon, lie d'abord ton propre Discord dans <Link to="/account">Compte &amp; sécurité</Link> : le bot vérifie que c'est bien un officier qui tape la commande.</div>}
-      {code && <LinkCodeBox key={code.code} game={game} code={code} intro={`Dans le salon Discord voulu pour « ${t.name} », tape cette commande`} label={`Commande de liaison du salon pour « ${t.name} »`}
-        footer={<span className="small muted">Ce salon recevra les annonces de ce raid récurrent seulement (les raids ponctuels restent dans le salon de la guilde). Pour le renommer, le bot a besoin de « Gérer les salons » sur ce salon.</span>} />}
+      {canEdit && d.linked && d.renameError && <span className="small"><span role="alert" style={{ color: "var(--bad)" }}>{d.renameError}</span> <span className="muted">{t("Le bot réessaie toutes les heures.")}</span></span>}
+      {canEdit && d.linked && d.rename && !d.renameError && <span className="hint">{t("Le bot a besoin de « Gérer les salons » sur ce salon.")}</span>}
+      {canEdit && wantCode && !hasDiscord && <div className="alert info">{tx("Pour lier un salon, lie d'abord ton propre Discord dans {link} : le bot vérifie que c'est bien un officier qui tape la commande.", { link: <Link to="/account">{t("Compte & sécurité")}</Link> })}</div>}
+      {code && <LinkCodeBox key={code.code} game={game} code={code} intro={t("Dans le salon Discord voulu pour « {name} », tape cette commande", { name: tpl.name })} label={t("Commande de liaison du salon pour « {name} »", { name: tpl.name })}
+        footer={<span className="small muted">{t("Ce salon recevra les annonces de ce raid récurrent seulement (les raids ponctuels restent dans le salon de la guilde). Pour le renommer, le bot a besoin de « Gérer les salons » sur ce salon.")}</span>} />}
     </div>
   );
 }

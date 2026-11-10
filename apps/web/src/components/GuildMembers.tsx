@@ -16,6 +16,7 @@ import { ClassDot } from "./Outings";
 import { PlayerSheet } from "./PlayerSheet";
 import { RowMenu } from "./RowMenu";
 
+import { t, tx } from "../i18n";
 /**
  * Page Guilde de Forever (lot « Guilde », refonte du 23/10) : Membres, Course au 60 et Historique (journal de guilde).
  * Membres (disposition A, 31/10) : une barre fixe en haut, « Par perso / Par joueur » à gauche et, en Par perso avec la
@@ -107,13 +108,13 @@ export function QuestionBand({ groupId, questions }: { groupId: string; question
   return (
     <>
       {questions.map(q => (
-        <section key={q.guid} className="gm-act yours" aria-label={`Est-ce ton perso ? ${q.name}`}>
+        <section key={q.guid} className="gm-act yours" aria-label={t("Est-ce ton perso ? {name}", { name: q.name })}>
           <ClassDot cls={q.cls} size="md" />
-          <span className="t"><b>Est-ce ton perso ?</b>
-            <small>{q.by ?? "Un officier"} a rattaché <CharName name={q.name} cls={q.cls} as="span" />, {q.cls ? `${gt.cls(q.cls)} ` : "niveau "}{q.level}, à ton compte.</small></span>
+          <span className="t"><b>{t("Est-ce ton perso ?")}</b>
+            <small>{tx("{who} a rattaché {char}, {what}, à ton compte.", { who: q.by ?? t("Un officier"), char: <CharName name={q.name} cls={q.cls} as="span" />, what: q.cls ? `${gt.cls(q.cls)} ${q.level}` : t("niveau {n}", { n: q.level }) })}</small></span>
           <span className="row">
-            <button type="button" className="btn primary sm" disabled={busy === q.guid} onClick={() => void answer(q, true)}>Oui, c'est moi</button>
-            <button type="button" className="btn ghost sm" disabled={busy === q.guid} onClick={() => void answer(q, false)}>Non</button>
+            <button type="button" className="btn primary sm" disabled={busy === q.guid} onClick={() => void answer(q, true)}>{t("Oui, c'est moi")}</button>
+            <button type="button" className="btn ghost sm" disabled={busy === q.guid} onClick={() => void answer(q, false)}>{t("Non")}</button>
           </span>
         </section>
       ))}

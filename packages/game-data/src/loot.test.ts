@@ -127,4 +127,8 @@ ligne au hasard`;
     expect(parseLootHistory("").entries).toEqual([]);
     expect(parseLootHistory("- objet sans joueur").ignored).toEqual(["- objet sans joueur"]);
   });
+  it("liste en anglais : « Spec 1 »", () => {
+    const h = parseLootHistory("Quinlan - BiS 3, Spec 1 4 (total 7)\n  - Onslaught Girdle");
+    expect(h.entries.map(e => [e.name, e.bis, e.ms, e.total, e.items])).toEqual([["Quinlan", 3, 4, 7, ["Onslaught Girdle"]]]);
+  });
 });

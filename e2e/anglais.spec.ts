@@ -4,7 +4,8 @@ import pg from "pg";
 /**
  * Version anglaise (10/11/2026), lot E1 : accueil public en anglais (/?lang=en, puis le cookie fr-lang), connexion,
  * inscription, mot de passe oublié et pages légales en anglais ; FR | EN en bas de page ; langue gardée dans le compte
- * (retrouvée sans le cookie). Sur chaque page visitée en anglais : aucun texte français. Noms inventés.
+ * (retrouvée sans le cookie). Lot E2 : Accueil d'une guilde et Raids. Sur chaque page visitée en anglais : aucun texte
+ * français. Noms inventés.
  */
 const test = base.extend<{ page: Page }>({
   page: async ({ page }, use) => {
@@ -28,8 +29,9 @@ const FRENCH = /\b(le|la|les|des|du|une|pour|avec|dans|sur|est|sont|tes|ton|ta|v
 const ALLOWED = [/^Français$/, /Métropole/];
 async function expectEnglish(page: Page, where: string) {
   const text = await page.locator("body").innerText();
+  // « Mon », « MON » (lundi) ne sont pas « mon »
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
-    .filter(l => !ALLOWED.some(a => a.test(l)) && FRENCH.test(l));
+    .filter(l => !ALLOWED.some(a => a.test(l)) && FRENCH.test(l.replace(/\b(Mon|MON)\b/g, "")));
   expect(lines, `texte français sur ${where}`).toEqual([]);
 }
 
@@ -101,4 +103,78 @@ test("accueil, connexion, inscription et pages légales en anglais ; langue gard
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your guild" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
+});
+
+/** Lot E2 : l'Accueil d'une guilde et les Raids (liste, page d'un raid et ses onglets, création, présence) en anglais. */
+test("accueil de la guilde et raids en anglais", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.goto("/?lang=en");
+  const email = `raids-en-${Date.now()}@example.test`;
+  await page.goto("/register");
+  await page.fill("#dn", "Aldwin"); await page.fill("#em", email); await page.fill("#pw", PASSWORD);
+  await page.getByRole("button", { name: "Create my account" }).click();
+  await expect(page.getByRole("heading", { name: "Check your e-mails" })).toBeVisible();
+
+  // Guilde, persos et un raid dans deux jours (inscriptions : présent, en retard, peut-être)
+  const db = new pg.Client({ connectionString: DB }); await db.connect();
+  let group = "", raid = "";
+  try {
+    await expect.poll(async () => (await db.query("update users set email_verified_at = now() where email = $1", [email])).rowCount).toBe(1);
+    const me = (await db.query("select id from users where email = $1", [email])).rows[0].id as string;
+    group = (await db.query("insert into groups (name) values ('Silver Lanterns') returning id")).rows[0].id as string;
+    await db.query("insert into group_members (group_id, user_id, role) values ($1, $2, 'officer')", [group, me]);
+    const profs = JSON.stringify({ prof1: { name: "", skill: 0 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 });
+    const chars: { id: string; user: string; name: string; cls: string; spec: string }[] = [];
+    for (const [i, [name, cls, spec, race]] of ([["Aldwin", "Warrior", "Protection", "Orc"], ["Brena", "Priest", "Holy", "Undead"], ["Corvin", "Mage", "Frost", "Troll"]] as const).entries()) {
+      const user = i === 0 ? me : (await db.query("insert into users (email, email_verified_at, password_hash, display_name) values ($1, now(), 'demo', $2) returning id",
+        [`${name.toLowerCase()}-${Date.now()}@example.test`, name])).rows[0].id as string;
+      if (i > 0) await db.query("insert into group_members (group_id, user_id, role) values ($1, $2, 'member')", [group, user]);
+      const id = (await db.query("insert into characters (user_id, name, race, cls, spec1, level, professions) values ($1, $2, $3, $4, $5, 30, $6) returning id",
+        [user, name, race, cls, spec, profs])).rows[0].id as string;
+      await db.query("insert into group_characters (group_id, character_id, user_id, is_main) values ($1, $2, $3, true)", [group, id, user]);
+      chars.push({ id, user, name, cls, spec });
+    }
+    raid = (await db.query("insert into raids (group_id, name, scheduled_at, size, created_by) values ($1, 'Molten Core', $2, 40, $3) returning id",
+      [group, new Date(Date.now() + 2 * 86400e3), me])).rows[0].id as string;
+    for (const [c, st] of [[chars[0]!, "present"], [chars[1]!, "late"], [chars[2]!, "tentative"]] as const) {
+      await db.query("insert into raid_signups (raid_id, user_id, display_name, character_id, cls, spec, status) values ($1, $2, $3, $4, $5, $6, $7)", [raid, c.user, c.name, c.id, c.cls, c.spec, st]);
+    }
+  } finally { await db.end(); }
+
+  await page.goto("/login");
+  await page.fill("#email", email); await page.fill("#password", PASSWORD);
+  await page.getByRole("button", { name: "Log in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Your guild" }).or(page.getByRole("heading", { name: /^(Hello|Good evening), Aldwin$/ }))).toBeVisible();
+
+  await test.step("Accueil", async () => {
+    await page.goto(`/groups/${group}`);
+    await expect(page.getByRole("heading", { name: /^(Hello|Good evening), Aldwin$/ })).toBeVisible();
+    await expect(page.getByText("Molten Core").first()).toBeVisible();
+    await expectEnglish(page, "l'accueil de la guilde");
+  });
+
+  await test.step("Raids : à venir, nouveau raid, récurrents, présence", async () => {
+    await page.goto(`/groups/${group}/raids`);
+    await expect(page.getByRole("tab", { name: "Upcoming (1)" })).toBeVisible();
+    await expectEnglish(page, "la liste des raids");
+    await page.getByRole("button", { name: "+ Raid" }).click();
+    await expect(page.getByRole("heading", { name: "New raid" })).toBeVisible();
+    await expectEnglish(page, "la création d'un raid");
+    await page.getByRole("button", { name: "Close" }).first().click();
+    await page.getByRole("tab", { name: "Attendance" }).click();
+    await expect(page.getByText("No raid recorded yet.")).toBeVisible();
+    await expectEnglish(page, "la présence");
+  });
+
+  await test.step("Page du raid : inscriptions, compo, préparation, butin, réglages", async () => {
+    await page.goto(`/groups/${group}/raids/${raid}`);
+    await expect(page.getByRole("heading", { name: "Molten Core", level: 1 })).toBeVisible();
+    await expect(page.getByLabel("Sign-ups coming").getByText("2 coming")).toBeVisible();
+    await expectEnglish(page, "les inscriptions du raid");
+    for (const [tab, check] of [["Comp", "Needs"], ["Prep", "Consumables"], ["Settings", "Loot mode"]] as const) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await expect(page.getByRole("heading", { name: new RegExp(`^${check}`) }).first()).toBeVisible();
+      await expectEnglish(page, `l'onglet ${tab} du raid`);
+    }
+  });
 });

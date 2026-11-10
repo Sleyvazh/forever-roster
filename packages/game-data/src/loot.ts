@@ -190,7 +190,7 @@ export interface LootHistoryEntry { name: string; bis: number | null; ms: number
 export interface LootHistory { label: string | null; entries: LootHistoryEntry[]; ignored: string[] }
 export const LOOT_HISTORY_MAX = 200;
 
-const HISTORY_HEAD = /^(.+?)\s+[-–—:]\s+BiS\s+(\d+)\s*[,;]\s*Sp[ée]\s*1\s+(\d+)(?:\s*\(\s*total\s+(\d+)\s*\))?\s*$/i;
+const HISTORY_HEAD = /^(.+?)\s+[-–—:]\s+BiS\s+(\d+)\s*[,;]\s*Sp[ée]c?\s*1\s+(\d+)(?:\s*\(\s*total\s+(\d+)\s*\))?\s*$/i;
 const HISTORY_TOTAL = /^(.+?)\s+[-–—:]\s+(?:total\s+)?(\d+)\s+(?:objets?|items?)\s*$/i;
 const HISTORY_ITEM = /^[-•*·]\s*(.+)$/;
 const HISTORY_TITLE = /\(([^()]{1,40})\)\s*$/;
