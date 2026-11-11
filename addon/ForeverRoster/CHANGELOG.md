@@ -2,6 +2,18 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.3
+
+- **Raid messages no longer get lost**: loot council answers and votes, rolls, the consumables call and the version check now go through a queue. The game accepts 10 addon messages in a row, then 1 per second (whispers included inside instances), and blocks them during a boss fight: a refused message used to vanish silently. It is now sent again, in order, as soon as the game allows it. Example: with a council of 5 and the loot master, answering for 3 items in a row is 18 whispers; 8 of them could be lost before.
+- A message whose recipient has left, or that has waited 15 minutes, is dropped. Data sharing with the guild waits for raid messages to go first.
+- `/fr share` shows the session's raid messages: sent, resent after the game refused them, dropped, waiting.
+
+Français :
+
+- **Les messages du raid ne se perdent plus** : réponses et votes du conseil, jets, appel aux consommables et versions passent par une file. Le jeu prend 10 messages d'addon d'affilée, puis 1 par seconde (chuchotements compris en instance), et les bloque pendant un combat de boss : un message refusé disparaissait sans rien dire. Il repart maintenant, dans l'ordre, dès que le jeu le permet. Exemple : avec un conseil de 5 et le maître du butin, répondre pour 3 objets d'affilée fait 18 chuchotements ; 8 pouvaient se perdre.
+- Un message dont le destinataire est parti, ou qui attend depuis 15 minutes, est abandonné. Le partage des données avec la guilde laisse passer les messages du raid d'abord.
+- `/fr partage` affiche les messages du raid de la session : partis, renvoyés après un refus du jeu, abandonnés, en attente.
+
 ## 1.7.2
 
 - **English wording matches the English website**: hints now quote the website as English players see it ("Copy for the game", "Export for the game", the "Prep" tab, the Sync button).

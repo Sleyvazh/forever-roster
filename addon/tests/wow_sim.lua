@@ -3761,6 +3761,194 @@ local function bankRequests()
 end
 bankRequests()
 
+-- 8 undecies. File des messages du raid (1.7.3, Raid.lua) : le jeu prend 10 messages d'affilée par préfixe puis 1 par
+-- seconde (chuchotements compris en instance), et les bloque pendant un combat de boss. Aucun message du raid n'est
+-- perdu : refusé, il repart ; l'ordre est gardé ; un destinataire parti ou 15 min d'attente : abandonné. La file de
+-- fond du partage passe après. Compteurs dans /fr partage.
+local function raidQueue()
+  local RA = ns.Raid
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInRaid = IsInRaid, IsInGroup = IsInGroup,
+    GetNumGroupMembers = GetNumGroupMembers, InCombatLockdown = InCombatLockdown, UnitAffectingCombat = UnitAffectingCombat,
+    council = RA.CouncilNames, asks = RA.asks }
+  local errorsBefore = errors()
+  local clock = 1798000000
+  local timers = {}
+  local function advance(sec)
+    local target = clock + sec
+    while true do
+      local best, bi
+      for i, t in ipairs(timers) do if t.at <= target and (not best or t.at < best.at) then best, bi = t, i end end
+      if not best then break end
+      table.remove(timers, bi)
+      clock = math.max(clock, best.at)
+      best.fn()
+    end
+    clock = target
+  end
+  time = function() return math.floor(clock) end
+  GetTime = function() return clock end
+  C_Timer = { After = function(delay, fn) timers[#timers + 1] = { at = clock + math.max(0, delay or 0), fn = fn } end, NewTicker = function() return {} end }
+  IsInRaid = function() return true end
+  IsInGroup = function() return true end
+  GetNumGroupMembers = function() return 20 end
+  InCombatLockdown = function() return false end
+  UnitAffectingCombat = function() return false end
+  -- Le serveur du jeu : 10 messages d'affilée puis 1 par seconde ; « lock » : combat de boss ; « refuse » : autre réponse
+  local bucket, bucketAt, lock, refuse = 10, clock, false, nil
+  local taken, refusals = {}, 0
+  C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function(prefix, msg, dist, target)
+    assert(prefix == "FRoster" and #msg <= 255, "message d'addon de plus de 255 octets")
+    if lock then return 11 end
+    local r = refuse and refuse(msg, dist, target)
+    if r then return r end
+    bucket = math.min(10, bucket + (clock - bucketAt)) bucketAt = clock
+    if bucket < 1 then refusals = refusals + 1 return 3 end
+    bucket = bucket - 1
+    taken[#taken + 1] = { msg = msg, dist = dist, target = target, t = clock }
+    return 0
+  end }
+  local COUNCIL = { "Gorrak", "Mirelle", "Thorn", "Nyssa", "Ilyra" }
+  RA.CouncilNames = function() return COUNCIL end
+  RA.asks = {}
+  local function answer(sid) RA.Respond({ sid = sid, itemId = 18814, ml = "Kaeldra", at = time() }, "bis", "") end
+  local function stats() return RA.stats.sent, RA.stats.retried, RA.stats.dropped end
+  local function full() advance(30) bucket, bucketAt = 10, clock end -- l'allocation de l'addon et celle du jeu sont pleines
+  full()
+  assert(#RA.queue == 0 and #RA.lowQueue == 0, "files vides au départ")
+
+  -- a. Conseil de 5 et le maître du butin : répondre pour 3 objets d'affilée = 18 chuchotements. 10 partent tout de suite,
+  -- les 8 autres au rythme du jeu, dans l'ordre, sans un seul refus : l'addon n'a rien envoyé de trop
+  local s0, r0, d0 = stats()
+  local n0, t0 = #taken, clock
+  answer("s1") answer("s2") answer("s3")
+  assert(#taken - n0 == 10 and #RA.queue == 8, "10 chuchotements partis, 8 en file : " .. (#taken - n0) .. " / " .. #RA.queue)
+  advance(7.5)
+  assert(#taken - n0 == 17 and #RA.queue == 1, "un par seconde ensuite")
+  advance(1)
+  assert(#taken - n0 == 18 and #RA.queue == 0 and refusals == 0, "les 18 réponses sont parties, sans refus du jeu")
+  local order = {}
+  for i = n0 + 1, #taken do order[#order + 1] = taken[i].msg:match("^LA;(s%d);bis") .. ":" .. taken[i].target end
+  local want = {}
+  for _, sid in ipairs({ "s1", "s2", "s3" }) do
+    for _, n in ipairs(COUNCIL) do want[#want + 1] = sid .. ":" .. n end
+    want[#want + 1] = sid .. ":Kaeldra"
+  end
+  assert(table.concat(order, " ") == table.concat(want, " "), "ordre gardé : " .. table.concat(order, " "))
+  assert(taken[#taken].t - t0 <= 8.5, "tout est parti en 8 s environ")
+  local s1, r1, d1 = stats()
+  assert(s1 - s0 == 18 and r1 == r0 and d1 == d0, "18 partis, aucun renvoyé, aucun abandonné")
+
+  -- b. Le jeu en accepte moins que prévu (allocation entamée ailleurs) : le message refusé repart 1 s plus tard
+  full()
+  bucket = 2
+  n0 = #taken
+  for _ = 1, 5 do RA.AskVersions(true) end
+  assert(#taken - n0 == 2 and #RA.queue == 3 and refusals == 1, "2 pris, le 3e refusé par le jeu, gardé en file")
+  advance(1.1)
+  assert(#taken - n0 == 3, "renvoyé 1 s plus tard")
+  advance(3)
+  assert(#taken - n0 == 5 and #RA.queue == 0, "les 5 sont partis")
+  local s2, r2, d2 = stats()
+  assert(s2 - s1 == 5 and r2 > r1 and d2 == d1, "renvoyés comptés, rien d'abandonné")
+
+  -- c. Combat de boss : le jeu bloque tout. Rien n'est perdu ; à la fin de la rencontre, tout part sans attendre
+  full()
+  lock = true
+  n0 = #taken
+  RA.AskVersions(true)
+  answer("s4")
+  assert(#taken == n0 and #RA.queue == 7, "bloqué : 7 messages en file")
+  advance(60)
+  assert(#taken == n0 and #RA.queue == 7, "toujours bloqué une minute plus tard, rien de perdu")
+  lock = false
+  bucket, bucketAt = 10, clock
+  fire("ENCOUNTER_END", 1, "Lucifron", 9, 40, 1)
+  assert(#taken - n0 == 7 and #RA.queue == 0, "fin de la rencontre : les 7 partent tout de suite")
+  assert(taken[n0 + 1].msg == "VQ" and taken[n0 + 2].target == "Gorrak" and taken[#taken].target == "Kaeldra", "dans l'ordre")
+  local s3, r3, d3 = stats()
+  assert(s3 - s2 == 7 and r3 > r2 and d3 == d2, "bloqués puis partis")
+  -- Sans l'événement : nouvel essai toutes les 3 s
+  full()
+  lock = true
+  n0 = #taken
+  RA.AskVersions(true)
+  lock = false
+  assert(#taken == n0, "pas encore reparti")
+  advance(3.1)
+  assert(#taken - n0 == 1 and #RA.queue == 0, "nouvel essai 3 s plus tard")
+
+  -- d. Destinataire parti (réponse 12 du jeu) : abandonné sans bloquer les suivants
+  full()
+  refuse = function(_, dist, target) if dist == "WHISPER" and target == "Thorn" then return 12 end end
+  n0 = #taken
+  local _, _, d4 = stats()
+  answer("s5")
+  assert(#taken - n0 == 5 and #RA.queue == 0, "5 partis, celui de Thorn abandonné")
+  for i = n0 + 1, #taken do assert(taken[i].target ~= "Thorn", "rien pour Thorn") end
+  local _, _, d5 = stats()
+  assert(d5 - d4 == 1, "abandon compté")
+  -- Erreur passagère (réponse 9) : deux nouveaux essais, puis parti
+  full()
+  local fails = 2
+  refuse = function() if fails > 0 then fails = fails - 1 return 9 end end
+  n0 = #taken
+  RA.AskVersions(true)
+  assert(#taken == n0 and #RA.queue == 1, "erreur : gardé")
+  advance(2.2)
+  assert(#taken - n0 == 1 and #RA.queue == 0, "parti au 3e essai")
+  -- Erreur qui dure : abandonné au 3e essai
+  fails = 99
+  local _, _, d6 = stats()
+  RA.AskVersions(true)
+  advance(5)
+  local _, _, d7 = stats()
+  assert(#RA.queue == 0 and d7 - d6 == 1, "erreur qui dure : abandonné")
+  refuse = nil
+
+  -- e. Bloqué plus de 15 min (raid fini entre-temps) : abandonné
+  full()
+  lock = true
+  n0 = #taken
+  RA.AskVersions(true)
+  advance(15 * 60 + 5)
+  lock = false
+  advance(5)
+  local _, _, d8 = stats()
+  assert(#taken == n0 and #RA.queue == 0 and d8 - d7 == 1, "trop vieux : abandonné, pas envoyé en retard")
+
+  -- f. Le partage (file de fond) passe après les messages du raid, et leur laisse 6 messages de l'allocation
+  full()
+  n0 = #taken
+  for _ = 1, 14 do RA.AskVersions(true) end
+  RA.SendLow("SHW;FRG", "GUILD")
+  assert(#taken - n0 == 10 and #RA.queue == 4 and #RA.lowQueue == 1, "10 messages du raid partis, le partage attend")
+  advance(4.5)
+  assert(#RA.queue == 0 and #RA.lowQueue == 1, "file du raid vide ; le partage attend encore que l'allocation remonte")
+  for i = n0 + 1, #taken do assert(taken[i].msg == "VQ", "que des messages du raid jusqu'ici") end
+  advance(10)
+  assert(#RA.lowQueue == 0 and taken[#taken].msg == "SHW;FRG" and taken[#taken].dist == "GUILD", "le partage part ensuite")
+  assert(refusals == 1, "en tout, un seul refus du jeu (cas b) : " .. refusals)
+
+  -- g. /fr partage : les compteurs
+  local sent, again, dropped = stats()
+  local text = ns.UI.ShareDiagText()
+  assert(text:find(("Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés"):format(sent, again, dropped), 1, true),
+    "compteurs dans /fr partage : " .. text)
+  assert(not text:find("en attente", 1, true), "rien en attente")
+  lock = true
+  RA.AskVersions(true)
+  assert(ns.UI.ShareDiagText():find(", 1 en attente", 1, true), "un message en attente")
+  lock = false
+  advance(4)
+  assert(#RA.queue == 0, "file vide à la fin")
+
+  assert(errors() == errorsBefore, "aucune erreur Lua pendant la file du raid")
+  time, GetTime, C_Timer, C_ChatInfo, IsInRaid, IsInGroup = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo, keep.IsInRaid, keep.IsInGroup
+  GetNumGroupMembers, InCombatLockdown, UnitAffectingCombat = keep.GetNumGroupMembers, keep.InCombatLockdown, keep.UnitAffectingCombat
+  RA.CouncilNames, RA.asks = keep.council, keep.asks
+end
+raidQueue()
+
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
 local helper = os.getenv("RC_HELPER")

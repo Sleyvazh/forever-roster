@@ -106,8 +106,14 @@ end
 --------------------------------------------------------------------------------------------------------------------
 -- Messages entre addons (même groupe de raid ; guilde et chuchotements pour le partage des données du site, plus bas).
 -- Champs séparés par « ; », 255 caractères au plus. Le jeu limite les messages d'addon par préfixe : 10 d'affilée,
--- puis 1 par seconde (au-delà, refusés) ; les messages du raid partent tout de suite et sont comptés (allocation), pour
--- que la file de fond du partage leur laisse toujours de la place.
+-- puis 1 par seconde (au-delà, refusés ; chuchotements compris en instance), et les bloque pendant un combat de boss
+-- (AddOnMessageLockdown).
+-- File du raid (1.7.3) : chaque message du raid (conseil, jets, consommables, versions) passe par RA.queue. Il part tout
+-- de suite si le jeu le prend ; refusé pour la limite, il repart 1 s plus tard ; bloqué, 3 s plus tard (et à la fin de
+-- la rencontre) ; l'ordre est gardé. Abandonné après 15 min, ou si le jeu le refuse pour de bon (destinataire parti,
+-- plus de groupe). Avant, un message refusé était perdu sans rien dire : avec un conseil de 5 et le maître du butin,
+-- répondre pour 3 objets d'affilée fait 18 chuchotements, soit 8 de trop. RA.stats compte les envois (/fr partage).
+-- La file de fond du partage (plus bas) attend que celle du raid soit vide, et lui laisse 6 messages de l'allocation.
 --------------------------------------------------------------------------------------------------------------------
 local handlers = {}
 -- Enregistre le gestionnaire d'un message : fn(prénom de l'expéditeur, champs, canal, message entier, nom brut de
@@ -125,6 +131,78 @@ local function refill()
   return allowance
 end
 local function spend() refill() allowance = allowance - 1 end
+local RESULT = (Enum and Enum.SendAddonMessageResult) or {}
+local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
+local THROTTLED = { [RESULT.AddonMessageThrottle or 3] = true, [RESULT.ChannelThrottle or 8] = true }
+local GENERAL = RESULT.GeneralError or 9
+local MAX_WAIT, MAX_TRIES = 15 * 60, 3
+RA.queue = {}
+RA.stats = { sent = 0, retried = 0, dropped = 0 } -- messages du raid de la session : partis, renvoyés, abandonnés
+-- Ce que le jeu a fait d'un envoi, d'après le dernier retour de SendAddonMessage (un code : 0 = pris ; les clients
+-- d'avant 11.0 renvoient d'abord un booléen) : "ok", "lockdown" (bloqué : rencontre de boss), "throttle" (limite du
+-- préfixe), "error" (erreur passagère), "refused" (destinataire parti, plus de groupe : inutile de réessayer), "gone"
+-- (l'appel a levé une erreur)
+local function outcome(ok, ...)
+  if not ok then return "gone" end
+  local n = select("#", ...)
+  local res = n > 0 and (select(n, ...)) or nil
+  if type(res) == "number" then
+    if res == LOCKDOWN then return "lockdown" end
+    if THROTTLED[res] then return "throttle" end
+    if res == GENERAL then return "error" end
+    if res ~= 0 then return "refused" end
+  elseif res == false then return "throttle" end
+  return "ok"
+end
+local qTimer, qFlushing = false, false
+local qFlush, lowFlush
+local function qLater(delay)
+  if qTimer then return end
+  qTimer = true
+  C_Timer.After(delay, function() qTimer = false qFlush() end)
+end
+local function qDrop(q) table.remove(q, 1) RA.stats.dropped = RA.stats.dropped + 1 end
+local function qDrain()
+  local q = RA.queue
+  local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
+  while #q > 0 do
+    local e = q[1]
+    if not api or clock() - e.at > MAX_WAIT then qDrop(q) -- trop vieux (raid fini entre-temps), ou plus d'API
+    else
+      if refill() < 1 then return qLater(math.max(0.25, 1 - allowance)) end
+      -- Un résultat illisible (valeur cachée par le jeu) : on ne peut rien en conclure, le message est tenu pour parti
+      local read, why = pcall(outcome, pcall(api, PREFIX, e.msg, e.dist, e.target))
+      if not read then why = "ok" end
+      if why == "lockdown" or why == "throttle" then
+        if not e.again then e.again = true RA.stats.retried = RA.stats.retried + 1 end
+        if why == "lockdown" then return qLater(3) end
+        allowance = 0
+        return qLater(1)
+      elseif why == "error" then
+        e.tries = (e.tries or 0) + 1
+        if e.tries >= MAX_TRIES then qDrop(q)
+        else
+          if not e.again then e.again = true RA.stats.retried = RA.stats.retried + 1 end
+          return qLater(1)
+        end
+      elseif why == "refused" or why == "gone" then qDrop(q)
+      else
+        spend()
+        RA.stats.sent = RA.stats.sent + 1
+        table.remove(q, 1)
+      end
+    end
+  end
+end
+function qFlush()
+  if qFlushing then return end
+  qFlushing = true
+  local ok, err = pcall(qDrain)
+  qFlushing = false
+  if not ok then error(err, 0) end
+  if #RA.queue == 0 and lowFlush then lowFlush() end -- file du raid vide : au tour de la file de fond
+end
+-- Envoi d'un message du raid : mis en file, parti tout de suite si le jeu le prend. Faux hors groupe (rien à qui parler)
 local function send(msg, dist, target)
   local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
   dist = dist or channel()
@@ -135,8 +213,13 @@ local function send(msg, dist, target)
     return true
   end
   if RA.test then return RA.test.send(msg, dist, target) end
-  spend()
-  return (pcall(api, PREFIX, msg, dist, target))
+  RA.queue[#RA.queue + 1] = { msg = msg, dist = dist, target = target, at = clock() }
+  qFlush()
+  return true
+end
+-- Fin d'une rencontre, levée d'une restriction du jeu : les messages retenus repartent sans attendre le prochain essai
+for _, event in ipairs({ "ENCOUNTER_END", "ADDON_RESTRICTION_STATE_CHANGED" }) do
+  ns.on(event, function() qFlush() end)
 end
 -- Message reçu d'un joueur (raid d'essai : réponses simulées des autres addons)
 function RA.Deliver(sender, msg, dist)
@@ -161,13 +244,9 @@ end)
 -- combat, et en attendant si le jeu bloque les messages d'addon (AddOnMessageLockdown) ; abandonnés après 10 min.
 -- Le raid d'essai n'y touche pas (ses messages simulés passent par RA.test).
 --------------------------------------------------------------------------------------------------------------------
-local RESULT = (Enum and Enum.SendAddonMessageResult) or {}
-local LOCKDOWN = RESULT.AddOnMessageLockdown or 11
-local THROTTLED = { [RESULT.AddonMessageThrottle or 3] = true, [RESULT.ChannelThrottle or 8] = true }
 local LOW_MAX_WAIT = 10 * 60
 RA.lowQueue = {}
 local lowTimer, lowFlushing = false, false
-local lowFlush
 local function lowLater(delay)
   if lowTimer then return end
   lowTimer = true
@@ -183,6 +262,7 @@ local function lowDrain()
     local e = q[1]
     if clock() - e.at > LOW_MAX_WAIT or not api then table.remove(q, 1) -- trop vieux (ou plus d'API) : abandonné
     else
+      if #RA.queue > 0 then return lowLater(1) end -- les messages du raid d'abord
       if inCombat() then return lowLater(2) end
       if refill() < 1 + RESERVE then return lowLater(math.max(0.25, 1 + RESERVE - allowance)) end
       local ok, res = pcall(api, PREFIX, e.msg, e.dist, e.target)

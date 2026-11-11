@@ -1004,7 +1004,8 @@ end
 
 -- Diagnostic du partage (/fr partage, 1.6.3) : ce que l'addon a reçu, partagé, confié ou relayé pendant la session, en texte
 -- brut à copier. Une ligne par groupe chargé (Group.ShareLines), une ligne de réglages (partage, confier, relais et pourquoi
--- pas), puis le journal de la session (Share.Journal : « hh:mm:ss  texte », le plus ancien d'abord).
+-- pas), les messages du raid de la session (1.7.3 : partis, renvoyés après un refus du jeu, abandonnés, en attente),
+-- puis le journal de la session (Share.Journal : « hh:mm:ss  texte », le plus ancien d'abord).
 function U.ShareDiagText()
   local G, R, lines = ns.Group, ns.Relay, {}
   local function onOff(on) return on and L["activé"] or L["coupé"] end
@@ -1020,6 +1021,14 @@ function U.ShareDiagText()
     settings[3] = L("Relais : %s", #why == 0 and L["oui"] or (L["non"] .. " (" .. table.concat(why, ", ") .. ")"))
   end
   lines[#lines + 1] = table.concat(settings, " · ")
+  -- Messages du raid (conseil, jets, consommables, versions) : ce que la file a envoyé, renvoyé ou abandonné
+  local RA = ns.Raid
+  if RA and RA.stats then
+    local s, waiting = RA.stats, RA.queue and #RA.queue or 0
+    local text = L("Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés", s.sent, s.retried, s.dropped)
+    if waiting > 0 then text = text .. L(", %d en attente", waiting) end
+    lines[#lines + 1] = text
+  end
   -- Heure du serveur (GetServerTime, qui date les clics d'inscription) : son décalage avec l'horloge du PC, ou absente
   local okT, server = false, nil
   if GetServerTime then okT, server = pcall(GetServerTime) end

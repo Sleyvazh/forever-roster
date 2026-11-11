@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 71, date: "2026-11-11", kind: "addon", version: "1.7", title: N("Addon 1.7.3 : les messages du raid ne se perdent plus"),
+    text: N("En raid, le jeu n'accepte que 10 messages d'addon d'affilée, puis 1 par seconde, et les bloque pendant un combat de boss : une réponse ou un vote au conseil envoyé en trop disparaissait sans rien dire (avec un conseil de 5, répondre pour 3 objets d'affilée suffisait). L'addon garde maintenant chaque message du raid en file et le renvoie dès que le jeu le permet, dans l'ordre : réponses et votes du conseil, jets, appel aux consommables, versions. /fr partage compte les messages partis, renvoyés et abandonnés. Télécharge la 1.7.3 sur la page Addon.") },
   { n: 70, date: "2026-11-11", kind: "addon", version: "1.7", title: N("Addon 1.7.2 : les mots du site anglais"),
     text: N("En anglais, l'addon reprend maintenant les mots du site anglais : les indications citent « Copy for the game », « Export for the game » et l'onglet « Prep », « Peut-être » s'écrit « Maybe » comme sur le site et dans Discord, et l'onglet Patrons s'appelle « Patterns » (/fr patterns l'ouvre). Rien ne change en français. Télécharge la 1.7.2 sur la page Addon.") },
   { n: 69, date: "2026-11-11", kind: "site", title: N("Le site en anglais, en entier"),

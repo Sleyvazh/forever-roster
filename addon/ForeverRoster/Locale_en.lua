@@ -417,6 +417,8 @@ T["pas d'appli ici"] = "no app here"
 T["pas en guilde"] = "not in a guild"
 T["pas officier"] = "not an officer"
 T["Heure du serveur : décalage de %d s avec l'horloge du PC"] = "Server time: %d s offset from the PC clock"
+T["Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés"] = "Raid messages: %d sent, %d resent after the game refused them, %d dropped"
+T[", %d en attente"] = ", %d waiting"
 T["Heure du serveur : absente (horloge du PC utilisée)"] = "Server time: missing (PC clock used)"
 
 -- ==============================================================================================================
