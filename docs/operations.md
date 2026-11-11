@@ -70,6 +70,8 @@ Le script :
 
 En cas d'urgence (GitHub indisponible, correctif critique), `deploy.sh --skip-ci` déploie sans attendre la CI.
 
+« La CI n'est pas terminée après 20 min » : une vérification est restée bloquée chez GitHub (le 11/11/2026, l'installation des bibliothèques de Chromium du job `e2e`, avant le premier test). Onglet Actions du dépôt, ouvrir le run en cours, **Cancel workflow**, puis **Re-run failed jobs** ; relancer `deploy.sh` quand il est vert. Depuis ce jour, chaque job a une durée maximale (`timeout-minutes` : 5 à 20 min, 45 pour l'installateur Windows) et cette installation a 5 min puis un second essai : un blocage échoue en quelques minutes au lieu de durer jusqu'à 6 h. Deux tags poussés sur un commit dont la version de l'addon ne correspond pas font aussi échouer la vérification (`upload`) : pousser les tags d'addon **après** le déploiement.
+
 Le script est entièrement contenu dans une fonction : bash le lit en entier avant de l'exécuter, donc sa propre mise à jour par `git merge` ne peut plus perturber le déploiement en cours.
 
 Les migrations de base de données s'appliquent automatiquement au démarrage de l'API.

@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16-alpine
@@ -54,6 +55,7 @@ jobs:
   # (mêmes en-têtes de sécurité que Caddy, CSP comprise).
   e2e:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     needs: test
     services:
       postgres:
@@ -82,10 +84,23 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-      - if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+      # Le 11/11/2026, l'installation des bibliothèques (apt) est restée bloquée 25 min sans rien dire, et le déploiement
+      # a été annulé : 5 min au plus, puis un second essai après avoir libéré apt
+      - name: Chromium et ses bibliothèques
+        id: pw-install
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then npx playwright install-deps chromium
+          else npx playwright install --with-deps chromium; fi
+      - name: Chromium et ses bibliothèques (second essai)
+        if: steps.pw-install.outcome == 'failure'
+        timeout-minutes: 8
+        run: |
+          sudo pkill -9 -x apt-get || true
+          sudo pkill -9 -x dpkg || true
+          sudo dpkg --configure -a || true
+          npx playwright install --with-deps chromium
       - run: npx playwright test
       - name: Rapport en cas d'échec
         if: failure()
@@ -99,6 +114,7 @@ jobs:
 
   audit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -108,6 +124,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     needs: test
     steps:
       - uses: actions/checkout@v7

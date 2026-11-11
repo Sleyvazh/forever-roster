@@ -30,6 +30,7 @@ concurrency:
 jobs:
   core:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/companion
@@ -82,6 +83,7 @@ jobs:
 
   windows:
     runs-on: windows-2025
+    timeout-minutes: 45
     needs: core
     defaults:
       run:
@@ -140,6 +142,7 @@ jobs:
   # il reprend l'installateur signé du job windows
   release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     needs: windows
     if: github.ref_type == 'tag'
     permissions:
