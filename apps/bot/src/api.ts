@@ -1,4 +1,5 @@
 import type { Game, Role, SignupStatus } from "@forever/game-data";
+import { tr, type Lang } from "./i18n";
 
 /** Client de l'API interne du site (réseau Docker uniquement, secret partagé). */
 
@@ -11,8 +12,8 @@ export interface ViewSignup {
 export interface RosterMember { name: string; cls: string; spec: string; role: Role | null }
 export interface RaidView {
   raid: { id: string; name: string; description: string; scheduledAt: string | null; url: string; changedAt: string; size?: number; difficulty?: string | null };
-  /** Jeu du groupe (Roster : WoW Retail) ; absent : Forever. */
-  group: { id: string; name: string; game?: Game };
+  /** Jeu du groupe (Roster : WoW Retail) ; absent : Forever. Langue du bot pour la guilde (absente : français). */
+  group: { id: string; name: string; game?: Game; lang?: Lang };
   channelId: string;
   messageId: string | null;
   signups: ViewSignup[];
@@ -32,12 +33,12 @@ export interface Nudge {
 export interface Ask {
   id: string; discordUserId: string; character: { name: string; cls: string }; spec: string; role: Role | null; askedBy: string;
   current: { status: SignupStatus; characterName: string | null } | null;
-  raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string; game?: Game };
+  raid: { id: string; name: string; scheduledAt: string | null; url: string }; group: { id: string; name: string; game?: Game; lang?: Lang };
 }
 export interface AskAnswer { answer: "yes" | "no"; character: string; spec: string; url: string; view: RaidView | null; already: boolean }
 /** Commande d'artisanat dans son salon Discord (lot F). */
 export interface OrderView {
-  id: string; group: { id: string; name: string }; channelId: string; messageId: string | null; changedAt: string; url: string;
+  id: string; group: { id: string; name: string; lang?: Lang }; channelId: string; messageId: string | null; changedAt: string; url: string;
   item: { id: number; name: string; quality: number } | null; recipeName: string; quantity: number; requester: string; character: string | null;
   crafters: string[]; status: "open" | "taken" | "done"; taker: string | null; reagents: { name: string; n: number; provided: boolean }[]; note: string;
 }
@@ -59,7 +60,7 @@ export type OutingRole = "Tank" | "Heal" | "DPS";
 export interface OutingMember { role: OutingRole; name: string; cls: string; spec: string; guest: boolean }
 /** Sortie dans son salon Discord : de quoi dessiner l'annonce compacte. */
 export interface OutingView {
-  id: string; group: { id: string; name: string }; channelId: string; messageId: string | null; changedAt: string;
+  id: string; group: { id: string; name: string; lang?: Lang }; channelId: string; messageId: string | null; changedAt: string;
   /** Jour (Paris) au moment de la vue : renvoyé à la publication (le lendemain, « demain » devient « ce soir »). */
   today: string; url: string;
   dungeon: string; title: string; levels: string; day: string; at: string | null; note: string; creator: string;
@@ -68,8 +69,8 @@ export interface OutingView {
 }
 export interface OutingCurrent { role: OutingRole; waiting: boolean; characterId: string | null; cls: string; spec: string }
 export type OutingChoices =
-  | { mode: "member"; linked: true; current: OutingCurrent | null; creator: boolean; levels: string; anyAtLevel: boolean; characters: { id: string; name: string; cls: string; level: number; spec: string }[] }
-  | { mode: "guest"; linked: boolean; current: OutingCurrent | null; levels: string };
+  | { mode: "member"; linked: true; current: OutingCurrent | null; creator: boolean; levels: string; anyAtLevel: boolean; characters: { id: string; name: string; cls: string; level: number; spec: string }[]; lang?: Lang }
+  | { mode: "guest"; linked: boolean; current: OutingCurrent | null; levels: string; lang?: Lang };
 export interface OutingJoin { state: "in" | "waiting"; role: OutingRole; name: string; position: number | null }
 export interface OutingSignupBody { role: OutingRole; characterId?: string | null; cls?: string; spec?: string; wait?: boolean }
 export type OutingNoticeKind = "full" | "soon" | "moved" | "cancelled" | "promoted";
@@ -79,6 +80,8 @@ export interface OutingNotice {
   payload: {
     outingId: string; groupName: string; title: string; levels: string; day: string; at: string | null; url: string; creator: string;
     oldDay?: string; oldAt?: string | null; isCreator?: boolean; role?: string; character?: string; count?: number; waiting?: number;
+    /** Langue du bot pour la guilde (absente des MP plus anciens : français). */
+    lang?: Lang;
   };
 }
 /**
@@ -87,11 +90,11 @@ export interface OutingNotice {
  */
 export interface BankNotice {
   id: number; discordUserId: string; kind: "prepared" | "refused";
-  item: string; quantity: number; by: string; reason: string; groupName: string; url: string;
+  item: string; quantity: number; by: string; reason: string; groupName: string; url: string; lang?: Lang;
 }
 /** Course au 60 (Forever) : montée de niveau à annoncer dans le salon de la guilde (une seule fois, remise par le site). */
 export interface LevelAnnounce {
-  id: string; channelId: string; group: { id: string; name: string }; url: string;
+  id: string; channelId: string; group: { id: string; name: string; lang?: Lang }; url: string;
   /** Nom complet du perso. */
   name: string; cls: string; level: number;
   /** Rang dans la guilde pour ce palier, date (ISO) exacte ou approximative, et en clair (« samedi 14/11 à 16:52 », « vers le 14/11 »). */
@@ -102,8 +105,8 @@ export interface DungeonChoice { key: string; name: string; levels: string; coun
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
 export type Choices =
-  | { mode: "member"; linked: true; current: Current | null; characters: ChoiceChar[]; game?: Game }
-  | { mode: "guest"; linked: boolean; current: Current | null; game?: Game };
+  | { mode: "member"; linked: true; current: Current | null; characters: ChoiceChar[]; game?: Game; lang?: Lang }
+  | { mode: "guest"; linked: boolean; current: Current | null; game?: Game; lang?: Lang };
 export interface SignupBody { status: SignupStatus; characterId?: string | null; cls?: string; spec?: string }
 export interface Deletion { id: number; channelId: string; messageId: string }
 /** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
@@ -112,10 +115,10 @@ export interface ChannelName { templateId: string; guildId: string; channelId: s
 export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings"; id: string; guildId: string | null; channelId: string; name: string | null }
 /** Liaison d'un salon : raids du groupe, commandes d'artisanat, sorties donjon, ou salon à part d'un raid récurrent. */
 export type BindResult =
-  | { group: { id: string; name: string }; kind: "raids" | "orders" | "outings" }
-  | { group: { id: string; name: string }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
+  | { group: { id: string; name: string; lang?: Lang }; kind: "raids" | "orders" | "outings" }
+  | { group: { id: string; name: string; lang?: Lang }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
 /** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
-export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string }
+export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string; lang?: Lang }
 export interface FeedbackConfig {
   guildId: string; inboxChannelId: string; panelChannelId: string | null; panelMessageId: string | null; allowAnonymous: boolean;
   guildName?: string; groupId?: string | null; track?: FeedbackTrack | null;
@@ -125,8 +128,8 @@ export type FeedbackStatus = "new" | "wip" | "done" | "refused";
 /** Groupe proposé par l'autocomplétion de /feedback-config (lié à ce serveur). */
 export interface FeedbackGroupChoice { id: string; name: string; site: string; raidsChannelId: string | null; ordersChannelId: string | null }
 /** Relève : réponse écrite sur le site à envoyer en MP, statut à reporter sur le message de l'avis. */
-export interface FeedbackReplyOut { id: number; feedbackId: string; responder: string; text: string; authorId: string; guildId: string; guildName: string; channelId: string; messageId: string; original: string | null }
-export interface FeedbackStatusOut { id: string; channelId: string; messageId: string; status: FeedbackStatus; changedAt: string; track: { groupName: string; site: string; url: string } }
+export interface FeedbackReplyOut { id: number; feedbackId: string; responder: string; text: string; authorId: string; guildId: string; guildName: string; channelId: string; messageId: string; original: string | null; lang?: Lang | null }
+export interface FeedbackStatusOut { id: string; channelId: string; messageId: string; status: FeedbackStatus; changedAt: string; track: { groupName: string; site: string; url: string; lang?: Lang } }
 
 /** Erreur renvoyée par le site ; `message` peut être montré tel quel au joueur. */
 export class ApiError extends Error {
@@ -134,22 +137,27 @@ export class ApiError extends Error {
 }
 
 export class InternalApi {
-  constructor(private readonly base: string, private readonly secret: string, private readonly f: typeof fetch = fetch) {}
+  /** lang : langue des messages d'erreur du site (en-tête X-Lang) ; withLang() en donne une copie. */
+  constructor(private readonly base: string, private readonly secret: string, private readonly f: typeof fetch = fetch, readonly lang: Lang = "fr") {}
+
+  /** Même client, messages du site dans cette langue (réponse à un joueur dans la langue de sa guilde). */
+  withLang(lang: Lang) { return lang === this.lang ? this : new InternalApi(this.base, this.secret, this.f, lang); }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
     let res: Response;
+    const down = () => new ApiError(503, tr(this.lang, "Le site ne répond pas, réessaie dans un instant."));
     try {
       res = await this.f(this.base + path, {
         method,
-        headers: { authorization: `Bearer ${this.secret}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        headers: { authorization: `Bearer ${this.secret}`, "x-lang": this.lang, ...(body === undefined ? {} : { "content-type": "application/json" }) },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(10_000),
       });
     } catch {
-      throw new ApiError(503, "Le site ne répond pas, réessaie dans un instant.");
+      throw down();
     }
     const data = await res.json().catch(() => ({})) as { error?: string };
-    if (!res.ok) throw new ApiError(res.status, res.status >= 500 || !data.error ? "Le site ne répond pas, réessaie dans un instant." : data.error);
+    if (!res.ok) throw res.status >= 500 || !data.error ? down() : new ApiError(res.status, data.error);
     return data as T;
   }
 

@@ -243,7 +243,7 @@ describe("bot Discord (API interne)", () => {
       .toMatch(/^Ce salon est déjà celui des raids de la guilde/);
     ({ code } = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/outings-code`)).json());
     expect((await bot("POST", "/internal/discord/bind", { code, guildId: guild, channelId: outCh, discordUserId: s.lead.discordId, channelName: "sorties" })).json())
-      .toEqual({ group: { id: s.g.id, name: "Salons" }, kind: "outings" });
+      .toEqual({ group: { id: s.g.id, name: "Salons", lang: "fr" }, kind: "outings" });
     expect((await s.gm.c.get(`/api/groups/${s.g.id}`)).json().group).toMatchObject({ outingsLinked: true, outingsChannelName: "sorties" });
     // Nom des salons liés : le bot relève et rapporte
     const linked = (await bot("GET", "/internal/discord/linked-channels")).json() as { kind: string; id: string; channelId: string; name: string }[];

@@ -100,11 +100,12 @@ export function outingWhen(at: Date | null, day: string, now = new Date(), timeZ
   const { y, m, d } = parseDay(day);
   return { day: `${d}/${String(m).padStart(2, "0")}${y !== Number(today.slice(0, 4)) ? `/${y}` : ""}`, time };
 }
-/** « ce soir 21:00 », « demain, dès que complet » (titres Discord, messages). */
-export function outingWhenText(at: Date | null, day: string, now = new Date(), timeZone = GAME_TIMEZONE) {
+/** « ce soir 21:00 », « demain, dès que complet » (titres Discord, messages) ; en anglais « tonight 21:00 », « tomorrow, as soon as full ». */
+export function outingWhenText(at: Date | null, day: string, now = new Date(), timeZone = GAME_TIMEZONE, lang: "fr" | "en" = "fr") {
   const w = outingWhen(at, day, now, timeZone);
-  const d = w.day.toLowerCase();
-  return w.time ? `${d} ${w.time}` : `${d}, dès que complet`;
+  const EN: Record<string, string> = { Demain: "tomorrow", "Ce soir": "tonight", "Aujourd'hui": "today", Hier: "yesterday" };
+  const d = lang === "en" ? EN[w.day] ?? w.day : w.day.toLowerCase();
+  return w.time ? `${d} ${w.time}` : lang === "en" ? `${d}, as soon as full` : `${d}, dès que complet`;
 }
 /** Fourchette « 29-38 » (vide pour « Autre »). */
 export const levelsText = (min: number | null | undefined, max: number | null | undefined) => (min && max ? (min === max ? `${min}` : `${min}-${max}`) : "");

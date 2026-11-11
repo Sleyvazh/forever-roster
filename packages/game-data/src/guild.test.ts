@@ -4,7 +4,7 @@ import { LAUNCH_AT } from "./core";
 import { sealText } from "./seal";
 import {
   afterLaunchText, announcedLevels, firstNameOf, guildKeyOf, levelAnnounceText, noteTarget, normalizeGuid, ordinalFr, parseGuildBlocks, parseGuildExports,
-  guildRaceStart, raceDateText, raceDay, resolveNoteTarget,
+  guildRaceStart, ordinalEn, raceDateText, raceDay, resolveNoteTarget,
 } from "./guild";
 
 /** Lot « Guilde » : relevé FRL, en-tête FRC avec GUID et nom complet, notes de guilde, textes de la Course au 60. Noms inventés. */
@@ -262,5 +262,9 @@ describe("Course au 60 : textes et paliers", () => {
     expect(levelAnnounceText({ name: "Morwen Cendrevoile", level: 50, rank: 4, at })).toBe("⬆️ Morwen Cendrevoile atteint le niveau 50 · 4e de la guilde.");
     expect(raceDateText(at, true)).toBe("samedi 14/11 à 16:52");
     expect(raceDateText(at, false)).toBe("vers le 14/11");
+    // Guilde dont le bot parle anglais (lot E6)
+    expect(raceDateText(at, true, undefined, "en")).toBe("Saturday 14/11 at 16:52");
+    expect(raceDateText(at, false, undefined, "en")).toBe("around 14/11");
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 101, 111].map(ordinalEn)).toEqual(["1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "101st", "111th"]);
   });
 });

@@ -46,8 +46,12 @@ export const EVENT_LABEL: Record<string, string> = {
   character_level_fixed: N("a corrigé le niveau d'un perso"), character_level_released: N("a rendu la main sur le niveau d'un perso"),
   // Fiches (8/11) : un officier crée la fiche d'un joueur ; une fiche passe sur le compte d'un autre membre
   character_created_for: N("a créé la fiche d'un joueur"), character_given: N("a donné une fiche"),
+  // Version anglaise (lot E6) : langue du bot sur Discord
+  group_lang: N("a changé la langue du bot"),
 };
-const ANNOUNCE_LABEL: Record<string, string> = { none: "rien", sixty: N("les 60 seulement"), tens: N("tous les 10 niveaux") };
+/** Langues du bot, chacune dans sa propre langue (comme le sélecteur FR | EN du site). */
+const BOT_LANG: Record<"fr" | "en", string> = { fr: "Français", en: "English" };
+const ANNOUNCE_LABEL: Record<string, string> = { none: N("rien"), sixty: N("les 60 seulement"), tens: N("tous les 10 niveaux") };
 /** Jour court d'un raid dans le journal (« ven. 14/11 »), à l'heure de Paris. */
 const RELAY_DAY = { format: (d: Date) => new Intl.DateTimeFormat(dateLocale(), { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Paris" }).format(d) };
 /** Détail d'une ligne du journal : nom, guilde du jeu, perso, réglage, inscription transmise. */
@@ -57,6 +61,7 @@ export function eventDetail(e: GroupEvent) {
   if (e.type === "group_renamed" && str("from") && str("to")) return ` · ${str("from")} → ${str("to")}`;
   if (e.type === "guild_linked") return ` · ${str("guild") ?? "?"}${m.auto === true ? t(" (à son premier relevé)") : ""}${str("replaced") ? t(", à la place de {name}", { name: str("replaced")! }) : ""}`;
   if (e.type === "guild_unlinked") return ` · ${str("guild") ?? "?"}`;
+  if (e.type === "group_lang") { const l = str("lang"); return ` · ${l === "fr" || l === "en" ? BOT_LANG[l] : l ?? "?"}`; }
   if (e.type === "guild_announces") { const a = ANNOUNCE_LABEL[str("announce") ?? ""]; return ` · ${a ? t(a) : str("announce") ?? ""}`; }
   if (e.type === "guild_member_linked") return ` · ${str("character") ?? "?"}${m.note === true ? t(" (note de guilde)") : str("to") === "new" ? t(" (joueur à part)") : ""}`;
   if (e.type === "guild_member_unlinked") return ` · ${str("character") ?? "?"}`;
@@ -388,6 +393,36 @@ export function CreatorsSettings({ groupId, creators, guard }: { groupId: string
       <p className="hint" style={{ margin: 0 }}>
         {forever ? tx("Sur le site comme sur Discord ({raid} et {outing}).", { raid: "/raid", outing: "/sortie" }) : tx("Sur le site comme sur Discord ({raid}).", { raid: "/raid" })}
         {forever && t(" Une sortie se modifie ou s'annule par son créateur et par les officiers.")} {t("Un raid se modifie par les officiers ; un raid récurrent se crée par les officiers.")}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Langue du bot (version anglaise, lot E6) : annonces des raids, des sorties et des commandes, MP et réponses aux boutons, pour
+ * toute la guilde. Les annonces déjà publiées sont redessinées dans la nouvelle langue.
+ */
+export function BotLanguage({ groupId, lang, guard }: { groupId: string; lang: "fr" | "en"; guard: Guard }) {
+  const qc = useQueryClient();
+  const forever = useSite().game === "forever";
+  const save = (v: "fr" | "en") => void guard(async () => {
+    await put(`/groups/${groupId}/lang`, { lang: v });
+    await qc.invalidateQueries({ queryKey: ["group", groupId] });
+  });
+  return (
+    <section className="stack admin-sec" aria-labelledby="bl-title">
+      <h3 id="bl-title" style={{ margin: 0 }}>{t("Langue du bot")}</h3>
+      <div>
+        <div className="seg" role="group" aria-label={t("Langue du bot")}>
+          {(["fr", "en"] as const).map(k => (
+            <button key={k} type="button" lang={k} className={lang === k ? "on" : ""} aria-pressed={lang === k} onClick={() => lang !== k && save(k)}>{BOT_LANG[k]}</button>
+          ))}
+        </div>
+      </div>
+      <p className="hint" style={{ margin: 0 }}>
+        {forever ? t("Annonces des raids, des sorties et des commandes, messages privés et réponses du bot, pour toute la guilde.")
+          : t("Annonces des raids et des commandes, messages privés et réponses du bot, pour toute la guilde.")}
+        {" "}{t("Les annonces déjà publiées passent dans la nouvelle langue en quelques secondes. Hors des salons de la guilde, le bot répond dans la langue du Discord de chacun.")}
       </p>
     </section>
   );

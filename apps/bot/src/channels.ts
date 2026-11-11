@@ -1,4 +1,5 @@
 import type { ChannelName, InternalApi, LinkedChannel } from "./api";
+import { tr, type Lang } from "./i18n";
 import type { Logger } from "./sync";
 
 /**
@@ -33,7 +34,7 @@ export type ChannelFetcher = (channelId: string) => Promise<NamedChannel | null>
 /** Salon supprimé, ou que le bot ne voit pas : rien à rapporter ni à journaliser pour son nom. */
 const isGone = (e: unknown) => [UNKNOWN_CHANNEL, MISSING_ACCESS].includes(Number((e as { code?: unknown } | null)?.code));
 
-/** Message (en français, pour les officiers) d'une erreur de Discord. */
+/** Message (en français, pour les officiers ; le site le traduit à l'affichage, TemplateChannel.tsx) d'une erreur de Discord. */
 export function renameError(e: unknown): string {
   const code = Number((e as { code?: unknown } | null)?.code);
   if (code === MISSING_PERMISSIONS) return ERR_PERMISSION;
@@ -43,14 +44,14 @@ export function renameError(e: unknown): string {
 }
 
 /** Réponse de /forever-lier (ou /roster-lier) pour le salon d'un raid récurrent. */
-export function templateLinkedReply(t: { name: string; rename?: boolean; next?: string | null }, canRename: boolean) {
-  const lines = [`✅ Ce salon reçoit maintenant les annonces du raid récurrent « ${t.name} ».`];
+export function templateLinkedReply(t: { name: string; rename?: boolean; next?: string | null }, canRename: boolean, lang: Lang = "fr") {
+  const lines = [tr(lang, "✅ Ce salon reçoit maintenant les annonces du raid récurrent « {name} ».", { name: t.name })];
   if (t.rename === false) {
-    lines[0] += " Son nom ne change pas : le renommage est coupé sur le site.";
+    lines[0] += ` ${tr(lang, "Son nom ne change pas : le renommage est coupé sur le site.")}`;
     return lines.join("\n");
   }
-  lines[0] += ` Il prendra le nom du prochain raid (${t.next ? `ici ${t.next}` : `ex. ${EXAMPLE_NAME}`}).`;
-  if (!canRename) lines.push("⚠️ Je ne peux pas encore le renommer : donne-moi la permission « Gérer les salons » sur ce salon (sur ce salon seulement, pas sur tout le serveur).");
+  lines[0] += ` ${t.next ? tr(lang, "Il prendra le nom du prochain raid (ici {name}).", { name: t.next }) : tr(lang, "Il prendra le nom du prochain raid (ex. {name}).", { name: lang === "en" ? "thursday-15-10" : EXAMPLE_NAME })}`;
+  if (!canRename) lines.push(tr(lang, "⚠️ Je ne peux pas encore le renommer : donne-moi la permission « Gérer les salons » sur ce salon (sur ce salon seulement, pas sur tout le serveur)."));
   return lines.join("\n");
 }
 

@@ -8,6 +8,7 @@ import { feedbackRoutes } from "./internal-feedback";
 import { audit } from "./lib/audit";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { HttpError, badRequest, forbidden, notFound, parse } from "./lib/http";
+import { errorText, reqLang, tr } from "./lib/i18n";
 import { MAX_RAIDS_PER_GROUP } from "./lib/recurring";
 import { channelNames, EFFECTIVE_CHANNEL, KEEP_AFTER_MS, LINKED_KINDS, retirePastTemplateAnnouncements, TEMPLATE_OF_RAID, type LinkedKind } from "./lib/channels";
 import { bus } from "./lib/events";
@@ -48,12 +49,14 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     // Tout appel authentifié vient du bot, qui interroge l'API toutes les quelques secondes : c'est son signe de vie (surveillance)
     noteBotSeen(ctx.now?.() ?? new Date());
   });
+  // Messages d'erreur dans la langue de la guilde : le bot l'envoie dans l'en-tête X-Lang (version anglaise, lot E6)
   app.setErrorHandler((err, req, reply) => {
-    if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
+    const lang = reqLang(req);
+    if (err instanceof HttpError) return reply.code(err.status).send({ error: errorText(lang, err.key, err.vars) });
     const status = (err as { statusCode?: number }).statusCode;
-    if (status && status < 500) return reply.code(status).send({ error: "Requête invalide." });
+    if (status && status < 500) return reply.code(status).send({ error: tr(lang, "Requête invalide.") });
     req.log.error({ err }, "Erreur interne (API du bot)");
-    return reply.code(500).send({ error: "Erreur interne." });
+    return reply.code(500).send({ error: tr(lang, "Erreur interne.") });
   });
 
   /** Compte du site lié à ce Discord, et son rôle dans le groupe (null si non membre). */
@@ -146,7 +149,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         url: `${siteForGame(cfg, group.game).origin}/groups/${group.id}/raids/${raid.id}`, changedAt: raid.discordChangedAt, size: raid.size,
         difficulty: raid.difficulty,
       },
-      group: { id: group.id, name: group.name, game: group.game },
+      group: { id: group.id, name: group.name, game: group.game, lang: group.lang },
       channelId,
       // Message déjà publié dans le salon effectif du raid (sinon : à publier)
       messageId: raid.discordChannelId === channelId ? raid.discordMessageId : null,
@@ -195,7 +198,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       await db.update(raids).set({ discordChangedAt: new Date() }).where(eq(raids.groupId, g.id));
       await audit(db, req, "group_discord_linked", { userId: user.id, groupId: g.id, meta: { guildId: body.guildId, channelId: body.channelId } });
       bus.group({ t: "group", g: g.id });
-      return { group: { id: g.id, name: g.name }, kind: "raids" as const };
+      return { group: { id: g.id, name: g.name, lang: g.lang }, kind: "raids" as const };
     }
     // Code du salon des commandes d'artisanat (lot F)
     const [o] = await db.select().from(groups).where(and(eq(groups.ordersLinkCodeHash, hash), gt(groups.ordersLinkCodeExpiresAt, now)));
@@ -210,7 +213,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       await db.update(craftOrders).set({ discordChangedAt: new Date() }).where(and(eq(craftOrders.groupId, o.id), ne(craftOrders.status, "done")));
       await audit(db, req, "group_orders_linked", { userId: user.id, groupId: o.id, meta: { guildId: body.guildId, channelId: body.channelId } });
       bus.group({ t: "group", g: o.id });
-      return { group: { id: o.id, name: o.name }, kind: "orders" as const };
+      return { group: { id: o.id, name: o.name, lang: o.lang }, kind: "orders" as const };
     }
     // Code du salon des sorties donjon (Forever)
     const [so] = await db.select().from(groups).where(and(eq(groups.outingsLinkCodeHash, hash), gt(groups.outingsLinkCodeExpiresAt, now)));
@@ -226,7 +229,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       await retireOutingMessages(db, so.id);
       await audit(db, req, "group_outings_linked", { userId: user.id, groupId: so.id, meta: { guildId: body.guildId, channelId: body.channelId } });
       bus.group({ t: "group", g: so.id });
-      return { group: { id: so.id, name: so.name }, kind: "outings" as const };
+      return { group: { id: so.id, name: so.name, lang: so.lang }, kind: "outings" as const };
     }
     // Code du salon à part d'un raid récurrent
     const [t] = await db.select({ template: raidTemplates, group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
@@ -266,7 +269,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     bus.group({ t: "raids", g: group.id });
     const [next] = template.discordRename ? await channelNames(db, { templateId: template.id }) : [];
     return {
-      group: { id: group.id, name: group.name }, kind: "template" as const,
+      group: { id: group.id, name: group.name, lang: group.lang }, kind: "template" as const,
       template: { id: template.id, name: template.name, rename: template.discordRename, next: next?.name ?? null },
     };
   });
@@ -657,7 +660,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { user, role } = await linkedMember(discordUserId, group.id);
     const [current] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, cls: raidSignups.cls, spec: raidSignups.spec }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raidId), user && role ? eq(raidSignups.userId, user.id) : eq(raidSignups.discordUserId, discordUserId)));
-    if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null, game: group.game };
+    if (!user || !role) return { mode: "guest" as const, linked: !!user, current: current ?? null, game: group.game, lang: group.lang };
     // Persos rangés dans ce groupe (main en tête), puis ceux sans groupe (s'inscrire les y range) ; pas ceux d'un autre groupe
     // Persos du jeu du groupe seulement (un compte peut avoir des persos de Forever et de Retail)
     const all = await db.select({ id: characters.id, name: characters.name, cls: characters.cls, spec1: characters.spec1, spec2: characters.spec2, isMain: groupCharacters.isMain, groupId: groupCharacters.groupId })
@@ -667,7 +670,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const here = all.filter(c => c.groupId === group.id).sort((a, b) => Number(!!b.isMain) - Number(!!a.isMain));
     const chars = [...here, ...all.filter(c => !c.groupId)].map(({ isMain: _, groupId: __, ...c }) => c);
     return {
-      mode: "member" as const, linked: true, current: current ?? null, game: group.game,
+      mode: "member" as const, linked: true, current: current ?? null, game: group.game, lang: group.lang,
       characters: chars.filter(c => c.cls).map(c => ({
         ...c, specs: specsOf(group.game, c.cls).map(name => ({ name, role: roleOf(name) ?? "DPS" })),
       })),

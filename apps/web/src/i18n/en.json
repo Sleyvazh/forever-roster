@@ -2601,5 +2601,15 @@
  "{name} : {error}": "{name}: {error}",
  "Absence déclarée": "Declared absence",
  "Erreur {status}": "Error {status}",
- "Image trop lourde.": "Image too heavy."
+ "Image trop lourde.": "Image too heavy.",
+ "Le bot ne peut pas renommer ce salon : donne-lui la permission « Gérer les salons » sur ce salon.": "The bot can't rename this channel: give it the “Manage Channels” permission on this channel.",
+ "Salon introuvable : lie un autre salon.": "Channel not found: link another channel.",
+ "Le bot ne voit pas ce salon : donne-lui « Voir le salon » et « Gérer les salons » sur ce salon.": "The bot can't see this channel: give it “View Channel” and “Manage Channels” on this channel.",
+ "Le salon n'a pas pu être renommé (nouvel essai dans une heure).": "The channel couldn't be renamed (new attempt in an hour).",
+ "a changé la langue du bot": "changed the bot's language",
+ "rien": "nothing",
+ "Langue du bot": "Bot language",
+ "Annonces des raids, des sorties et des commandes, messages privés et réponses du bot, pour toute la guilde.": "Raid, run and order announcements, direct messages and the bot's replies, for the whole guild.",
+ "Annonces des raids et des commandes, messages privés et réponses du bot, pour toute la guilde.": "Raid and order announcements, direct messages and the bot's replies, for the whole guild.",
+ "Les annonces déjà publiées passent dans la nouvelle langue en quelques secondes. Hors des salons de la guilde, le bot répond dans la langue du Discord de chacun.": "Announcements already posted switch to the new language within a few seconds. Outside the guild's channels, the bot answers in each person's Discord language."
 }

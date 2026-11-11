@@ -37,7 +37,7 @@ describe("annonces Discord des niveaux (bot)", () => {
     expect(await claim()).toEqual([]);
     setNow(at(9.5));
     // Les 60 seulement (défaut) : Kaeldra (exact) ; pas Ysalis (déjà 60 au premier relevé)
-    expect(await claim()).toEqual([expect.objectContaining({ name: K.name, level: 60, rank: 2, exact: true, when: "samedi 14/11 à 02:24", channelId: "100000000000000002", group: { id: s.g.id, name: "Les Hérauts" } })]);
+    expect(await claim()).toEqual([expect.objectContaining({ name: K.name, level: 60, rank: 2, exact: true, when: "samedi 14/11 à 02:24", channelId: "100000000000000002", group: { id: s.g.id, name: "Les Hérauts", lang: "fr" } })]);
     expect(await claim()).toEqual([]);
     // Tous les 10 niveaux : Morwen 50 (vu entre deux relevés), une fois
     expect((await s.p.Vexou!.c.put(`/api/groups/${s.g.id}/guild/announces`, { announce: "tens" })).statusCode).toBe(403);

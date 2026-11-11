@@ -88,14 +88,14 @@ export function outingRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpe
     const { placed, waiting } = (await signupsOf(db, [id])).get(id)!;
     const cur = [...placed, ...waiting].find(s => (user && member ? s.userId === user.id : s.discordUserId === q.discordUserId && !s.userId));
     const current = cur ? { role: cur.role, waiting: !!cur.waitingSince, characterId: cur.characterId, cls: cur.cls, spec: cur.spec } : null;
-    if (!user || !member) return { mode: "guest" as const, linked: !!user, current, levels: outing.minLevel ? `${outing.minLevel}-${outing.maxLevel}` : "" };
+    if (!user || !member) return { mode: "guest" as const, linked: !!user, current, levels: outing.minLevel ? `${outing.minLevel}-${outing.maxLevel}` : "", lang: group.lang };
     const range = outing.minLevel && outing.maxLevel ? { min: outing.minLevel, max: outing.maxLevel } : null;
     const all = await charactersOf(user.id, group.id);
     const fit = all.filter(c => (!range || hasDungeonLevel(range, c.level)) && classRoles(c.cls).includes(q.role))
       // Ceux dont une spé tient ce rôle d'abord, le main, puis le plus haut
       .sort((a, b) => Number(characterRoles(b).includes(q.role)) - Number(characterRoles(a).includes(q.role)) || Number(!!b.isMain) - Number(!!a.isMain) || b.level - a.level);
     return {
-      mode: "member" as const, linked: true, current, creator: outing.createdBy === user.id,
+      mode: "member" as const, linked: true, current, creator: outing.createdBy === user.id, lang: group.lang,
       levels: range ? `${range.min}-${range.max}` : "", anyAtLevel: all.some(c => !range || hasDungeonLevel(range, c.level)),
       characters: fit.map(c => ({ id: c.id, name: c.name, cls: c.cls, level: c.level, spec: specForRole(c, q.role) })),
     };

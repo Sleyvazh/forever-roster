@@ -9,6 +9,7 @@ import {
   authorReplyInbox, backModal, checkText, Cooldown, decodeFb, inboxButtons, inboxMessage, panelMessage, previewMessage, promptMessage,
   replyLog, replyModal, sentMessage, Sessions, teamReplyDm, withStatus, writeModal, encodeFb, type Author, type Session, type Track,
 } from "./feedback-core";
+import { langOf, localeLang, N, quote, tr, type Lang } from "./i18n";
 
 /**
  * Avis (feedback) par le bot : /feedback ou le bouton d'un salon dédié → MP → aperçu → signé ou anonyme → salon de l'équipe.
@@ -34,7 +35,9 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
   setInterval(() => sessions.purge(), 5 * 60e3).unref();
 
   const config = async (guildId: string) => (await api.feedbackConfig(guildId)).config;
-  const notReady = "Les avis ne sont pas activés sur ce serveur. Un admin peut le faire avec `/feedback-config regler`.";
+  const notReady = (lang: Lang) => tr(lang, "Les avis ne sont pas activés sur ce serveur. Un admin peut le faire avec `/feedback-config regler`.");
+  /** Langue des avis d'un serveur : celle de la guilde du site qui les suit, sinon celle de Discord du joueur. */
+  const langFor = (cfg: FeedbackConfig | null, i: { locale: string }): Lang => langOf(cfg?.track, localeLang(i.locale));
 
   async function textChannel(id: string): Promise<TextChannel | null> {
     try {
@@ -50,19 +53,20 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
   /* ---------- Début : /feedback ou bouton du salon dédié (réponse éphémère déjà différée) ---------- */
 
   async function begin(i: ChatInputCommandInteraction | ButtonInteraction) {
-    if (!i.inGuild() || !i.guild) return i.editReply("À utiliser sur un serveur.");
+    if (!i.inGuild() || !i.guild) return i.editReply(tr(localeLang(i.locale), "À utiliser sur un serveur."));
     const cfg = await config(i.guildId);
-    if (!cfg) return i.editReply(notReady);
+    const lang = langFor(cfg, i);
+    if (!cfg) return i.editReply(notReady(lang));
     const wait = cooldown.wait(i.user.id);
-    if (wait) return i.editReply(`Tu as envoyé plusieurs avis récemment : réessaie dans ${wait} min.`);
+    if (wait) return i.editReply(tr(lang, "Tu as envoyé plusieurs avis récemment : réessaie dans {n} min.", { n: wait }));
     const s = sessions.start(i.user.id, {
-      guildId: i.guildId, guildName: i.guild.name, allowAnonymous: cfg.allowAnonymous, track: toTrack(cfg), name: nameOf(i), avatarUrl: i.user.displayAvatarURL({ size: 64 }),
+      guildId: i.guildId, guildName: i.guild.name, allowAnonymous: cfg.allowAnonymous, track: toTrack(cfg), name: nameOf(i), avatarUrl: i.user.displayAvatarURL({ size: 64 }), lang,
     });
-    if (await dm(i.user.id, promptMessage(s))) return i.editReply("📬 Je t'ai écrit en message privé : réponds-y avec ton avis.");
+    if (await dm(i.user.id, promptMessage(s))) return i.editReply(tr(lang, "📬 Je t'ai écrit en message privé : réponds-y avec ton avis."));
     // MP fermés : la même chose dans une fenêtre, sur le serveur
     return i.editReply({
-      content: "Je n'arrive pas à t'écrire en message privé (MP fermés pour ce serveur). Tu peux écrire ton avis ici :",
-      components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Primary, label: "Écrire mon avis", custom_id: encodeFb({ a: "here", guildId: i.guildId }) }] }],
+      content: tr(lang, "Je n'arrive pas à t'écrire en message privé (MP fermés pour ce serveur). Tu peux écrire ton avis ici :"),
+      components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Primary, label: tr(lang, "Écrire mon avis"), custom_id: encodeFb({ a: "here", guildId: i.guildId }) }] }],
     });
   }
 
@@ -83,28 +87,30 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
   }
   async function publish(i: ButtonInteraction, guildId: string, anonymous: boolean) {
     const s = sessions.get(i.user.id, guildId);
-    const expired = { content: "Cette demande a expiré (15 min) ou a déjà été envoyée. Recommence avec /feedback.", embeds: [], components: [] };
+    const lang: Lang = s?.lang ?? localeLang(i.locale);
+    const expired = { content: tr(lang, "Cette demande a expiré (15 min) ou a déjà été envoyée. Recommence avec /feedback."), embeds: [], components: [] };
     if (!s || !s.text) return i.editReply(expired);
     const cfg = await config(guildId);
-    if (!cfg) { sessions.end(i.user.id); return i.editReply({ ...expired, content: "Les avis ont été désactivés sur ce serveur entre-temps." }); }
-    if (anonymous && !cfg.allowAnonymous) return i.editReply({ ...previewMessage({ ...s, allowAnonymous: false } as Session & { text: string }), content: "Ce serveur n'accepte plus que les avis signés." });
+    if (!cfg) { sessions.end(i.user.id); return i.editReply({ ...expired, content: tr(lang, "Les avis ont été désactivés sur ce serveur entre-temps.") }); }
+    if (anonymous && !cfg.allowAnonymous) return i.editReply({ ...previewMessage({ ...s, allowAnonymous: false } as Session & { text: string }), content: tr(lang, "Ce serveur n'accepte plus que les avis signés.") });
     const wait = cooldown.wait(i.user.id);
-    if (wait) return i.editReply({ ...previewMessage(s as Session & { text: string }), content: `Tu as envoyé plusieurs avis récemment : réessaie dans ${wait} min.` });
-    const closed = { ...previewMessage(s as Session & { text: string }), content: "⚠️ Le salon des avis de ce serveur est introuvable ou m'est fermé : préviens un admin, puis réessaie." };
+    if (wait) return i.editReply({ ...previewMessage(s as Session & { text: string }), content: tr(lang, "Tu as envoyé plusieurs avis récemment : réessaie dans {n} min.", { n: wait }) });
+    const closed = { ...previewMessage(s as Session & { text: string }), content: tr(lang, "⚠️ Le salon des avis de ce serveur est introuvable ou m'est fermé : préviens un admin, puis réessaie.") };
     const inbox = await textChannel(cfg.inboxChannelId);
     if (!inbox) return i.editReply(closed);
 
     const id = randomUUID();
     const author: Author | null = anonymous ? null : { id: i.user.id, name: s.name, avatarUrl: s.avatarUrl };
     let msg: Message;
-    try { msg = await inbox.send(inboxMessage(id, s.text, author, new Date(), toTrack(cfg))); }
+    // Salon de l'équipe : la langue de la guilde qui suit les avis, sinon celle de l'auteur
+    try { msg = await inbox.send(inboxMessage(id, s.text, author, new Date(), toTrack(cfg), langOf(cfg.track, lang))); }
     catch (e) { log.warn("Avis non publié", (e as Error).message); return i.editReply(closed); }
     sessions.end(i.user.id);
     cooldown.hit(i.user.id);
     // Sans cet enregistrement, l'avis est publié mais l'équipe ne pourra pas y répondre (ni le suivre sur le site)
     await api.recordFeedback({ id, guildId, channelId: inbox.id, messageId: msg.id, anonymous, authorId: i.user.id, text: s.text, authorName: anonymous ? null : s.name })
       .catch(e => log.warn("Avis publié mais non enregistré (réponse impossible)", (e as Error).message));
-    return i.editReply(sentMessage(s.guildName, anonymous, s.text));
+    return i.editReply(sentMessage(s.guildName, anonymous, s.text, lang));
   }
 
   /* ---------- Réponses ---------- */
@@ -113,45 +119,51 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
   async function teamReply(i: ModalSubmitInteraction, id: string) {
     await i.deferReply({ flags: MessageFlags.Ephemeral });
     const { feedback: f } = await api.feedback(id);
-    if (!i.inGuild() || i.guildId !== f.guildId || i.channelId !== f.channelId) return i.editReply("Cet avis n'appartient pas à ce salon.");
+    // Langue : celle de la guilde qui suit les avis du serveur, sinon celle de Discord de l'équipier
+    const lang = langFor(i.guildId ? await config(i.guildId).catch(() => null) : null, i);
+    if (!i.inGuild() || i.guildId !== f.guildId || i.channelId !== f.channelId) return i.editReply(tr(lang, "Cet avis n'appartient pas à ce salon."));
     const text = i.fields.getTextInputValue("text").trim();
     const responder = nameOf(i);
     const inbox = await textChannel(f.channelId);
     let original: string | null = null;
     try { original = (await inbox?.messages.fetch(f.messageId))?.embeds[0]?.description ?? null; } catch { /* avis supprimé */ }
-    const delivered = await dm(f.authorId, teamReplyDm(id, i.guild?.name ?? "ce serveur", responder, text, original));
-    await inbox?.send({ ...replyLog(responder, text, delivered), reply: { messageReference: f.messageId, failIfNotExists: false } })
+    const delivered = await dm(f.authorId, teamReplyDm(id, i.guild?.name ?? tr(lang, "ce serveur"), responder, text, original, lang));
+    await inbox?.send({ ...replyLog(responder, text, delivered, lang), reply: { messageReference: f.messageId, failIfNotExists: false } })
       .catch(e => log.warn("Trace de la réponse non publiée", (e as Error).message));
     if (f.tracked) await api.feedbackMessage(id, { from: "team", name: responder, text, delivered }).catch(e => log.warn("Réponse non notée sur le site", (e as Error).message));
-    return i.editReply(delivered ? "✅ Réponse envoyée en MP à l'auteur." : "⚠️ Non remise : l'auteur n'accepte pas les MP du bot. Ta réponse est notée sous l'avis.");
+    return i.editReply(delivered ? tr(lang, "✅ Réponse envoyée en MP à l'auteur.") : tr(lang, "⚠️ Non remise : l'auteur n'accepte pas les MP du bot. Ta réponse est notée sous l'avis."));
   }
 
   /** L'auteur répond à l'équipe (fenêtre envoyée depuis son MP). */
   async function authorReply(i: ModalSubmitInteraction, id: string) {
     await i.deferReply({ flags: MessageFlags.Ephemeral });
     const { feedback: f } = await api.feedback(id);
-    if (i.user.id !== f.authorId) return i.editReply("Ce message ne t'est pas destiné.");
+    const cfg = await config(f.guildId).catch(() => null);
+    const lang = langFor(cfg, i);
+    if (i.user.id !== f.authorId) return i.editReply(tr(lang, "Ce message ne t'est pas destiné."));
     const inbox = await textChannel(f.channelId);
-    if (!inbox) return i.editReply("Le salon des avis de ce serveur n'existe plus.");
+    if (!inbox) return i.editReply(tr(lang, "Le salon des avis de ce serveur n'existe plus."));
     const author: Author | null = f.anonymous ? null : { id: i.user.id, name: i.user.globalName ?? i.user.username, avatarUrl: null };
     const text = i.fields.getTextInputValue("text").trim();
-    await inbox.send({ ...authorReplyInbox(id, text, author), reply: { messageReference: f.messageId, failIfNotExists: false } });
+    await inbox.send({ ...authorReplyInbox(id, text, author, langOf(cfg?.track, lang)), reply: { messageReference: f.messageId, failIfNotExists: false } });
     if (f.tracked) await api.feedbackMessage(id, { from: "author", name: author?.name ?? null, text }).catch(e => log.warn("Réponse de l'auteur non notée sur le site", (e as Error).message));
-    return i.editReply(`✅ Transmis à l'équipe${f.anonymous ? " (toujours anonyme)" : ""}.`);
+    return i.editReply(f.anonymous ? tr(lang, "✅ Transmis à l'équipe (toujours anonyme).") : tr(lang, "✅ Transmis à l'équipe."));
   }
 
   /* ---------- Réglages : /feedback-config (Gérer le serveur) ---------- */
 
   async function configure(i: ChatInputCommandInteraction) {
-    if (!i.inCachedGuild()) return i.editReply("À utiliser sur un serveur.");
-    if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) return i.editReply("Réservé aux membres qui peuvent gérer le serveur.");
+    // Réglages : la langue de Discord de l'admin (le bouton public prend ensuite celle de la guilde qui suit les avis)
+    const lang = localeLang(i.locale);
+    if (!i.inCachedGuild()) return i.editReply(tr(lang, "À utiliser sur un serveur."));
+    if (!i.memberPermissions.has(PermissionFlagsBits.ManageGuild)) return i.editReply(tr(lang, "Réservé aux membres qui peuvent gérer le serveur."));
     const me = i.guild.members.me;
-    if (!me) return i.editReply("Réessaie dans un instant.");
+    if (!me) return i.editReply(tr(lang, "Réessaie dans un instant."));
 
     if (i.options.getSubcommand() === "retirer") {
-      const { previous } = await api.removeFeedbackConfig(i.guildId, { by: i.user.id, byName: nameOf(i) });
+      const { previous } = await api.withLang(lang).removeFeedbackConfig(i.guildId, { by: i.user.id, byName: nameOf(i) });
       if (previous) await removePanel(previous);
-      return i.editReply(previous ? "Avis désactivés : /feedback ne répond plus et le bouton est retiré. Les salons, eux, restent tels quels." : "Les avis n'étaient pas activés ici.");
+      return i.editReply(previous ? tr(lang, "Avis désactivés : /feedback ne répond plus et le bouton est retiré. Les salons, eux, restent tels quels.") : tr(lang, "Les avis n'étaient pas activés ici."));
     }
 
     const inbox = i.options.getChannel("destination", true, [ChannelType.GuildText]);
@@ -160,32 +172,35 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
     // Suivi sur le site : absent = on garde le groupe actuel ; « none » = plus de suivi ; sinon un groupe proposé par la liste
     const site = i.options.getString("site");
     const picked = i.options.getString("guilde");
-    if (site && !picked) return i.editReply("Avec l'option **site**, choisis aussi la **guilde** dans la liste proposée.");
-    if (picked && picked !== "none" && !UUID.test(picked)) return i.editReply("Choisis la guilde dans la liste proposée (les guildes de ce serveur, liées par /forever-lier ou /roster-lier).");
+    if (site && !picked) return i.editReply(tr(lang, "Avec l'option **site**, choisis aussi la **guilde** dans la liste proposée."));
+    if (picked && picked !== "none" && !UUID.test(picked)) return i.editReply(tr(lang, "Choisis la guilde dans la liste proposée (les guildes de ce serveur, liées par /forever-lier ou /roster-lier)."));
     const groupId = picked === null ? undefined : picked === "none" ? null : picked.toLowerCase();
-    if (panel && panel.id === inbox.id) return i.editReply("Le salon du bouton doit être différent du salon où arrivent les avis (celui-ci est réservé à l'équipe).");
-    if (!inbox.permissionsFor(me).has(INBOX_NEEDS)) return i.editReply(`Il me manque des droits dans ${inbox} : Voir le salon, Envoyer des messages, Intégrer des liens et Voir les anciens messages.`);
+    if (panel && panel.id === inbox.id) return i.editReply(tr(lang, "Le salon du bouton doit être différent du salon où arrivent les avis (celui-ci est réservé à l'équipe)."));
+    if (!inbox.permissionsFor(me).has(INBOX_NEEDS)) return i.editReply(tr(lang, "Il me manque des droits dans {channel} : Voir le salon, Envoyer des messages, Intégrer des liens et Voir les anciens messages.", { channel: `${inbox}` }));
 
     const notes: string[] = [];
     if (inbox.permissionsFor(i.guild.roles.everyone).has(PermissionFlagsBits.ViewChannel)) {
-      notes.push(`⚠️ ${inbox} est visible par tout le monde : les avis y seraient publics. Réserve-le à l'équipe.`);
+      notes.push(tr(lang, "⚠️ {channel} est visible par tout le monde : les avis y seraient publics. Réserve-le à l'équipe.", { channel: `${inbox}` }));
     }
     let panelMessageId: string | null = null;
+    // Langue du bouton public : celle de la guilde suivie (gardée ou choisie), sinon celle de l'admin
+    const before = (await api.feedbackConfig(i.guildId).catch(() => ({ config: null }))).config;
+    const panelLang = langOf(groupId === undefined ? before?.track : null, lang);
     if (panel) {
       // Salon réservé au bouton : on retire l'écriture à @everyone (le bot garde la sienne)
       try {
         await panel.permissionOverwrites.edit(me.id, { ViewChannel: true, SendMessages: true, EmbedLinks: true }, { reason: "Salon des avis : le bot y publie le bouton" });
         await panel.permissionOverwrites.edit(i.guild.roles.everyone, LOCKED, { reason: "Salon des avis : réservé au bouton du bot" });
-        notes.push(`🔒 ${panel} est verrouillé : personne n'y écrit, seul le bouton y reste.`);
+        notes.push(tr(lang, "🔒 {channel} est verrouillé : personne n'y écrit, seul le bouton y reste.", { channel: `${panel}` }));
       } catch {
-        notes.push(`⚠️ Je n'ai pas pu verrouiller ${panel} (droit « Gérer les permissions » manquant). Retire « Envoyer des messages » à @everyone dans ce salon pour le réserver au bouton.`);
+        notes.push(tr(lang, "⚠️ Je n'ai pas pu verrouiller {channel} (droit « Gérer les permissions » manquant). Retire « Envoyer des messages » à @everyone dans ce salon pour le réserver au bouton.", { channel: `${panel}` }));
       }
-      if (!panel.permissionsFor(me).has(PANEL_NEEDS)) return i.editReply(`Il me manque des droits dans ${panel} : Voir le salon, Envoyer des messages et Intégrer des liens.`);
-      panelMessageId = (await panel.send(panelMessage(allowAnonymous))).id;
+      if (!panel.permissionsFor(me).has(PANEL_NEEDS)) return i.editReply(tr(lang, "Il me manque des droits dans {channel} : Voir le salon, Envoyer des messages et Intégrer des liens.", { channel: `${panel}` }));
+      panelMessageId = (await panel.send(panelMessage(allowAnonymous, panelLang))).id;
     }
     let saved: Awaited<ReturnType<typeof api.saveFeedbackConfig>>;
     try {
-      saved = await api.saveFeedbackConfig(i.guildId, {
+      saved = await api.withLang(lang).saveFeedbackConfig(i.guildId, {
         inboxChannelId: inbox.id, panelChannelId: panel?.id ?? null, panelMessageId, allowAnonymous, updatedBy: i.user.id, updatedByName: nameOf(i),
         guildName: i.guild.name, ...(groupId !== undefined && { groupId }),
       });
@@ -198,12 +213,12 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
     if (previous) await removePanel(previous);
     const track = config.track;
     return i.editReply([
-      "✅ Avis activés.",
-      `• Arrivée des avis : ${inbox} (bouton « Répondre » sous chaque avis).`,
-      panel ? `• Bouton « Donner mon avis » : ${panel}.` : "• Pas de salon dédié : les membres utilisent /feedback.",
-      `• Anonymat : ${allowAnonymous ? "au choix de chacun" : "refusé, avis signés seulement"}.`,
-      ...(track ? [`• Suivi sur ${track.site} : guilde « ${track.groupName} », Administration → Avis (chef et officiers).${groupId === undefined ? " Pour l'arrêter : option guilde « Aucune »." : ""}`]
-        : previous?.groupId && groupId === null ? ["• Suivi sur le site arrêté : les avis restent dans Discord."] : []),
+      tr(lang, "✅ Avis activés."),
+      tr(lang, "• Arrivée des avis : {channel} (bouton « Répondre » sous chaque avis).", { channel: `${inbox}` }),
+      panel ? tr(lang, "• Bouton « Donner mon avis » : {channel}.", { channel: `${panel}` }) : tr(lang, "• Pas de salon dédié : les membres utilisent /feedback."),
+      allowAnonymous ? tr(lang, "• Anonymat : au choix de chacun.") : tr(lang, "• Anonymat : refusé, avis signés seulement."),
+      ...(track ? [`${tr(lang, "• Suivi sur {site} : guilde {group}, Administration → Avis (chef et officiers).", { site: track.site, group: quote(lang, track.groupName) })}${groupId === undefined ? ` ${tr(lang, "Pour l'arrêter : option guilde « Aucune ».")}` : ""}`]
+        : previous?.groupId && groupId === null ? [tr(lang, "• Suivi sur le site arrêté : les avis restent dans Discord.")] : []),
       ...notes,
     ].join("\n"));
   }
@@ -222,13 +237,15 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
     const q = String(focused.value ?? "").trim();
     const game = (i.options.getString("site") ?? undefined) as Game | undefined;
     const { groups } = await api.feedbackGroups(i.guildId, q, game);
+    const lang = localeLang(i.locale);
     const channel = (id: string | null) => (id ? i.guild.channels.cache.get(id)?.name : undefined);
     const choices = groups.map(g => {
-      const where = [channel(g.raidsChannelId) && `raids #${channel(g.raidsChannelId)}`, channel(g.ordersChannelId) && `commandes #${channel(g.ordersChannelId)}`].filter(Boolean).join(", ");
+      const where = [channel(g.raidsChannelId) && `raids #${channel(g.raidsChannelId)}`, channel(g.ordersChannelId) && tr(lang, "commandes #{name}", { name: channel(g.ordersChannelId)! })].filter(Boolean).join(", ");
       return { name: `${g.name} · ${g.site}${where ? ` (${where})` : ""}`.slice(0, 100), value: g.id };
     });
-    const none = { name: "Aucune : avis seulement dans Discord", value: "none" };
-    return i.respond([...(!q || "aucun".startsWith(q.toLowerCase()) ? [none] : []), ...choices].slice(0, 25));
+    const none = { name: tr(lang, "Aucune : avis seulement dans Discord"), value: "none" };
+    const word = lang === "en" ? "none" : "aucun";
+    return i.respond([...(!q || word.startsWith(q.toLowerCase()) ? [none] : []), ...choices].slice(0, 25));
   }
 
   /* ---------- Relève : réponses écrites sur le site, statuts changés sur le site ---------- */
@@ -246,9 +263,10 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
         const key = `r${r.id}`;
         if ((retryAt.get(key) ?? 0) > Date.now()) continue;
         try {
-          const delivered = await dm(r.authorId, teamReplyDm(r.feedbackId, r.guildName, r.responder, r.text, r.original));
+          const lang = langOf(r);
+          const delivered = await dm(r.authorId, teamReplyDm(r.feedbackId, r.guildName, r.responder, r.text, r.original, lang));
           const inbox = await textChannel(r.channelId);
-          await inbox?.send({ ...replyLog(r.responder, r.text, delivered), reply: { messageReference: r.messageId, failIfNotExists: false } })
+          await inbox?.send({ ...replyLog(r.responder, r.text, delivered, lang), reply: { messageReference: r.messageId, failIfNotExists: false } })
             .catch(e => log.warn("Trace de la réponse non publiée", (e as Error).message));
           await api.feedbackReplyDone(r.id, delivered);
           retryAt.delete(key);
@@ -265,7 +283,8 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
           if (ch && ch.isTextBased()) {
             const m = await ch.messages.fetch(st.messageId);
             const embed = m.embeds[0]?.toJSON();
-            if (embed) await m.edit({ embeds: [withStatus(embed, st.status, { group: st.track.groupName, site: st.track.site }), ...m.embeds.slice(1).map(x => x.toJSON())], components: inboxButtons(st.id, st.track.url) });
+            const lang = langOf(st.track);
+            if (embed) await m.edit({ embeds: [withStatus(embed, st.status, { group: st.track.groupName, site: st.track.site }, lang), ...m.embeds.slice(1).map(x => x.toJSON())], components: inboxButtons(st.id, st.track.url, lang) });
           }
           await api.feedbackSynced(st.id, st.changedAt);
           retryAt.delete(key);
@@ -295,15 +314,17 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
       if (x.a === "open") { await i.deferReply({ flags: MessageFlags.Ephemeral }); return begin(i); }
       if (x.a === "here") {
         const s = sessions.get(i.user.id, x.guildId);
-        return i.showModal(writeModal(x.guildId, s?.guildName ?? i.guild?.name ?? "le serveur"));
+        const lang = s?.lang ?? localeLang(i.locale);
+        return i.showModal(writeModal(x.guildId, s?.guildName ?? i.guild?.name ?? tr(lang, "le serveur"), lang));
       }
       if (x.a === "sign" || x.a === "anon") return send(i, x.guildId, x.a === "anon");
       if (x.a === "cancel") {
+        const lang = sessions.get(i.user.id)?.lang ?? localeLang(i.locale);
         sessions.end(i.user.id);
-        return i.update({ content: "Avis annulé. Tu peux recommencer quand tu veux avec /feedback.", embeds: [], components: [] });
+        return i.update({ content: tr(lang, "Avis annulé. Tu peux recommencer quand tu veux avec /feedback."), embeds: [], components: [] });
       }
-      if (x.a === "reply") return i.showModal(replyModal(x.id));
-      if (x.a === "back") return i.showModal(backModal(x.id));
+      if (x.a === "reply") return i.showModal(replyModal(x.id, localeLang(i.locale)));
+      if (x.a === "back") return i.showModal(backModal(x.id, localeLang(i.locale)));
     },
 
     async modal(i: ModalSubmitInteraction) {
@@ -316,10 +337,10 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
         await i.deferReply({ flags: MessageFlags.Ephemeral });
         if (!sessions.get(i.user.id, x.guildId)) {
           const cfg = i.guildId === x.guildId ? await config(x.guildId) : null;
-          if (!cfg || !i.guild) return i.editReply(notReady);
-          sessions.start(i.user.id, { guildId: x.guildId, guildName: i.guild.name, allowAnonymous: cfg.allowAnonymous, track: toTrack(cfg), name: nameOf(i), avatarUrl: i.user.displayAvatarURL({ size: 64 }) });
+          if (!cfg || !i.guild) return i.editReply(notReady(langFor(cfg, i)));
+          sessions.start(i.user.id, { guildId: x.guildId, guildName: i.guild.name, allowAnonymous: cfg.allowAnonymous, track: toTrack(cfg), name: nameOf(i), avatarUrl: i.user.displayAvatarURL({ size: 64 }), lang: langFor(cfg, i) });
         }
-        const c = checkText(i.fields.getTextInputValue("text"));
+        const c = checkText(i.fields.getTextInputValue("text"), 0, sessions.get(i.user.id)?.lang ?? "fr");
         if (!c.ok) return i.editReply(c.error);
         return i.editReply(preview(i.user.id, c.text, c.note)!);
       }
@@ -328,11 +349,14 @@ export function createFeedback(client: Client, api: InternalApi, log: Log, nameO
     /** Message privé reçu : c'est l'avis en cours d'écriture (sinon, une aide). Rien n'est gardé après l'envoi. */
     async dm(m: Message) {
       if (m.author.bot || m.inGuild()) return;
-      if (!sessions.get(m.author.id)) {
-        await m.reply({ content: "Pour donner ton avis à un serveur, utilise **/feedback** sur ce serveur (ou son bouton « Donner mon avis »). Pour répondre à l'équipe, clique sur « Répondre » sous sa réponse.", allowedMentions: { parse: [], repliedUser: false } });
+      const session = sessions.get(m.author.id);
+      if (!session) {
+        // Sans avis en cours, la langue du joueur est inconnue : l'aide dans les deux langues
+        const help = N("Pour donner ton avis à un serveur, utilise **/feedback** sur ce serveur (ou son bouton « Donner mon avis »). Pour répondre à l'équipe, clique sur « Répondre » sous sa réponse.");
+        await m.reply({ content: `${tr("fr", help)}\n-# ${tr("en", help)}`, allowedMentions: { parse: [], repliedUser: false } });
         return;
       }
-      const c = checkText(m.content, m.attachments.size);
+      const c = checkText(m.content, m.attachments.size, session.lang ?? "fr");
       if (!c.ok) { await m.reply({ content: `⚠️ ${c.error}`, allowedMentions: { parse: [], repliedUser: false } }); return; }
       await m.reply({ ...preview(m.author.id, c.text, c.note)!, allowedMentions: { parse: [], repliedUser: false } });
     },

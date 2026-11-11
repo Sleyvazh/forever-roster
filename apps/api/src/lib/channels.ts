@@ -56,10 +56,10 @@ export async function retirePastTemplateAnnouncements(db: Db, cutoff: Date) {
 export async function channelNames(db: Db, opts: { now?: Date; templateId?: string; timeZone?: string } = {}) {
   const now = opts.now ?? new Date();
   const rows = await db.selectDistinctOn([raidTemplates.id], {
-    templateId: raidTemplates.id, guildId: raidTemplates.discordGuildId, channelId: raidTemplates.discordChannelId, scheduledAt: raids.scheduledAt,
-  }).from(raidTemplates).innerJoin(raids, eq(raids.templateId, raidTemplates.id))
+    templateId: raidTemplates.id, guildId: raidTemplates.discordGuildId, channelId: raidTemplates.discordChannelId, scheduledAt: raids.scheduledAt, lang: groups.lang,
+  }).from(raidTemplates).innerJoin(raids, eq(raids.templateId, raidTemplates.id)).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
     .where(and(eq(raidTemplates.active, true), eq(raidTemplates.discordRename, true), isNotNull(raidTemplates.discordChannelId),
       gt(raids.scheduledAt, new Date(now.getTime() - KEEP_AFTER_MS)), opts.templateId ? eq(raidTemplates.id, opts.templateId) : undefined))
     .orderBy(raidTemplates.id, asc(raids.scheduledAt));
-  return rows.map(r => ({ templateId: r.templateId, guildId: r.guildId!, channelId: r.channelId!, name: channelNameFor(r.scheduledAt!, opts.timeZone ?? GAME_TIMEZONE) }));
+  return rows.map(r => ({ templateId: r.templateId, guildId: r.guildId!, channelId: r.channelId!, name: channelNameFor(r.scheduledAt!, opts.timeZone ?? GAME_TIMEZONE, r.lang) }));
 }

@@ -419,5 +419,8 @@
  "Le mot de passe doit faire au plus {n} caractères.": "The password must be at most {n} characters long.",
  "Ce mot de passe est trop courant.": "This password is too common.",
  "Ce mot de passe est trop simple.": "This password is too simple.",
- "Le mot de passe ne doit pas contenir ton adresse e-mail.": "The password must not contain your e-mail address."
+ "Le mot de passe ne doit pas contenir ton adresse e-mail.": "The password must not contain your e-mail address.",
+ "L'équipe": "The team",
+ "le serveur": "the server",
+ "Erreur interne.": "Internal error."
 }

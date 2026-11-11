@@ -34,6 +34,8 @@ describe("jours et heures des sorties (heure de Paris)", () => {
     expect(outingWhenText(new Date("2026-11-19T20:00:00Z"), "2026-11-19", now, TZ)).toBe("ce soir 21:00");
     expect(outingWhenText(new Date("2026-11-20T17:00:00Z"), "2026-11-20", now, TZ)).toBe("demain 18:00");
     expect(outingWhenText(null, "2026-11-20", now, TZ)).toBe("demain, dès que complet");
+    expect(outingWhenText(new Date("2026-11-19T20:00:00Z"), "2026-11-19", now, TZ, "en")).toBe("tonight 21:00");
+    expect(outingWhenText(null, "2026-11-20", now, TZ, "en")).toBe("tomorrow, as soon as full");
     // Après minuit, la sortie de « demain » devient celle de ce soir
     expect(outingWhenText(new Date("2026-11-20T17:00:00Z"), "2026-11-20", new Date("2026-11-20T08:00:00Z"), TZ)).toBe("ce soir 18:00");
     expect(levelsText(29, 38)).toBe("29-38");

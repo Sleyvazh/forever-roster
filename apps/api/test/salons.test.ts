@@ -97,7 +97,7 @@ describe("salon à part pour un raid récurrent", () => {
     const bound = await bot("POST", "/internal/discord/bind", { code: code.toLowerCase(), guildId: s.ids.guild, channelId: tpl, discordUserId: s.ids.gm, channelName: "molten-core" });
     expect(bound.statusCode).toBe(200);
     expect(bound.json()).toEqual({
-      group: { id: s.g.id, name: "Veilleurs" }, kind: "template",
+      group: { id: s.g.id, name: "Veilleurs", lang: "fr" }, kind: "template",
       template: { id: s.t.id, name: "Molten Core", rename: true, next: channelNameFor(r1!.scheduledAt!) },
     });
     // Code à usage unique

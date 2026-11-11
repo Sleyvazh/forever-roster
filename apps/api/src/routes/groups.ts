@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { GEAR_SLOTS, gearStats, MAX_LEVEL, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
-import { auditEvents, characterRecipes, characters, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, raids, raidSignups, users } from "../db/schema";
+import { auditEvents, characterRecipes, characters, craftOrders, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, outings, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
 import { cancelOpenRequests } from "../lib/bank-requests";
@@ -23,6 +23,7 @@ import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outin
 import { bus, charsChanged } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
+import { reqLang } from "../lib/i18n";
 
 const MAX_GROUPS_PER_USER = 20;
 const gid = z.object({ id: z.uuid() });
@@ -110,7 +111,8 @@ export async function groupRoutes(app: FastifyInstance) {
       .where(and(eq(groupMembers.userId, u.id), eq(groups.game, game))) as [{ n: number }];
     if (n >= MAX_GROUPS_PER_USER) throw badRequest("Limite de {v} guildes atteinte.", { v: MAX_GROUPS_PER_USER });
     const g = await db.transaction(async tx => {
-      const [g] = await tx.insert(groups).values({ name, game }).returning();
+      // Langue du bot Discord : celle de la page où la guilde est créée (réglable dans Administration → Discord)
+      const [g] = await tx.insert(groups).values({ name, game, lang: reqLang(req) }).returning();
       await tx.insert(groupMembers).values({ groupId: g!.id, userId: u.id, role: "owner" });
       return g!;
     });
@@ -140,7 +142,24 @@ export async function groupRoutes(app: FastifyInstance) {
     };
     // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
     const creators = { raids: g!.raidCreators, outings: g!.outingCreators, canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role) };
-    return { group: { id: g!.id, name: g!.name, game: g!.game, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
+    return { group: { id: g!.id, name: g!.name, game: g!.game, lang: g!.lang, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
+  });
+
+  /** Langue du bot Discord pour la guilde (annonces, réponses, messages privés des joueurs sans langue choisie). */
+  app.put("/:id/lang", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const { lang } = parse(z.object({ lang: z.enum(["fr", "en"]) }), req.body);
+    await db.update(groups).set({ lang }).where(eq(groups.id, id));
+    await audit(db, req, "group_lang", { userId: u.id, groupId: id, meta: { lang } });
+    bus.group({ t: "group", g: id });
+    // Annonces déjà publiées (raids, sorties, commandes) : redessinées dans la nouvelle langue
+    const now = new Date();
+    await db.update(raids).set({ discordChangedAt: now }).where(eq(raids.groupId, id));
+    await db.update(outings).set({ discordChangedAt: now }).where(eq(outings.groupId, id));
+    await db.update(craftOrders).set({ discordChangedAt: now }).where(eq(craftOrders.groupId, id));
+    return { lang };
   });
 
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */

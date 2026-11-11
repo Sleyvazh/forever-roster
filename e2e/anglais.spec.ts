@@ -348,4 +348,15 @@ test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signaleme
       await expectEnglish(page, `Administration › ${section}`);
     }
   });
+
+  await test.step("Langue du bot (lot E6) : réglage de la guilde, noté au journal", async () => {
+    await page.locator(".adm-nav").getByRole("button", { name: "Discord" }).click();
+    const seg = page.getByRole("group", { name: "Bot language" });
+    await expect(seg.getByRole("button", { name: "Français" })).toHaveAttribute("aria-pressed", "true");
+    await seg.getByRole("button", { name: "English" }).click();
+    await expect(seg.getByRole("button", { name: "English" })).toHaveAttribute("aria-pressed", "true");
+    await expectEnglish(page, "Administration › Discord, langue du bot");
+    await page.locator(".adm-nav").getByRole("button", { name: "Log" }).click();
+    await expect(page.locator(".adm-body").getByText("changed the bot's language · English")).toBeVisible();
+  });
 });

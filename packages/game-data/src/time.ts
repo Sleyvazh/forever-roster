@@ -75,8 +75,10 @@ export const WEEKDAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Sam
  * jour et mois sur deux chiffres (« jeudi-15-10 »), dans le fuseau du serveur de jeu. Discord met de toute façon
  * les noms des salons textuels en minuscules.
  */
-export function channelNameFor(date: Date, timeZone = GAME_TIMEZONE): string {
+export function channelNameFor(date: Date, timeZone = GAME_TIMEZONE, lang: "fr" | "en" = "fr"): string {
   const p = zonedParts(date, timeZone);
   const two = (n: number) => String(n).padStart(2, "0");
-  return `${WEEKDAYS[p.weekday - 1]!.toLowerCase()}-${two(p.day)}-${two(p.month)}`;
+  // Anglais (guilde dont le bot parle anglais) : « thursday-15-10 », même ordre jour-mois
+  const day = lang === "en" ? ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"][p.weekday - 1]! : WEEKDAYS[p.weekday - 1]!.toLowerCase();
+  return `${day}-${two(p.day)}-${two(p.month)}`;
 }

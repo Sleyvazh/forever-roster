@@ -17,7 +17,7 @@ import { siteForGame } from "./lib/site";
 export const ANNOUNCE_WINDOW_MS = 3 * 86400e3;
 
 export interface LevelAnnounceView {
-  id: string; channelId: string; group: { id: string; name: string }; url: string;
+  id: string; channelId: string; group: { id: string; name: string; lang: "fr" | "en" }; url: string;
   /** Nom complet du perso (liste de guilde). */
   name: string; cls: string; level: number;
   /** Rang dans la guilde pour ce palier (« 1re de la guilde ») et date (exacte ou « vers le »). */
@@ -31,7 +31,7 @@ export function guildAnnounceRoutes(app: FastifyInstance, ctx: AppContext) {
     const now = ctx.now?.() ?? new Date();
     if (now.getTime() < LAUNCH_AT) return { announces: [] };
     const since = new Date(Math.max(RACE_START, now.getTime() - ANNOUNCE_WINDOW_MS));
-    const gs = await db.select({ id: groups.id, name: groups.name, channelId: groups.discordChannelId, setting: groups.levelAnnounces })
+    const gs = await db.select({ id: groups.id, name: groups.name, lang: groups.lang, channelId: groups.discordChannelId, setting: groups.levelAnnounces })
       .from(groups).innerJoin(gameGuilds, eq(gameGuilds.groupId, groups.id))
       .where(and(eq(groups.game, "forever"), isNotNull(groups.discordChannelId), ne(groups.levelAnnounces, "none")));
     const announces: LevelAnnounceView[] = [];
@@ -55,8 +55,8 @@ export function guildAnnounceRoutes(app: FastifyInstance, ctx: AppContext) {
           .where(and(eq(guildLevels.groupId, g.id), gte(guildLevels.level, d.level), gte(guildLevels.reachedAt, new Date(RACE_START)), lt(guildLevels.reachedAt, c.reachedAt), ne(guildLevels.guid, d.guid)));
         const exact = c.source === "exact";
         announces.push({
-          id: `${g.id}:${d.guid}:${d.level}`, channelId: g.channelId!, group: { id: g.id, name: g.name }, url: `${siteForGame(cfg, "forever").origin}/groups/${g.id}/membres/course`,
-          name: m.name, cls: m.cls, level: d.level, rank: (before?.n ?? 0) + 1, at: c.reachedAt.toISOString(), exact, when: raceDateText(c.reachedAt.getTime(), exact),
+          id: `${g.id}:${d.guid}:${d.level}`, channelId: g.channelId!, group: { id: g.id, name: g.name, lang: g.lang }, url: `${siteForGame(cfg, "forever").origin}/groups/${g.id}/membres/course`,
+          name: m.name, cls: m.cls, level: d.level, rank: (before?.n ?? 0) + 1, at: c.reachedAt.toISOString(), exact, when: raceDateText(c.reachedAt.getTime(), exact, undefined, g.lang),
         });
       }
     }

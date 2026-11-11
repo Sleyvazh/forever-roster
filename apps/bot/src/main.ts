@@ -12,7 +12,8 @@ import { createFeedback, isFeedbackId } from "./feedback";
 import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus, type Step } from "./flow";
 import { decodeId, decodeOutingId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
-import { createOutingSync, onOutingClass, onOutingRole, outingConfirmation, renderNotice, renderOuting, ROLE_WORD, waitChooser, type OutingStep } from "./outings";
+import { createOutingSync, onOutingClass, onOutingRole, outingConfirmation, renderNotice, renderOuting, roleWord, waitChooser, type OutingStep } from "./outings";
+import { langOf, localeLang, recall, remember, tr, trn, type Lang } from "./i18n";
 import { createLevelAnnouncer } from "./race";
 import { renderAsk, renderAskAnswered, renderNudge, renderNudgeReport } from "./reach";
 import { renderAnnouncement, renderReminder } from "./render";
@@ -23,10 +24,15 @@ import { outingWhenText, resolveGameLang } from "@forever/game-data";
 import { createSync, type Publisher } from "./sync";
 
 /** « ce soir 21:00 », « demain, dès que complet ». */
-const outingWhen = (v: { at: string | null; day: string }) => outingWhenText(v.at ? new Date(v.at) : null, v.day);
+const outingWhen = (v: { at: string | null; day: string }, lang: Lang) => outingWhenText(v.at ? new Date(v.at) : null, v.day, undefined, undefined, lang);
 
 /** Langue des noms du jeu dans les menus : celle du Discord du joueur (français ou anglais). */
-const langOf = (i: { locale: string }) => resolveGameLang(null, i.locale);
+const gameLangOf = (i: { locale: string }) => resolveGameLang(null, i.locale);
+/**
+ * Langue d'une réponse au joueur : celle de la guilde (apprise des annonces : raid, sortie, commande ou salon), sinon celle
+ * de son Discord.
+ */
+const replyLang = (i: { locale: string; channelId: string | null }, ...ids: (string | null | undefined)[]): Lang => recall(...ids, i.channelId) ?? localeLang(i.locale);
 
 const log = {
   info: (msg: string, extra?: unknown) => console.log(new Date().toISOString(), msg, extra ?? ""),
@@ -55,6 +61,7 @@ async function start() {
     async upsert(view, messageId) {
       const ch = await client.channels.fetch(view.channelId);
       if (!ch || !ch.isSendable()) throw new Error(`Salon ${view.channelId} inaccessible`);
+      remember(view.group.lang, view.raid.id, view.channelId);
       const payload = renderAnnouncement(view, emoji);
       if (messageId) {
         try {
@@ -84,6 +91,7 @@ async function start() {
     async upsert(o, messageId) {
       const ch = await client.channels.fetch(o.channelId);
       if (!ch || !ch.isSendable()) throw new Error(`Salon ${o.channelId} inaccessible`);
+      remember(o.group.lang, o.id, o.channelId);
       const payload = renderOrder(o);
       if (messageId) {
         try { const m = await ch.messages.edit(messageId, payload); return { channelId: ch.id, messageId: m.id }; }
@@ -98,6 +106,7 @@ async function start() {
     async upsert(v, messageId) {
       const ch = await client.channels.fetch(v.channelId);
       if (!ch || !ch.isSendable()) throw new Error(`Salon ${v.channelId} inaccessible`);
+      remember(v.group.lang, v.id, v.channelId);
       const payload = renderOuting(v, emoji);
       if (messageId) {
         try { const m = await ch.messages.edit(messageId, payload); return { channelId: ch.id, messageId: m.id }; }
@@ -160,6 +169,7 @@ async function start() {
     const { reminders } = await api.claimReminders();
     for (const { view, recipients } of reminders) {
       let sent = 0;
+      remember(view.group.lang, view.raid.id);
       for (const r of recipients) {
         try {
           await client.users.send(r.discordUserId, renderReminder(view, r, emoji));
@@ -190,6 +200,7 @@ async function start() {
   const sendNudges = async () => {
     const { nudges } = await api.claimNudges();
     for (const n of nudges) {
+      remember(n.view.group.lang, n.view.raid.id);
       const sent: string[] = [], closed: string[] = [];
       for (const r of n.recipients) (await dm(r.discordUserId, renderNudge(n.view), "Relance") ? sent : closed).push(r.name);
       for (const o of n.officers) await dm(o, renderNudgeReport(n, sent, closed), "Liste des sans-réponse");
@@ -201,6 +212,7 @@ async function start() {
   const sendAsks = async () => {
     const { asks } = await api.claimAsks();
     for (const a of asks) {
+      remember(a.group.lang, a.raid.id, a.id);
       if (!(await dm(a.discordUserId, renderAsk(a, emoji), "Demande"))) await api.askFailed(a.id).catch(() => {});
     }
   };
@@ -215,7 +227,10 @@ async function start() {
   /** MP des sorties : complète (au créateur), 15 min avant, heure changée, annulée, place libérée. MP fermés : ignoré. */
   const sendOutingNotices = async () => {
     const { notices } = await api.claimOutingNotices();
-    for (const n of notices) await dm(n.discordUserId, renderNotice(n), "MP de sortie");
+    for (const n of notices) {
+      remember(n.payload.lang, n.payload.outingId);
+      await dm(n.discordUserId, renderNotice(n), "MP de sortie");
+    }
   };
 
   /** MP de la banque : demande de retrait préparée ou refusée (le site ne remet que ceux que le joueur accepte). */
@@ -247,7 +262,7 @@ async function start() {
 
   client.on(Events.InteractionCreate, (i: Interaction) => {
     handle(i).catch(async e => {
-      const msg = e instanceof ApiError ? e.message : "Une erreur est survenue, réessaie dans un instant.";
+      const msg = e instanceof ApiError ? e.message : tr(replyLang(i), "Une erreur est survenue, réessaie dans un instant.");
       if (!(e instanceof ApiError)) log.warn("Erreur d'interaction", e);
       if (!i.isRepliable()) return;
       try {
@@ -277,7 +292,8 @@ async function start() {
   }
 
   async function command(i: ChatInputCommandInteraction) {
-    if (!i.inGuild() || !i.channelId) return i.reply({ content: "Commande à utiliser dans un salon de serveur.", flags: MessageFlags.Ephemeral });
+    const lang = replyLang(i);
+    if (!i.inGuild() || !i.channelId) return i.reply({ content: tr(lang, "Commande à utiliser dans un salon de serveur."), flags: MessageFlags.Ephemeral });
     await i.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (i.commandName === "feedback" || i.commandName === "feedback-config") return feedback.command(i);
@@ -285,28 +301,32 @@ async function start() {
     if (i.commandName === "forever-lier" || i.commandName === "roster-lier") {
       const need = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
       if (!i.appPermissions.has(need)) {
-        return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");
+        return i.editReply(tr(lang, "Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens."));
       }
       const channelName = i.channel && "name" in i.channel && i.channel.name ? i.channel.name : undefined;
-      const bound = await api.bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, channelName });
+      const bound = await api.withLang(lang).bind({ code: i.options.getString("code", true), guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, channelName });
       const { group, kind } = bound;
+      // La guilde est connue : sa langue sert désormais dans ce salon
+      const g = langOf(group, lang);
+      remember(group.lang, i.channelId);
+      const name = `**${group.name}**`;
       if (bound.kind === "template") {
-        await i.editReply(templateLinkedReply(bound.template, i.appPermissions.has(PermissionFlagsBits.ManageChannels)));
+        await i.editReply(templateLinkedReply(bound.template, i.appPermissions.has(PermissionFlagsBits.ManageChannels), g));
         void sync.tick().catch(() => {});
         void channels.tick().catch(() => {});
         return;
       }
       if (kind === "outings") {
-        await i.editReply(`✅ Salon lié aux sorties donjon de **${group.name}**. Chaque sortie y sera annoncée avec des boutons pour s'inscrire ; son message est effacé 2 h après l'heure.`);
+        await i.editReply(tr(g, "✅ Salon lié aux sorties donjon de {name}. Chaque sortie y sera annoncée avec des boutons pour s'inscrire ; son message est effacé 2 h après l'heure.", { name }));
         void outings.tick().catch(() => {});
         return;
       }
       if (kind === "orders") {
-        await i.editReply(`✅ Salon lié aux commandes d'artisanat de **${group.name}**. Chaque commande y sera postée avec un bouton « Je m'en charge ».`);
+        await i.editReply(tr(g, "✅ Salon lié aux commandes d'artisanat de {name}. Chaque commande y sera postée avec un bouton « Je m'en charge ».", { name }));
         void orders.tick().catch(() => {});
         return;
       }
-      await i.editReply(`✅ Salon lié à la guilde **${group.name}**. Les raids à venir y seront publiés dans quelques secondes, sauf ceux des raids récurrents qui ont leur propre salon.`);
+      await i.editReply(tr(g, "✅ Salon lié à la guilde {name}. Les raids à venir y seront publiés dans quelques secondes, sauf ceux des raids récurrents qui ont leur propre salon.", { name }));
       void sync.tick().catch(() => {});
       return;
     }
@@ -314,7 +334,7 @@ async function start() {
     if (i.commandName === "signalements-lier") {
       const need = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
       if (!i.appPermissions.has(need)) {
-        return i.editReply("Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens.");
+        return i.editReply(tr(lang, "Il me manque des droits dans ce salon : Voir le salon, Envoyer des messages et Intégrer des liens."));
       }
       await api.bindReports({ guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
       const ch = i.guild?.channels.cache.get(i.channelId);
@@ -329,84 +349,90 @@ async function start() {
     }
 
     if (i.commandName === "sortie") {
-      const when = parseOutingTime(i.options.getString("heure", true), new Date(), cfg.timeZone);
+      const when = parseOutingTime(i.options.getString("heure", true), new Date(), cfg.timeZone, lang);
       if (!when.ok) return i.editReply(`⚠️ ${when.error}`);
-      const r = await api.createOuting({
+      const r = await api.withLang(lang).createOuting({
         guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, dungeon: i.options.getString("donjon", true),
         day: when.day, at: when.at?.toISOString() ?? null, note: i.options.getString("note") ?? undefined,
       });
       await outings.publish(r.view).catch(e => log.warn("Sortie non publiée", e?.message));
-      const whenText = outingWhen(r.view);
-      return i.editReply(`Sortie publiée : **${r.view.title}**, ${whenText}, avec **${r.character}** en ${ROLE_WORD[r.role]}. `
-        + `Tu as ${r.open.mine} sortie${r.open.mine > 1 ? "s" : ""} ouverte${r.open.mine > 1 ? "s" : ""} sur ${r.open.max}. [Voir sur le site](<${r.view.url}>)`);
+      const g = langOf(r.view.group, lang);
+      const open = trn(g, r.open.mine, "Tu as {n} sortie ouverte sur {max}.", "Tu as {n} sorties ouvertes sur {max}.", { max: r.open.max });
+      return i.editReply(`${tr(g, "Sortie publiée : **{title}**, {when}, avec **{name}** en {role}.", { title: r.view.title, when: outingWhen(r.view, g), name: r.character, role: roleWord(g, r.role) })} `
+        + `${open} [${tr(g, "Voir sur le site")}](<${r.view.url}>)`);
     }
 
     if (i.commandName === "raid") {
-      const when = parseRaidDate(i.options.getString("date", true), new Date(), cfg.timeZone);
+      const when = parseRaidDate(i.options.getString("date", true), new Date(), cfg.timeZone, lang);
       if (!when.ok) return i.editReply(`⚠️ ${when.error}`);
-      const view = await api.createRaid({
+      const view = await api.withLang(lang).createRaid({
         guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id,
         name: i.options.getString("nom", true), scheduledAt: when.date.toISOString(), description: i.options.getString("description") ?? undefined,
       });
       await sync.publish(view);
-      return i.editReply(`✅ Raid **${view.raid.name}** créé. Composition et détails : ${view.raid.url}`);
+      return i.editReply(tr(langOf(view.group, lang), "✅ Raid **{name}** créé. Composition et détails : {url}", { name: view.raid.name, url: view.raid.url }));
     }
   }
 
   /** Applique une étape du parcours : inscription, ou menu à afficher. */
   async function apply(i: ButtonInteraction | StringSelectMenuInteraction, raidId: string, step: Step) {
     if (step.kind === "reply") return i.editReply({ content: step.content, components: step.components });
-    const view = await api.signup(raidId, { ...step.body, discordUserId: i.user.id, discordName: nameOf(i) });
+    const view = await api.withLang(replyLang(i, raidId)).signup(raidId, { ...step.body, discordUserId: i.user.id, discordName: nameOf(i) });
     publishSoon(view);
-    return i.editReply(confirmation(raidId, step.body.status, step.label, view.raid.url));
+    return i.editReply(confirmation(raidId, step.body.status, step.label, view.raid.url, langOf(view.group)));
   }
 
   /** Complétion de /sortie : le donjon (trié pour son perso, « N persos au niveau »), l'heure. */
   async function outingAutocomplete(i: AutocompleteInteraction) {
+    const lang = replyLang(i);
     const focused = i.options.getFocused(true);
-    if (focused.name === "heure") return i.respond(outingTimeChoices(String(focused.value), new Date(), cfg.timeZone).map(x => ({ name: x, value: x })));
+    if (focused.name === "heure") return i.respond(outingTimeChoices(String(focused.value), new Date(), cfg.timeZone, lang).map(x => ({ name: x, value: x })));
     if (!i.inGuild() || !i.channelId) return i.respond([]);
-    const { choices } = await api.dungeonChoices({ guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, q: String(focused.value) });
-    return i.respond(choices.map(c => ({ name: `${c.name} · ${c.levels} · ${c.count} perso${c.count > 1 ? "s" : ""} au niveau`.slice(0, 100), value: c.key })));
+    const { choices } = await api.withLang(lang).dungeonChoices({ guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id, q: String(focused.value) });
+    return i.respond(choices.map(c => ({ name: `${c.name} · ${c.levels} · ${trn(lang, c.count, "{n} perso au niveau", "{n} persos au niveau")}`.slice(0, 100), value: c.key })));
   }
 
   /** Étape du parcours d'une sortie : inscription (puis annonce mise à jour), ou menu à afficher. */
   async function applyOuting(i: ButtonInteraction | StringSelectMenuInteraction, outingId: string, step: OutingStep, guest: boolean) {
     if (step.kind === "reply") return i.editReply({ content: step.content, components: step.components });
-    const { result, view } = await api.outingSignup(outingId, { ...step.body, discordUserId: i.user.id, discordName: nameOf(i) });
+    const { result, view } = await api.withLang(replyLang(i, outingId)).outingSignup(outingId, { ...step.body, discordUserId: i.user.id, discordName: nameOf(i) });
     publishOutingSoon(view);
-    return i.editReply({ content: outingConfirmation(result, { guest, leveled: !!view.levels }), components: [] });
+    return i.editReply({ content: outingConfirmation(result, { guest, leveled: !!view.levels }, langOf(view.group)), components: [] });
   }
 
   async function outingButton(i: ButtonInteraction, id: NonNullable<ReturnType<typeof decodeOutingId>>) {
+    const lang = replyLang(i, id.outingId);
     if (id.a === "leave") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const { removed, view } = await api.outingUnsign(id.outingId, i.user.id);
+      const { removed, view } = await api.withLang(lang).outingUnsign(id.outingId, i.user.id);
       if (removed) publishOutingSoon(view);
-      return i.editReply(removed ? "Tu n'es plus inscrit à cette sortie." : "Tu n'étais pas inscrit à cette sortie.");
+      const g = langOf(view.group, lang);
+      return i.editReply(removed ? tr(g, "Tu n'es plus inscrit à cette sortie.") : tr(g, "Tu n'étais pas inscrit à cette sortie."));
     }
     if (id.a === "wait") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      return i.editReply(waitChooser(id.outingId));
+      return i.editReply(waitChooser(id.outingId, lang));
     }
     if (id.a !== "join") return;
     // Choix du rôle de la liste d'attente : on remplace le message de choix ; sinon, nouveau message visible par lui seul
     if (id.wait) await i.deferUpdate(); else await i.deferReply({ flags: MessageFlags.Ephemeral });
-    const c = await api.outingChoices(id.outingId, i.user.id, id.role);
-    return applyOuting(i, id.outingId, onOutingRole(id.outingId, id.role, id.wait, c, langOf(i)), c.mode === "guest");
+    const c = await api.withLang(lang).outingChoices(id.outingId, i.user.id, id.role);
+    remember(c.lang, id.outingId);
+    return applyOuting(i, id.outingId, onOutingRole(id.outingId, id.role, id.wait, c, gameLangOf(i)), c.mode === "guest");
   }
 
   async function outingMenu(i: StringSelectMenuInteraction, id: NonNullable<ReturnType<typeof decodeOutingId>>, value: string) {
     if (id.a !== "char" && id.a !== "cls" && id.a !== "spec") return;
     await i.deferUpdate();
     const role: OutingRole = id.role;
+    const lang = replyLang(i, id.outingId);
     if (id.a === "char") {
-      const c = await api.outingChoices(id.outingId, i.user.id, role);
+      const c = await api.withLang(lang).outingChoices(id.outingId, i.user.id, role);
       const ch = c.mode === "member" ? c.characters.find(x => x.id === value) : undefined;
-      if (!ch) return i.editReply({ content: "Ce perso n'est plus proposé. Reclique sur un rôle de l'annonce.", components: [] });
+      if (!ch) return i.editReply({ content: tr(langOf(c, lang), "Ce perso n'est plus proposé. Reclique sur un rôle de l'annonce."), components: [] });
       return applyOuting(i, id.outingId, { kind: "signup", body: { role, characterId: ch.id, spec: ch.spec, wait: id.wait } }, false);
     }
-    if (id.a === "cls") return applyOuting(i, id.outingId, onOutingClass(id.outingId, role, id.wait, value, langOf(i)), true);
+    if (id.a === "cls") return applyOuting(i, id.outingId, onOutingClass(id.outingId, role, id.wait, value, gameLangOf(i), lang), true);
     const pair = splitValue(value);
     if (!pair) return;
     return applyOuting(i, id.outingId, { kind: "signup", body: { role, cls: pair[0], spec: pair[1], wait: id.wait } }, true);
@@ -419,30 +445,32 @@ async function start() {
     if (!id) return;
     if (id.a === "otake") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const { view } = await api.takeOrder(id.orderId, i.user.id);
+      const lang = replyLang(i, id.orderId);
+      const { view } = await api.withLang(lang).takeOrder(id.orderId, i.user.id);
       if (view) void orders.publish(view).catch(e => log.warn("Commande non mise à jour", e?.message));
-      return i.editReply(`✅ C'est noté : tu t'en charges. Marque-la « Faite » sur le site une fois l'objet remis${view ? ` : ${view.url}` : "."}`);
+      const g = langOf(view?.group, lang);
+      return i.editReply(view ? tr(g, "✅ C'est noté : tu t'en charges. Marque-la « Faite » sur le site une fois l'objet remis : {url}", { url: view.url })
+        : tr(g, "✅ C'est noté : tu t'en charges. Marque-la « Faite » sur le site une fois l'objet remis."));
     }
     if (id.a === "ask") {
       await i.deferUpdate();
-      const r = await api.answerAsk(id.askId, i.user.id, id.yes);
+      const lang = replyLang(i, id.askId);
+      const r = await api.withLang(lang).answerAsk(id.askId, i.user.id, id.yes);
       if (r.view) publishSoon(r.view);
       const prev = i.message.embeds[0]?.toJSON();
-      return i.editReply(renderAskAnswered(prev && { title: prev.title, url: prev.url, description: prev.description, footer: prev.footer }, r));
+      return i.editReply(renderAskAnswered(prev && { title: prev.title, url: prev.url, description: prev.description, footer: prev.footer }, r, langOf(r.view?.group, lang)));
     }
-    if (id.a === "st") {
-      await i.deferReply({ flags: MessageFlags.Ephemeral });
-      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id), false, langOf(i)));
-    }
-    if (id.a === "chg") {
-      await i.deferUpdate();
-      return apply(i, id.raidId, onStatus(id.raidId, id.status, await api.choices(id.raidId, i.user.id), true, langOf(i)));
+    if (id.a === "st" || id.a === "chg") {
+      if (id.a === "st") await i.deferReply({ flags: MessageFlags.Ephemeral }); else await i.deferUpdate();
+      const c = await api.withLang(replyLang(i, id.raidId)).choices(id.raidId, i.user.id);
+      remember(c.lang, id.raidId);
+      return apply(i, id.raidId, onStatus(id.raidId, id.status, c, id.a === "chg", gameLangOf(i)));
     }
     if (id.a === "off") {
       await i.deferReply({ flags: MessageFlags.Ephemeral });
-      const view = await api.unsign(id.raidId, i.user.id);
+      const view = await api.withLang(replyLang(i, id.raidId)).unsign(id.raidId, i.user.id);
       publishSoon(view);
-      return i.editReply("Tu es désinscrit de ce raid.");
+      return i.editReply(tr(langOf(view.group), "Tu es désinscrit de ce raid."));
     }
   }
 
@@ -453,9 +481,13 @@ async function start() {
     const value = i.values[0];
     if (!id || !value || !("status" in id)) return;
     await i.deferUpdate();
-    if (id.a === "char") return apply(i, id.raidId, onCharPicked(id.raidId, id.status, await api.choices(id.raidId, i.user.id), value, langOf(i)));
+    const a = api.withLang(replyLang(i, id.raidId));
+    if (id.a === "char") return apply(i, id.raidId, onCharPicked(id.raidId, id.status, await a.choices(id.raidId, i.user.id), value, gameLangOf(i)));
     // Classes et spés du jeu du groupe (Roster : WoW Retail)
-    if (id.a === "cls") return apply(i, id.raidId, onClassPicked(id.raidId, id.status, value, (await api.choices(id.raidId, i.user.id)).game, langOf(i)));
+    if (id.a === "cls") {
+      const c = await a.choices(id.raidId, i.user.id);
+      return apply(i, id.raidId, onClassPicked(id.raidId, id.status, value, c.game, gameLangOf(i), langOf(c)));
+    }
     const pair = splitValue(value);
     if (!pair) return;
     if (id.a === "pick") {
@@ -465,8 +497,8 @@ async function start() {
       return apply(i, id.raidId, { kind: "signup", body: { status: id.status, characterId: pair[0], spec: pair[1] }, label: name ? `${name} (${spec})` : spec! });
     }
     if (id.a === "gspec") {
-      const game = (await api.choices(id.raidId, i.user.id)).game ?? "forever";
-      return apply(i, id.raidId, { kind: "signup", body: { status: id.status, cls: pair[0], spec: pair[1] }, label: guestLabel(game, langOf(i), pair[0], pair[1]) });
+      const game = (await a.choices(id.raidId, i.user.id)).game ?? "forever";
+      return apply(i, id.raidId, { kind: "signup", body: { status: id.status, cls: pair[0], spec: pair[1] }, label: guestLabel(game, gameLangOf(i), pair[0], pair[1]) });
     }
   }
 

@@ -1,4 +1,5 @@
-import { afterLaunchText, MAX_LEVEL, ordinalFr } from "@forever/game-data";
+import { daysSinceLaunch, MAX_LEVEL, ordinalEn, ordinalFr } from "@forever/game-data";
+import { langOf, tr, trn, type Lang } from "./i18n";
 import type { InternalApi, LevelAnnounce } from "./api";
 import { escapeMd, type MessagePayload } from "./render";
 import type { Logger } from "./sync";
@@ -10,22 +11,30 @@ import type { Logger } from "./sync";
 
 const GOLD = 0xc8a04b;
 
+/** « 9 jours après la sortie », « le jour de la sortie ». */
+const afterLaunch = (lang: Lang, at: number) => {
+  const d = daysSinceLaunch(at);
+  return d === 0 ? tr(lang, "le jour de la sortie") : trn(lang, d, "{n} jour après la sortie", "{n} jours après la sortie");
+};
+
 export function renderLevelAnnounce(a: LevelAnnounce): MessagePayload {
+  const lang = langOf(a.group);
   const name = escapeMd(a.name);
+  const rank = lang === "en" ? ordinalEn(a.rank) : ordinalFr(a.rank);
   if (a.level >= MAX_LEVEL) {
     return {
       embeds: [{
-        title: `🏆 ${name} atteint le niveau ${a.level}`.slice(0, 256),
+        title: `🏆 ${tr(lang, "{name} atteint le niveau {level}", { name, level: a.level })}`.slice(0, 256),
         url: a.url,
-        description: `${ordinalFr(a.rank)} de la guilde, ${afterLaunchText(Date.parse(a.at))}.`,
+        description: tr(lang, "{rank} de la guilde, {after}.", { rank, after: afterLaunch(lang, Date.parse(a.at)) }),
         color: GOLD,
-        footer: { text: `Course au 60 · ${a.group.name} · ${a.when}`.slice(0, 2048) },
+        footer: { text: `${tr(lang, "Course au 60")} · ${a.group.name} · ${a.when}`.slice(0, 2048) },
       }],
       components: [],
       allowedMentions: { parse: [] },
     };
   }
-  return { content: `⬆️ **${name}** atteint le niveau ${a.level} · ${ordinalFr(a.rank)} de la guilde.`, embeds: [], components: [], allowedMentions: { parse: [] } };
+  return { content: `⬆️ ${tr(lang, "**{name}** atteint le niveau {level} · {rank} de la guilde.", { name, level: a.level, rank })}`, embeds: [], components: [], allowedMentions: { parse: [] } };
 }
 
 /** Relève des annonces : chacune est remise une seule fois par le site ; un salon inaccessible est noté dans les journaux. */

@@ -3,7 +3,7 @@
 // (apps/api/src/i18n/en.json), comme locale_check.lua pour l'addon.
 //   node scripts/i18n-check.mjs                 → échoue si un texte du code n'a pas sa traduction, si une traduction ne
 //                                                 sert plus, ou si les {variables} diffèrent entre le français et l'anglais
-//   node scripts/i18n-check.mjs --missing [api] → écrit les textes sans traduction du site (ou de l'API) : JSON, valeurs
+//   node scripts/i18n-check.mjs --missing [api|bot] → écrit les textes sans traduction du site (de l'API, du bot) : JSON, valeurs
 //                                                 vides, pour les remplir
 // Site : t("…"), tx("…"), N("…") et les deux textes de tn(n, "…", "…"). API : badRequest("…"), forbidden("…"),
 // notFound("…"), conflict("…"), unauthorized("…"), new HttpError(status, "…"), tr(lang, "…"), N("…"), msg("…") et les deux textes
@@ -30,6 +30,7 @@ const GAME_LABELS_SITE = [
   ["addon-errors.ts", "ADDON_ERROR_TEXTS"],
 ];
 const GAME_LABELS_API = [["addon-errors.ts", "ADDON_ERROR_TEXTS"]];
+const GAME_LABELS_BOT = [["core.ts", "SIGNUP_LABEL"], ["core.ts", "SIGNUP_HINT"]];
 
 const DOMAINS = {
   site: {
@@ -43,6 +44,11 @@ const DOMAINS = {
     skip: ["apps/api/src/lib/i18n.ts"],
     calls: { tr: [1], trn: [2, 3], N: [0], msg: [0], badRequest: [0], forbidden: [0], notFound: [0], conflict: [0], unauthorized: [0] },
     news: { HttpError: [1] }, moduleRule: false, game: GAME_LABELS_API,
+  },
+  bot: {
+    name: "Bot", dir: "apps/bot/src", catalog: "apps/bot/src/i18n/en.json",
+    skip: ["apps/bot/src/i18n.ts"],
+    calls: { tr: [1], trn: [2, 3], N: [0] }, news: {}, moduleRule: false, game: GAME_LABELS_BOT,
   },
 };
 
@@ -110,7 +116,7 @@ const vars = (s) => [...s.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort().join(","
 
 const mi = process.argv.indexOf("--missing");
 if (mi >= 0) {
-  const d = DOMAINS[process.argv[mi + 1] === "api" ? "api" : "site"];
+  const d = DOMAINS[["api", "bot"].includes(process.argv[mi + 1]) ? process.argv[mi + 1] : "site"];
   const catalog = JSON.parse(readFileSync(path.join(root, d.catalog), "utf8"));
   const missing = {};
   for (const [k] of check(d).used) if (!catalog[k]) missing[k] = "";
@@ -132,6 +138,6 @@ for (const d of Object.values(DOMAINS)) {
     for (const p of problems) console.log("  " + p);
     console.log(`${problems.length} problème(s)`);
     failed = true;
-  } else console.log(`Textes ${d.name === "Site" ? "du site" : "de l'API"} : tout est bon`);
+  } else console.log(`Textes ${d.name === "Site" ? "du site" : d.name === "API" ? "de l'API" : "du bot"} : tout est bon`);
 }
 if (failed) process.exit(1);

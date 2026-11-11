@@ -6,7 +6,7 @@ import { del, get, patch, post } from "../api";
 import { useMe } from "../auth";
 import { useSite } from "../site";
 import { LinkCodeBox } from "./DiscordLink";
-import { t, tx } from "../i18n";
+import { N, t, tx } from "../i18n";
 
 /**
  * Salon Discord d'un raid récurrent, réglé au même endroit dans l'onglet Raids (« ↻ Récurrents »)
@@ -14,6 +14,13 @@ import { t, tx } from "../i18n";
  */
 
 /** Salon Discord d'un raid récurrent : celui du groupe (linked = false) ou un salon à part, renommé avec la date du raid courant. */
+/** Erreurs de renommage rapportées par le bot (apps/bot/src/channels.ts, en français) : traduites à l'affichage. */
+const RENAME_ERRORS = [
+  N("Le bot ne peut pas renommer ce salon : donne-lui la permission « Gérer les salons » sur ce salon."),
+  N("Salon introuvable : lie un autre salon."),
+  N("Le bot ne voit pas ce salon : donne-lui « Voir le salon » et « Gérer les salons » sur ce salon."),
+  N("Le salon n'a pas pu être renommé (nouvel essai dans une heure)."),
+];
 export interface TemplateDiscord { linked: boolean; channelName: string | null; rename: boolean; renameError: string | null }
 export interface RaidTemplate {
   id: string; name: string; description: string; weekday: number; time: string; leadDays: number; active: boolean; lootMode: LootMode; srHidden: boolean; size: number;
@@ -62,7 +69,7 @@ export function TemplateChannel({ groupId, t: tpl, canEdit, guard, refresh, grou
           <i aria-hidden="true" />{t("Renommer le salon avec la date du prochain raid (ex. jeudi-15-10)")}
         </label>
       )}
-      {canEdit && d.linked && d.renameError && <span className="small"><span role="alert" style={{ color: "var(--bad)" }}>{d.renameError}</span> <span className="muted">{t("Le bot réessaie toutes les heures.")}</span></span>}
+      {canEdit && d.linked && d.renameError && <span className="small"><span role="alert" style={{ color: "var(--bad)" }}>{RENAME_ERRORS.includes(d.renameError) ? t(d.renameError) : d.renameError}</span> <span className="muted">{t("Le bot réessaie toutes les heures.")}</span></span>}
       {canEdit && d.linked && d.rename && !d.renameError && <span className="hint">{t("Le bot a besoin de « Gérer les salons » sur ce salon.")}</span>}
       {canEdit && wantCode && !hasDiscord && <div className="alert info">{tx("Pour lier un salon, lie d'abord ton propre Discord dans {link} : le bot vérifie que c'est bien un officier qui tape la commande.", { link: <Link to="/account">{t("Compte & sécurité")}</Link> })}</div>}
       {code && <LinkCodeBox key={code.code} game={game} code={code} intro={t("Dans le salon Discord voulu pour « {name} », tape cette commande", { name: tpl.name })} label={t("Commande de liaison du salon pour « {name} »", { name: tpl.name })}

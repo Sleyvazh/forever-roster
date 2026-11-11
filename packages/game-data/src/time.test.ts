@@ -19,6 +19,7 @@ describe("fuseau du serveur de jeu", () => {
   it("nom du salon d'un raid récurrent : jour et date dans le fuseau du jeu", () => {
     expect(channelNameFor(new Date("2026-10-15T19:00:00Z"))).toBe("jeudi-15-10");
     expect(channelNameFor(new Date("2026-03-02T20:00:00Z"))).toBe("lundi-02-03");
+    expect(channelNameFor(new Date("2026-10-15T19:00:00Z"), undefined, "en")).toBe("thursday-15-10");
     // Passage à l'heure d'hiver (25/10/2026) : 22 h 30 UTC, c'est 0 h 30 dimanche à Paris en été, 23 h 30 dimanche en hiver
     expect(channelNameFor(new Date("2026-10-24T22:30:00Z"))).toBe("dimanche-25-10");
     expect(channelNameFor(new Date("2026-10-25T22:30:00Z"))).toBe("dimanche-25-10");

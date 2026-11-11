@@ -1,6 +1,7 @@
 import { deNom } from "@forever/game-data";
 import { ButtonStyle, ComponentType } from "discord.js";
 import type { BankNotice, InternalApi } from "./api";
+import { langOf, tr, type Lang } from "./i18n";
 import { escapeMd, type Row } from "./render";
 import type { Logger } from "./sync";
 
@@ -10,16 +11,21 @@ import type { Logger } from "./sync";
  * « Messages privés du bot » gardés). Rendu pur (testé sans Discord) et relève.
  */
 
-const linkRow = (url: string): Row => ({ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir la banque", url }] });
+const linkRow = (url: string, lang: Lang): Row => ({ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir la banque"), url }] });
 /** Le motif sans ponctuation finale : le message se termine par son propre point (« Plus de stock. » donne « … : Plus de stock. », pas « stock.. »). */
 const reasonText = (reason: string) => reason.replace(/[\s.!?…]+$/u, "").trim();
 
 export function renderBankNotice(n: BankNotice): { content: string; components: Row[] } {
+  const lang = langOf(n);
   const what = `${n.quantity} × ${escapeMd(n.item)}`;
+  const reason = reasonText(n.reason);
   const content = n.kind === "prepared"
-    ? `Ta demande de ${what} est prête : à récupérer auprès ${n.by ? escapeMd(deNom(n.by)) : "d'un officier ou d'un banquier de la guilde"}.`
-    : `Ta demande de ${what} a été refusée${reasonText(n.reason) ? ` : ${escapeMd(reasonText(n.reason))}` : ""}.`;
-  return { content: content.slice(0, 2000), components: [linkRow(n.url)] };
+    ? n.by ? (lang === "en" ? tr(lang, "Ta demande de {what} est prête : à récupérer auprès de {by}.", { what, by: escapeMd(n.by) })
+      : `Ta demande de ${what} est prête : à récupérer auprès ${escapeMd(deNom(n.by))}.`)
+      : tr(lang, "Ta demande de {what} est prête : à récupérer auprès d'un officier ou d'un banquier de la guilde.", { what })
+    : reason ? tr(lang, "Ta demande de {what} a été refusée : {reason}.", { what, reason: escapeMd(reason) })
+      : tr(lang, "Ta demande de {what} a été refusée.", { what });
+  return { content: content.slice(0, 2000), components: [linkRow(n.url, lang)] };
 }
 
 /** MP à un joueur : true s'il est parti, false si ses MP sont fermés (ou plus de serveur en commun). */

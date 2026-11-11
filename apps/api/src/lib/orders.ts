@@ -51,7 +51,7 @@ export async function orderDiscordView(db: Tx, originFor: (game: Game) => string
   const [taker] = o.takerId ? await db.select({ name: users.displayName }).from(users).where(eq(users.id, o.takerId)) : [];
   const crafters = (await craftersOf(db, o.groupId, [o.spellId])).get(o.spellId) ?? [];
   return {
-    id: o.id, group: { id: r.group.id, name: r.group.name }, channelId: r.group.ordersChannelId,
+    id: o.id, group: { id: r.group.id, name: r.group.name, lang: r.group.lang }, channelId: r.group.ordersChannelId,
     messageId: o.discordChannelId === r.group.ordersChannelId ? o.discordMessageId : null, changedAt: o.discordChangedAt,
     url: `${originFor(r.group.game)}/groups/${o.groupId}/artisans`, // site du jeu du groupe
     item: o.itemId ? { id: o.itemId, name: o.itemName ?? o.recipeName, quality: r.quality ?? 1 } : null, recipeName: o.recipeName,

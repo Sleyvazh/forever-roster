@@ -292,13 +292,20 @@ export function levelAnnounceText(a: { name: string; level: number; rank: number
     : `⬆️ ${a.name} atteint le niveau ${a.level} · ${ordinalFr(a.rank)} de la guilde.`;
 }
 /** « samedi 14/11 à 16:52 » (exact) ou « vers le 14/11 » (date du relevé), heure de Paris. */
-export function raceDateText(at: number, exact: boolean, timeZone = GAME_TIMEZONE) {
+export function raceDateText(at: number, exact: boolean, timeZone = GAME_TIMEZONE, lang: "fr" | "en" = "fr") {
   const z = zonedParts(new Date(at), timeZone);
   const day = `${z.day}/${String(z.month).padStart(2, "0")}`;
-  if (!exact) return `vers le ${day}`;
-  const wd = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"][z.weekday - 1];
-  return `${wd} ${day} à ${String(z.hour).padStart(2, "0")}:${String(z.minute).padStart(2, "0")}`;
+  const en = lang === "en";
+  if (!exact) return en ? `around ${day}` : `vers le ${day}`;
+  const wd = (en ? ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    : ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"])[z.weekday - 1];
+  return `${wd} ${day} ${en ? "at" : "à"} ${String(z.hour).padStart(2, "0")}:${String(z.minute).padStart(2, "0")}`;
 }
+/** Rang en anglais : « 1st », « 2nd », « 3rd », « 11th », « 21st ». */
+export const ordinalEn = (n: number) => {
+  const t = n % 100, u = n % 10;
+  return `${n}${t >= 11 && t <= 13 ? "th" : u === 1 ? "st" : u === 2 ? "nd" : u === 3 ? "rd" : "th"}`;
+};
 
 /* ---------- Réponses de l'API (site) ---------- */
 

@@ -241,9 +241,12 @@ export const groups = pgTable("groups", {
   outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
   /** Course au 60 (Forever) : annonces des montées de niveau dans le salon de la guilde (rien, les 60, tous les 10 niveaux). */
   levelAnnounces: text("level_announces").$type<LevelAnnounce>().notNull().default("sixty"),
+  /** Langue du bot Discord pour cette guilde (annonces, réponses ; version anglaise, lot E6). */
+  lang: text("lang").$type<"fr" | "en">().notNull().default("fr"),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [
   check("groups_level_announces_chk", sql`${t.levelAnnounces} in ('none', 'sixty', 'tens')`),
+  check("groups_lang", sql`${t.lang} IN ('fr', 'en')`),
   check("groups_nudge_hours_chk", sql`${t.nudgeHours} is null or ${t.nudgeHours} in (24, 48, 72)`),
   check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
   check("groups_raid_creators_chk", sql`${t.raidCreators} in ('officers', 'members')`),
@@ -715,6 +718,8 @@ export const outingSignups = pgTable("outing_signups", {
 export type OutingNoticeKind = "full" | "soon" | "moved" | "cancelled" | "promoted";
 export interface OutingNoticePayload {
   outingId: string; groupName: string; title: string; levels: string; day: string; at: string | null; url: string; creator: string;
+  /** Langue du bot pour la guilde (lot E6) ; absente des MP plus anciens : français. */
+  lang?: "fr" | "en";
   /** Heure changée : l'ancienne. */
   oldDay?: string; oldAt?: string | null;
   /** Le destinataire est le créateur (15 min avant : « Inviter les 4 » en jeu). */

@@ -144,6 +144,8 @@ export interface GroupDetail {
     /** Salons liés et leur nom (null : inconnu, rapporté par le bot sous peu). */
     discordLinked: boolean; discordChannelName: string | null; ordersLinked: boolean; ordersChannelName: string | null;
     outingsLinked: boolean; outingsChannelName: string | null;
+    /** Langue du bot sur Discord (annonces, MP, réponses) : choisie à la création (langue de la page), puis par les officiers. */
+    lang: "fr" | "en";
     /** Qui crée les raids et les sorties, et si je le peux. */
     creators: { raids: Creators; outings: Creators; canCreateRaid: boolean; canCreateOuting: boolean };
   };

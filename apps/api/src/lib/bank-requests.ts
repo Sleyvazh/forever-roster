@@ -217,6 +217,8 @@ export interface BankNoticeView {
   /** Nom de l'objet, quantité, prénom de celui qui a traité, motif du refus (vide : aucun). */
   item: string; quantity: number; by: string; reason: string;
   groupName: string; url: string;
+  /** Langue du bot pour la guilde (lot E6). */
+  lang: "fr" | "en";
 }
 
 /**
@@ -234,7 +236,7 @@ export async function claimBankNotices(db: Db, origin: string, now: Date): Promi
   if (!claimed.length) return [];
   const rows = await db.select({
     id: bankRequests.id, groupId: bankRequests.groupId, itemId: bankRequests.itemId, quantity: bankRequests.quantity, status: bankRequests.status,
-    by: bankRequests.handledByName, reason: bankRequests.reason, groupName: groups.name, discordId: users.discordId, reminders: users.discordReminders,
+    by: bankRequests.handledByName, reason: bankRequests.reason, groupName: groups.name, lang: groups.lang, discordId: users.discordId, reminders: users.discordReminders,
   }).from(bankRequests).innerJoin(users, eq(users.id, bankRequests.userId)).innerJoin(groups, eq(groups.id, bankRequests.groupId))
     .where(inArray(bankRequests.id, claimed.map(c => c.requestId)));
   const byId = new Map(rows.map(r => [r.id, r]));
@@ -243,8 +245,8 @@ export async function claimBankNotices(db: Db, origin: string, now: Date): Promi
     const r = byId.get(n.requestId);
     if (!r || r.status !== (n.kind === "prepared" ? "prepared" : "refused") || !canDm({ discordId: r.discordId, reminders: r.reminders })) return [];
     return [{
-      id: n.id, discordUserId: r.discordId!, kind: n.kind, item: items[r.itemId]?.name ?? `Objet n° ${r.itemId}`, quantity: r.quantity, by: r.by, reason: r.reason,
-      groupName: r.groupName, url: `${origin}/groups/${r.groupId}/membres/banque`,
+      id: n.id, discordUserId: r.discordId!, kind: n.kind, item: items[r.itemId]?.name ?? `${r.lang === "en" ? "Item #" : "Objet n° "}${r.itemId}`, quantity: r.quantity, by: r.by, reason: r.reason,
+      groupName: r.groupName, url: `${origin}/groups/${r.groupId}/membres/banque`, lang: r.lang,
     }];
   });
 }

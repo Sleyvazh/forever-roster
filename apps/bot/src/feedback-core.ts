@@ -1,5 +1,6 @@
 import { ButtonStyle, ComponentType, TextInputStyle, type APIButtonComponent, type APIButtonComponentWithCustomId, type APIEmbed, type APIEmbedField, type APIModalInteractionResponseCallbackData } from "discord.js";
 import type { FeedbackStatus } from "./api";
+import { N, quote, tr, type Lang } from "./i18n";
 import { escapeMd, type Row } from "./render";
 
 /**
@@ -11,7 +12,7 @@ import { escapeMd, type Row } from "./render";
 /** Groupe du site qui suit les avis du serveur. url : section Avis du groupe (sans l'avis). */
 export interface Track { group: string; site: string; url: string }
 export const avisUrl = (t: Pick<Track, "url">, id: string) => `${t.url}?avis=${id}`;
-export const STATUS_LABEL: Record<FeedbackStatus, string> = { new: "🆕 Nouveau", wip: "🔧 En cours", done: "✅ Fait", refused: "⛔ Refusé" };
+export const STATUS_LABEL: Record<FeedbackStatus, string> = { new: N("🆕 Nouveau"), wip: N("🔧 En cours"), done: N("✅ Fait"), refused: N("⛔ Refusé") };
 
 export const MAX_TEXT = 1800;
 export const MAX_REPLY = 1500;
@@ -65,6 +66,8 @@ export function decodeFb(id: string): FbAction | null {
 
 export interface Session {
   guildId: string; guildName: string; allowAnonymous: boolean;
+  /** Langue des messages de l'avis : celle de la guilde qui le suit, sinon celle de Discord du joueur (absente : français). */
+  lang?: Lang;
   /** Avis suivis sur le site par un groupe : le joueur en est prévenu dans l'aperçu. */
   track?: Track | null;
   /** Nom affiché si l'avis est signé (pseudo sur le serveur) et avatar. */
@@ -116,11 +119,11 @@ export class Cooldown {
 }
 
 /** Texte d'un avis écrit en MP : vide, trop long, ou fichiers joints (non transmis). */
-export function checkText(content: string, attachments = 0): { ok: true; text: string; note: string | null } | { ok: false; error: string } {
+export function checkText(content: string, attachments = 0, lang: Lang = "fr"): { ok: true; text: string; note: string | null } | { ok: false; error: string } {
   const text = content.trim();
-  if (!text) return { ok: false, error: attachments ? "Seul le texte est transmis : écris ton avis en toutes lettres." : "Message vide : écris ton avis." };
-  if (text.length > MAX_TEXT) return { ok: false, error: `Message trop long (${text.length}/${MAX_TEXT} caractères) : raccourcis-le, ou garde l'essentiel.` };
-  return { ok: true, text, note: attachments ? "Les images et fichiers joints ne sont pas transmis, seulement le texte." : null };
+  if (!text) return { ok: false, error: attachments ? tr(lang, "Seul le texte est transmis : écris ton avis en toutes lettres.") : tr(lang, "Message vide : écris ton avis.") };
+  if (text.length > MAX_TEXT) return { ok: false, error: tr(lang, "Message trop long ({n}/{max} caractères) : raccourcis-le, ou garde l'essentiel.", { n: text.length, max: MAX_TEXT }) };
+  return { ok: true, text, note: attachments ? tr(lang, "Les images et fichiers joints ne sont pas transmis, seulement le texte.") : null };
 }
 
 /* ---------- Messages ---------- */
@@ -132,77 +135,81 @@ const row = (...components: APIButtonComponent[]): Row => ({ type: ComponentType
 const none = { parse: [] as [] };
 
 /** Message du salon dédié, avec le bouton. */
-export function panelMessage(allowAnonymous: boolean) {
+export function panelMessage(allowAnonymous: boolean, lang: Lang = "fr") {
   return {
     embeds: [{
       color: COLOR,
-      title: "💬 Donne ton avis",
+      title: tr(lang, "💬 Donne ton avis"),
       description: [
-        "Une idée, un souci, un merci ? Clique sur le bouton : je t'écris en message privé, tu y écris ton avis.",
-        allowAnonymous ? "Tu choisis ensuite de l'envoyer **signé** ou **anonyme**." : "Les avis de ce serveur sont **signés**.",
-        "L'équipe peut te répondre par mon intermédiaire" + (allowAnonymous ? ", même si tu restes anonyme." : "."),
+        tr(lang, "Une idée, un souci, un merci ? Clique sur le bouton : je t'écris en message privé, tu y écris ton avis."),
+        allowAnonymous ? tr(lang, "Tu choisis ensuite de l'envoyer **signé** ou **anonyme**.") : tr(lang, "Les avis de ce serveur sont **signés**."),
+        allowAnonymous ? tr(lang, "L'équipe peut te répondre par mon intermédiaire, même si tu restes anonyme.") : tr(lang, "L'équipe peut te répondre par mon intermédiaire."),
         "",
-        "-# Ça marche aussi avec la commande /feedback, depuis n'importe quel salon.",
+        `-# ${tr(lang, "Ça marche aussi avec la commande /feedback, depuis n'importe quel salon.")}`,
       ].join("\n"),
     }] satisfies APIEmbed[],
-    components: [row(button(encodeFb({ a: "open" }), "Donner mon avis", ButtonStyle.Primary, "💬"))],
+    components: [row(button(encodeFb({ a: "open" }), tr(lang, "Donner mon avis"), ButtonStyle.Primary, "💬"))],
     allowedMentions: none,
   };
 }
 
 /** Premier MP : écrire l'avis en réponse. */
-export function promptMessage(s: Pick<Session, "guildId" | "guildName" | "allowAnonymous">) {
+export function promptMessage(s: Pick<Session, "guildId" | "guildName" | "allowAnonymous" | "lang">) {
+  const lang = s.lang ?? "fr";
   return {
     embeds: [{
       color: COLOR,
-      title: `Ton avis pour ${escapeMd(s.guildName)}`,
+      title: tr(lang, "Ton avis pour {guild}", { guild: escapeMd(s.guildName) }),
       description: [
-        `Écris ton avis **ici, en un seul message** (${MAX_TEXT} caractères au plus).`,
-        s.allowAnonymous ? "Tu verras un aperçu, puis tu choisiras de l'envoyer **signé** ou **anonyme**." : "Tu verras un aperçu avant l'envoi. Sur ce serveur, les avis sont **signés**.",
+        tr(lang, "Écris ton avis **ici, en un seul message** ({max} caractères au plus).", { max: MAX_TEXT }),
+        s.allowAnonymous ? tr(lang, "Tu verras un aperçu, puis tu choisiras de l'envoyer **signé** ou **anonyme**.") : tr(lang, "Tu verras un aperçu avant l'envoi. Sur ce serveur, les avis sont **signés**."),
         "",
-        "-# Tu as 15 minutes. Seul le texte est transmis.",
+        `-# ${tr(lang, "Tu as 15 minutes. Seul le texte est transmis.")}`,
       ].join("\n"),
     }] satisfies APIEmbed[],
-    components: [row(button(encodeFb({ a: "cancel", guildId: s.guildId }), "Annuler", ButtonStyle.Secondary))],
+    components: [row(button(encodeFb({ a: "cancel", guildId: s.guildId }), tr(lang, "Annuler"), ButtonStyle.Secondary))],
     allowedMentions: none,
   };
 }
 
 /** Aperçu, avec le choix signé / anonyme. */
 export function previewMessage(s: Session & { text: string }, note: string | null = null) {
+  const lang = s.lang ?? "fr";
   const lines = [
-    `**Signé** : ton nom (${escapeMd(s.name)}) apparaît avec l'avis.`,
+    tr(lang, "**Signé** : ton nom ({name}) apparaît avec l'avis.", { name: escapeMd(s.name) }),
     s.allowAnonymous
-      ? `**Anonyme** : ton nom n'apparaît nulle part. L'équipe peut quand même te répondre par mon intermédiaire, sans savoir qui tu es. Je garde ce lien ${KEEP_DAYS} jours, puis je l'efface.`
-      : "Ce serveur n'accepte que les avis signés.",
-    ...(s.track ? [`Ton avis et les réponses sont aussi visibles du chef et des officiers de la guilde « ${escapeMd(s.track.group)} » sur ${s.track.site}${s.allowAnonymous ? " (sans ton nom si tu l'envoies anonyme)" : ""}.`] : []),
+      ? tr(lang, "**Anonyme** : ton nom n'apparaît nulle part. L'équipe peut quand même te répondre par mon intermédiaire, sans savoir qui tu es. Je garde ce lien {n} jours, puis je l'efface.", { n: KEEP_DAYS })
+      : tr(lang, "Ce serveur n'accepte que les avis signés."),
+    ...(s.track ? [s.allowAnonymous
+      ? tr(lang, "Ton avis et les réponses sont aussi visibles du chef et des officiers de la guilde {group} sur {site} (sans ton nom si tu l'envoies anonyme).", { group: quote(lang, escapeMd(s.track.group)), site: s.track.site })
+      : tr(lang, "Ton avis et les réponses sont aussi visibles du chef et des officiers de la guilde {group} sur {site}.", { group: quote(lang, escapeMd(s.track.group)), site: s.track.site })] : []),
     "",
-    "-# Pour corriger, envoie simplement un nouveau message : il remplace celui-ci.",
+    `-# ${tr(lang, "Pour corriger, envoie simplement un nouveau message : il remplace celui-ci.")}`,
   ];
   if (note) lines.unshift(`⚠️ ${note}`, "");
   return {
     content: "",
     embeds: [
-      { color: COLOR, title: `Aperçu · ${escapeMd(s.guildName)}`, description: s.text },
+      { color: COLOR, title: tr(lang, "Aperçu · {guild}", { guild: escapeMd(s.guildName) }), description: s.text },
       { color: COLOR_ANON, description: lines.join("\n") },
     ] satisfies APIEmbed[],
     components: [row(
-      button(encodeFb({ a: "sign", guildId: s.guildId }), "Envoyer signé", ButtonStyle.Primary, "✍️"),
-      ...(s.allowAnonymous ? [button(encodeFb({ a: "anon", guildId: s.guildId }), "Envoyer anonyme", ButtonStyle.Secondary, "🕶️")] : []),
-      button(encodeFb({ a: "cancel", guildId: s.guildId }), "Annuler", ButtonStyle.Danger),
+      button(encodeFb({ a: "sign", guildId: s.guildId }), tr(lang, "Envoyer signé"), ButtonStyle.Primary, "✍️"),
+      ...(s.allowAnonymous ? [button(encodeFb({ a: "anon", guildId: s.guildId }), tr(lang, "Envoyer anonyme"), ButtonStyle.Secondary, "🕶️")] : []),
+      button(encodeFb({ a: "cancel", guildId: s.guildId }), tr(lang, "Annuler"), ButtonStyle.Danger),
     )],
     allowedMentions: none,
   };
 }
 
-export function sentMessage(guildName: string, anonymous: boolean, text: string) {
+export function sentMessage(guildName: string, anonymous: boolean, text: string, lang: Lang = "fr") {
   return {
     content: "",
     embeds: [{
       color: COLOR,
-      title: `✅ Avis envoyé ${anonymous ? "anonymement" : "signé"} · ${escapeMd(guildName)}`,
+      title: anonymous ? tr(lang, "✅ Avis envoyé anonymement · {guild}", { guild: escapeMd(guildName) }) : tr(lang, "✅ Avis envoyé signé · {guild}", { guild: escapeMd(guildName) }),
       description: text,
-      footer: { text: "Si l'équipe te répond, la réponse arrivera ici." },
+      footer: { text: tr(lang, "Si l'équipe te répond, la réponse arrivera ici.") },
     }] satisfies APIEmbed[],
     components: [],
     allowedMentions: none,
@@ -212,82 +219,84 @@ export function sentMessage(guildName: string, anonymous: boolean, text: string)
 export interface Author { id: string; name: string; avatarUrl: string | null }
 
 /** Champs « Statut » et « Suivi » d'un avis suivi par un groupe du site. */
-function trackFields(status: FeedbackStatus, track: Pick<Track, "group" | "site">): APIEmbedField[] {
+// Noms des champs « Statut » et « Suivi », dans les deux langues (un statut changé remplace ceux d'avant)
+const FIELD_NAMES = new Set(["Statut", "Suivi", "Status", "Tracking"]);
+function trackFields(status: FeedbackStatus, track: Pick<Track, "group" | "site">, lang: Lang): APIEmbedField[] {
   return [
-    { name: "Statut", value: STATUS_LABEL[status], inline: true },
-    { name: "Suivi", value: `${track.site} · ${escapeMd(track.group)}`.slice(0, 1024), inline: true },
+    { name: tr(lang, "Statut"), value: tr(lang, STATUS_LABEL[status]), inline: true },
+    { name: tr(lang, "Suivi"), value: `${track.site} · ${escapeMd(track.group)}`.slice(0, 1024), inline: true },
   ];
 }
-const linkButton = (url: string): APIButtonComponent => ({ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url });
+const linkButton = (url: string, lang: Lang): APIButtonComponent => ({ type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir sur le site"), url });
 
 /** Boutons sous l'avis : « Répondre », et le lien vers le site s'il est suivi. */
-export function inboxButtons(id: string, url: string | null) {
-  return [row(button(encodeFb({ a: "reply", id }), "Répondre", ButtonStyle.Secondary, "↩️"), ...(url ? [linkButton(url)] : []))];
+export function inboxButtons(id: string, url: string | null, lang: Lang = "fr") {
+  return [row(button(encodeFb({ a: "reply", id }), tr(lang, "Répondre"), ButtonStyle.Secondary, "↩️"), ...(url ? [linkButton(url, lang)] : []))];
 }
 
 /** Avis publié dans le salon de l'équipe. Anonyme : aucune trace de l'auteur dans le message. */
-export function inboxMessage(id: string, text: string, author: Author | null, at = new Date(), track: Track | null = null) {
+export function inboxMessage(id: string, text: string, author: Author | null, at = new Date(), track: Track | null = null, lang: Lang = "fr") {
   const fields: APIEmbedField[] = [
-    ...(author ? [{ name: "De", value: `<@${author.id}>`, inline: true }] : []),
-    ...(track ? trackFields("new", track) : []),
+    ...(author ? [{ name: tr(lang, "De"), value: `<@${author.id}>`, inline: true }] : []),
+    ...(track ? trackFields("new", track, lang) : []),
   ];
   const embed: APIEmbed = {
     color: author ? COLOR : COLOR_ANON,
-    author: author ? { name: author.name, ...(author.avatarUrl ? { icon_url: author.avatarUrl } : {}) } : { name: "Anonyme" },
-    title: "Nouvel avis",
+    author: author ? { name: author.name, ...(author.avatarUrl ? { icon_url: author.avatarUrl } : {}) } : { name: tr(lang, "Anonyme") },
+    title: tr(lang, "Nouvel avis"),
     description: text,
     ...(fields.length ? { fields } : {}),
-    footer: { text: author ? "Répondre : la réponse part en MP à l'auteur." : "Répondre : la réponse part en MP à l'auteur, sans révéler son nom." },
+    footer: { text: author ? tr(lang, "Répondre : la réponse part en MP à l'auteur.") : tr(lang, "Répondre : la réponse part en MP à l'auteur, sans révéler son nom.") },
     timestamp: at.toISOString(),
   };
-  return { embeds: [embed], components: inboxButtons(id, track ? avisUrl(track, id) : null), allowedMentions: none };
+  return { embeds: [embed], components: inboxButtons(id, track ? avisUrl(track, id) : null, lang), allowedMentions: none };
 }
 
 /** Message de l'avis avec le statut changé sur le site : le reste (texte, auteur, date) est gardé tel quel. */
-export function withStatus(embed: APIEmbed, status: FeedbackStatus, track: Pick<Track, "group" | "site">): APIEmbed {
-  const kept = (embed.fields ?? []).filter(f => f.name !== "Statut" && f.name !== "Suivi");
-  return { ...embed, fields: [...kept, ...trackFields(status, track)] };
+export function withStatus(embed: APIEmbed, status: FeedbackStatus, track: Pick<Track, "group" | "site">, lang: Lang = "fr"): APIEmbed {
+  const kept = (embed.fields ?? []).filter(f => !FIELD_NAMES.has(f.name));
+  return { ...embed, fields: [...kept, ...trackFields(status, track, lang)] };
 }
 
 /** MP à l'auteur : réponse de l'équipe, avec un bouton pour répondre à son tour. */
-export function teamReplyDm(id: string, guildName: string, responder: string, text: string, original: string | null) {
+export function teamReplyDm(id: string, guildName: string, responder: string, text: string, original: string | null, lang: Lang = "fr") {
   const excerpt = original && original.length > 300 ? `${original.slice(0, 300)}…` : original;
   return {
     embeds: [{
       color: COLOR,
-      title: `Réponse de l'équipe · ${escapeMd(guildName)}`,
+      title: tr(lang, "Réponse de l'équipe · {guild}", { guild: escapeMd(guildName) }),
       author: { name: responder },
       description: text,
-      ...(excerpt ? { fields: [{ name: "Ton avis", value: excerpt }] } : {}),
-      footer: { text: `Tu peux répondre pendant ${KEEP_DAYS} jours après ton avis.` },
+      ...(excerpt ? { fields: [{ name: tr(lang, "Ton avis"), value: excerpt }] } : {}),
+      footer: { text: tr(lang, "Tu peux répondre pendant {n} jours après ton avis.", { n: KEEP_DAYS }) },
     }] satisfies APIEmbed[],
-    components: [row(button(encodeFb({ a: "back", id }), "Répondre", ButtonStyle.Secondary, "↩️"))],
+    components: [row(button(encodeFb({ a: "back", id }), tr(lang, "Répondre"), ButtonStyle.Secondary, "↩️"))],
     allowedMentions: none,
   };
 }
 
 /** Trace, sous l'avis, de la réponse envoyée par l'équipe. */
-export function replyLog(responder: string, text: string, delivered: boolean) {
+export function replyLog(responder: string, text: string, delivered: boolean, lang: Lang = "fr") {
   return {
     embeds: [{
       color: delivered ? COLOR : 0xff6b5e,
-      author: { name: `↪️ Réponse de ${responder}` },
+      author: { name: `↪️ ${tr(lang, "Réponse de {name}", { name: responder })}` },
       description: text,
-      footer: { text: delivered ? "Envoyée en MP à l'auteur." : "Non remise : l'auteur n'accepte pas les MP du bot." },
+      footer: { text: delivered ? tr(lang, "Envoyée en MP à l'auteur.") : tr(lang, "Non remise : l'auteur n'accepte pas les MP du bot.") },
     }] satisfies APIEmbed[],
     allowedMentions: none,
   };
 }
 
 /** Réponse de l'auteur, sous l'avis (toujours anonyme si l'avis l'était). */
-export function authorReplyInbox(id: string, text: string, author: Author | null) {
+export function authorReplyInbox(id: string, text: string, author: Author | null, lang: Lang = "fr") {
   return {
     embeds: [{
       color: author ? COLOR : COLOR_ANON,
-      author: { name: author ? `↪️ ${author.name} répond` : "↪️ L'auteur (anonyme) répond" },
+      author: { name: `↪️ ${author ? tr(lang, "{name} répond", { name: author.name }) : tr(lang, "L'auteur (anonyme) répond")}` },
       description: text,
     }] satisfies APIEmbed[],
-    components: [row(button(encodeFb({ a: "reply", id }), "Répondre", ButtonStyle.Secondary, "↩️"))],
+    components: [row(button(encodeFb({ a: "reply", id }), tr(lang, "Répondre"), ButtonStyle.Secondary, "↩️"))],
     allowedMentions: none,
   };
 }
@@ -303,7 +312,7 @@ export function textModal(custom_id: string, title: string, label: string, max: 
   };
 }
 
-export const writeModal = (guildId: string, guildName: string) =>
-  textModal(encodeFb({ a: "write", guildId }), `Ton avis pour ${guildName}`.slice(0, 45), "Ton avis", MAX_TEXT, "Une idée, un souci, un merci…");
-export const replyModal = (id: string) => textModal(encodeFb({ a: "rmodal", id }), "Répondre à l'avis", "Ta réponse (envoyée en MP à l'auteur)", MAX_REPLY);
-export const backModal = (id: string) => textModal(encodeFb({ a: "bmodal", id }), "Répondre à l'équipe", "Ta réponse", MAX_REPLY);
+export const writeModal = (guildId: string, guildName: string, lang: Lang = "fr") =>
+  textModal(encodeFb({ a: "write", guildId }), tr(lang, "Ton avis pour {guild}", { guild: guildName }).slice(0, 45), tr(lang, "Ton avis"), MAX_TEXT, tr(lang, "Une idée, un souci, un merci…"));
+export const replyModal = (id: string, lang: Lang = "fr") => textModal(encodeFb({ a: "rmodal", id }), tr(lang, "Répondre à l'avis"), tr(lang, "Ta réponse (envoyée en MP à l'auteur)"), MAX_REPLY);
+export const backModal = (id: string, lang: Lang = "fr") => textModal(encodeFb({ a: "bmodal", id }), tr(lang, "Répondre à l'équipe"), tr(lang, "Ta réponse"), MAX_REPLY);

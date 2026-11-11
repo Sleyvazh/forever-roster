@@ -10,6 +10,7 @@ import { FEEDBACK_KEEP_DAYS, feedbackUrl, forgetFeedbacks } from "./lib/feedback
 import { badRequest, notFound, parse } from "./lib/http";
 import { siteForGame } from "./lib/site";
 import { likeContains } from "./routes/gamedata";
+import { tr } from "./lib/i18n";
 
 /**
  * Avis (feedback) envoyés par le bot Discord. Fonction autonome : un serveur Discord l'utilise sans groupe ni compte
@@ -32,10 +33,10 @@ export function feedbackRoutes(app: FastifyInstance, db: Db, cfg: Config) {
   /** Groupe qui suit les avis du serveur : nom, site et adresse de la section Avis. */
   async function trackOf(groupId: string | null) {
     if (!groupId) return null;
-    const [g] = await db.select({ id: groups.id, name: groups.name, game: groups.game }).from(groups).where(eq(groups.id, groupId));
+    const [g] = await db.select({ id: groups.id, name: groups.name, game: groups.game, lang: groups.lang }).from(groups).where(eq(groups.id, groupId));
     if (!g) return null;
     const site = siteForGame(cfg, g.game);
-    return { groupId: g.id, groupName: g.name, game: g.game, site: site.name, url: feedbackUrl(site.origin, g.id) };
+    return { groupId: g.id, groupName: g.name, game: g.game, lang: g.lang, site: site.name, url: feedbackUrl(site.origin, g.id) };
   }
   /** Groupe lié à ce serveur Discord (salon des raids ou des commandes) : seuls ceux-là peuvent suivre ses avis. */
   const linkedTo = (guildId: string) => or(eq(groups.discordGuildId, guildId), eq(groups.ordersGuildId, guildId));
@@ -172,23 +173,27 @@ export function feedbackRoutes(app: FastifyInstance, db: Db, cfg: Config) {
     const replies = await db.select({
       id: feedbackMessages.id, feedbackId: feedbacks.id, responder: feedbackMessages.name, text: feedbackMessages.text,
       authorId: feedbacks.authorId, guildId: feedbacks.guildId, channelId: feedbacks.channelId, messageId: feedbacks.messageId, original: feedbacks.text,
-      guildName: feedbackSettings.guildName,
+      guildName: feedbackSettings.guildName, lang: groups.lang,
     }).from(feedbackMessages).innerJoin(feedbacks, eq(feedbacks.id, feedbackMessages.feedbackId))
-      .leftJoin(feedbackSettings, eq(feedbackSettings.guildId, feedbacks.guildId))
+      .leftJoin(feedbackSettings, eq(feedbackSettings.guildId, feedbacks.guildId)).leftJoin(groups, eq(groups.id, feedbacks.groupId))
       .where(and(eq(feedbackMessages.source, "site"), isNull(feedbackMessages.delivered), isNotNull(feedbacks.authorId)))
       .orderBy(asc(feedbackMessages.createdAt)).limit(20);
     const statuses = await db.select({
       id: feedbacks.id, channelId: feedbacks.channelId, messageId: feedbacks.messageId, status: feedbacks.status, changedAt: feedbacks.discordChangedAt,
-      groupId: groups.id, groupName: groups.name, game: groups.game,
+      groupId: groups.id, groupName: groups.name, game: groups.game, lang: groups.lang,
     }).from(feedbacks).innerJoin(groups, eq(groups.id, feedbacks.groupId))
       .where(and(isNotNull(feedbacks.text), or(isNull(feedbacks.discordSyncedAt), sql`${feedbacks.discordSyncedAt} < date_trunc('milliseconds', ${feedbacks.discordChangedAt})`)))
       .orderBy(asc(feedbacks.discordChangedAt)).limit(20);
     return {
-      replies: replies.map(r => ({ ...r, authorId: r.authorId!, responder: r.responder ?? "L'équipe", guildName: r.guildName || "le serveur", original: r.original?.slice(0, 300) ?? null })),
+      // Langue : celle du groupe qui suit l'avis (null : pas suivi, le bot prend celle du serveur Discord)
+      replies: replies.map(r => {
+        const lang = r.lang ?? "fr";
+        return { ...r, authorId: r.authorId!, responder: r.responder ?? tr(lang, "L'équipe"), guildName: r.guildName || tr(lang, "le serveur"), original: r.original?.slice(0, 300) ?? null };
+      }),
       statuses: statuses.map(s => {
         const site = siteForGame(cfg, s.game);
         return { id: s.id, channelId: s.channelId, messageId: s.messageId, status: s.status, changedAt: s.changedAt.toISOString(),
-          track: { groupName: s.groupName, site: site.name, url: feedbackUrl(site.origin, s.groupId, s.id) } };
+          track: { groupName: s.groupName, site: site.name, url: feedbackUrl(site.origin, s.groupId, s.id), lang: s.lang } };
       }),
     };
   });

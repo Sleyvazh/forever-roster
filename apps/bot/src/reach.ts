@@ -2,8 +2,9 @@ import { SIGNUP_LABEL, specLabel, type SignupStatus } from "@forever/game-data";
 import { ButtonStyle, ComponentType } from "discord.js";
 import type { Ask, AskAnswer, Nudge, RaidView } from "./api";
 import { noEmoji, type EmojiLookup } from "./emojis";
+import { langOf, tr, trn, type Lang } from "./i18n";
 import { encodeId } from "./ids";
-import { escapeMd, fitLines, type MessagePayload, type Row } from "./render";
+import { escapeMd, fitLines, statusLabel, type MessagePayload, type Row } from "./render";
 
 /**
  * Lot D2 : messages privés pour joindre les joueurs (fonctions pures, testées sans Discord).
@@ -14,30 +15,32 @@ import { escapeMd, fitLines, type MessagePayload, type Row } from "./render";
 const GOLD = 0xc8a04b, GREEN = 0x3fa45b, GREY = 0x6b6b6b;
 const unix = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
 const when = (iso: string | null) => (iso ? `📅 <t:${unix(iso)}:F> · <t:${unix(iso)}:R>` : null);
-const FOOTER = "Relances et demandes désactivables dans Compte & sécurité sur le site.";
+const footer = (lang: Lang) => tr(lang, "Relances et demandes désactivables dans Compte & sécurité sur le site.");
 
 /** Relance : « tu viens ? », avec Présent / Peut-être / Absent (mêmes boutons que l'annonce). */
 export function renderNudge(v: RaidView): MessagePayload {
+  const lang = langOf(v.group);
   const coming = v.signups.filter(s => s.status === "present" || s.status === "late").length;
-  const btn = (st: SignupStatus, style: ButtonStyle) => ({ type: ComponentType.Button as const, style, label: SIGNUP_LABEL[st], custom_id: encodeId({ a: "st", raidId: v.raid.id, status: st }) });
+  const btn = (st: SignupStatus, style: ButtonStyle) => ({ type: ComponentType.Button as const, style, label: statusLabel(lang, st), custom_id: encodeId({ a: "st", raidId: v.raid.id, status: st }) });
   return {
     embeds: [{
-      title: `${v.raid.name} : tu viens ?`.slice(0, 256),
+      title: tr(lang, "{name} : tu viens ?", { name: v.raid.name }).slice(0, 256),
       url: v.raid.url,
       description: [
         when(v.raid.scheduledAt),
-        `**${escapeMd(v.group.name)}** attend ta réponse pour ce raid.`,
-        coming ? `Déjà ${coming} inscrit${coming > 1 ? "s" : ""}${v.raid.size ? ` pour ${v.raid.size} places` : ""}.` : null,
-        "Un clic suffit : tu pourras changer d'avis ensuite.",
+        tr(lang, "**{group}** attend ta réponse pour ce raid.", { group: escapeMd(v.group.name) }),
+        coming ? (v.raid.size ? trn(lang, coming, "Déjà {n} inscrit pour {size} places.", "Déjà {n} inscrits pour {size} places.", { size: v.raid.size })
+          : trn(lang, coming, "Déjà {n} inscrit.", "Déjà {n} inscrits.")) : null,
+        tr(lang, "Un clic suffit : tu pourras changer d'avis ensuite."),
       ].filter(Boolean).join("\n"),
       color: GOLD,
-      footer: { text: `${v.group.name} · ${FOOTER}`.slice(0, 2048) },
+      footer: { text: `${v.group.name} · ${footer(lang)}`.slice(0, 2048) },
     }],
     components: [{
       type: ComponentType.ActionRow,
       components: [
         btn("present", ButtonStyle.Success), btn("tentative", ButtonStyle.Secondary), btn("absent", ButtonStyle.Danger),
-        { type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url: v.raid.url },
+        { type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir sur le site"), url: v.raid.url },
       ],
     }] as Row[],
     allowedMentions: { parse: [] },
@@ -46,23 +49,25 @@ export function renderNudge(v: RaidView): MessagePayload {
 
 /** Liste des sans-réponse envoyée aux officiers, après la relance automatique. */
 export function renderNudgeReport(n: Nudge, sent: string[], closed: string[]): MessagePayload {
+  const lang = langOf(n.view.group);
+  const list = (names: string[]) => fitLines(names.map(escapeMd), 1024, ", ", lang);
   const fields = [];
-  if (sent.length) fields.push({ name: `Relancés par MP — ${sent.length}`, value: fitLines(sent.map(escapeMd), 1024, ", "), inline: false });
-  if (closed.length) fields.push({ name: `MP fermés — ${closed.length}`, value: fitLines(closed.map(escapeMd), 1024, ", "), inline: false });
+  if (sent.length) fields.push({ name: tr(lang, "Relancés par MP — {n}", { n: sent.length }), value: list(sent), inline: false });
+  if (closed.length) fields.push({ name: tr(lang, "MP fermés — {n}", { n: closed.length }), value: list(closed), inline: false });
   const noDiscord = n.unreachable.filter(u => u.why === "no-discord").map(u => u.name);
   const off = n.unreachable.filter(u => u.why === "dm-off").map(u => u.name);
-  if (noDiscord.length) fields.push({ name: `Sans Discord lié — ${noDiscord.length}`, value: fitLines(noDiscord.map(escapeMd), 1024, ", "), inline: false });
-  if (off.length) fields.push({ name: `Messages du bot désactivés — ${off.length}`, value: fitLines(off.map(escapeMd), 1024, ", "), inline: false });
+  if (noDiscord.length) fields.push({ name: tr(lang, "Sans Discord lié — {n}", { n: noDiscord.length }), value: list(noDiscord), inline: false });
+  if (off.length) fields.push({ name: tr(lang, "Messages du bot désactivés — {n}", { n: off.length }), value: list(off), inline: false });
   const total = sent.length + closed.length + n.unreachable.length;
   return {
     embeds: [{
-      title: `${n.view.raid.name} : ${total} sans réponse`.slice(0, 256),
+      title: tr(lang, "{name} : {n} sans réponse", { name: n.view.raid.name, n: total }).slice(0, 256),
       url: n.view.raid.url,
-      description: [when(n.view.raid.scheduledAt), `Relance automatique pour **${escapeMd(n.view.group.name)}**. Ceux qui ne sont pas joignables sont à prévenir autrement.`]
+      description: [when(n.view.raid.scheduledAt), tr(lang, "Relance automatique pour **{group}**. Ceux qui ne sont pas joignables sont à prévenir autrement.", { group: escapeMd(n.view.group.name) })]
         .filter(Boolean).join("\n"),
       color: GREY,
       fields,
-      footer: { text: `${n.view.group.name} · Réglage dans Administration → Salon Discord`.slice(0, 2048) },
+      footer: { text: `${n.view.group.name} · ${tr(lang, "Réglage dans Administration → Salon Discord")}`.slice(0, 2048) },
     }],
     components: [],
     allowedMentions: { parse: [] },
@@ -71,42 +76,46 @@ export function renderNudgeReport(n: Nudge, sent: string[], closed: string[]): M
 
 /** « Demander à X » : le joueur répond Oui (il est inscrit avec ce perso) ou Non. */
 export function renderAsk(a: Ask, emoji: EmojiLookup = noEmoji): MessagePayload {
+  const lang = langOf(a.group);
   const icon = emoji(a.character.cls, a.spec);
   const who = `${icon ? `${icon} ` : ""}**${escapeMd(a.character.name)}**`;
   const cur = a.current;
   const now = !cur ? null
     : cur.characterName && cur.characterName !== a.character.name && cur.status !== "absent"
-      ? `Tu es inscrit avec **${escapeMd(cur.characterName)}** (${SIGNUP_LABEL[cur.status]}) : répondre Oui t'inscrit avec ${escapeMd(a.character.name)} à la place.`
-      : `Ta réponse actuelle : **${SIGNUP_LABEL[cur.status]}**. Répondre Oui te passe en Présent.`;
+      ? tr(lang, "Tu es inscrit avec **{current}** ({status}) : répondre Oui t'inscrit avec {name} à la place.", { current: escapeMd(cur.characterName), status: statusLabel(lang, cur.status), name: escapeMd(a.character.name) })
+      : tr(lang, "Ta réponse actuelle : **{status}**. Répondre Oui te passe en Présent.", { status: statusLabel(lang, cur.status) });
+  const spec = `**${escapeMd(specLabel(a.group.game ?? "forever", a.character.cls, a.spec, lang))}**`;
+  const vars = { by: escapeMd(a.askedBy), group: escapeMd(a.group.name), who, spec, role: a.role ?? "" };
   return {
     embeds: [{
-      title: `${a.raid.name} : on a besoin de toi`.slice(0, 256),
+      title: tr(lang, "{name} : on a besoin de toi", { name: a.raid.name }).slice(0, 256),
       url: a.raid.url,
       description: [
         when(a.raid.scheduledAt),
-        `**${escapeMd(a.askedBy)}** (${escapeMd(a.group.name)}) te demande si tu peux venir avec ${who} en **${escapeMd(specLabel(a.group.game ?? "forever", a.character.cls, a.spec, "fr"))}**${a.role ? ` : il manque un ${a.role}` : ""}.`,
+        a.role ? tr(lang, "**{by}** ({group}) te demande si tu peux venir avec {who} en {spec} : il manque un {role}.", vars)
+          : tr(lang, "**{by}** ({group}) te demande si tu peux venir avec {who} en {spec}.", vars),
         now,
       ].filter(Boolean).join("\n"),
       color: GOLD,
-      footer: { text: `${a.group.name} · ${FOOTER}`.slice(0, 2048) },
+      footer: { text: `${a.group.name} · ${footer(lang)}`.slice(0, 2048) },
     }],
     components: [{
       type: ComponentType.ActionRow,
       components: [
-        { type: ComponentType.Button, style: ButtonStyle.Success, label: `Oui, avec ${a.character.name}`.slice(0, 80), custom_id: encodeId({ a: "ask", askId: a.id, yes: true }) },
-        { type: ComponentType.Button, style: ButtonStyle.Secondary, label: "Non, pas cette fois", custom_id: encodeId({ a: "ask", askId: a.id, yes: false }) },
-        { type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url: a.raid.url },
+        { type: ComponentType.Button, style: ButtonStyle.Success, label: tr(lang, "Oui, avec {name}", { name: a.character.name }).slice(0, 80), custom_id: encodeId({ a: "ask", askId: a.id, yes: true }) },
+        { type: ComponentType.Button, style: ButtonStyle.Secondary, label: tr(lang, "Non, pas cette fois"), custom_id: encodeId({ a: "ask", askId: a.id, yes: false }) },
+        { type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir sur le site"), url: a.raid.url },
       ],
     }] as Row[],
     allowedMentions: { parse: [] },
   };
 }
 
-/** Le MP de la demande une fois répondu : les boutons Oui / Non disparaissent. */
-export function renderAskAnswered(prev: { title?: string; url?: string; description?: string; footer?: { text: string } } | undefined, r: AskAnswer): MessagePayload {
+/** Le MP de la demande une fois répondu : les boutons Oui / Non disparaissent. lang : celle de la guilde (vue du raid). */
+export function renderAskAnswered(prev: { title?: string; url?: string; description?: string; footer?: { text: string } } | undefined, r: AskAnswer, lang: Lang = langOf(r.view?.group)): MessagePayload {
   const line = r.answer === "yes"
-    ? `✅ C'est noté : tu viens avec **${escapeMd(r.character)}** (${escapeMd(r.spec)}). Merci !`
-    : "C'est noté, merci d'avoir répondu. L'officier cherchera quelqu'un d'autre.";
+    ? tr(lang, "✅ C'est noté : tu viens avec **{name}** ({spec}). Merci !", { name: escapeMd(r.character), spec: escapeMd(r.spec) })
+    : tr(lang, "C'est noté, merci d'avoir répondu. L'officier cherchera quelqu'un d'autre.");
   return {
     embeds: [{
       ...(prev?.title && { title: prev.title }), ...(prev?.url && { url: prev.url }),
@@ -114,7 +123,7 @@ export function renderAskAnswered(prev: { title?: string; url?: string; descript
       color: r.answer === "yes" ? GREEN : GREY,
       ...(prev?.footer && { footer: prev.footer }),
     }],
-    components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url: r.url }] }] as Row[],
+    components: [{ type: ComponentType.ActionRow, components: [{ type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir sur le site"), url: r.url }] }] as Row[],
     allowedMentions: { parse: [] },
   };
 }

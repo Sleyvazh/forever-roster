@@ -330,6 +330,13 @@
       "when": 1794310867366,
       "tag": "0046_langue_du_site",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1794363342159,
+      "tag": "0047_langue_du_bot",
+      "breakpoints": true
     }
   ]
 }

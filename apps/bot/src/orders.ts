@@ -1,5 +1,6 @@
 import { ButtonStyle, ComponentType } from "discord.js";
 import type { InternalApi, OrderView } from "./api";
+import { langOf, N, tr } from "./i18n";
 import { encodeId } from "./ids";
 import { escapeMd, fitLines, type MessagePayload, type Row } from "./render";
 import type { Logger } from "./sync";
@@ -10,30 +11,32 @@ import type { Logger } from "./sync";
  */
 
 const COLOR = { open: 0xc8a04b, taken: 0x5865f2, done: 0x3fa45b } as const;
-const STATUS = { open: "Ouverte", taken: "Prise", done: "Faite" } as const;
+const STATUS = { open: N("Ouverte"), taken: N("Prise"), done: N("Faite") } as const;
 
 export function renderOrder(o: OrderView): MessagePayload {
+  const lang = langOf(o.group);
   const what = `${o.item?.name ?? o.recipeName}${o.quantity > 1 ? ` ×${o.quantity}` : ""}`;
   const fields = [
-    { name: "Demandé par", value: `${escapeMd(o.requester)}${o.character && o.character !== o.requester ? ` (pour ${escapeMd(o.character)})` : ""}`, inline: true },
-    { name: "Statut", value: o.status === "open" ? STATUS.open : `${STATUS[o.status]} · ${escapeMd(o.taker ?? "?")}`, inline: true },
-    { name: o.crafters.length ? `Peuvent le faire — ${o.crafters.length}` : "Peuvent le faire", value: o.crafters.length ? fitLines(o.crafters.map(escapeMd), 1024, ", ") : "personne ne connaît le patron pour l'instant", inline: false },
+    { name: tr(lang, "Demandé par"), value: `${escapeMd(o.requester)}${o.character && o.character !== o.requester ? ` ${tr(lang, "(pour {name})", { name: escapeMd(o.character) })}` : ""}`, inline: true },
+    { name: tr(lang, "Statut"), value: o.status === "open" ? tr(lang, STATUS.open) : `${tr(lang, STATUS[o.status])} · ${escapeMd(o.taker ?? "?")}`, inline: true },
+    { name: o.crafters.length ? tr(lang, "Peuvent le faire — {n}", { n: o.crafters.length }) : tr(lang, "Peuvent le faire"),
+      value: o.crafters.length ? fitLines(o.crafters.map(escapeMd), 1024, ", ", lang) : tr(lang, "personne ne connaît le patron pour l'instant"), inline: false },
   ];
   if (o.reagents.length) {
     const given = o.reagents.filter(r => r.provided).length;
-    fields.push({ name: `Composants — ${given}/${o.reagents.length} fournis`, value: fitLines(o.reagents.map(r => `${r.provided ? "✅" : "▫️"} ${r.n} × ${escapeMd(r.name)}`)), inline: false });
+    fields.push({ name: tr(lang, "Composants — {given}/{n} fournis", { given, n: o.reagents.length }), value: fitLines(o.reagents.map(r => `${r.provided ? "✅" : "▫️"} ${r.n} × ${escapeMd(r.name)}`), 1024, "\n", lang), inline: false });
   }
-  if (o.note) fields.push({ name: "Détails", value: escapeMd(o.note).slice(0, 1024), inline: false });
+  if (o.note) fields.push({ name: tr(lang, "Détails"), value: escapeMd(o.note).slice(0, 1024), inline: false });
   const buttons: Row["components"] = [];
-  if (o.status === "open") buttons.push({ type: ComponentType.Button, style: ButtonStyle.Success, label: "Je m'en charge", custom_id: encodeId({ a: "otake", orderId: o.id }) });
-  buttons.push({ type: ComponentType.Button, style: ButtonStyle.Link, label: "Voir sur le site", url: o.url });
+  if (o.status === "open") buttons.push({ type: ComponentType.Button, style: ButtonStyle.Success, label: tr(lang, "Je m'en charge"), custom_id: encodeId({ a: "otake", orderId: o.id }) });
+  buttons.push({ type: ComponentType.Button, style: ButtonStyle.Link, label: tr(lang, "Voir sur le site"), url: o.url });
   return {
     embeds: [{
-      title: `${o.status === "done" ? "✅ " : ""}Commande : ${what}`.slice(0, 256),
+      title: `${o.status === "done" ? "✅ " : ""}${tr(lang, "Commande : {what}", { what })}`.slice(0, 256),
       url: o.url,
       color: COLOR[o.status],
       fields,
-      footer: { text: `${o.group.name} · commandes d'artisanat`.slice(0, 2048) },
+      footer: { text: `${o.group.name} · ${tr(lang, "commandes d'artisanat")}`.slice(0, 2048) },
     }],
     components: [{ type: ComponentType.ActionRow, components: buttons }] as Row[],
     allowedMentions: { parse: [] },
