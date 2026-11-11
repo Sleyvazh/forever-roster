@@ -2,6 +2,18 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.2
+
+- **English wording matches the English website**: hints now quote the website as English players see it ("Copy for the game", "Export for the game", the "Prep" tab, the Sync button).
+- "Tentative" becomes **"Maybe"**, like on the website and in Discord, and "Recipes" becomes **"Patterns"**: the Patterns tab, wanted patterns. `/fr patterns` opens it (`/fr recipes` still works).
+- Nothing changes in French.
+
+Français :
+
+- **L'anglais de l'addon reprend celui du site** : les indications citent le site tel que le voient les joueurs anglais (« Copy for the game », « Export for the game », l'onglet « Prep », le bouton Sync).
+- « Tentative » devient **« Maybe »**, comme sur le site et dans Discord, et « Recipes » devient **« Patterns »** : l'onglet Patrons, les patrons recherchés. `/fr patterns` l'ouvre (`/fr recipes` marche toujours).
+- Rien ne change en français.
+
 ## 1.7.1
 
 - **"Award" always asks first**, in the council and for rolls: "Award X to Y?", what will happen (announced in /raid, given right away or added to the items to hand over), and a warning when the player isn't first in the council ranking. Enter awards, Escape cancels.

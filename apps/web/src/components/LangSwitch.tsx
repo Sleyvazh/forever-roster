@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { patch } from "../api";
-import { AUTO_ENGLISH, getLang, loadLang, rememberLang, t, useLang, type Lang } from "../i18n";
+import { getLang, loadLang, rememberLang, t, useLang, type Lang } from "../i18n";
 import { meQuery } from "../me";
 
 /**
@@ -18,7 +18,7 @@ export function useAccountLang() {
 
 /**
  * FR | EN, de même largeur (comme le thème) : dans le menu du compte et en bas de chaque page. Le choix est gardé dans ce
- * navigateur et, connecté, dans le compte. Tant que la traduction n'est pas finie, l'anglais est marqué « bêta ».
+ * navigateur et, connecté, dans le compte. Sans choix, la langue du navigateur.
  */
 export function LangSwitch() {
   const lang = useLang();
@@ -30,7 +30,7 @@ export function LangSwitch() {
     if (me.data?.user) void patch("/account/preferences", { lang: l }).then(() => qc.invalidateQueries({ queryKey: ["me"] })).catch(() => { /* gardée dans ce navigateur */ });
     void loadLang(l);
   };
-  const opts: [Lang, string, string][] = [["fr", "FR", "Français"], ["en", "EN", AUTO_ENGLISH ? "English" : "English (beta)"]];
+  const opts: [Lang, string, string][] = [["fr", "FR", "Français"], ["en", "EN", "English"]];
   return (
     <div className="theme-seg lang-seg" role="group" aria-label={t("Langue")}>
       {opts.map(([k, short, long]) => (

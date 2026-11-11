@@ -34,10 +34,12 @@ http.createServer((req, res) => {
   for (const [k, v] of Object.entries(headers)) res.setHeader(k, v);
   // Accueil public (comme Caddy) : page statique propre à chaque adresse (RETAIL_ORIGIN : Roster, sinon Forever Roster)
   const retailHost = process.env.RETAIL_ORIGIN ? new URL(process.env.RETAIL_ORIGIN).host : null;
-  // Version anglaise (comme Caddy) : /?lang=en, ou le cookie fr-lang=en
+  // Version anglaise (comme Caddy) : /?lang=en, ou le cookie fr-lang, sinon la langue du navigateur (sans Accept-Language : français)
   if (url.pathname === "/") {
     const q = url.searchParams.get("lang");
-    const en = q === "en" || (q !== "fr" && /(?:^|;\s*)fr-lang=en(?:;|$)/.test(req.headers.cookie ?? ""));
+    const cookie = /(?:^|;\s*)fr-lang=(fr|en)(?:;|$)/.exec(req.headers.cookie ?? "")?.[1];
+    const accept = req.headers["accept-language"] ?? "";
+    const en = q === "en" || (q !== "fr" && (cookie === "en" || (!cookie && accept !== "" && !/^\s*fr/i.test(accept))));
     url.pathname = `/landing/${req.headers.host === retailHost ? "retail" : "forever"}${en ? "-en" : ""}.html`;
   }
   let file = path.join(dist, path.normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, ""));

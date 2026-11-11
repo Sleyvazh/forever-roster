@@ -359,4 +359,26 @@ test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signaleme
     await page.locator(".adm-nav").getByRole("button", { name: "Log" }).click();
     await expect(page.locator(".adm-body").getByText("changed the bot's language · English")).toBeVisible();
   });
+
+  await test.step("Nouveautés (lot E7) : toutes en anglais", async () => {
+    await page.getByRole("button", { name: /^News/ }).click();
+    const panel = page.getByRole("region", { name: "News" });
+    await expect(panel.getByText("The website in English, all of it")).toBeVisible();
+    await expect(panel.getByText("Addon 1.7.2: the English website's words")).toBeVisible();
+    await expectEnglish(page, "les nouveautés");
+  });
+});
+
+test("sans choix, la langue du navigateur : accueil public et site (lot E7)", async ({ browser }) => {
+  for (const [locale, heading, login, lang] of [["en-US", "organized without the headache", "Log in", "en"], ["de-DE", "organized without the headache", "Log in", "en"], ["fr-FR", "sans prise de tête", "Connexion", "fr"]] as const) {
+    const ctx = await browser.newContext({ locale });
+    const p = await ctx.newPage();
+    await p.goto("/");
+    await expect(p.getByRole("heading", { level: 1 }), locale).toContainText(heading);
+    await p.goto("/login");
+    await expect(p.getByRole("heading", { name: login }), locale).toBeVisible();
+    await expect(p.locator("html")).toHaveAttribute("lang", lang);
+    await expect(p.getByRole("contentinfo").getByRole("button", { name: "English" })).toBeVisible();
+    await ctx.close();
+  }
 });

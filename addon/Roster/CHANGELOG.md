@@ -2,6 +2,18 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 0.4.4
+
+- **English wording matches the English website**: hints now quote the website as English players see it (the Sync button, "Copy for the game", "Export for the game", the "Comp" tab, "Copy").
+- "Tentative" becomes **"Maybe"** and "Sort groups" becomes **"Arrange groups"**, like on the website and in Discord.
+- Nothing changes in French.
+
+Français :
+
+- **L'anglais de l'addon reprend celui du site** : les indications citent le site tel que le voient les joueurs anglais (le bouton Sync, « Copy for the game », « Export for the game », l'onglet « Comp », « Copy »).
+- « Tentative » devient **« Maybe »** et « Sort groups » **« Arrange groups »**, comme sur le site et dans Discord.
+- Rien ne change en français.
+
 ## 0.4.3
 
 - No more grey text: everything is in the main text color, or in a color that means something (green, orange, red, accent). Bench answers show in gold and Alt answers in blue, like on the website.

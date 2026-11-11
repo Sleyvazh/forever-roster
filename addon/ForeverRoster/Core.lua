@@ -167,7 +167,7 @@ end
 
 -- Onglets de /fr : mots français, et leurs équivalents anglais
 local TABS = { accueil = "accueil", home = "accueil", synchro = "synchro", sync = "synchro", export = "synchro", raids = "raids", groupe = "raids", enraid = "enraid", raid = "enraid", inraid = "enraid",
-  compo = "compo", comp = "compo", patrons = "patrons", recipes = "patrons", options = "options", sorties = "sorties", sortie = "sorties", runs = "sorties" }
+  compo = "compo", comp = "compo", patrons = "patrons", patterns = "patrons", recipes = "patrons", options = "options", sorties = "sorties", sortie = "sorties", runs = "sorties" }
 -- /fr langue : fr, en, ou la langue du jeu (false)
 local LANGS = { fr = "fr", french = "fr", francais = "fr", ["français"] = "fr", en = "en", english = "en", anglais = "en", -- nolocale
   jeu = false, game = false, client = false, auto = false }

@@ -67,9 +67,9 @@ T["Ce texte vient de Forever Roster (WoW Forever) : colle-le dans l'addon Foreve
   "This text comes from Forever Roster (WoW Forever): paste it into the Forever Roster addon."
 T["Version non gérée (%s) : mets l'addon à jour."] = "Unsupported version (%s): update the addon."
 T["Ce ne sont pas les données du site : sur Roster, bouton Synchro, « Copier pour le jeu », puis colle ici."] =
-  'This is not the website data: on Roster, click Synchro, then "Copier pour le jeu", then paste here.'
+  'This is not the website data: on Roster, click Sync, then "Copy for the game", then paste here.'
 T["Ce n'est pas un export de compo : sur Roster, page du raid, onglet Compo, « Export pour le jeu »."] =
-  'This is not a comp export: on Roster, raid page, "Compo" tab, "Export pour le jeu".'
+  'This is not a comp export: on Roster, raid page, "Comp" tab, "Export for the game".'
 T["Export incomplet : recopie tout le texte, jusqu'à la ligne END."] = "Incomplete export: copy the whole text, up to the END line."
 T["moins d'une minute"] = "less than a minute"
 T["dimanche"] = "Sun"
@@ -100,7 +100,7 @@ T["chuchoté à %s : installer l'addon Roster."] = "whispered %s: install the Ro
 -------------------------------------------------------------------------------------------------------------------
 T["Présent"] = "Present"
 T["En retard"] = "Late"
-T["Peut-être"] = "Tentative"
+T["Peut-être"] = "Maybe"
 T["Absent"] = "Absent"
 T["Banc"] = "Bench"
 T["Reroll"] = "Reroll"
@@ -119,13 +119,13 @@ T["compo « %s » : %s (onglet Compo)"] = 'comp "%s": %s (Comp tab)'
 T["Ce texte est un bilan de raid : colle-le sur le site (Ctrl+V sur n'importe quelle page)."] =
   "This text is a raid summary: paste it on the website (Ctrl+V on any page)."
 T["Texte non reconnu : sur Roster, bouton Synchro, « Copier pour le jeu » ou « Export pour le jeu » d'un raid (onglet Compo)."] =
-  'Text not recognized: on Roster, click Synchro, then "Copier pour le jeu" or a raid\'s "Export pour le jeu" ("Compo" tab).'
+  'Text not recognized: on Roster, click Sync, then "Copy for the game" or a raid\'s "Export for the game" ("Comp" tab).'
 T["Chargé : %s."] = "Loaded: %s."
 T["minicarte"] = "minimap"
 T["%d groupes chargés"] = "%d groups loaded"
 T["%d groupe chargé"] = "%d group loaded"
 T["compo « %s » chargée"] = 'comp "%s" loaded'
-T["Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici."] = 'No website data: on Roster, click "Copier pour le jeu", then paste here.'
+T["Aucune donnée du site : sur Roster, « Copier pour le jeu », puis colle ici."] = 'No website data: on Roster, click "Copy for the game", then paste here.'
 T["Données du site : %s."] = "Website data: %s."
 -- Partage entre joueurs : origine des données de chaque groupe (onglet Synchro)
 T["reçues de %s le %s"] = "received from %s on %s"
@@ -148,7 +148,7 @@ T["pas placé"] = "not placed"
 T["impossible en combat : réessaie juste après."] = "not possible in combat: try again right after."
 T["seul le chef du groupe ou un assistant peut inviter."] = "only the group leader or an assistant can invite."
 T["aucune compo chargée : sur Roster, page du raid, onglet Compo, « Export pour le jeu », puis colle-la dans l'onglet Synchro."] =
-  'no comp loaded: on Roster, raid page, "Compo" tab, "Export pour le jeu", then paste it in the Sync tab.'
+  'no comp loaded: on Roster, raid page, "Comp" tab, "Export for the game", then paste it in the Sync tab.'
 T["%d invitations envoyées"] = "%d invites sent"
 T["%d invitation envoyée"] = "%d invite sent"
 T[", %d en attente du passage en raid"] = ", %d waiting for the switch to raid"
@@ -229,7 +229,7 @@ T["synchro"] = "sync"
 T["%d blocs"] = "%d blocks"
 T["%d bloc"] = "%d block"
 T["Sur le site : « Copier pour le jeu » (données des groupes) ou « Export pour le jeu » (compo d'un raid), puis colle ici. Après un raid, le bilan apparaît en bas : Ctrl+C ici, Ctrl+V sur le site (officier du groupe)."] =
-  'On the website: "Copier pour le jeu" (group data) or "Export pour le jeu" (a raid\'s comp), then paste here. After a raid, the raid summary appears below: Ctrl+C here, Ctrl+V on the website (group officer).'
+  'On the website: "Copy for the game" (group data) or "Export for the game" (a raid\'s comp), then paste here. After a raid, the raid summary appears below: Ctrl+C here, Ctrl+V on the website (group officer).'
 T["1 · Du site vers le jeu"] = "1 · From the website to the game"
 T["2 · Du jeu vers le site"] = "2 · From the game to the website"
 T["Tout renvoyer"] = "Resend all"
@@ -309,7 +309,7 @@ T["Vers le site"] = "To the website"
 T["Ctrl+C pour copier, puis Ctrl+V sur le site."] = "Ctrl+C to copy, then Ctrl+V on the website."
 T["Ou Ctrl+V ici pour coller ce que tu as copié sur le site."] = "Or Ctrl+V here to paste what you copied on the website."
 T["Rien de nouveau à envoyer au site."] = "Nothing new to send to the website."
-T["Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »)."] = 'Ctrl+V here to paste what you copied on the website ("Copier pour le jeu").'
+T["Ctrl+V ici pour coller ce que tu as copié sur le site (« Copier pour le jeu »)."] = 'Ctrl+V here to paste what you copied on the website ("Copy for the game").'
 
 -------------------------------------------------------------------------------------------------------------------
 -- Pages.lua : onglets Raids, En raid, Compo
@@ -318,7 +318,7 @@ T["Raids à venir de tes groupes."] = "Upcoming raids of your groups."
 T["Inscris-toi sur le site ou sur Discord."] = "Sign up on the website or on Discord."
 T["Raids à venir"] = "Upcoming raids"
 T["Aucun groupe chargé. Sur Roster, bouton Synchro, « Copier pour le jeu », puis colle dans l'onglet Synchro : c'est chargé tout seul."] =
-  'No group loaded. On Roster, click Synchro, then "Copier pour le jeu", then paste in the Sync tab: it loads by itself.'
+  'No group loaded. On Roster, click Sync, then "Copy for the game", then paste in the Sync tab: it loads by itself.'
 T["Groupes : %s"] = "Groups: %s"
 T["(chargés le %s)"] = "(loaded %s)"
 T["Pas d'inscription en jeu : inscris-toi sur le site ou sur Discord, puis recopie les données du site."] =
@@ -388,9 +388,9 @@ T["%d messages d'addon en attente de la fin du combat de boss."] = "%d addon mes
 T["%s à distribuer · %s à remettre"] = "%s to distribute · %s to hand over"
 T["(/roster butin)"] = "(/roster loot)"
 T["Sur Roster : page du raid, onglet Compo, « Export pour le jeu », Copier, puis colle dans l'onglet %s."] =
-  'On Roster: raid page, "Compo" tab, "Export pour le jeu", "Copier", then paste in the %s tab.'
+  'On Roster: raid page, "Comp" tab, "Export for the game", "Copy", then paste in the %s tab.'
 T["Inviter"] = "Invite"
-T["Placer les groupes"] = "Sort groups"
+T["Placer les groupes"] = "Arrange groups"
 T["Effacer la compo"] = "Clear comp"
 T["Aucune compo chargée. Elle s'efface d'elle-même 12 h après l'heure du raid."] = "No comp loaded. A comp clears itself 12 h after the raid time."
 T["%s persos placés au bon endroit"] = "%s characters in the right place"

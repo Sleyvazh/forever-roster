@@ -50,8 +50,8 @@ export function News() {
                   <span className={`news-k ${x.kind}`}>{x.kind === "addon" ? `Addon${x.version ? ` ${x.version}` : ""}` : x.kind === "bot" ? t("Bot Discord") : t("Site")}</span>
                   {dateText(x.date)}{x.n > seenAtOpen && <span className="news-new">{t("· Nouveau")}</span>}
                 </span>
-                <span className="news-t">{x.title}</span>
-                <span className="news-d">{x.text}</span>
+                <span className="news-t">{t(x.title)}</span>
+                <span className="news-d">{t(x.text)}</span>
               </li>
             ))}
           </ol>

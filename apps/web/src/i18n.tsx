@@ -13,12 +13,6 @@ import { Fragment, useSyncExternalStore, type ReactNode } from "react";
 export type Lang = "fr" | "en";
 export type LangPref = Lang | "auto";
 
-/**
- * Tant que la traduction n'est pas finie (lots E1 à E7), le navigateur ne choisit pas l'anglais tout seul :
- * l'anglais se choisit à la main (menu du compte, pied de page) et s'affiche « bêta ».
- */
-export const AUTO_ENGLISH = false;
-
 // Cookie (et pas seulement le stockage du navigateur) : le serveur le lit aussi (page d'accueil publique, messages, e-mails)
 const COOKIE = "fr-lang";
 let lang: Lang = "fr";
@@ -36,9 +30,9 @@ export function browserLang(): Lang {
   const l = typeof navigator !== "undefined" ? navigator.language : "fr";
   return (l ?? "fr").toLowerCase().startsWith("fr") ? "fr" : "en";
 }
-/** Langue au chargement : celle choisie dans ce navigateur, sinon celle du navigateur (une fois l'anglais complet). */
+/** Langue au chargement : celle choisie dans ce navigateur, sinon celle du navigateur (traduction finie, lot E7). */
 export function initialLang(): Lang {
-  return storedLang() ?? (AUTO_ENGLISH ? browserLang() : "fr");
+  return storedLang() ?? browserLang();
 }
 /** Garde la langue dans ce navigateur (un an), ou l'oublie (null : celle du navigateur). */
 export function rememberLang(l: Lang | null) {
