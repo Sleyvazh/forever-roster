@@ -12,6 +12,7 @@ import { GAME_LOG_TOLERANCE, gameLogDate, matchGameLog } from "./game-log";
 import type { GroupRole } from "./groups";
 import { syncFicheLevels } from "./fiche-levels";
 import { applyBank, type BankApplySummary } from "./guild-bank";
+import { addonText, colon, type Lang, tr, trn } from "./i18n";
 
 /**
  * Relevé de la guilde du jeu (FRL, lot « Guilde ») appliqué aux guildes du site. Règles (contrat du 20/10) :
@@ -32,7 +33,6 @@ type MemberRow = typeof guildMembers.$inferSelect;
 type GuildRow = typeof gameGuilds.$inferSelect;
 
 const HOUR = 3600e3;
-const plural = (n: number, w: string, ws = `${w}s`) => `${n} ${n > 1 ? ws : w}`;
 const officerRole = (r: GroupRole) => r === "owner" || r === "officer";
 /** Lien fait pendant la bêta : remplacé par la vraie guilde après la sortie. */
 const provisional = (g: Pick<GuildRow, "linkedAt">, now: number) => g.linkedAt.getTime() < LAUNCH_AT && now >= LAUNCH_AT;
@@ -298,33 +298,34 @@ export async function freezePodium(db: Tx, groupId: string) {
   await db.update(gameGuilds).set({ podium }).where(and(eq(gameGuilds.groupId, groupId), isNull(gameGuilds.podium)));
 }
 
-function summaryText(s: GuildApplySummary) {
+function summaryText(s: GuildApplySummary, lang: Lang) {
   const parts: string[] = [];
   if (s.roster === "applied") {
-    parts.push(`liste de ${plural(s.members, "membre")}${s.complete ? " (complète)" : " (partielle)"}`);
-    if (s.arrivals) parts.push(plural(s.arrivals, "arrivée"));
-  } else if (s.roster === "older") parts.push("liste plus ancienne que celle du site (gardée)");
-  if (s.departures) parts.push(plural(s.departures, "départ"));
-  if (s.events) parts.push(`journal : ${plural(s.events, "nouvel événement", "nouveaux événements")}`);
-  if (s.levels) parts.push(plural(s.levels, "niveau noté", "niveaux notés"));
-  if (s.corrected) parts.push(plural(s.corrected, "niveau corrigé", "niveaux corrigés"));
-  if (s.xp) parts.push(`XP de ${plural(s.xp, "perso")}`);
+    parts.push(s.complete ? trn(lang, s.members, "liste de {n} membre (complète)", "liste de {n} membres (complète)")
+      : trn(lang, s.members, "liste de {n} membre (partielle)", "liste de {n} membres (partielle)"));
+    if (s.arrivals) parts.push(trn(lang, s.arrivals, "{n} arrivée", "{n} arrivées"));
+  } else if (s.roster === "older") parts.push(tr(lang, "liste plus ancienne que celle du site (gardée)"));
+  if (s.departures) parts.push(trn(lang, s.departures, "{n} départ", "{n} départs"));
+  if (s.events) parts.push(trn(lang, s.events, "journal : {n} nouvel événement", "journal : {n} nouveaux événements"));
+  if (s.levels) parts.push(trn(lang, s.levels, "{n} niveau noté", "{n} niveaux notés"));
+  if (s.corrected) parts.push(trn(lang, s.corrected, "{n} niveau corrigé", "{n} niveaux corrigés"));
+  if (s.xp) parts.push(trn(lang, s.xp, "XP de {n} perso", "XP de {n} persos"));
   // Ni onglet relu ni or changé : rien à dire (l'addon rejoint son dernier relevé de banque à chaque relevé de guilde)
   if (s.bank?.bank === "applied") {
-    if (s.bank.tabs) parts.push(`banque : ${plural(s.bank.tabs, "onglet")} ${s.bank.tabs > 1 ? "relevés" : "relevé"}`);
-    else if (s.bank.money) parts.push("banque : or");
-  } else if (s.bank?.bank === "older") parts.push("banque plus ancienne que celle du site (gardée)");
-  if (s.bank?.moves) parts.push(`journal de la banque : ${plural(s.bank.moves, "nouveau mouvement", "nouveaux mouvements")}`);
-  return parts.join(", ") || "rien de nouveau";
+    if (s.bank.tabs) parts.push(trn(lang, s.bank.tabs, "banque : {n} onglet relevé", "banque : {n} onglets relevés"));
+    else if (s.bank.money) parts.push(tr(lang, "banque : or"));
+  } else if (s.bank?.bank === "older") parts.push(tr(lang, "banque plus ancienne que celle du site (gardée)"));
+  if (s.bank?.moves) parts.push(trn(lang, s.bank.moves, "journal de la banque : {n} nouveau mouvement", "journal de la banque : {n} nouveaux mouvements"));
+  return parts.join(", ") || tr(lang, "rien de nouveau");
 }
 
 /** Relevés de guilde d'un texte collé ou envoyé (Ctrl+V, Roster Companion) : un résultat par guilde du jeu. */
-export async function importGuildText(db: Db, user: User, text: string) {
+export async function importGuildText(db: Db, user: User, text: string, lang: Lang = "fr") {
   const r = parseGuildBlocks(text);
-  return { results: await importGuildExports(db, user, r.blocks), errors: r.errors };
+  return { results: await importGuildExports(db, user, r.blocks, new Date(), lang), errors: r.errors.map(e => addonText(lang, e)) };
 }
 
-export async function importGuildExports(db: Db, user: User, blocks: readonly GuildBlock[], now: Date = new Date()): Promise<ImportResult[]> {
+export async function importGuildExports(db: Db, user: User, blocks: readonly GuildBlock[], now: Date = new Date(), lang: Lang = "fr"): Promise<ImportResult[]> {
   if (!blocks.length) return [];
   const out: ImportResult[] = [];
   const mine = await db.select({ id: groups.id, name: groups.name, role: groupMembers.role, gg: gameGuilds })
@@ -332,7 +333,7 @@ export async function importGuildExports(db: Db, user: User, blocks: readonly Gu
     .where(and(eq(groupMembers.userId, user.id), eq(groups.game, "forever"))).orderBy(asc(groups.name));
   for (const { data: g, text } of blocks) {
     const key = guildKeyOf(g);
-    const base = { key: `frl:${key}`, kind: "guild" as const, name: `Guilde ${g.name}` };
+    const base = { key: `frl:${key}`, kind: "guild" as const, name: tr(lang, "Guilde {name}", { name: g.name }) };
     try {
       let targets = mine.filter(m => m.gg?.key === key);
       const linked: string[] = [];
@@ -356,17 +357,17 @@ export async function importGuildExports(db: Db, user: User, blocks: readonly Gu
             });
             bus.group({ t: "guild", g: f.id });
           }
-          out.push({ ...base, status: "ignored", message: `à lier : la guilde du jeu est proposée dans l'Administration de ${free.map(f => `« ${f.name} »`).join(", ")}` });
+          out.push({ ...base, status: "ignored", message: tr(lang, "à lier : la guilde du jeu est proposée dans l'Administration de {names}", { names: free.map(f => (lang === "fr" ? `« ${f.name} »` : `“${f.name}”`)).join(", ") }) });
           continue;
         } else {
           const other = mine.find(m => m.gg);
           out.push({
             ...base, status: "ignored",
             message: other
-              ? `ignoré : « ${other.name} » est liée à la guilde du jeu ${other.gg!.name}, pas à ${g.name}`
+              ? tr(lang, "ignoré : « {site} » est liée à la guilde du jeu {linked}, pas à {game}", { site: other.name, linked: other.gg!.name, game: g.name })
               : mine.length
-                ? "ignoré : aucune de tes guildes du site n'est liée à cette guilde du jeu (le premier relevé d'un officier fait le lien)"
-                : "ignoré : tu n'es dans aucune guilde du site",
+                ? tr(lang, "ignoré : aucune de tes guildes du site n'est liée à cette guilde du jeu (le premier relevé d'un officier fait le lien)")
+                : tr(lang, "ignoré : tu n'es dans aucune guilde du site"),
           });
           continue;
         }
@@ -374,12 +375,13 @@ export async function importGuildExports(db: Db, user: User, blocks: readonly Gu
       const parts: string[] = [];
       for (const t of targets) {
         const s = await applyGuildExport(db, t.id, g, { officer: officerRole(t.role), now, userId: user.id });
-        parts.push(`${targets.length > 1 || linked.length ? `${t.name}${linked.includes(t.name) ? " (liée)" : ""} : ` : ""}${summaryText(s)}`);
+        const head = targets.length > 1 || linked.length ? `${linked.includes(t.name) ? tr(lang, "{name} (liée)", { name: t.name }) : t.name}${colon(lang)}` : "";
+        parts.push(`${head}${summaryText(s, lang)}`);
         bus.group({ t: "guild", g: t.id });
       }
       out.push({ ...base, status: "updated", message: parts.join(" · "), groups: targets.map(t => ({ id: t.id, name: t.name })) });
     } catch {
-      out.push({ ...base, status: "error", message: "relevé de guilde impossible à enregistrer" });
+      out.push({ ...base, status: "error", message: tr(lang, "relevé de guilde impossible à enregistrer") });
     }
   }
   return out;

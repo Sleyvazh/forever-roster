@@ -10,6 +10,7 @@ import { currentUser } from "../lib/session";
 import { otherSite, siteOf } from "../lib/site";
 import { syncSigner } from "../lib/sync-signing";
 import { allGroupsExport, MAX_ADDON_TEXT, UPLOAD_BODY_LIMIT } from "./addon";
+import { reqLang } from "../lib/i18n";
 
 /**
  * Synchro de Roster Companion (lot K1), jeton de l'appareil obligatoire. Le jeu suit l'adresse appelée (un site,
@@ -71,7 +72,7 @@ export async function syncRoutes(app: FastifyInstance) {
     }), req.body);
     const site = siteOf(cfg, req);
     const r = await importAddonText(db, u, body.text, {
-      game: site.game, otherHost: otherSite(cfg, site)?.host, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual, now: app.ctx.now?.(),
+      game: site.game, otherHost: otherSite(cfg, site)?.host, unknown: "ask", create: new Set(body.create), ignore: new Set(body.ignore), auto: !body.manual, now: app.ctx.now?.(), lang: reqLang(req),
     });
     if (r.results.length) await synced(d.id);
     return r;

@@ -148,13 +148,13 @@ export async function createRequest(db: Db, groupId: string, user: { id: string 
     if (!total) throw badRequest("Cet objet n'est pas dans la banque.");
     if (input.quantity > total) {
       const item = (await itemsById(db, [input.itemId]))[input.itemId];
-      throw badRequest(`Il n'y a que ${total} ${item?.name ?? `Objet n° ${input.itemId}`} dans la banque.`);
+      throw badRequest("Il n'y a que {total} {v} dans la banque.", { total, v: item?.name ?? `Objet n° ${input.itemId}` });
     }
     const [same] = await tx.select({ id: bankRequests.id }).from(bankRequests).where(and(
       eq(bankRequests.groupId, groupId), eq(bankRequests.userId, user.id), eq(bankRequests.itemId, input.itemId), inArray(bankRequests.status, OPEN))).limit(1);
     if (same) throw badRequest("Tu as déjà une demande ouverte pour cet objet.");
     if (await openCount(tx, groupId, user.id) >= BANK_REQUEST_MAX_OPEN) {
-      throw badRequest(`Tu as déjà ${BANK_REQUEST_MAX_OPEN} demandes ouvertes : attends qu'elles soient traitées, ou annules-en une.`);
+      throw badRequest("Tu as déjà {v} demandes ouvertes : attends qu'elles soient traitées, ou annules-en une.", { v: BANK_REQUEST_MAX_OPEN });
     }
     const [row] = await tx.insert(bankRequests).values({
       groupId, userId: user.id, itemId: input.itemId, quantity: Math.min(input.quantity, INT4_MAX), note: input.note, createdAt: now, updatedAt: now,

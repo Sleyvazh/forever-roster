@@ -12,6 +12,7 @@ import { sheetAbsences } from "./absences";
 import { badRequest, forbidden, notFound, parse } from "../lib/http";
 import { charKey, groupGame, logKey, nameIndex, sameLogName } from "../lib/log-names";
 import { currentUser, requireAuth } from "../lib/session";
+import { reqLang } from "../lib/i18n";
 
 /** Présence comptée sur les derniers raids relevés du groupe. */
 const RECENT_RAIDS = 8;
@@ -191,7 +192,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
       .from(raidSignups).where(inArray(raidSignups.raidId, recent.map(l => l.raidId))) : [];
     const signupOf = new Map(signups.filter(s => s.characterId).map(s => [`${s.raidId}:${s.characterId}`, s.status as SignupStatus]));
 
-    const counts = await groupLootCounts(db, id);
+    const counts = await groupLootCounts(db, id, undefined, new Date(), reqLang(req));
     const countOf = new Map(counts.rows.map(r => [r.characterId, r]));
     // Roster : pas de base des objets de Retail (nom donné par l'addon, s'il l'est)
     const itemIds = game === "retail" ? [] : [...new Set(logs.flatMap(l => l.loot.map(x => x.itemId)))];
@@ -262,7 +263,7 @@ export async function raidLogRoutes(app: FastifyInstance) {
     const got = logs.flatMap(l => l.loot.filter(x => isMine(x.name)).map(x => ({ ...x, raidName: l.name, raidId: l.raidId }))).sort((a, b) => b.at - a.at).slice(0, 12);
     const excl = got.length ? new Set((await db.select().from(lootExclusions).where(inArray(lootExclusions.raidId, [...new Set(got.map(g => g.raidId))])))
       .map(e => exclusionKey(e.raidId, e.itemId, e.recipient, e.at))) : new Set<string>();
-    const counts = await groupLootCounts(db, p.id);
+    const counts = await groupLootCounts(db, p.id, undefined, new Date(), reqLang(req));
     const myCounts = counts.rows.filter(r => r.userId === p.userId);
     // Détail du compte du joueur : par joueur, la ligne de n'importe lequel de ses persos ; par perso, leur somme (comme player)
     const sum = (k: "bis" | "upgrade" | "ms") => (counts.summary.by === "player" ? myCounts[0]?.[k] ?? 0 : myCounts.reduce((n, r) => n + r[k], 0));

@@ -21,3 +21,4 @@ export * from "./guild";
 export * from "./bank";
 export * from "./fiche-level";
 export * from "./seal";
+export * from "./addon-errors";

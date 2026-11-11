@@ -108,7 +108,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const game = siteOf(cfg, req).game;
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(groupMembers).innerJoin(groups, eq(groups.id, groupMembers.groupId))
       .where(and(eq(groupMembers.userId, u.id), eq(groups.game, game))) as [{ n: number }];
-    if (n >= MAX_GROUPS_PER_USER) throw badRequest(`Limite de ${MAX_GROUPS_PER_USER} guildes atteinte.`);
+    if (n >= MAX_GROUPS_PER_USER) throw badRequest("Limite de {v} guildes atteinte.", { v: MAX_GROUPS_PER_USER });
     const g = await db.transaction(async tx => {
       const [g] = await tx.insert(groups).values({ name, game }).returning();
       await tx.insert(groupMembers).values({ groupId: g!.id, userId: u.id, role: "owner" });
@@ -267,7 +267,7 @@ export async function groupRoutes(app: FastifyInstance) {
     if (!theirs) throw notFound("Personnage introuvable.");
     if (theirs === "owner" && myRole !== "owner" && ch.userId !== u.id) throw forbidden("Tu ne peux pas modifier les persos du propriétaire de la guilde.");
     const m = (await guildFicheMatches(db, p.id)).matches.get(ch.id);
-    if (m) throw conflict(`${ch.name} est dans la liste de guilde du jeu (${m.member.name}) : son niveau suit le jeu.`);
+    if (m) throw conflict("{name} est dans la liste de guilde du jeu ({name2}) : son niveau suit le jeu.", { name: ch.name, name2: m.member.name });
     if (level === null) {
       if (!ch.levelFixedBy) return { ok: true };
       await db.update(characters).set({ levelFixedBy: null, levelFixedAt: null, updatedAt: new Date() }).where(eq(characters.id, ch.id));
@@ -553,7 +553,7 @@ export async function groupRoutes(app: FastifyInstance) {
       .innerJoin(groups, eq(groups.id, groupInvites.groupId)).where(liveInvite(token));
     if (!inv) throw notFound("Cette invitation n'est plus valable.");
     const site = siteForGame(cfg, inv.game);
-    if (site.game !== siteOf(cfg, req).game) throw conflict(`Cette invitation est pour ${site.name} : ouvre-la sur ${site.origin}.`);
+    if (site.game !== siteOf(cfg, req).game) throw conflict("Cette invitation est pour {name} : ouvre-la sur {origin}.", { name: site.name, origin: site.origin });
     const [already] = await db.select({ role: groupMembers.role }).from(groupMembers)
       .where(and(eq(groupMembers.groupId, inv.groupId), eq(groupMembers.userId, u.id)));
     if (already) return { groupId: inv.groupId }; // déjà membre : l'invitation n'est pas consommée

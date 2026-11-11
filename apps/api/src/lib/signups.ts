@@ -44,7 +44,7 @@ export async function signUpSiteUser(db: Db, raidId: string, user: { id: string;
     if (!ch.cls) throw badRequest("Choisis d'abord la classe de ce personnage.");
     cls = ch.cls; characterId = ch.id;
     spec = input.spec ?? ch.spec1;
-    if (spec && !isValidSpecFor(ch.game, cls, spec)) throw badRequest(`La spé « ${spec} » n'existe pas pour ${cls}.`);
+    if (spec && !isValidSpecFor(ch.game, cls, spec)) throw badRequest("La spé « {spec} » n'existe pas pour {cls}.", { spec, cls });
   } else if (input.status !== "absent") {
     throw badRequest("Choisis le personnage avec lequel tu t'inscris.");
   }

@@ -131,8 +131,8 @@ export function feedbackRoutes(app: FastifyInstance, db: Db, cfg: Config) {
     const { id } = parse(idParam, req.params);
     await forget();
     const [f] = await db.select().from(feedbacks).where(eq(feedbacks.id, id));
-    if (!f) throw notFound(`Cet avis a plus de ${FEEDBACK_KEEP_DAYS} jours, ou il a été supprimé : il n'est plus possible d'y répondre.`);
-    if (!f.authorId) throw notFound(`L'auteur de cet avis n'est plus joignable : l'avis est clos depuis plus de ${FEEDBACK_KEEP_DAYS} jours.`);
+    if (!f) throw notFound("Cet avis a plus de {v} jours, ou il a été supprimé : il n'est plus possible d'y répondre.", { v: FEEDBACK_KEEP_DAYS });
+    if (!f.authorId) throw notFound("L'auteur de cet avis n'est plus joignable : l'avis est clos depuis plus de {v} jours.", { v: FEEDBACK_KEEP_DAYS });
     return { feedback: { id: f.id, guildId: f.guildId, channelId: f.channelId, messageId: f.messageId, anonymous: f.anonymous, authorId: f.authorId, tracked: !!f.groupId && f.text !== null } };
   });
 

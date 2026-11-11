@@ -5,6 +5,7 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import type { Config } from "./config";
 import type { Db } from "./db/client";
 import { HttpError } from "./lib/http";
+import { errorText, reqLang, tr } from "./lib/i18n";
 import type { Mailer } from "./lib/mailer";
 import { registerSession } from "./lib/session";
 import { accountRoutes } from "./routes/account";
@@ -81,15 +82,17 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   // Images envoyées en binaire brut (le navigateur a déjà recadré) ; limite propre à ce type de contenu.
   app.addContentTypeParser(IMAGE_TYPES, { parseAs: "buffer", bodyLimit: MAX_UPLOAD_BYTES }, (_req, body, done) => done(null, body));
 
+  // Messages d'erreur dans la langue de la requête (lib/i18n.ts : en-tête X-Lang du site, sinon la langue du compte)
   app.setErrorHandler((err, req, reply) => {
-    if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
+    const lang = reqLang(req);
+    if (err instanceof HttpError) return reply.code(err.status).send({ error: errorText(lang, err.key, err.vars), ...(err.code && { code: err.code }) });
     const status = (err as { statusCode?: number }).statusCode;
-    if (status === 429) return reply.code(429).send({ error: "Trop de requêtes. Réessaie dans quelques minutes." });
-    if (status && status >= 400 && status < 500) return reply.code(status).send({ error: "Requête invalide." });
+    if (status === 429) return reply.code(429).send({ error: tr(lang, "Trop de requêtes. Réessaie dans quelques minutes.") });
+    if (status && status >= 400 && status < 500) return reply.code(status).send({ error: tr(lang, "Requête invalide.") });
     req.log.error({ err }, "Erreur interne");
-    return reply.code(500).send({ error: "Erreur interne. Réessaie plus tard." });
+    return reply.code(500).send({ error: tr(lang, "Erreur interne. Réessaie plus tard.") });
   });
-  app.setNotFoundHandler((_req, reply) => reply.code(404).send({ error: "Introuvable." }));
+  app.setNotFoundHandler((req, reply) => reply.code(404).send({ error: tr(reqLang(req), "Introuvable.") }));
 
   app.get("/api/health", async () => ({ ok: true }));
 

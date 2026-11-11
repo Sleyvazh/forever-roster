@@ -14,6 +14,7 @@ import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { anonymizeReports } from "../lib/reports";
 import { verifyEmail } from "../lib/email-templates";
 import { siteOf } from "../lib/site";
+import { N, reqLang, tr } from "../lib/i18n";
 
 export async function accountRoutes(app: FastifyInstance) {
   const { db, mailer } = app.ctx;
@@ -55,7 +56,7 @@ export async function accountRoutes(app: FastifyInstance) {
   app.patch("/preferences", async (req) => {
     const u = currentUser(req);
     const body = parse(z.object({ gameLang: z.enum(GAME_LANGS).optional(), gameRelay: z.boolean().optional(), lang: z.enum(GAME_LANGS).optional() })
-      .refine(b => b.gameLang !== undefined || b.gameRelay !== undefined || b.lang !== undefined, "Choisis au moins un réglage à changer."), req.body);
+      .refine(b => b.gameLang !== undefined || b.gameRelay !== undefined || b.lang !== undefined, N("Choisis au moins un réglage à changer.")), req.body);
     const [row] = await db.update(users).set({
       ...(body.gameLang !== undefined && { gameLang: body.gameLang }), ...(body.gameRelay !== undefined && { gameRelay: body.gameRelay }),
       ...(body.lang !== undefined && { lang: body.lang }), updatedAt: new Date(),
@@ -93,8 +94,8 @@ export async function accountRoutes(app: FastifyInstance) {
     await invalidateEmailTokens(db, u.id, "verify");
     await db.update(users).set({ email: body.email, emailVerifiedAt: null, updatedAt: new Date() }).where(eq(users.id, u.id));
     const link = await issueEmailToken(app, u.id, "verify", siteOf(app.ctx.cfg, req).origin);
-    await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req), false) });
-    return reply.code(202).send({ message: "Un e-mail de confirmation a été envoyé." });
+    await mailer.send({ to: body.email, ...verifyEmail(link, null, siteOf(app.ctx.cfg, req), false, reqLang(req)) });
+    return reply.code(202).send({ message: tr(reqLang(req), "Un e-mail de confirmation a été envoyé.") });
   });
 
   app.post("/password", { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } }, async (req) => {

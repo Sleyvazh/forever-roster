@@ -12,6 +12,7 @@ import { canSee } from "../lib/visibility";
 import { importKnownRecipes, MAX_RECIPES, recipeImportInput, setWantedPatterns } from "../lib/recipes";
 import { deleteImage, normalizeImage, replaceImage } from "../lib/images";
 import { siteOf } from "../lib/site";
+import { N } from "../lib/i18n";
 
 export const MAX_CHARACTERS = 50;
 const idParam = z.object({ id: z.uuid() });
@@ -55,10 +56,10 @@ export async function characterRoutes(app: FastifyInstance) {
     const body = parse(characterFields.partial().extend({ name: characterFields.shape.name }), req.body);
     const merged = { race: "", cls: "", spec1: "", spec2: "", talents: "", realm: "", ...body };
     const game = siteOf(app.ctx.cfg, req).game;
-    const err = crossCheck(merged, game); if (err) throw badRequest(err);
+    const err = crossCheck(merged, game); if (err) throw badRequest(err.key, err.vars);
     const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
       .where(and(eq(characters.userId, u.id), eq(characters.game, game))) as [{ n: number; top: number | null }];
-    if (n >= MAX_CHARACTERS) throw badRequest(`Limite de ${MAX_CHARACTERS} personnages atteinte.`);
+    if (n >= MAX_CHARACTERS) throw badRequest("Limite de {maxCharacters} personnages atteinte.", { maxCharacters: MAX_CHARACTERS });
     const [row] = await db.insert(characters).values({ ...body, userId: u.id, game, sortOrder: (top ?? -1) + 1 }).returning();
     return reply.code(201).send({ character: toApi(row!) });
   });
@@ -93,19 +94,19 @@ export async function characterRoutes(app: FastifyInstance) {
     // consumables (lot G) : consommables demandés par les raids, comptés en jeu à la synchro
     const { addonSynced, consumables, ...patch } = parse(characterFields.partial().extend({
       addonSynced: z.literal(true).optional(),
-      consumables: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).refine(r => Object.keys(r).length <= 60, "Trop de consommables.").optional(),
+      consumables: z.record(z.string().regex(/^\d{1,7}$/), z.int().min(0).max(9999)).refine(r => Object.keys(r).length <= 60, N("Trop de consommables.")).optional(),
     }), req.body);
     // Fiche verrouillée le temps de la modification : un relevé de la guilde en cours (fiche-levels.ts) passe avant ou après
     const after = await db.transaction(async tx => {
       const [existing] = await tx.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id))).for("update");
       if (!existing) throw notFound("Personnage introuvable.");
       const next = { ...existing, ...patch };
-      const err = crossCheck(next, existing.game); if (err) throw badRequest(err);
+      const err = crossCheck(next, existing.game); if (err) throw badRequest(err.key, err.vars);
       // Niveau verrouillé (fiche-levels.ts) : relevé en jeu, ou fixé par un officier de sa guilde
       if (patch.level !== undefined && patch.level !== existing.level) {
         const lock = await levelLockOf(tx, existing);
-        if (lock?.by === "game") throw conflict(`Le niveau de ${existing.name} suit le jeu : ${lock.name} est niveau ${lock.level} dans la liste de guilde.`);
-        if (lock) throw conflict(`Le niveau de ${existing.name} a été fixé par ${lock.name}, officier de sa guilde.`);
+        if (lock?.by === "game") throw conflict("Le niveau de {name} suit le jeu : {name2} est niveau {level} dans la liste de guilde.", { name: existing.name, name2: lock.name, level: lock.level });
+        if (lock) throw conflict("Le niveau de {name} a été fixé par {name2}, officier de sa guilde.", { name: existing.name, name2: lock.name });
       }
       // Nom ou royaume changé à la main : ce n'est plus le perso lu chez Battle.net
       const moved = (patch.name !== undefined && patch.name !== existing.name) || (patch.realm !== undefined && patch.realm !== existing.realm);
@@ -157,7 +158,7 @@ export async function characterRoutes(app: FastifyInstance) {
     // Pas de contrôle du métier ici : le métier choisi juste avant peut ne pas être encore enregistré
     // (sauvegarde automatique différée). Les patrons d'un métier que le perso n'a plus sont ignorés à la lecture.
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(characterRecipes).where(eq(characterRecipes.characterId, id)) as [{ n: number }];
-    if (n >= MAX_RECIPES) throw badRequest(`Limite de ${MAX_RECIPES} recettes atteinte.`);
+    if (n >= MAX_RECIPES) throw badRequest("Limite de {maxRecipes} recettes atteinte.", { maxRecipes: MAX_RECIPES });
     await db.insert(characterRecipes).values({ characterId: id, spellId, status })
       .onConflictDoUpdate({ target: [characterRecipes.characterId, characterRecipes.spellId], set: { status, updatedAt: new Date() } });
     return { ok: true };

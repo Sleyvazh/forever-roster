@@ -100,7 +100,7 @@ export async function groupFeedbackRoutes(app: FastifyInstance) {
     await requireRole(db, id, u.id, "officer");
     const { text } = parse(z.object({ text: z.string().trim().min(2).max(FEEDBACK_MAX_REPLY) }), req.body);
     const f = await owned(id, feedbackId);
-    if (!f.authorId) throw badRequest(`L'auteur de cet avis n'est plus joignable : l'avis est clos depuis plus de ${FEEDBACK_KEEP_DAYS} jours.`);
+    if (!f.authorId) throw badRequest("L'auteur de cet avis n'est plus joignable : l'avis est clos depuis plus de {v} jours.", { v: FEEDBACK_KEEP_DAYS });
     const now = new Date();
     await db.insert(feedbackMessages).values({ feedbackId, from: "team", name: u.displayName, text, source: "site", delivered: null, createdAt: now });
     await db.update(feedbacks).set({ updatedAt: now, ...(f.status === "new" && { status: "wip" as const, discordChangedAt: now }) }).where(eq(feedbacks.id, feedbackId));

@@ -2598,5 +2598,8 @@
  "/fr accueil · raids · sorties · synchro · patrons · options": "/fr home · raids · runs · sync · recipes · options",
  "/fr butin · /fr boss · /fr conso": "/fr loot · /fr boss · /fr consumables",
  "/fr cherche + Maj+clic sur un objet": "/fr search + Shift+click an item",
- "{name} : {error}": "{name}: {error}"
+ "{name} : {error}": "{name}: {error}",
+ "Absence déclarée": "Declared absence",
+ "Erreur {status}": "Error {status}",
+ "Image trop lourde.": "Image too heavy."
 }

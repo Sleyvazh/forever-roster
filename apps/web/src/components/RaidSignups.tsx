@@ -10,7 +10,7 @@ import { SignupButtons } from "./SignupButtons";
 import { ClassDot } from "./Outings";
 import { Link } from "react-router-dom";
 import { t, tn, tx } from "../i18n";
-import { signupHint, signupLabel } from "../i18n/game";
+import { signupHint, signupLabel, signupNote } from "../i18n/game";
 
 const ROLES = ["Tank", "Heal", "DPS"] as const;
 const COMING: SignupStatus[] = ["present", "late"];
@@ -72,7 +72,7 @@ export function MyAnswer({ groupId, raidId, raidName, signups, groupChars }: { g
           onClear={() => void run(() => del(`/groups/${groupId}/raids/${raidId}/signup`))} />
       </span>
       {char && !editing && (
-        <button type="button" className="link ans-note" onClick={() => setEditing(true)}>{mine?.note ? t("Note : « {note} »", { note: mine.note }) : t("+ Ajouter une note")}</button>
+        <button type="button" className="link ans-note" onClick={() => setEditing(true)}>{mine?.note ? t("Note : « {note} »", { note: signupNote(mine.note) }) : t("+ Ajouter une note")}</button>
       )}
       <span className="ans-state sr-only" role="status">{mine ? <>{signupLabel(mine.status)}{mine.characterName ? ` ${t("avec {name}", { name: mine.characterName })}` : ""}{mine.note ? t(" · « {note} »", { note: mine.note }) : ""}</> : t("Pas encore de réponse.")}</span>
       {editing && char && (
@@ -216,14 +216,14 @@ function Row({ s, canEdit, groupId, raidId, onDone, compact }: { s: RaidSignup; 
   const gt = useGameText();
   const base = `/groups/${groupId}/raids/${raidId}/signups/${s.id}`;
   return (
-    <div className={`su-row${s.mine ? " mine" : ""}`} title={s.note || undefined}>
+    <div className={`su-row${s.mine ? " mine" : ""}`} title={s.note ? signupNote(s.note) : undefined}>
       {s.cls ? (s.spec ? <SpecIcon cls={s.cls} spec={s.spec} size={20} /> : <ClassIcon cls={s.cls} size={20} />) : <span className="su-dot" aria-hidden="true" />}
       <span className="su-who">
         <b>{s.characterName ?? s.displayName}{!s.userId && <span className="su-guest" title={t("Inscrit depuis Discord, sans compte sur le site")} aria-label={` (${t("sans compte")})`}> ✱</span>}</b>
         {!compact && <small>{[s.spec && gt.spec(s.cls, s.spec), s.characterName ? s.displayName : null, !s.userId ? t("Discord") : null].filter(Boolean).join(" · ")}</small>}
       </span>
       {s.status === "late" && <span className="tag warn">{t("Retard")}</span>}
-      {s.note && !compact && <span className="su-note" aria-label={t("Note : {note}", { note: s.note })}>✎</span>}
+      {s.note && !compact && <span className="su-note" aria-label={t("Note : {note}", { note: signupNote(s.note) })}>✎</span>}
       {canEdit && !compact && (
         <span className="su-admin">
           <select aria-label={t("Statut de {name}", { name: s.displayName })} value={s.status} onChange={e => void patch(base, { status: e.target.value }).then(onDone)}>

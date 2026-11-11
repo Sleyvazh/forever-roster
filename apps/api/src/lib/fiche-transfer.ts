@@ -66,7 +66,7 @@ export async function givePreview(db: Db, groupId: string, characterId: string, 
 export async function giveFiche(db: Db, groupId: string, characterId: string, toUserId: string, actor: Actor, opts: { now?: Date; origin: string }) {
   const now = opts.now ?? new Date();
   const { c, owner } = await giveable(db, groupId, characterId, actor);
-  if (toUserId === c.userId) throw badRequest(`${c.name} est déjà sur le compte de ${owner}.`);
+  if (toUserId === c.userId) throw badRequest("{name} est déjà sur le compte de {owner}.", { name: c.name, owner });
   const theirs = await membership(db, groupId, toUserId).catch(() => null);
   if (!theirs) throw notFound("Ce joueur n'est pas membre de la guilde.");
   const [to] = await db.select({ id: users.id, displayName: users.displayName }).from(users).where(eq(users.id, toUserId));
@@ -74,15 +74,15 @@ export async function giveFiche(db: Db, groupId: string, characterId: string, to
   if (c.guid) {
     const [same] = await db.select({ name: characters.name }).from(characters)
       .where(and(eq(characters.userId, toUserId), eq(characters.game, "forever"), eq(characters.guid, c.guid)));
-    if (same) throw conflict(`${to.displayName} a déjà une fiche de ce perso (« ${same.name} »).`);
+    if (same) throw conflict("{displayName} a déjà une fiche de ce perso (« {name} »).", { displayName: to.displayName, name: same.name });
   }
   const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
     .where(and(eq(characters.userId, toUserId), eq(characters.game, "forever"))) as [{ n: number; top: number | null }];
-  if (n >= MAX_FICHES) throw badRequest(`${to.displayName} a déjà ${MAX_FICHES} persos : la limite est atteinte.`);
+  if (n >= MAX_FICHES) throw badRequest("{displayName} a déjà {maxFiches} persos : la limite est atteinte.", { displayName: to.displayName, maxFiches: MAX_FICHES });
   // Le perso d'une sortie que le donneur a créée : il reste dans sa sortie (le créateur ne s'en retire pas)
   const pre = await upcoming(db, c.id, now);
   const own = pre.outings.find(o => o.outing.createdBy === c.userId);
-  if (own) throw conflict(`${c.name} est le perso de la sortie « ${own.outing.title} » créée par ${owner} : elle doit être annulée, ou passée, avant de donner la fiche.`);
+  if (own) throw conflict("{name} est le perso de la sortie « {title} » créée par {owner} : elle doit être annulée, ou passée, avant de donner la fiche.", { name: c.name, title: own.outing.title, owner });
 
   const from = c.userId;
   const result = await db.transaction(async tx => {
@@ -90,7 +90,7 @@ export async function giveFiche(db: Db, groupId: string, characterId: string, to
     const [cur] = await tx.select({ userId: characters.userId }).from(characters).where(eq(characters.id, c.id)).for("update");
     const [gc] = await tx.select({ isMain: groupCharacters.isMain }).from(groupCharacters)
       .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.characterId, c.id)));
-    if (!cur || cur.userId !== from || !gc) throw conflict(`${c.name} vient de changer de compte ou de guilde : recharge la page.`);
+    if (!cur || cur.userId !== from || !gc) throw conflict("{name} vient de changer de compte ou de guilde : recharge la page.", { name: c.name });
     const isMain = gc.isMain;
     const [hasMain] = await tx.select({ id: groupCharacters.characterId }).from(groupCharacters)
       .where(and(eq(groupCharacters.groupId, groupId), eq(groupCharacters.userId, toUserId), eq(groupCharacters.isMain, true)));

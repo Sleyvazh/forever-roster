@@ -16,6 +16,7 @@ import { groupGame, nameIndex } from "../lib/log-names";
 import { groupLootCounts, seasonStartDate } from "../lib/loot-count";
 import { currentUser, requireAuth } from "../lib/session";
 import { likeContains } from "./gamedata";
+import { N, reqLang } from "../lib/i18n";
 
 /** Butin (lot C2) : réglages du groupe, soft reserve d'un raid, objets proposables (catalogue appris + recherche). */
 
@@ -26,7 +27,7 @@ const settingsInput = z.object({
   srCloseMinutes: z.int().min(0).max(24 * 60), mainsFirst: z.boolean(),
   // Lot I : compte des objets reçus
   countMode: z.enum(LOOT_COUNT_MODES), countRaids: z.int().min(1).max(50), countBy: z.enum(LOOT_COUNT_BY),
-  seasonStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(d => !!seasonStartDate(d), "Date de début de saison invalide.").nullable(),
+  seasonStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(d => !!seasonStartDate(d), N("Date de début de saison invalide.")).nullable(),
 }).partial();
 
 export async function lootRoutes(app: FastifyInstance) {
@@ -58,7 +59,7 @@ export async function lootRoutes(app: FastifyInstance) {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await membership(db, id, u.id);
-    const { summary, rows } = await groupLootCounts(db, id);
+    const { summary, rows } = await groupLootCounts(db, id, undefined, new Date(), reqLang(req));
     const corrections = await db.select({
       id: lootCorrections.id, characterId: lootCorrections.characterId, name: characters.name, userId: characters.userId,
       delta: lootCorrections.delta, kind: lootCorrections.kind, note: lootCorrections.note, by: lootCorrections.createdByName, at: lootCorrections.createdAt,
@@ -77,8 +78,8 @@ export async function lootRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
     const body = parse(z.object({
-      characterId: z.uuid(), delta: z.int().min(-20).max(20).refine(n => n !== 0, "La correction ne peut pas être 0."),
-      note: z.string().trim().min(2, "Indique le motif de la correction.").max(120),
+      characterId: z.uuid(), delta: z.int().min(-20).max(20).refine(n => n !== 0, N("La correction ne peut pas être 0.")),
+      note: z.string().trim().min(2, N("Indique le motif de la correction.")).max(120),
       kind: z.enum(LOOT_CATEGORIES).nullable().optional(),
     }), req.body);
     const [c] = await db.select({ id: groupCharacters.characterId }).from(groupCharacters)
@@ -239,7 +240,7 @@ export async function lootRoutes(app: FastifyInstance) {
     const [item] = await db.select({ id: gameItems.id }).from(gameItems).where(eq(gameItems.id, body.itemId));
     if (!item) throw badRequest("Objet inconnu.");
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(softReserves).where(and(eq(softReserves.raidId, r.id), eq(softReserves.characterId, c.id)));
-    if (n >= s.srCount) throw badRequest(`Déjà ${s.srCount} réservation${s.srCount > 1 ? "s" : ""} pour ce perso : retires-en une avant.`);
+    if (n >= s.srCount) throw badRequest(s.srCount > 1 ? "Déjà {n} réservations pour ce perso : retires-en une avant." : "Déjà {n} réservation pour ce perso : retires-en une avant.", { n: s.srCount });
     // Réserver avec un perso le fait entrer dans le groupe, comme s'inscrire (refusé s'il est rangé dans un autre)
     await ensureInGroup(db, p.id, c.id, u.id);
     await db.insert(softReserves).values({ raidId: r.id, characterId: c.id, userId: u.id, itemId: item.id }).onConflictDoNothing();

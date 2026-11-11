@@ -5,13 +5,14 @@ import { absences } from "../db/schema";
 import { applyUserAbsences, MAX_ABSENCES, removeAbsenceSignups } from "../lib/absences";
 import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
+import { N } from "../lib/i18n";
 
 /**
  * Mes absences déclarées (lot F) : une période (du … au …) ou des jours de la semaine. Les raids sans réponse de ces
  * jours passent en « Absent » dans tous mes groupes. Motif facultatif, visible des officiers ou de tout le groupe.
  */
 
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date au format AAAA-MM-JJ");
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, N("Date au format AAAA-MM-JJ"));
 const view = (a: typeof absences.$inferSelect) => ({
   id: a.id, startDate: a.startDate, endDate: a.endDate, weekdays: a.weekdays, reason: a.reason, reasonVisibility: a.reasonVisibility,
 });
@@ -46,7 +47,7 @@ export async function absenceRoutes(app: FastifyInstance) {
       if (Date.parse(body.endDate) - Date.parse(body.startDate) > 180 * 86400e3) throw badRequest("Six mois au plus par absence.");
     }
     const n = await db.$count(absences, and(eq(absences.userId, u.id), active));
-    if (n >= MAX_ABSENCES) throw badRequest(`Limite de ${MAX_ABSENCES} absences.`);
+    if (n >= MAX_ABSENCES) throw badRequest("Limite de {maxAbsences} absences.", { maxAbsences: MAX_ABSENCES });
     const [a] = await db.insert(absences).values({
       userId: u.id, startDate: period ? body.startDate! : null, endDate: period ? body.endDate! : null, weekdays,
       reason: body.reason, reasonVisibility: body.reasonVisibility,

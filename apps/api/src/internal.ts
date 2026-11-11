@@ -94,9 +94,10 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   /** Refus de lier au groupe (raids, commandes ou sorties) un salon déjà pris par un raid récurrent. */
   async function refuseTemplateChannel(channelId: string, groupId: string, what: string) {
     const t = await templateOnChannel(channelId);
-    if (t) throw badRequest(t.groupId === groupId
-      ? `Ce salon est déjà celui du raid récurrent « ${t.name} » : choisis un autre salon pour ${what}.`
-      : `Ce salon est déjà celui d'un raid récurrent d'une autre guilde : choisis un autre salon pour ${what}.`);
+    if (t) {
+      if (t.groupId === groupId) throw badRequest("Ce salon est déjà celui du raid récurrent « {name} » : choisis un autre salon pour {what}.", { name: t.name, what });
+      throw badRequest("Ce salon est déjà celui d'un raid récurrent d'une autre guilde : choisis un autre salon pour {what}.", { what });
+    }
   }
 
   /** Persos placés dans la compo (dont le joueur est toujours membre du groupe). */
@@ -234,18 +235,17 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     const { template, group } = t;
     const user = await officer(body.discordUserId, group.id);
     const what = "pour ce raid récurrent";
-    if (group.discordChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui de la guilde : choisis un autre salon ${what}.`);
-    if (group.ordersChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon ${what}.`);
-    if (group.outingsChannelId === body.channelId) throw badRequest(`Ce salon est déjà celui des sorties : choisis un autre salon ${what}.`);
+    if (group.discordChannelId === body.channelId) throw badRequest("Ce salon est déjà celui de la guilde : choisis un autre salon {what}.", { what });
+    if (group.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon {what}.", { what });
+    if (group.outingsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sorties : choisis un autre salon {what}.", { what });
     const other = await templateOnChannel(body.channelId);
     if (other && other.id !== template.id) {
-      throw badRequest(other.groupId === group.id
-        ? `Ce salon est déjà celui du raid récurrent « ${other.name} » : choisis un autre salon ${what}.`
-        : `Ce salon est déjà celui d'un raid récurrent d'une autre guilde : choisis un autre salon ${what}.`);
+      if (other.groupId === group.id) throw badRequest("Ce salon est déjà celui du raid récurrent « {name} » : choisis un autre salon {what}.", { name: other.name, what });
+      throw badRequest("Ce salon est déjà celui d'un raid récurrent d'une autre guilde : choisis un autre salon {what}.", { what });
     }
     const [taken] = await db.select({ id: groups.id }).from(groups)
       .where(and(ne(groups.id, group.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId), eq(groups.outingsChannelId, body.channelId)))).limit(1);
-    if (taken) throw badRequest(`Ce salon sert déjà à une autre guilde : choisis un autre salon ${what}.`);
+    if (taken) throw badRequest("Ce salon sert déjà à une autre guilde : choisis un autre salon {what}.", { what });
     try {
       await db.update(raidTemplates).set({
         discordGuildId: body.guildId, discordChannelId: body.channelId, discordLinkCodeHash: null, discordLinkCodeExpiresAt: null,
@@ -254,7 +254,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     } catch (e) {
       // Deux liaisons simultanées du même salon : l'index unique tranche
       if ((e as { cause?: { code?: string }; code?: string }).cause?.code === "23505" || (e as { code?: string }).code === "23505") {
-        throw badRequest(`Ce salon est déjà celui d'un autre raid récurrent : choisis un autre salon ${what}.`);
+        throw badRequest("Ce salon est déjà celui d'un autre raid récurrent : choisis un autre salon {what}.", { what });
       }
       throw e;
     }
@@ -354,7 +354,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     // Un raid créé ici est ponctuel : il est annoncé dans le salon du groupe, même tapé dans celui d'un raid récurrent
     if (!g.discordChannelId) throw badRequest("La guilde n'a pas de salon Discord pour ses raids ponctuels : lie-en un sur le site (Administration → Discord et relances).");
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raids).where(eq(raids.groupId, g.id));
-    if (n >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
+    if (n >= MAX_RAIDS_PER_GROUP) throw badRequest("Limite de {v} raids atteinte.", { v: MAX_RAIDS_PER_GROUP });
     const [r] = await db.insert(raids).values({
       groupId: g.id, name: body.name, scheduledAt: new Date(body.scheduledAt), description: body.description ?? "", createdBy: user.id,
       // Format par défaut du jeu du groupe (Roster : Normal, 20 joueurs ; Forever : 40)

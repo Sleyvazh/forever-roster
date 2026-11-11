@@ -7,6 +7,7 @@ import type { Db } from "../db/client";
 import { characters, groupCharacters, lootCorrections, lootExclusions, raidLogs, raids, raidSignups, users, type RaidLogLoot } from "../db/schema";
 import { groupLootSettings } from "./loot";
 import { groupGame, nameIndex } from "./log-names";
+import { type Lang } from "./i18n";
 
 /**
  * Compte des objets reçus (lot I), montré au conseil du butin (addon) et dans l'onglet Présence.
@@ -67,7 +68,7 @@ async function windowLogs(db: Db, groupId: string, s: LootSettings, now: Date) {
   return { logs, since };
 }
 
-export async function groupLootCounts(db: Db, groupId: string, settings?: LootSettings, now = new Date()) {
+export async function groupLootCounts(db: Db, groupId: string, settings?: LootSettings, now = new Date(), lang: Lang = "fr") {
   const s = settings ?? await groupLootSettings(db, groupId);
   const { logs, since } = await windowLogs(db, groupId, s, now);
   const chars = await db.select({ id: characters.id, name: characters.name, realm: characters.realm, cls: characters.cls, userId: characters.userId, owner: users.displayName, isMain: groupCharacters.isMain })
@@ -118,7 +119,7 @@ export async function groupLootCounts(db: Db, groupId: string, settings?: LootSe
     return { characterId: c.id, userId: c.userId, name: c.name, realm: c.realm, cls: c.cls, owner: c.owner, isMain: c.isMain,
       own: o.n, player: p.n, count: kept.n, bis: kept.bis, upgrade: kept.upgrade, ms: kept.ms };
   });
-  const summary: LootCountSummary = { mode: s.countMode, by: s.countBy, label: lootCountLabel(s), short: lootCountShort(s), since, raids: logs.length };
+  const summary: LootCountSummary = { mode: s.countMode, by: s.countBy, label: lootCountLabel(s, lang), short: lootCountShort(s, lang), since, raids: logs.length };
   return { summary, rows };
 }
 

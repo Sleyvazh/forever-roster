@@ -1,11 +1,16 @@
 import type { SignupStatus } from "@forever/game-data";
-/** Client HTTP : cookies de session automatiques (même origine) + jeton CSRF sur les requêtes qui modifient. */
+import { getLang, t } from "./i18n";
+/**
+ * Client HTTP : cookies de session automatiques (même origine) + jeton CSRF sur les requêtes qui modifient. L'en-tête
+ * X-Lang donne la langue de la page : l'API répond dans cette langue (messages d'erreur, résultats, e-mails).
+ */
 
 let csrfToken: string | null = null;
 export const setCsrf = (t: string | null) => { csrfToken = t; };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  /** code : repère stable de l'erreur (le message suit la langue), par exemple « csrf ». */
+  constructor(public status: number, message: string, public code?: string) { super(message); }
 }
 
 /**
@@ -14,7 +19,7 @@ export class ApiError extends Error {
  * requête repart une fois.
  */
 export async function api<T = unknown>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", "X-Lang": getLang() };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
   const res = await fetch(`/api${path}`, {
@@ -22,12 +27,12 @@ export async function api<T = unknown>(method: string, path: string, body?: unkn
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = res.status === 204 ? null : await res.json().catch(() => null);
-  const error = (data as { error?: string } | null)?.error;
-  if (!res.ok && res.status === 403 && method !== "GET" && !retried && error?.startsWith("Jeton CSRF")) {
+  const { error, code } = (data as { error?: string; code?: string } | null) ?? {};
+  if (!res.ok && res.status === 403 && method !== "GET" && !retried && code === "csrf") {
     await api("GET", "/auth/me");
     return api<T>(method, path, body, true);
   }
-  if (!res.ok) throw new ApiError(res.status, error ?? `Erreur ${res.status}`);
+  if (!res.ok) throw new ApiError(res.status, error ?? t("Erreur {status}", { status: res.status }), code);
   if (data && typeof data === "object" && "csrfToken" in data) setCsrf((data as { csrfToken: string | null }).csrfToken);
   return data as T;
 }
@@ -42,10 +47,10 @@ export const del = <T,>(p: string, b?: unknown) => api<T>("DELETE", p, b);
 export async function uploadImage<T>(path: string, blob: Blob): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method: "PUT", credentials: "same-origin", body: blob,
-    headers: { Accept: "application/json", "Content-Type": blob.type || "image/png", ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
+    headers: { Accept: "application/json", "Content-Type": blob.type || "image/png", "X-Lang": getLang(), ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? (res.status === 413 ? "Image trop lourde." : `Erreur ${res.status}`));
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? (res.status === 413 ? t("Image trop lourde.") : t("Erreur {status}", { status: res.status })));
   return data as T;
 }
 export const imageUrl = (id: string) => `/api/images/${id}`;

@@ -96,7 +96,7 @@ export function checkDungeon(key: string, title?: string | null) {
 
 const cleanNote = (note: string | undefined) => {
   const n = (note ?? "").replace(/[\r\n]+/g, " ").trim();
-  if (n.length > OUTING_NOTE_MAX) throw badRequest(`Note trop longue (${OUTING_NOTE_MAX} caractères au plus).`);
+  if (n.length > OUTING_NOTE_MAX) throw badRequest("Note trop longue ({outingNoteMax} caractères au plus).", { outingNoteMax: OUTING_NOTE_MAX });
   return n;
 };
 
@@ -117,8 +117,8 @@ async function pickCharacter(db: Tx, groupId: string, userId: string, characterI
   const entered = await ensureInGroup(db, groupId, c.id, userId);
   const level = entered ? (await db.select({ level: characters.level }).from(characters).where(eq(characters.id, c.id)))[0]?.level ?? c.level : c.level;
   const r = range(o);
-  if (r && !hasDungeonLevel(r, level)) throw badRequest(`${c.name} (niveau ${level}) n'a pas le niveau de ${o.title} (${levelsText(r.min, r.max)}).`);
-  if (!classRoles(c.cls).includes(role)) throw badRequest(`${c.name} ne peut pas jouer ${ROLE_FR[role]}.`);
+  if (r && !hasDungeonLevel(r, level)) throw badRequest("{name} (niveau {level}) n'a pas le niveau de {title} ({levelsText}).", { name: c.name, level, title: o.title, levelsText: levelsText(r.min, r.max) });
+  if (!classRoles(c.cls).includes(role)) throw badRequest("{name} ne peut pas jouer {v}.", { name: c.name, v: ROLE_FR[role] });
   const sp = spec && specDef(c.cls, spec)?.role === role ? spec : specForRole(c, role);
   if (entered) bus.group({ t: "chars", g: groupId });
   return { id: c.id, name: c.name, cls: c.cls, spec: sp };
@@ -223,17 +223,17 @@ export async function joinOuting(db: Db, outingId: string, who: Who, input: Join
       const cls = input.cls ?? "", spec = input.spec ?? "";
       if (!(cls in CLASS_SPECS)) throw badRequest("Choisis ta classe.");
       if (!spec || !isValidSpec(cls, spec)) throw badRequest("Choisis une spé de ta classe.");
-      if (specDef(cls, spec)?.role !== role) throw badRequest(`Cette spé ne joue pas ${ROLE_FR[role]}.`);
+      if (specDef(cls, spec)?.role !== role) throw badRequest("Cette spé ne joue pas {v}.", { v: ROLE_FR[role] });
       ch = { id: null, name: "", cls, spec };
     }
-    if (placesOf(placesOfRow(o), role) < 1) throw badRequest(`Cette sortie n'a pas de place en ${ROLE_FR[role]}.`);
+    if (placesOf(placesOfRow(o), role) < 1) throw badRequest("Cette sortie n'a pas de place en {v}.", { v: ROLE_FR[role] });
     const { placed, waiting } = (await signupsOf(tx, [o.id])).get(o.id)!;
     const mine = [...placed, ...waiting].find(s => (who.kind === "user" ? s.userId === who.id : s.discordUserId === who.discordUserId && !s.userId));
     const taken = placed.filter(s => s.role === role && s.id !== mine?.id).length;
     const free = taken < placesOf(placesOfRow(o), role);
-    if (!free && !input.wait) throw conflict(`Plus de place en ${ROLE_FR[role]} : mets-toi en attente.`);
+    if (!free && !input.wait) throw conflict("Plus de place en {v} : mets-toi en attente.", { v: ROLE_FR[role] });
     // Le créateur garde toujours une place dans sa sortie
-    if (!free && who.kind === "user" && o.createdBy === who.id) throw conflict(`Plus de place en ${ROLE_FR[role]}.`);
+    if (!free && who.kind === "user" && o.createdBy === who.id) throw conflict("Plus de place en {v}.", { v: ROLE_FR[role] });
     // En attente : on garde sa place dans la file s'il y était déjà pour ce rôle
     const waitingSince = free ? null : mine?.waitingSince && mine.role === role ? mine.waitingSince : new Date();
     const values = {
@@ -317,14 +317,14 @@ export async function createOuting(db: Db, g: GroupRow, role: GroupRole | null, 
   const d = checkDungeon(input.dungeon, input.title);
   const places = input.places ?? { tank: 1, heal: 1, dps: 3 };
   if (!validPlaces(places)) throw badRequest("Places invalides : 5 en tout.");
-  if (placesOf(places, input.role) < 1) throw badRequest(`Garde au moins une place en ${ROLE_FR[input.role]} : c'est la tienne.`);
+  if (placesOf(places, input.role) < 1) throw badRequest("Garde au moins une place en {v} : c'est la tienne.", { v: ROLE_FR[input.role] });
   const note = cleanNote(input.note);
   const id = await db.transaction(async tx => {
     // Verrou du groupe : deux créations simultanées ne dépassent pas les limites
     await tx.select({ id: groups.id }).from(groups).where(eq(groups.id, g.id)).for("update");
     const n = await openCounts(tx, g.id, user.id);
-    if (n.mine >= MAX_OPEN_OUTINGS_PER_PLAYER) throw badRequest(`Tu as déjà ${MAX_OPEN_OUTINGS_PER_PLAYER} sorties ouvertes : attends qu'elles soient passées, ou annules-en une.`);
-    if (n.group >= MAX_OUTINGS_PER_GROUP) throw badRequest(`La guilde a déjà ${MAX_OUTINGS_PER_GROUP} sorties ouvertes.`);
+    if (n.mine >= MAX_OPEN_OUTINGS_PER_PLAYER) throw badRequest("Tu as déjà {v} sorties ouvertes : attends qu'elles soient passées, ou annules-en une.", { v: MAX_OPEN_OUTINGS_PER_PLAYER });
+    if (n.group >= MAX_OUTINGS_PER_GROUP) throw badRequest("La guilde a déjà {v} sorties ouvertes.", { v: MAX_OUTINGS_PER_GROUP });
     const ch = await pickCharacter(tx, g.id, user.id, input.characterId, input.role, d);
     const [o] = await tx.insert(outings).values({
       groupId: g.id, ...d, day: when.day, scheduledAt: when.at, expiresAt: outingExpiry(when.at, when.day),
@@ -349,7 +349,11 @@ export async function updateOuting(db: Db, o: OutingRow, g: GroupRow, input: { p
   const { placed } = (await signupsOf(db, [o.id])).get(o.id)!;
   for (const role of OUTING_ROLES) {
     const n = placed.filter(s => s.role === role).length;
-    if (n > placesOf(places, role)) throw badRequest(`Il y a ${n} inscrit${n > 1 ? "s" : ""} en ${ROLE_FR[role]} : retire-en avant de passer à ${placesOf(places, role)} place${placesOf(places, role) > 1 ? "s" : ""}.`);
+    const p = placesOf(places, role);
+    if (n > p) {
+      throw badRequest(n > 1 ? (p > 1 ? "Il y a {n} inscrits en {role} : retire-en avant de passer à {p} places." : "Il y a {n} inscrits en {role} : retire-en avant de passer à {p} place.")
+        : "Il y a {n} inscrit en {role} : retire-en avant de passer à {p} place.", { n, role: ROLE_FR[role], p });
+    }
   }
   const note = input.note === undefined ? o.note : cleanNote(input.note);
   await db.transaction(async tx => {

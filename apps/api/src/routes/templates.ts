@@ -13,13 +13,14 @@ import { ensureRecurringRaids, MAX_TEMPLATES_PER_GROUP } from "../lib/recurring"
 import { checkLootMode } from "../lib/loot";
 import { currentUser, requireAuth } from "../lib/session";
 import { bus } from "../lib/events";
+import { N } from "../lib/i18n";
 
 /** Raids récurrents d'un groupe : lecture pour les membres, gestion par les officiers. */
 const editable = z.object({
   name: z.string().trim().min(2).max(60),
   description: z.string().trim().max(1000),
   weekday: z.int().min(1).max(7),
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure au format HH:MM"),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, N("Heure au format HH:MM")),
   leadDays: z.int().min(1).max(28),
   size: z.int().min(5).max(40).optional(),
   difficulty: z.enum(RETAIL_DIFFICULTIES).nullable().optional(),
@@ -65,7 +66,7 @@ export async function templateRoutes(app: FastifyInstance) {
     checkLootMode(game, raw.lootMode);
     const body = { ...raw, ...formatFor(game, raw.name, raw.size, raw.difficulty) };
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(raidTemplates).where(eq(raidTemplates.groupId, id));
-    if (n >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
+    if (n >= MAX_TEMPLATES_PER_GROUP) throw badRequest("Limite de {v} raids récurrents atteinte.", { v: MAX_TEMPLATES_PER_GROUP });
     const [t] = await db.insert(raidTemplates).values({ ...body, groupId: id, createdBy: u.id }).returning();
     const created = await ensureRecurringRaids(db, new Date(), t!.id);
     await audit(db, req, "raid_template_created", { userId: u.id, groupId: id, meta: { templateId: t!.id, name: t!.name, weekday: t!.weekday, time: t!.time } });

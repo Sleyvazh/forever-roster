@@ -238,6 +238,9 @@ test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signaleme
     const panel = page.getByRole("dialog");
     await panel.locator(".sy-go").click();
     await expect(panel.getByRole("status")).toBeVisible();
+    // Résultat du relevé, écrit par l'API dans la langue de la page (lot E5)
+    await expect(panel.getByText(/roster of 4 members \(complete\)/)).toBeVisible();
+    await expectEnglish(page, "le résultat d'un relevé de guilde");
     await page.keyboard.press("Escape");
     await page.goto(`/groups/${group}/membres/persos`);
     await expect(page.locator(".gx-table")).toContainText("Brena Ashfield");
@@ -310,6 +313,17 @@ test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signaleme
     await expect(page.getByText("Close without updating your characters?")).toBeVisible();
     await expectEnglish(page, "la confirmation de fermeture de la synchro");
     await page.getByRole("button", { name: "Close without updating" }).click();
+    // Puis la mise à jour : le résultat vient de l'API, en anglais (lot E5)
+    await paste(sealText(`FRC;2;Aldwin;Forever EU;WARRIOR;Orc;31;Horde;${at};1.6.4;${guid(1)};Aldwin Stormhold\nG;1:16866\nW;15090;1\nEND;2`));
+    await panel.locator(".sy-go").click();
+    await expect(panel.getByText("1 character up to date")).toBeVisible();
+    await expect(panel.getByText(/sheet updated/)).toBeVisible();
+    await expectEnglish(page, "le résultat de la synchro");
+    await page.keyboard.press("Escape");
+    // Infobulle d'un objet : les mots du jeu anglais (lot E4)
+    await page.getByText("Helm of Might").first().hover();
+    await expect(page.getByRole("tooltip")).toContainText("Item Level");
+    await expectEnglish(page, "l'infobulle d'un objet");
   });
 
   await test.step("Signalements : les miens, la fenêtre d'envoi, la page des admins", async () => {

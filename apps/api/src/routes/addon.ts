@@ -16,6 +16,7 @@ import { currentUser, requireAuth } from "../lib/session";
 import { otherSite, siteOf } from "../lib/site";
 import { importAddonText } from "../lib/addon-import";
 import { syncSigner, type SyncSigner } from "../lib/sync-signing";
+import { reqLang } from "../lib/i18n";
 
 /** Raids envoyés à l'addon : à venir (ou commencés depuis moins de 3 h), puis ceux sans date. */
 const MAX_RAIDS = 15;
@@ -285,7 +286,7 @@ export async function addonRoutes(app: FastifyInstance) {
     const site = siteOf(app.ctx.cfg, req);
     return importAddonText(db, u, body.text, {
       game: site.game, parts: body.parts ? new Set(body.parts) : undefined, targets: body.targets,
-      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host, skipGuild: body.skipGuild, now: app.ctx.now?.(),
+      skipLogs: new Set(body.skipLogs ?? []), unknown: "create", otherHost: otherSite(app.ctx.cfg, site)?.host, skipGuild: body.skipGuild, now: app.ctx.now?.(), lang: reqLang(req),
     });
   });
 }

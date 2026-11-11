@@ -13,6 +13,7 @@ import { badRequest, HttpError, notFound, parse } from "../lib/http";
 import { currentUser, requireAuth } from "../lib/session";
 import { siteOf } from "../lib/site";
 import { MAX_CHARACTERS, toApi, type CharacterRow } from "./characters";
+import { N, reqLang, tr } from "../lib/i18n";
 
 /**
  * R2b (Roster, WoW Retail) : import des persos du compte Battle.net et mise à jour depuis Blizzard
@@ -27,12 +28,12 @@ type Refresh = { ok: true; row: CharacterRow } | { ok: false; reason: string };
 /** Relit un perso chez Blizzard. La spé principale choisie sur le site ne change pas ; la spé active est affichée à côté. */
 export async function refreshCharacter(db: Db, ctx: BlizzardCtx, c: CharacterRow): Promise<Refresh> {
   const slug = c.realmSlug || realmSlug(c.realm);
-  if (!c.name.trim() || !slug) return { ok: false, reason: "nom ou royaume manquant" };
+  if (!c.name.trim() || !slug) return { ok: false, reason: N("nom ou royaume manquant") };
   let s;
   try { s = await characterSummary(ctx, slug, c.name); }
-  catch (err) { return { ok: false, reason: err instanceof BlizzardError && err.status === 429 ? "Blizzard demande d'attendre un peu" : "Blizzard n'a pas répondu" }; }
-  if (!s) return { ok: false, reason: "introuvable chez Blizzard (nom, royaume, ou profil masqué)" };
-  if (s.cls && c.cls && s.cls !== c.cls) return { ok: false, reason: "la classe ne correspond pas à ce perso chez Blizzard" };
+  catch (err) { return { ok: false, reason: err instanceof BlizzardError && err.status === 429 ? N("Blizzard demande d'attendre un peu") : N("Blizzard n'a pas répondu") }; }
+  if (!s) return { ok: false, reason: N("introuvable chez Blizzard (nom, royaume, ou profil masqué)") };
+  if (s.cls && c.cls && s.cls !== c.cls) return { ok: false, reason: N("la classe ne correspond pas à ce perso chez Blizzard") };
   const [row] = await db.update(characters).set({
     level: Math.min(RETAIL_MAX_LEVEL, s.level), ilvl: s.ilvl === null ? null : Math.round(s.ilvl), activeSpec: s.activeSpec,
     bnetId: c.bnetId ?? s.bnetId, realmSlug: slug, bnetSyncedAt: new Date(), updatedAt: new Date(),
@@ -86,7 +87,7 @@ export async function battlenetImportRoutes(app: FastifyInstance) {
         rows.push({ row: row!, created: false });
         continue;
       }
-      if (count >= MAX_CHARACTERS) throw badRequest(`Limite de ${MAX_CHARACTERS} personnages atteinte.`);
+      if (count >= MAX_CHARACTERS) throw badRequest("Limite de {maxCharacters} personnages atteinte.", { maxCharacters: MAX_CHARACTERS });
       const [row] = await db.insert(characters).values({
         userId: u.id, game: "retail", name: b.name, realm: b.realm, realmSlug: b.realmSlug, cls: b.cls, level: b.level, bnetId: b.id, sortOrder: order++,
       }).returning();
@@ -107,7 +108,8 @@ export async function battlenetImportRoutes(app: FastifyInstance) {
     await audit(db, req, "battlenet_import", { userId: u.id, meta: { created: rows.filter(r => r.created).length, linked: rows.filter(r => !r.created).length } });
     await charsChanged(db, u.id).catch(() => {});
     return reply.code(201).send({
-      created: rows.filter(r => r.created).length, linked: rows.filter(r => !r.created).length, failed,
+      created: rows.filter(r => r.created).length, linked: rows.filter(r => !r.created).length,
+      failed: failed.map(f => ({ ...f, reason: tr(reqLang(req), f.reason) })),
       characters: out.map(toApi),
     });
   });
@@ -119,7 +121,7 @@ export async function battlenetImportRoutes(app: FastifyInstance) {
     const [c] = await db.select().from(characters).where(and(eq(characters.id, id), eq(characters.userId, u.id), eq(characters.game, "retail")));
     if (!c) throw notFound("Personnage introuvable.");
     const r = await refreshCharacter(db, app.ctx, c);
-    if (!r.ok) throw badRequest(`Mise à jour impossible : ${r.reason}.`);
+    if (!r.ok) throw badRequest("Mise à jour impossible : {reason}.", { reason: r.reason });
     await charsChanged(db, u.id).catch(() => {});
     return { character: toApi(r.row) };
   });
@@ -142,6 +144,6 @@ export async function battlenetImportRoutes(app: FastifyInstance) {
     });
     const owners = [...new Set(due.map(c => c.userId))];
     for (const o of owners) await charsChanged(db, o).catch(() => {});
-    return { updated, fresh: rows.length - due.length, failed };
+    return { updated, fresh: rows.length - due.length, failed: failed.map(f => ({ ...f, reason: tr(reqLang(req), f.reason) })) };
   });
 }

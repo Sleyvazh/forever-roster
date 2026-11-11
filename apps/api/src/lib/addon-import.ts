@@ -26,6 +26,7 @@ import { importGuildExports } from "./guild-import";
 import { HttpError } from "./http";
 import { importKnownRecipes, setWantedPatterns } from "./recipes";
 import { signUpSiteUser } from "./signups";
+import { addonText, colon, errorText, type Lang, N, tr, trn } from "./i18n";
 
 type CharacterRow = typeof characters.$inferSelect;
 type User = { id: string; displayName: string; addonVersion?: string | null };
@@ -43,11 +44,12 @@ export interface ImportOptions {
   unknown?: "ask" | "create";
   /** Adresse de l'autre site (message quand on y colle le texte de l'autre addon). */
   otherHost?: string;
+  /** Langue des messages des résultats (français par défaut : Roster Companion). */
+  lang?: Lang;
   /** Heure de référence des relevés de guilde et des inscriptions relayées (tests) ; maintenant sinon. */
   now?: Date;
 }
 
-const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
 const ALL_PARTS: ReadonlySet<ImportPart> = new Set(IMPORT_PARTS);
 
 /** Champs de la fiche à modifier : identité, équipement porté, métiers, talents. Validés comme une modification faite sur le site. */
@@ -125,12 +127,12 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
   for (const v of d.relayed) {
     const refuse = (why: string) => { res.refused.push({ name: v.name, why }); };
     // 1. L'envoyeur est officier ou propriétaire de la guilde
-    if (!await isOfficer(v.groupId)) { refuse("pas officier"); continue; }
+    if (!await isOfficer(v.groupId)) { refuse(N("pas officier")); continue; }
     // 2. Raid de cette guilde, pas passé depuis plus de 24 h
     const [raid] = await db.select({ id: raids.id, name: raids.name, scheduledAt: raids.scheduledAt }).from(raids)
       .where(and(eq(raids.id, v.raidId), eq(raids.groupId, v.groupId)));
-    if (!raid) { refuse("raid introuvable"); continue; }
-    if (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE) { refuse("raid passé"); continue; }
+    if (!raid) { refuse(N("raid introuvable")); continue; }
+    if (raid.scheduledAt && raid.scheduledAt.getTime() < now.getTime() - RELAY_RAID_GRACE) { refuse(N("raid passé")); continue; }
     // 3. Perso visé rangé dans la guilde : par GUID, à défaut par prénom s'il est seul à le porter (une fiche qui a un autre GUID n'est pas lui).
     // Le prénom de la ligne est celui de l'expéditeur, authentifié par le jeu ; le GUID, lui, est déclaré dans le message et se
     // falsifie : un GUID connu ne vaut que pour le perso qui porte ce prénom.
@@ -138,36 +140,36 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
     let target: (typeof chars)[number] | undefined;
     if (v.guid) {
       const hits = chars.filter(c => c.guid === v.guid);
-      if (hits.length > 1) { refuse("GUID en double"); continue; }
-      if (hits.length === 1 && !sameCharacter(v.name, hits[0]!.name)) { refuse("GUID d'un autre perso"); continue; }
+      if (hits.length > 1) { refuse(N("GUID en double")); continue; }
+      if (hits.length === 1 && !sameCharacter(v.name, hits[0]!.name)) { refuse(N("GUID d'un autre perso")); continue; }
       target = hits[0];
     }
     if (!target) {
       const hits = chars.filter(c => sameCharacter(v.name, c.name));
-      if (!hits.length) { refuse("perso introuvable"); continue; }
-      if (hits.length > 1) { refuse("prénom en double"); continue; }
-      if (v.guid && hits[0]!.guid && hits[0]!.guid !== v.guid) { refuse("GUID différent sur la fiche"); continue; }
+      if (!hits.length) { refuse(N("perso introuvable")); continue; }
+      if (hits.length > 1) { refuse(N("prénom en double")); continue; }
+      if (v.guid && hits[0]!.guid && hits[0]!.guid !== v.guid) { refuse(N("GUID différent sur la fiche")); continue; }
       target = hits[0]!;
     }
     // 4. Pas un perso de l'envoyeur ; son joueur est membre de la guilde et accepte le relais
-    if (target.userId === relayer.id) { refuse("ton perso"); continue; }
+    if (target.userId === relayer.id) { refuse(N("ton perso")); continue; }
     const [player] = await db.select({ id: users.id, displayName: users.displayName, gameRelay: users.gameRelay }).from(groupMembers)
       .innerJoin(users, eq(users.id, groupMembers.userId)).where(and(eq(groupMembers.groupId, v.groupId), eq(groupMembers.userId, target.userId)));
-    if (!player) { refuse("pas membre"); continue; }
-    if (!player.gameRelay) { refuse("relais coupé par le joueur"); continue; }
+    if (!player) { refuse(N("pas membre")); continue; }
+    if (!player.gameRelay) { refuse(N("relais coupé par le joueur")); continue; }
     // 5. Heure du clic plausible
     const clic = v.at * 1000;
-    if (clic > now.getTime() + RELAY_CLICK_AHEAD || clic < now.getTime() - RELAY_CLICK_AGE) { refuse("heure du clic"); continue; }
+    if (clic > now.getTime() + RELAY_CLICK_AHEAD || clic < now.getTime() - RELAY_CLICK_AGE) { refuse(N("heure du clic")); continue; }
     // 6. Le site a le dernier mot : changement de statut fait au moins aussi tard que le clic, ou même réponse avec le même perso
     const [old] = await db.select({ status: raidSignups.status, characterId: raidSignups.characterId, statusAt: raidSignups.statusAt }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, raid.id), eq(raidSignups.userId, player.id)));
     if (old && (old.statusAt.getTime() >= clic || (old.status === v.status && old.characterId === target.id))) { res.kept.push(gameName(target.name)); continue; }
     // 7. Inscription du joueur visé avec ce perso (un perso sans classe est refusé comme sur le site), puis journal de la guilde
-    if (!target.cls) { refuse("perso sans classe"); continue; }
+    if (!target.cls) { refuse(N("perso sans classe")); continue; }
     try {
       await signUpSiteUser(db, raid.id, { id: player.id, displayName: player.displayName }, { status: v.status, characterId: target.id });
     } catch (e) {
-      if (e instanceof HttpError) { refuse("inscription impossible"); continue; }
+      if (e instanceof HttpError) { refuse(N("inscription impossible")); continue; }
       throw e;
     }
     await audit(db, null, "signup_relayed", {
@@ -182,17 +184,17 @@ export async function applyRelayed(db: Db, relayer: User, d: CharacterExport, no
  * Résumé des lignes V pour le message du bloc : « 2 inscriptions transmises (Greta, Pikou) · 1 gardée · 1 refusée (Kaelys :
  * heure du clic) » (parties à zéro omises ; un même prénom refusé pour la même raison n'est dit qu'une fois).
  */
-function relayedText(r: Awaited<ReturnType<typeof applyRelayed>>) {
+function relayedText(r: Awaited<ReturnType<typeof applyRelayed>>, lang: Lang) {
   const sent = r.sent.length, kept = r.kept.length, refused = r.refused.length;
   return [
-    sent && `${plural(sent, "inscription")} transmise${sent > 1 ? "s" : ""} (${[...new Set(r.sent)].join(", ")})`,
-    kept && `${kept} gardée${kept > 1 ? "s" : ""}`,
-    refused && `${refused} refusée${refused > 1 ? "s" : ""} (${[...new Set(r.refused.map(x => `${x.name} : ${x.why}`))].join(", ")})`,
+    sent && trn(lang, sent, "{n} inscription transmise ({names})", "{n} inscriptions transmises ({names})", { names: [...new Set(r.sent)].join(", ") }),
+    kept && trn(lang, kept, "{n} gardée", "{n} gardées"),
+    refused && trn(lang, refused, "{n} refusée ({list})", "{n} refusées ({list})", { list: [...new Set(r.refused.map(x => `${x.name}${colon(lang)}${tr(lang, x.why)}`))].join(", ") }),
   ].filter(Boolean).join(" · ");
 }
 
 /** Patrons connus et recherchés, inscriptions : enregistrés à part. Renvoie un résumé à afficher. */
-async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>) {
+async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExport, parts: ReadonlySet<ImportPart>, lang: Lang) {
   const out: string[] = [];
   if (parts.has("recipes") && d.recipes.length) {
     const res = await importKnownRecipes(db, c, {
@@ -200,11 +202,11 @@ async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExpo
       itemIds: d.recipes.flatMap(x => (x.itemId ? [x.itemId] : [])).slice(0, 2000),
       professions: d.professions.map(p => p.name).filter(n => n in PROFESSION_SKILL_LINES),
     });
-    out.push(`${plural(res.known, "patron")} coché${res.known > 1 ? "s" : ""}${res.unknown ? `, ${res.unknown} inconnu${res.unknown > 1 ? "s" : ""} de la base` : ""}`);
+    out.push(trn(lang, res.known, "{n} patron coché", "{n} patrons cochés") + (res.unknown ? `, ${trn(lang, res.unknown, "{n} inconnu de la base", "{n} inconnus de la base")}` : ""));
   }
   if (parts.has("recipes") && d.wanted.length) {
     const res = await setWantedPatterns(db, c.id, d.wanted.filter(w => w.on).map(w => w.itemId).slice(0, 200), d.wanted.filter(w => !w.on).map(w => w.itemId).slice(0, 200));
-    if (res.added || res.removed) out.push(`${res.added} recherché${res.added > 1 ? "s" : ""} ajouté${res.added > 1 ? "s" : ""}${res.removed ? `, ${res.removed} retiré${res.removed > 1 ? "s" : ""}` : ""}`);
+    if (res.added || res.removed) out.push(trn(lang, res.added, "{n} recherché ajouté", "{n} recherchés ajoutés") + (res.removed ? `, ${trn(lang, res.removed, "{n} retiré", "{n} retirés")}` : ""));
   }
   if (parts.has("signups") && d.signups.length) {
     let ok = 0;
@@ -217,17 +219,20 @@ async function applyExtras(db: Db, user: User, c: CharacterRow, d: CharacterExpo
         ok++;
       } catch { /* raid supprimé, groupe quitté ou perso sans classe */ }
     }
-    out.push(`${plural(ok, "inscription")} aux raids${ok < d.signups.length ? ` (${d.signups.length - ok} impossible${d.signups.length - ok > 1 ? "s" : ""} : raid supprimé ou perso sans classe)` : ""}`);
+    const bad = d.signups.length - ok;
+    out.push(trn(lang, ok, "{n} inscription aux raids", "{n} inscriptions aux raids") + (bad > 0 ? ` ${trn(lang, bad, "({n} impossible : raid supprimé ou perso sans classe)", "({n} impossibles : raid supprimé ou perso sans classe)")}` : ""));
   }
   return out.join(" · ");
 }
 
-const errorText = (e: unknown, fallback: string) => (e instanceof HttpError ? e.message : fallback);
+/** Message d'un échec : celui de l'erreur, sinon le message prévu ; dans la langue voulue. */
+const failure = (e: unknown, fallback: string, lang: Lang) => (e instanceof HttpError ? errorText(lang, e.key, e.vars) : tr(lang, fallback));
 
 /** Applique chaque bloc à sa fiche (retrouvée, choisie, ou créée) ; la date de dernière synchro est notée sur la fiche. */
 export async function importCharacters(db: Db, user: User, blocks: CharacterExport[], opts: ImportOptions): Promise<ImportResult[]> {
   const parts = opts.parts ?? ALL_PARTS;
   const now = opts.now ?? new Date();
+  const lang = opts.lang ?? "fr";
   const mine = await db.select().from(characters).where(and(eq(characters.userId, user.id), eq(characters.game, opts.game)));
   const ignored = new Set((await db.select({ key: addonIgnored.key }).from(addonIgnored)
     .where(and(eq(addonIgnored.userId, user.id), eq(addonIgnored.game, opts.game)))).map(r => r.key));
@@ -246,11 +251,11 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       const target = opts.targets?.[key];
       let c: CharacterRow | undefined;
       let create = false;
-      if (target === "skip") { out.push({ ...base, status: "skipped", message: "ignoré" }); continue; }
+      if (target === "skip") { out.push({ ...base, status: "skipped", message: tr(lang, "ignoré") }); continue; }
       if (target === "new") create = true;
       else if (target) {
         c = mine.find(x => x.id === target);
-        if (!c) { out.push({ ...base, status: "error", message: "fiche introuvable" }); continue; }
+        if (!c) { out.push({ ...base, status: "error", message: tr(lang, "fiche introuvable") }); continue; }
       } else {
         // Le GUID (addon 1.6.2) identifie le perso même si son prénom existe deux fois
         c = (d.guid ? mine.find(x => x.guid === d.guid) : undefined)
@@ -262,17 +267,17 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
             ignored.add(key);
           }
           if (opts.create?.has(key) || (opts.unknown === "create" && !ignored.has(key))) create = true;
-          else if (ignored.has(key)) { out.push({ ...base, status: "ignored", message: "perso ignoré (à remettre dans les options de l'appli)" }); continue; }
-          else { out.push({ ...base, status: "unknown", message: "perso inconnu du site : à créer ou à ignorer" }); continue; }
+          else if (ignored.has(key)) { out.push({ ...base, status: "ignored", message: tr(lang, "perso ignoré (à remettre dans les options de l'appli)") }); continue; }
+          else { out.push({ ...base, status: "unknown", message: tr(lang, "perso inconnu du site : à créer ou à ignorer") }); continue; }
         }
       }
-      if (c && d.cls && c.cls && d.cls !== c.cls) { out.push({ ...base, status: "error", message: `classe différente sur la fiche (${c.cls})` }); continue; }
+      if (c && d.cls && c.cls && d.cls !== c.cls) { out.push({ ...base, status: "error", message: tr(lang, "classe différente sur la fiche ({cls})", { cls: c.cls }) }); continue; }
 
       // 2. Nouvelle fiche : niveau, race et classe toujours repris
       if (create) {
         const [{ n, top }] = await db.select({ n: sql<number>`count(*)::int`, top: max(characters.sortOrder) }).from(characters)
           .where(and(eq(characters.userId, user.id), eq(characters.game, opts.game))) as [{ n: number; top: number | null }];
-        if (n >= MAX_CHARACTERS) { out.push({ ...base, status: "error", message: `limite de ${MAX_CHARACTERS} personnages atteinte` }); continue; }
+        if (n >= MAX_CHARACTERS) { out.push({ ...base, status: "error", message: tr(lang, "limite de {n} personnages atteinte", { n: MAX_CHARACTERS }) }); continue; }
         const [row] = await db.insert(characters).values({ userId: user.id, game: opts.game, name: (d.fullName ?? d.name).slice(0, 40), sortOrder: (top ?? -1) + 1 }).returning();
         c = row!;
         mine.push(c);
@@ -282,9 +287,9 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       const patch = await buildPatch(db, fiche, d, create ? new Set<ImportPart>([...parts, "identity"]) : parts);
       // Mêmes règles qu'une modification faite sur le site (longueurs, formats, combinaisons race / classe)
       const checked = characterFields.partial().safeParse(patch);
-      if (!checked.success) { out.push({ ...base, status: "error", message: "export illisible pour cette fiche" }); continue; }
+      if (!checked.success) { out.push({ ...base, status: "error", message: tr(lang, "export illisible pour cette fiche") }); continue; }
       const err = crossCheck({ ...fiche, ...patch }, opts.game);
-      if (err) { out.push({ ...base, status: "error", message: err }); continue; }
+      if (err) { out.push({ ...base, status: "error", message: tr(lang, err.key, err.vars) }); continue; }
 
       // 3. Lien perso du jeu → fiche (retiré d'une autre fiche si le joueur a changé de cible), GUID compris
       if (fiche.addonKey !== key) {
@@ -309,22 +314,25 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
       }).where(eq(characters.id, fiche.id)).returning();
       Object.assign(fiche, row);
       changed = true;
-      const extras = await applyExtras(db, user, fiche, d, parts);
+      const extras = await applyExtras(db, user, fiche, d, parts, lang);
       // Nom complet du jeu différent du nom saisi sur la fiche : gardé, mais signalé
       const conflict = d.fullName && parts.has("identity") && !create && fiche.name !== d.fullName ? { fiche: fiche.name, game: d.fullName } : null;
       out.push({
         ...base, status: create ? "created" : "updated", characterId: fiche.id, ...(conflict && { nameConflict: conflict }),
-        message: `${create ? "fiche créée" : "fiche mise à jour"}${patch.name ? ` · nom complet : ${patch.name}` : ""}${extras ? ` · ${extras}` : ""}${conflict ? ` · nom en jeu « ${conflict.game} » différent de la fiche (« ${conflict.fiche} », gardé)` : ""}`,
+        message: [
+          tr(lang, create ? "fiche créée" : "fiche mise à jour"), patch.name && tr(lang, "nom complet : {name}", { name: patch.name }), extras,
+          conflict && tr(lang, "nom en jeu « {game} » différent de la fiche (« {fiche} », gardé)", conflict),
+        ].filter(Boolean).join(" · "),
       });
     } catch (e) {
-      out.push({ ...base, status: "error", message: errorText(e, "mise à jour impossible") });
+      out.push({ ...base, status: "error", message: failure(e, "mise à jour impossible", lang) });
     } finally {
       // Lignes V : des inscriptions d'autres joueurs, qui ne parlent pas du perso porteur du bloc. Elles sont donc transmises
       // quel que soit son sort (inconnu, ignoré, laissé de côté, classe différente, erreur) et le message s'ajoute à son résultat :
       // l'appli accuse réception de ces résultats et l'addon oublie alors ces lignes pour de bon.
       if (parts.has("signups") && d.relayed.length) {
         let note: string | null = null;
-        try { note = relayedText(await applyRelayed(db, user, d, now)); } catch (e) { out[first] = { ...(out[first] ?? base), status: "error", message: errorText(e, "transmission des inscriptions impossible") }; }
+        try { note = relayedText(await applyRelayed(db, user, d, now), lang); } catch (e) { out[first] = { ...(out[first] ?? base), status: "error", message: failure(e, "transmission des inscriptions impossible", lang) }; }
         const res = out[first];
         if (note && res) out[first] = { ...res, message: res.message ? `${res.message} · ${note}` : note };
       }
@@ -338,10 +346,11 @@ export async function importCharacters(db: Db, user: User, blocks: CharacterExpo
  * Bilans de raid (FRB, ou RRB sur Roster) : après les persos, pour que le BiS reçu soit coché sur la fiche à jour.
  * game : jeu du site où le bilan arrive ; le bilan d'un raid de l'autre jeu est refusé.
  */
-export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | RosterRaidLog)[], opts: { auto?: boolean; game?: Game } = {}): Promise<ImportResult[]> {
+export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | RosterRaidLog)[], opts: { auto?: boolean; game?: Game; lang?: Lang } = {}): Promise<ImportResult[]> {
   const out: ImportResult[] = [];
+  const lang = opts.lang ?? "fr";
   for (const l of logs) {
-    const name = `Bilan de ${l.raidName || "raid"}`;
+    const name = tr(lang, "Bilan de {name}", { name: l.raidName || tr(lang, "raid") });
     const roster = "encounters" in l;
     const base = { key: `${roster ? "rrb" : "frb"}:${l.raidId}`, kind: "raidlog" as const, name, raidId: l.raidId };
     try {
@@ -351,12 +360,17 @@ export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | 
         ...(roster && { encounters: l.encounters, difficulty: l.difficulty }),
       });
       const r = await saveRaidLog(db, user.id, body, opts);
-      if (r.status === "kept") { out.push({ ...base, status: "kept", message: "le bilan du chef de raid est déjà enregistré" }); continue; }
+      if (r.status === "kept") { out.push({ ...base, status: "kept", message: tr(lang, "le bilan du chef de raid est déjà enregistré") }); continue; }
       const kills = roster ? new Set(l.encounters.filter(e => e.killed).map(e => e.encounterId || e.boss)).size : 0;
-      out.push({ ...base, status: "updated", message: `enregistré · ${plural(r.attendees, "présent")}, ${plural(r.loot, "objet")}${roster ? `, ${kills} boss vaincu${kills > 1 ? "s" : ""}` : ""}${r.bis ? `, ${r.bis} BiS coché${r.bis > 1 ? "s" : ""}` : ""}${r.unknown.length ? ` · sans fiche : ${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` : ""}` });
+      const counts = [
+        trn(lang, r.attendees, "{n} présent", "{n} présents"), trn(lang, r.loot, "{n} objet", "{n} objets"),
+        roster && trn(lang, kills, "{n} boss vaincu", "{n} boss vaincus"), r.bis && trn(lang, r.bis, "{n} BiS coché", "{n} BiS cochés"),
+      ].filter(Boolean).join(", ");
+      const unknown = r.unknown.length ? ` · ${tr(lang, "sans fiche : {names}", { names: `${r.unknown.slice(0, 5).join(", ")}${r.unknown.length > 5 ? "…" : ""}` })}` : "";
+      out.push({ ...base, status: "updated", message: `${tr(lang, "enregistré")} · ${counts}${unknown}` });
     } catch (e) {
       const refused = e instanceof HttpError && e.status === 403;
-      out.push({ ...base, status: refused ? "refused" : "error", message: refused ? "pas officier de la guilde" : errorText(e, "enregistrement impossible") });
+      out.push({ ...base, status: refused ? "refused" : "error", message: refused ? tr(lang, "pas officier de la guilde") : failure(e, "enregistrement impossible", lang) });
     }
   }
   return out;
@@ -368,28 +382,29 @@ export async function importRaidLogs(db: Db, user: User, logs: (RaidLogExport | 
  */
 export async function importAddonText(db: Db, user: User, text: string, opts: ImportOptions & { skipLogs?: ReadonlySet<string>; auto?: boolean; skipGuild?: boolean }) {
   const errors: string[] = [];
+  const lang = opts.lang ?? "fr";
   // Roster : bilans RRB seulement (les persos viennent de Battle.net ou se créent à la main) ; un texte de Forever Roster est refusé
   if (opts.game === "retail") {
     const rrb = parseRRB(text, { otherHost: opts.otherHost });
-    errors.push(...rrb.errors.map(x => (x.startsWith("Ce texte vient") ? x : `Bilan ignoré : ${x}`)));
-    const results = await importRaidLogs(db, user, rrb.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "retail" });
+    errors.push(...rrb.errors.map(x => (x.startsWith("Ce texte vient") ? addonText(lang, x) : tr(lang, "Bilan ignoré : {x}", { x: addonText(lang, x) }))));
+    const results = await importRaidLogs(db, user, rrb.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "retail", lang });
     return { results, errors };
   }
   // Forever Roster : un texte de l'addon Roster (WoW Retail) est refusé, jamais mal lu
-  errors.push(...foreignAddonErrors(text, "forever", opts.otherHost));
+  errors.push(...foreignAddonErrors(text, "forever", opts.otherHost).map(x => addonText(lang, x)));
   const raid = parseRaidLogs(text);
-  errors.push(...raid.errors.map(x => `Bilan ignoré : ${x}`));
+  errors.push(...raid.errors.map(x => tr(lang, "Bilan ignoré : {x}", { x: addonText(lang, x) })));
   let blocks: CharacterExport[] = [];
   if (/(^|\n)\s*FRC;/.test(text)) {
     const r = parseCharacterExports(text);
-    if (r.ok) { blocks = r.data; errors.push(...r.errors.map(x => `Bloc ignoré : ${x}`)); } else errors.push(r.error);
+    if (r.ok) { blocks = r.data; errors.push(...r.errors.map(x => tr(lang, "Bloc ignoré : {x}", { x: addonText(lang, x) }))); } else errors.push(addonText(lang, r.error));
   }
   const guild = /(^|\n)\s*FRL;/.test(text) && !opts.skipGuild ? parseGuildBlocks(text) : { blocks: [], errors: [] };
-  errors.push(...guild.errors.map(x => `Relevé de guilde ignoré : ${x}`));
+  errors.push(...guild.errors.map(x => tr(lang, "Relevé de guilde ignoré : {x}", { x: addonText(lang, x) })));
   const results = [
     ...await importCharacters(db, user, blocks, opts),
-    ...await importRaidLogs(db, user, raid.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "forever" }),
-    ...await importGuildExports(db, user, guild.blocks, opts.now),
+    ...await importRaidLogs(db, user, raid.data.filter(l => !opts.skipLogs?.has(l.raidId)), { auto: opts.auto, game: "forever", lang }),
+    ...await importGuildExports(db, user, guild.blocks, opts.now, lang),
   ];
   return { results, errors };
 }

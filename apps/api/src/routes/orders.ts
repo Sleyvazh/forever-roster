@@ -92,7 +92,7 @@ export async function orderRoutes(app: FastifyInstance) {
     }
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(craftOrders)
       .where(and(eq(craftOrders.groupId, id), eq(craftOrders.requesterId, u.id), ne(craftOrders.status, "done")));
-    if (n >= MAX_OPEN_PER_USER) throw badRequest(`Déjà ${MAX_OPEN_PER_USER} commandes en cours : attends qu'elles soient faites.`);
+    if (n >= MAX_OPEN_PER_USER) throw badRequest("Déjà {v} commandes en cours : attends qu'elles soient faites.", { v: MAX_OPEN_PER_USER });
     const [o] = await db.insert(craftOrders).values({
       groupId: id, spellId: body.spellId, recipeName: r.name, itemId: r.itemId, itemName: r.itemName, quantity: body.quantity,
       requesterId: u.id, characterId: body.characterId ?? null, note: body.note, reagents: await reagentsFor(db, r.reagents, body.quantity, body.provided),

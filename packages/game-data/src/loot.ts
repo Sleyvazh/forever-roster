@@ -168,17 +168,22 @@ export function lootCategoryText(c: Partial<LootCategoryCounts>): string {
   return LOOT_CATEGORIES.filter(k => (c[k] ?? 0) !== 0).map(k => `${c[k]} ${LOOT_CATEGORY_SHORT[k]}`).join(" · ");
 }
 
-/** Libellé court de la période du compte : « saison », « 30 j », « 5 raids » (en-têtes de colonne, addon). */
-export function lootCountShort(s: Pick<LootSettings, "countMode" | "countRaids">): string {
-  return s.countMode === "days" ? `${LOOT_COUNT_DAYS} j` : s.countMode === "raids" ? `${s.countRaids} raids` : "saison";
+/** Libellé court de la période du compte : « saison », « 30 j », « 5 raids » (en-têtes de colonne, addon) ; en anglais « season », « 30 d ». */
+export function lootCountShort(s: Pick<LootSettings, "countMode" | "countRaids">, lang: "fr" | "en" = "fr"): string {
+  if (s.countMode === "days") return `${LOOT_COUNT_DAYS} ${lang === "en" ? "d" : "j"}`;
+  return s.countMode === "raids" ? `${s.countRaids} raids` : lang === "en" ? "season" : "saison";
 }
-/** Libellé complet : « depuis le 06/10/2026 », « sur les 30 derniers jours », « sur les 5 derniers raids ». */
-export function lootCountLabel(s: Pick<LootSettings, "countMode" | "countRaids" | "seasonStart">): string {
-  if (s.countMode === "days") return `sur les ${LOOT_COUNT_DAYS} derniers jours`;
-  if (s.countMode === "raids") return s.countRaids > 1 ? `sur les ${s.countRaids} derniers raids` : "sur le dernier raid";
-  if (!s.seasonStart) return "depuis le début";
+/** Libellé complet : « depuis le 06/10/2026 », « sur les 30 derniers jours », « sur les 5 derniers raids » ; ou en anglais. */
+export function lootCountLabel(s: Pick<LootSettings, "countMode" | "countRaids" | "seasonStart">, lang: "fr" | "en" = "fr"): string {
+  const en = lang === "en";
+  if (s.countMode === "days") return en ? `over the last ${LOOT_COUNT_DAYS} days` : `sur les ${LOOT_COUNT_DAYS} derniers jours`;
+  if (s.countMode === "raids") {
+    if (s.countRaids > 1) return en ? `over the last ${s.countRaids} raids` : `sur les ${s.countRaids} derniers raids`;
+    return en ? "over the last raid" : "sur le dernier raid";
+  }
+  if (!s.seasonStart) return en ? "since the start" : "depuis le début";
   const [y, m, d] = s.seasonStart.split("-");
-  return `depuis le ${d}/${m}/${y}`;
+  return en ? `since ${d}/${m}/${y}` : `depuis le ${d}/${m}/${y}`;
 }
 
 /**

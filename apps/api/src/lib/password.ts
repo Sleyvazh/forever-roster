@@ -1,5 +1,6 @@
 import { hash, verify } from "@node-rs/argon2";
 import { createHash } from "node:crypto";
+import { msg, type Msg } from "./i18n";
 
 /**
  * Argon2id, paramètres recommandés par l'OWASP (m=19 MiB, t=2, p=1).
@@ -29,17 +30,17 @@ const COMMON = new Set([
   "worldofwarcraft", "warcraft1234", "azerty123456", "password12345", "administrator",
 ]);
 
-export interface PasswordCheck { ok: boolean; reason?: string }
+export interface PasswordCheck { ok: boolean; reason?: Msg }
 
 /** Règles locales : longueur (NIST SP 800-63B), liste noire, pas de réutilisation de l'e-mail. */
 export function checkPasswordPolicy(password: string, email?: string | null): PasswordCheck {
-  if (password.length < PASSWORD_MIN) return { ok: false, reason: `Le mot de passe doit faire au moins ${PASSWORD_MIN} caractères.` };
-  if (password.length > PASSWORD_MAX) return { ok: false, reason: `Le mot de passe doit faire au plus ${PASSWORD_MAX} caractères.` };
+  if (password.length < PASSWORD_MIN) return { ok: false, reason: msg("Le mot de passe doit faire au moins {n} caractères.", { n: PASSWORD_MIN }) };
+  if (password.length > PASSWORD_MAX) return { ok: false, reason: msg("Le mot de passe doit faire au plus {n} caractères.", { n: PASSWORD_MAX }) };
   const lower = password.toLowerCase();
-  if (COMMON.has(lower)) return { ok: false, reason: "Ce mot de passe est trop courant." };
-  if (/^(.)\1+$/.test(password)) return { ok: false, reason: "Ce mot de passe est trop simple." };
+  if (COMMON.has(lower)) return { ok: false, reason: msg("Ce mot de passe est trop courant.") };
+  if (/^(.)\1+$/.test(password)) return { ok: false, reason: msg("Ce mot de passe est trop simple.") };
   const local = email?.split("@")[0]?.toLowerCase();
-  if (local && local.length >= 4 && lower.includes(local)) return { ok: false, reason: "Le mot de passe ne doit pas contenir ton adresse e-mail." };
+  if (local && local.length >= 4 && lower.includes(local)) return { ok: false, reason: msg("Le mot de passe ne doit pas contenir ton adresse e-mail.") };
   return { ok: true };
 }
 

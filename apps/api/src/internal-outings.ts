@@ -175,7 +175,10 @@ export function outingRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpe
     // Son perso : celui qui a le niveau (main d'abord), dans le rôle de sa spé principale
     const mine = (await charactersOf(user.id, g.id)).map(c => ({ ...c, isMain: !!c.isMain }));
     const ch = pickCharacterFor(dg ? { min: dg.min, max: dg.max } : null, mine);
-    if (!ch) throw badRequest(mine.length ? `Aucun de tes persos n'a le niveau de ${dg!.name} (${dg!.min}-${dg!.max}).` : "Tu n'as aucun perso de WoW Forever sur le site : ajoute-en un dans « Mes persos ».");
+    if (!ch) {
+      if (mine.length) throw badRequest("Aucun de tes persos n'a le niveau de {name} ({min}-{max}).", { name: dg!.name, min: dg!.min, max: dg!.max });
+      throw badRequest("Tu n'as aucun perso de WoW Forever sur le site : ajoute-en un dans « Mes persos ».");
+    }
     const r: Role = characterRoles(ch)[0] ?? "DPS";
     const id = await createOuting(db, g, member, { id: user.id, displayName: user.displayName }, {
       dungeon: d.dungeon, title: d.title, day: body.day, at: body.at, note: body.note, characterId: ch.id, role: r,

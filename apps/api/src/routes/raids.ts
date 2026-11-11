@@ -21,6 +21,7 @@ import { applyAbsencesToRaid } from "../lib/absences";
 import { mergeSlots, slotKey } from "../lib/compo";
 import { bus } from "../lib/events";
 import { raidLogView } from "./raidlogs";
+import { N, reqLang, tr } from "../lib/i18n";
 
 const raidParams = z.object({ id: z.uuid(), raidId: z.uuid() });
 const raidFields = z.object({
@@ -54,13 +55,18 @@ export function formatFor(game: Game, name: string, size?: number, difficulty?: 
   const d = difficulty ?? "normal";
   const { min, max } = retailSizeRange(d, name);
   const s = size ?? retailDefaultSize(d, name);
-  if (s < min || s > max) throw badRequest(min === max ? `En ${DIFFICULTY_LABEL[d].fr}, ce raid se joue à ${min}.` : `En ${DIFFICULTY_LABEL[d].fr}, de ${min} à ${max} joueurs.`);
+  // La difficulté (« Héroïque ») est traduite avec le message : ses noms français sont dans le catalogue de l'API
+  N("Normal"); N("Héroïque"); N("Mythique");
+  if (s < min || s > max) {
+    if (min === max) throw badRequest("En {difficulty}, ce raid se joue à {n}.", { difficulty: DIFFICULTY_LABEL[d].fr, n: min });
+    throw badRequest("En {difficulty}, de {min} à {max} joueurs.", { difficulty: DIFFICULTY_LABEL[d].fr, min, max });
+  }
   return { size: s, difficulty: d };
 }
 const slot = z.object({
   group: z.int().min(1).max(RAID_GROUPS), pos: z.int().min(1).max(GROUP_SIZE),
   characterId: z.uuid().optional(), signupId: z.uuid().optional(),
-}).refine(s => !!s.characterId !== !!s.signupId, "Une place contient un perso ou un inscrit sans compte.");
+}).refine(s => !!s.characterId !== !!s.signupId, N("Une place contient un perso ou un inscrit sans compte."));
 
 
 export async function raidRoutes(app: FastifyInstance) {
@@ -143,10 +149,10 @@ export async function raidRoutes(app: FastifyInstance) {
     const body = parse(raidFields.extend({ weekly: z.object({ leadDays: z.int().min(1).max(28) }).optional() }), req.body);
     if (body.weekly && myRole === "member") throw forbidden("Seuls les officiers créent un raid récurrent.");
     const existing = await db.select({ id: raids.id }).from(raids).where(eq(raids.groupId, id));
-    if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest(`Limite de ${MAX_RAIDS_PER_GROUP} raids atteinte.`);
+    if (existing.length >= MAX_RAIDS_PER_GROUP) throw badRequest("Limite de {v} raids atteinte.", { v: MAX_RAIDS_PER_GROUP });
     if (body.weekly) {
       if (!body.scheduledAt) throw badRequest("Choisis la date du premier raid.");
-      if (await db.$count(raidTemplates, eq(raidTemplates.groupId, id)) >= MAX_TEMPLATES_PER_GROUP) throw badRequest(`Limite de ${MAX_TEMPLATES_PER_GROUP} raids récurrents atteinte.`);
+      if (await db.$count(raidTemplates, eq(raidTemplates.groupId, id)) >= MAX_TEMPLATES_PER_GROUP) throw badRequest("Limite de {v} raids récurrents atteinte.", { v: MAX_TEMPLATES_PER_GROUP });
     }
     const game = await groupGame(id);
     checkLootMode(game, body.lootMode);
@@ -219,7 +225,10 @@ export async function raidRoutes(app: FastifyInstance) {
       const liveGuests = new Set((await slotGuests(p.raidId, current.slots)).map(g => g.id));
       const theirs = current.slots.filter(x => (x.characterId ? liveChars.has(x.characterId) : liveGuests.has(x.signupId!)));
       const m = mergeSlots(body.base.slots, body.slots, theirs);
-      if (!m.ok) return reply.code(409).send({ error: `${m.reason} La compo a été rechargée : refais ton dernier déplacement.`, conflict: true });
+      if (!m.ok) {
+        const lang = reqLang(req);
+        return reply.code(409).send({ error: tr(lang, "{reason} La compo a été rechargée : refais ton dernier déplacement.", { reason: tr(lang, m.reason) }), conflict: true });
+      }
       slots = m.slots;
       // Infos du raid : seuls les champs changés sur cette page s'appliquent
       const curIso = current.scheduledAt?.toISOString() ?? null;
@@ -229,7 +238,7 @@ export async function raidRoutes(app: FastifyInstance) {
       merged = true;
     }
 
-    if (slots.some(s => s.group > groupsFor(current.size))) throw badRequest(`Ce raid est à ${current.size} : ${groupsFor(current.size)} groupes au plus.`);
+    if (slots.some(s => s.group > groupsFor(current.size))) throw badRequest("Ce raid est à {size} : {groupsFor} groupes au plus.", { size: current.size, groupsFor: groupsFor(current.size) });
     const seatKeys = new Set(slots.map(s => `${s.group}:${s.pos}`));
     if (seatKeys.size !== slots.length) throw badRequest("Deux personnages occupent la même place.");
     if (new Set(slots.map(slotKey)).size !== slots.length) throw badRequest("Un personnage ne peut occuper qu'une place.");
@@ -317,7 +326,10 @@ export async function raidRoutes(app: FastifyInstance) {
     const changedDifficulty = body.difficulty !== undefined && body.difficulty !== r.difficulty;
     const { size, difficulty } = formatFor(r.game, r.name, body.size ?? (changedDifficulty ? undefined : r.size), body.difficulty === undefined ? r.difficulty : body.difficulty);
     const beyond = [...new Set(r.slots.filter(s => s.group > groupsFor(size)).map(s => s.group))];
-    if (beyond.length) throw badRequest(`Des persos sont placés dans le${beyond.length > 1 ? "s groupes" : " groupe"} ${beyond.join(", ")} : retire-les avant de passer à ${size}.`);
+    if (beyond.length) {
+      throw badRequest(beyond.length > 1 ? "Des persos sont placés dans les groupes {groups} : retire-les avant de passer à {size}." : "Des persos sont placés dans le groupe {groups} : retire-les avant de passer à {size}.",
+        { groups: beyond.join(", "), size });
+    }
     const targets = body.targets === undefined ? r.targets : body.targets;
     await db.update(raids).set({ size, difficulty, targets, discordChangedAt: new Date() }).where(eq(raids.id, r.id));
     bus.group({ t: "raid", g: p.id, r: r.id });
@@ -356,10 +368,10 @@ export async function raidRoutes(app: FastifyInstance) {
     await requireRole(db, p.id, u.id, "officer");
     await loadRaid(p.id, p.raidId);
     const body = parse(z.object({ status: z.enum(SIGNUP_STATUSES).optional(), spec: z.string().trim().max(20).optional() })
-      .refine(b => b.status || b.spec, "Rien à changer."), req.body);
+      .refine(b => b.status || b.spec, N("Rien à changer.")), req.body);
     const [cur] = await db.select({ cls: raidSignups.cls, status: raidSignups.status }).from(raidSignups).where(and(eq(raidSignups.id, p.signupId), eq(raidSignups.raidId, p.raidId)));
     if (!cur) throw notFound("Inscription introuvable.");
-    if (body.spec && !isValidSpecFor(await groupGame(p.id), cur.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${cur.cls}.`);
+    if (body.spec && !isValidSpecFor(await groupGame(p.id), cur.cls, body.spec)) throw badRequest("La spé « {spec} » n'existe pas pour {cls}.", { spec: body.spec, cls: cur.cls });
     // L'heure du dernier changement de statut ne bouge que si le statut change vraiment (pas pour une spé)
     const statusChanged = !!body.status && body.status !== cur.status;
     const [row] = await db.update(raidSignups).set({ ...(body.status && { status: body.status }), ...(body.spec && { spec: body.spec }), ...(statusChanged && { statusAt: new Date() }), updatedAt: new Date() })

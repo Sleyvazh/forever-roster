@@ -2,7 +2,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { sessions, users } from "../db/schema";
 import { randomToken, safeEqual, sha256 } from "./crypto";
-import { forbidden, unauthorized } from "./http";
+import { forbidden, HttpError, unauthorized } from "./http";
 import { siteOf } from "./site";
 import { isDeviceUrl } from "./device-auth";
 
@@ -60,7 +60,7 @@ export function registerSession(app: FastifyInstance) {
     if (origin !== siteOf(cfg, req).origin) throw forbidden("Origine de la requête refusée.");
     if (req.session) {
       const sent = req.headers["x-csrf-token"];
-      if (typeof sent !== "string" || !safeEqual(sent, req.session.csrfToken)) throw forbidden("Jeton CSRF invalide. Recharge la page.");
+      if (typeof sent !== "string" || !safeEqual(sent, req.session.csrfToken)) throw new HttpError(403, "Jeton CSRF invalide. Recharge la page.", undefined, "csrf");
     }
   });
 }

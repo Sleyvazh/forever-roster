@@ -93,7 +93,7 @@ export async function reachRoutes(app: FastifyInstance) {
     const now = Date.now();
     if (r.nudgeManualAt && now - r.nudgeManualAt.getTime() < MANUAL_NUDGE_MS) {
       const mins = Math.ceil((r.nudgeManualAt.getTime() + MANUAL_NUDGE_MS - now) / 60e3);
-      throw new HttpError(429, `Relance déjà faite : prochaine possible dans ${mins} min.`);
+      throw new HttpError(429, "Relance déjà faite : prochaine possible dans {mins} min.", { mins });
     }
     const reachable = (await pendingMembers(db, p.id, r.id)).filter(canDm);
     if (!reachable.length) throw badRequest("Personne à relancer : tous les membres joignables ont déjà répondu.");
@@ -119,15 +119,15 @@ export async function reachRoutes(app: FastifyInstance) {
       .innerJoin(groupMembers, and(eq(groupMembers.groupId, groupCharacters.groupId), eq(groupMembers.userId, characters.userId)))
       .where(and(eq(groupCharacters.groupId, p.id), eq(groupCharacters.characterId, body.characterId)));
     if (!c) throw notFound("Ce perso n'est pas joué dans la guilde.");
-    if (!isValidSpecFor(c.game, c.cls, body.spec)) throw badRequest(`La spé « ${body.spec} » n'existe pas pour ${c.cls}.`);
+    if (!isValidSpecFor(c.game, c.cls, body.spec)) throw badRequest("La spé « {spec} » n'existe pas pour {cls}.", { spec: body.spec, cls: c.cls });
     if (!canDm(c)) throw badRequest(c.discordId ? "Ce joueur a désactivé les messages du bot." : "Ce joueur n'a pas lié son Discord : préviens-le autrement.");
     const [signed] = await db.select({ characterId: raidSignups.characterId, status: raidSignups.status }).from(raidSignups)
       .where(and(eq(raidSignups.raidId, r.id), eq(raidSignups.userId, c.userId)));
-    if (signed?.characterId === c.id && (signed.status === "present" || signed.status === "late")) throw badRequest(`${c.name} est déjà inscrit à ce raid.`);
-    if (await db.$count(raidAsks, eq(raidAsks.raidId, r.id)) >= MAX_ASKS_PER_RAID) throw badRequest(`Limite de ${MAX_ASKS_PER_RAID} demandes pour ce raid.`);
+    if (signed?.characterId === c.id && (signed.status === "present" || signed.status === "late")) throw badRequest("{name} est déjà inscrit à ce raid.", { name: c.name });
+    if (await db.$count(raidAsks, eq(raidAsks.raidId, r.id)) >= MAX_ASKS_PER_RAID) throw badRequest("Limite de {v} demandes pour ce raid.", { v: MAX_ASKS_PER_RAID });
     const [row] = await db.insert(raidAsks).values({ raidId: r.id, characterId: c.id, userId: c.userId, spec: body.spec, askedBy: u.id, askedByName: u.displayName })
       .onConflictDoNothing().returning({ id: raidAsks.id });
-    if (!row) throw new HttpError(409, `${c.name} a déjà reçu une demande pour ce raid.`);
+    if (!row) throw new HttpError(409, "{name} a déjà reçu une demande pour ce raid.", { name: c.name });
     await audit(db, req, "raid_ask_sent", { userId: u.id, groupId: p.id, meta: { raidId: r.id, characterId: c.id, name: c.name, spec: body.spec } });
     bus.group({ t: "raid", g: p.id, r: r.id });
     return reply.code(201).send({ ask: { id: row.id } });

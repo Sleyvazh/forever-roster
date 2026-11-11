@@ -1,4 +1,5 @@
 import type { RaidSlot } from "../db/schema";
+import { N } from "./i18n";
 
 /**
  * Fusion à trois voies de la compo d'un raid : quand deux officiers la modifient en même temps,
@@ -17,13 +18,13 @@ export function mergeSlots(base: RaidSlot[], mine: RaidSlot[], theirs: RaidSlot[
   for (const key of new Set([...B.keys(), ...M.keys()])) {
     const b = B.get(key), m = M.get(key), t = T.get(key);
     if (m === b) continue; // je n'y ai pas touché : la version des autres reste
-    if (t !== b && t !== m) return { ok: false, reason: "Un autre officier a déplacé le même perso." };
+    if (t !== b && t !== m) return { ok: false, reason: N("Un autre officier a déplacé le même perso.") };
     if (m === undefined) result.delete(key); else result.set(key, m);
   }
   const seats = new Set<string>();
   const slots: RaidSlot[] = [];
   for (const [key, seat] of result) {
-    if (seats.has(seat)) return { ok: false, reason: "Un autre officier a occupé la même place." };
+    if (seats.has(seat)) return { ok: false, reason: N("Un autre officier a occupé la même place.") };
     seats.add(seat);
     const [group, pos] = seat.split(":").map(Number) as [number, number];
     const src = byKey.get(key)!;

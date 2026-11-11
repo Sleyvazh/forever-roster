@@ -76,7 +76,7 @@ export async function ensureInGroup(db: Tx, groupId: string, characterId: string
   const [row] = await db.select({ groupId: groupCharacters.groupId, groupName: groups.name, name: characters.name }).from(groupCharacters)
     .innerJoin(groups, eq(groups.id, groupCharacters.groupId)).innerJoin(characters, eq(characters.id, groupCharacters.characterId))
     .where(eq(groupCharacters.characterId, characterId));
-  if (row && row.groupId !== groupId) throw badRequest(`${row.name} est rangé dans « ${row.groupName} ». Change sa guilde dans Mes persos, ou choisis un autre perso.`);
+  if (row && row.groupId !== groupId) throw badRequest("{name} est rangé dans « {groupName} ». Change sa guilde dans Mes persos, ou choisis un autre perso.", { name: row.name, groupName: row.groupName });
   if (!row) {
     await assignCharacter(db, groupId, characterId, userId);
     return true;
