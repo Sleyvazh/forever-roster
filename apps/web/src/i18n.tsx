@@ -67,10 +67,13 @@ const fill = (s: string, vars?: Record<string, string | number>) =>
 export function t(fr: string, vars?: Record<string, string | number>): string {
   return fill(look(fr), vars);
 }
+/** « : » entre deux parties d'une phrase : espace avant en français, pas en anglais. */
+export const colon = () => (lang === "fr" ? " : " : ": ");
+/** Pluriel ? Français : 2 et plus ; anglais : tout sauf 1 (« 0 points »). */
+export const isMany = (n: number) => (lang === "fr" ? Math.abs(n) >= 2 : Math.abs(n) !== 1);
 /** Pluriel : {n} vaut n. */
 export function tn(n: number, one: string, many: string, vars?: Record<string, string | number>): string {
-  const single = lang === "fr" ? Math.abs(n) < 2 : Math.abs(n) === 1;
-  return t(single ? one : many, { n, ...vars });
+  return t(isMany(n) ? many : one, { n, ...vars });
 }
 /** Texte avec des éléments React à la place des {variables}. */
 export function tx(fr: string, vars: Record<string, ReactNode>): ReactNode {

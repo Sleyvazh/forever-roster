@@ -38,8 +38,8 @@ export function RowMenu({ label, children }: { label: string; children: (close: 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (!pop.current?.contains(t) && !btn.current?.contains(t)) close(false);
+      const tt = e.target as Node;
+      if (!pop.current?.contains(tt) && !btn.current?.contains(tt)) close(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); close(true); return; }

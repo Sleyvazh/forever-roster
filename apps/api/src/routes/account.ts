@@ -162,7 +162,8 @@ export async function accountRoutes(app: FastifyInstance) {
     const body = parse(z.object({ password: z.string().max(PASSWORD_MAX).optional(), confirm: z.string().optional() }), req.body ?? {});
     if (u.passwordHash) {
       if (!body.password || !(await verifyPassword(u.passwordHash, body.password))) throw forbidden("Mot de passe incorrect.");
-    } else if (body.confirm !== "SUPPRIMER") {
+    } else if (body.confirm?.trim().toUpperCase() !== "SUPPRIMER" && body.confirm?.trim().toUpperCase() !== "DELETE") {
+      // Le mot de la page : « SUPPRIMER » en français, « DELETE » en anglais
       throw badRequest("Tape SUPPRIMER pour confirmer.");
     }
     const owned = await db.select({ groupId: groupMembers.groupId }).from(groupMembers)

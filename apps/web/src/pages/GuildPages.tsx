@@ -23,7 +23,7 @@ import { NumberField } from "../components/NumberField";
 import {
   AddBot, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
-import { N, t, tn, tx } from "../i18n";
+import { isMany, N, t, tn, tx } from "../i18n";
 
 /**
  * Pages d'une guilde de Forever Roster (refonte du 23/10) : Accueil (/groups/:id), Sorties, Raids (À venir · Passés ·
@@ -314,7 +314,7 @@ function ForeverInvites({ groupId, guard, invites }: { groupId: string; guard: G
       </details>
       {!!invites?.length && (
         <ul className="inv-list" aria-label={t("Liens actifs")}>{invites.map(i => (
-          <li key={i.id}><span>{tx(i.uses > 1 ? "{n} utilisés · expire {when}" : "{n} utilisé · expire {when}", { n: <b className="num">{i.uses}/{i.maxUses}</b>, when: fmt.format(new Date(i.expiresAt)) })}</span>
+          <li key={i.id}><span>{tx(isMany(i.uses) ? "{n} utilisés · expire {when}" : "{n} utilisé · expire {when}", { n: <b className="num">{i.uses}/{i.maxUses}</b>, when: fmt.format(new Date(i.expiresAt)) })}</span>
             <button className="btn ghost sm" type="button" onClick={() => void guard(async () => { await del(`/groups/${groupId}/invites/${i.id}`); await refresh(); })}>{t("Révoquer")}</button></li>
         ))}</ul>
       )}

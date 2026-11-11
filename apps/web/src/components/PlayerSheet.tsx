@@ -11,7 +11,7 @@ import { Portrait } from "./ImageUpload";
 import { absenceLabel } from "./Absences";
 import { LootDetail } from "./Loot";
 import { attendanceLabel, lootCategoryLabel } from "../i18n/game";
-import { dateLocale, getLang, t, tx } from "../i18n";
+import { dateLocale, getLang, isMany, t, tx } from "../i18n";
 import { roleLabel } from "../pages/GroupsPage";
 
 /** Fiche d'un joueur dans le groupe (lot D1) : persos joués ici, présence, banc, butin reçu. Classes CSS « ps- ». */
@@ -141,7 +141,7 @@ function LootCount({ groupId, userId, count, officer }: { groupId: string; userI
   return (
     <div>
       <div className="lc-sum">
-        <span>{tx(count.player > 1 ? "{n} objets {period}" : "{n} objet {period}", { n: <b className="num">{count.player}</b>, period: count.label })}</span>
+        <span>{tx(isMany(count.player) ? "{n} objets {period}" : "{n} objet {period}", { n: <b className="num">{count.player}</b>, period: count.label })}</span>
         <LootDetail detail={count.detail} />
         {count.characters.length > 1 && <span className="muted small">{count.by === "player" ? t("main et alts ensemble : ") : t("par perso : ")}{count.characters.map(c => `${c.name} ${c.own}`).join(" · ")}</span>}
       </div>

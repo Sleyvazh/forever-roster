@@ -13,7 +13,7 @@ import { RetailCharacterView } from "./RetailCharacter";
 import { GiveFicheDialog } from "./GiveFiche";
 import { BnetGroupRefresh } from "./BnetImport";
 import { useGameText } from "../gameText";
-import { N, t, tn } from "../i18n";
+import { colon, N, t, tn } from "../i18n";
 import { roleLabel } from "../pages/GroupsPage";
 
 /**
@@ -369,7 +369,7 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
                 </span>
               )}
               {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>{lvEdit?.id === opened.id
-                ? `${data.gameLinked ? t("{name} n'est pas dans la liste de guilde du jeu", { name: opened.name }) : t("La guilde n'est pas encore liée au jeu")} : ${t("son niveau ne peut pas être relevé. Une fois fixé, {who} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.", { who: opened.owner ?? t("le joueur") })}`
+                ? `${data.gameLinked ? t("{name} n'est pas dans la liste de guilde du jeu", { name: opened.name }) : t("La guilde n'est pas encore liée au jeu")}${colon()}${t("son niveau ne peut pas être relevé. Une fois fixé, {who} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.", { who: opened.owner ?? t("le joueur") })}`
                 : t("Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.")}</span>}
             </div>
           )}

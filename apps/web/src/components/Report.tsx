@@ -4,25 +4,26 @@ import { Link, useLocation } from "react-router-dom";
 import { ApiError, get, post, uploadImage, type Report, type ReportArea, type ReportKind, type ReportStatus } from "../api";
 import { useMe } from "../auth";
 import { useSite } from "../site";
+import { dateLocale, N, t, tx } from "../i18n";
 
 /**
  * « Signaler un bug ou une idée » : formulaire en fenêtre (menu du compte), capture d'écran jointe
  * (fichier, glisser-déposer ou Ctrl+V), page, navigateur, site et version de l'addon ajoutés d'office.
  */
 
-export const KIND_LABEL: Record<ReportKind, string> = { bug: "Bug", idea: "Idée", question: "Question" };
+export const KIND_LABEL: Record<ReportKind, string> = { bug: N("Bug"), idea: N("Idée"), question: N("Question") };
 export const KIND_ICON: Record<ReportKind, string> = { bug: "🐞", idea: "💡", question: "❓" };
-export const AREA_LABEL: Record<ReportArea, string> = { site: "Site", addon: "Addon", bot: "Bot Discord", companion: "Companion" };
-export const STATUS_LABEL: Record<ReportStatus, string> = { new: "Nouveau", wip: "En cours", done: "Fait", refused: "Refusé" };
+export const AREA_LABEL: Record<ReportArea, string> = { site: N("Site"), addon: N("Addon"), bot: N("Bot Discord"), companion: "Companion" };
+export const STATUS_LABEL: Record<ReportStatus, string> = { new: N("Nouveau"), wip: N("En cours"), done: N("Fait"), refused: N("Refusé") };
 export const STATUS_TAG: Record<ReportStatus, string> = { new: "gold", wip: "warn", done: "ok", refused: "" };
 
 const ACCEPT = ["image/png", "image/jpeg", "image/webp"];
 const MAX_SIDE = 1600;                // le serveur garde au plus 1600 px de côté
 const MAX_SEND = 1.9 * 1024 * 1024;   // sous la limite d'envoi du site (2 Mo)
 const PLACEHOLDER: Record<ReportKind, { title: string; body: string }> = {
-  bug: { title: "Ex. Le bouton « Valider la compo » ne fait rien", body: "Ce que tu faisais, ce qui s'est passé, et ce que tu attendais." },
-  idea: { title: "Ex. Trier les persos par niveau d'objet", body: "Ce que tu aimerais, et à quoi ça te servirait." },
-  question: { title: "Ex. Comment lier un salon Discord ?", body: "Ta question, avec le contexte utile." },
+  bug: { title: N("Ex. Le bouton « Valider la compo » ne fait rien"), body: N("Ce que tu faisais, ce qui s'est passé, et ce que tu attendais.") },
+  idea: { title: N("Ex. Trier les persos par niveau d'objet"), body: N("Ce que tu aimerais, et à quoi ça te servirait.") },
+  question: { title: N("Ex. Comment lier un salon Discord ?"), body: N("Ta question, avec le contexte utile.") },
 };
 
 /** « Firefox 131 · Windows », comme sur la page des admins. */
@@ -35,8 +36,7 @@ export function browserOf(ua: string): string {
   return [found && `${found[0]} ${found[1]}`, os].filter(Boolean).join(" · ");
 }
 
-const fmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-export const reportDate = (iso: string) => fmt.format(new Date(iso));
+export const reportDate = (iso: string) => new Intl.DateTimeFormat(dateLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 
 /** Réponses pas encore lues (pastille sur l'avatar). */
 export function useUnseenReports(enabled: boolean) {
@@ -92,9 +92,9 @@ export function ReportDialog({ onClose }: { onClose: () => void }) {
   const pick = async (f: Blob | null | undefined) => {
     setShotError(null);
     if (!f) return;
-    if (!ACCEPT.includes(f.type)) { setShotError("Formats acceptés : PNG, JPEG ou WebP."); return; }
+    if (!ACCEPT.includes(f.type)) { setShotError(t("Formats acceptés : PNG, JPEG ou WebP.")); return; }
     try { setShot(await shrink(f)); }
-    catch { setShotError("Image illisible ou trop lourde : essaie une autre capture."); }
+    catch { setShotError(t("Image illisible ou trop lourde : essaie une autre capture.")); }
   };
   const onPaste = (e: ClipboardEvent) => {
     const item = [...e.clipboardData.items].find(i => i.kind === "file" && ACCEPT.includes(i.type));
@@ -112,13 +112,13 @@ export function ReportDialog({ onClose }: { onClose: () => void }) {
       let imageError: string | null = null;
       if (shot) {
         try { await uploadImage(`/reports/${report.id}/image`, shot.blob); }
-        catch (err) { imageError = err instanceof ApiError ? err.message : "Envoi impossible."; }
+        catch (err) { imageError = err instanceof ApiError ? err.message : t("Envoi impossible."); }
       }
       void qc.invalidateQueries({ queryKey: ["reports-mine"] });
       void qc.invalidateQueries({ queryKey: ["reports-admin"] });
       setDone({ imageError });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Envoi impossible, réessaie dans un instant.");
+      setError(err instanceof ApiError ? err.message : t("Envoi impossible, réessaie dans un instant."));
     } finally { setBusy(false); }
   };
 
@@ -126,70 +126,70 @@ export function ReportDialog({ onClose }: { onClose: () => void }) {
     <dialog ref={ref} className="sg-dialog" aria-labelledby="sg-title" onClose={onClose} onPaste={onPaste}>
       {done ? (
         <div className="stack">
-          <h2 id="sg-title">Merci !</h2>
-          <p>Ton signalement est parti chez l'équipe. Sa réponse apparaîtra dans <b>Mes signalements</b>, avec une pastille sur ton avatar.</p>
-          {done.imageError && <div className="alert error" role="alert">La capture n'a pas pu être jointe : {done.imageError}</div>}
+          <h2 id="sg-title">{t("Merci !")}</h2>
+          <p>{tx("Ton signalement est parti chez l'équipe. Sa réponse apparaîtra dans {el}, avec une pastille sur ton avatar.", { el: <b>{t("Mes signalements")}</b> })}</p>
+          {done.imageError && <div className="alert error" role="alert">{tx("La capture n'a pas pu être jointe : {imageError}", { imageError: done.imageError })}</div>}
           <div className="row sg-actions">
-            <Link className="btn" to="/signalements" onClick={() => ref.current?.close()}>Voir mes signalements</Link>
-            <button type="button" className="btn primary" onClick={() => ref.current?.close()}>Fermer</button>
+            <Link className="btn" to="/signalements" onClick={() => ref.current?.close()}>{t("Voir mes signalements")}</Link>
+            <button type="button" className="btn primary" onClick={() => ref.current?.close()}>{t("Fermer")}</button>
           </div>
         </div>
       ) : (
         <form className="stack" onSubmit={e => void submit(e)}>
           <div className="row between sg-head">
-            <h2 id="sg-title">Signaler un bug ou une idée</h2>
-            <button type="button" className="btn ghost sm" aria-label="Fermer" onClick={() => ref.current?.close()}>✕</button>
+            <h2 id="sg-title">{t("Signaler un bug ou une idée")}</h2>
+            <button type="button" className="btn ghost sm" aria-label={t("Fermer")} onClick={() => ref.current?.close()}>✕</button>
           </div>
           <div className="sg-two">
             <div className="fld">
-              <span className="lbl" id="sg-kind">C'est…</span>
+              <span className="lbl" id="sg-kind">{t("C'est…")}</span>
               <div className="seg" role="group" aria-labelledby="sg-kind">
                 {(Object.keys(KIND_LABEL) as ReportKind[]).map(k => (
-                  <button key={k} type="button" className={kind === k ? "on" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>{KIND_ICON[k]} {KIND_LABEL[k]}</button>
+                  <button key={k} type="button" className={kind === k ? "on" : ""} aria-pressed={kind === k} onClick={() => setKind(k)}>{KIND_ICON[k]} {t(KIND_LABEL[k])}</button>
                 ))}
               </div>
             </div>
             <div className="fld">
-              <span className="lbl" id="sg-area">Ça concerne</span>
+              <span className="lbl" id="sg-area">{t("Ça concerne")}</span>
               <div className="seg" role="group" aria-labelledby="sg-area">
                 {(Object.keys(AREA_LABEL) as ReportArea[]).map(a => (
-                  <button key={a} type="button" className={area === a ? "on" : ""} aria-pressed={area === a} onClick={() => setArea(a)}>{a === "bot" ? "Bot" : AREA_LABEL[a]}</button>
+                  <button key={a} type="button" className={area === a ? "on" : ""} aria-pressed={area === a} onClick={() => setArea(a)}>{a === "bot" ? t("Bot") : t(AREA_LABEL[a])}</button>
                 ))}
               </div>
             </div>
           </div>
           <div className="fld">
-            <label htmlFor="sg-t">Titre</label>
-            <input id="sg-t" type="text" required minLength={3} maxLength={120} value={title} placeholder={PLACEHOLDER[kind].title} onChange={e => setTitle(e.target.value)} />
+            <label htmlFor="sg-t">{t("Titre")}</label>
+            <input id="sg-t" type="text" required minLength={3} maxLength={120} value={title} placeholder={t(PLACEHOLDER[kind].title)} onChange={e => setTitle(e.target.value)} />
           </div>
           <div className="fld">
-            <label htmlFor="sg-b">Détails</label>
-            <textarea id="sg-b" required minLength={5} maxLength={4000} value={body} placeholder={PLACEHOLDER[kind].body} onChange={e => setBody(e.target.value)} />
+            <label htmlFor="sg-b">{t("Détails")}</label>
+            <textarea id="sg-b" required minLength={5} maxLength={4000} value={body} placeholder={t(PLACEHOLDER[kind].body)} onChange={e => setBody(e.target.value)} />
           </div>
           <div className="fld">
-            <span className="lbl">Capture d'écran (facultative)</span>
+            <span className="lbl">{t("Capture d'écran (facultative)")}</span>
             {shot ? (
               <div className="sg-shot-on">
-                <img src={shot.preview} alt="Capture jointe" />
-                <button type="button" className="btn ghost sm" onClick={() => setShot(null)}>Retirer</button>
+                <img src={shot.preview} alt={t("Capture jointe")} />
+                <button type="button" className="btn ghost sm" onClick={() => setShot(null)}>{t("Retirer")}</button>
               </div>
             ) : (
               <div className="sg-drop" onDragOver={e => e.preventDefault()} onDrop={onDrop}>
-                <button type="button" className="btn sm" onClick={() => fileRef.current?.click()}>Choisir une image</button>
-                <span className="hint">ou glisse-la ici, ou colle-la avec Ctrl+V (Windows : Win+Maj+S pour capturer)</span>
+                <button type="button" className="btn sm" onClick={() => fileRef.current?.click()}>{t("Choisir une image")}</button>
+                <span className="hint">{t("ou glisse-la ici, ou colle-la avec Ctrl+V (Windows : Win+Maj+S pour capturer)")}</span>
                 <input ref={fileRef} type="file" accept={ACCEPT.join(",")} hidden onChange={e => { void pick(e.target.files?.[0]); e.target.value = ""; }} />
               </div>
             )}
             {shotError && <span className="small" style={{ color: "var(--bad)" }} role="alert">{shotError}</span>}
           </div>
           <p className="hint sg-auto">
-            Joint automatiquement : la page (<code>{page}</code>){browser && <>, ton navigateur ({browser})</>}, le site ({site.name})
-            {addon ? <>, ta version de l'addon ({addon}, vue au dernier import)</> : null}.
+            {tx("Joint automatiquement : la page ({page})", { page: <code>{page}</code> })}{browser && <>{t(", ton navigateur ({browser})", { browser })}</>}{t(", le site ({name})", { name: site.name })}
+            {addon ? <>{t(", ta version de l'addon ({addon}, vue au dernier import)", { addon })}</> : null}.
           </p>
           {error && <div className="alert error" role="alert">{error}</div>}
           <div className="row sg-actions">
-            <button type="button" className="btn ghost" onClick={() => ref.current?.close()}>Annuler</button>
-            <button type="submit" className="btn primary" disabled={busy}>{busy ? "Envoi…" : "Envoyer"}</button>
+            <button type="button" className="btn ghost" onClick={() => ref.current?.close()}>{t("Annuler")}</button>
+            <button type="submit" className="btn primary" disabled={busy}>{busy ? t("Envoi…") : t("Envoyer")}</button>
           </div>
         </form>
       )}
@@ -201,10 +201,10 @@ export function ReportDialog({ onClose }: { onClose: () => void }) {
 export function ReportTags({ r, otherSite }: { r: Report; otherSite?: boolean }) {
   return (
     <span className="row sg-tags">
-      <span className="tag">{KIND_ICON[r.kind]} {KIND_LABEL[r.kind]}</span>
-      <span className="tag">{AREA_LABEL[r.area]}</span>
-      {otherSite && <span className="tag">{r.game === "retail" ? "Roster" : "Forever Roster"}</span>}
-      <span className={`tag ${STATUS_TAG[r.status]}`}>{STATUS_LABEL[r.status]}</span>
+      <span className="tag">{KIND_ICON[r.kind]} {t(KIND_LABEL[r.kind])}</span>
+      <span className="tag">{t(AREA_LABEL[r.area])}</span>
+      {otherSite && <span className="tag">{r.game === "retail" ? t("Roster") : t("Forever Roster")}</span>}
+      <span className={`tag ${STATUS_TAG[r.status]}`}>{t(STATUS_LABEL[r.status])}</span>
     </span>
   );
 }
@@ -212,5 +212,5 @@ export function ReportTags({ r, otherSite }: { r: Report; otherSite?: boolean })
 /** Capture d'un signalement (servie par le site, visible par son auteur et les admins). */
 export function ReportShot({ id }: { id: string }) {
   const url = `/api/reports/${id}/image`;
-  return <a className="sg-thumb" href={url} target="_blank" rel="noreferrer" title="Ouvrir la capture en grand"><img src={url} alt="Capture jointe" loading="lazy" /></a>;
+  return <a className="sg-thumb" href={url} target="_blank" rel="noreferrer" title={t("Ouvrir la capture en grand")}><img src={url} alt={t("Capture jointe")} loading="lazy" /></a>;
 }

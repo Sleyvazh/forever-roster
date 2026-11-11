@@ -1,9 +1,13 @@
-import { BOND_LABEL, compareItems, INVENTORY_LABEL, itemLinks, money, statLine, subclassFr, TRIGGER_LABEL } from "@forever/game-data";
+import { BOND_LABEL, BOND_LABEL_EN, compareItems, INVENTORY_LABEL, INVENTORY_LABEL_EN, itemLinks, money, statLine, subclassText, TRIGGER_LABEL, TRIGGER_LABEL_EN } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { get, type GameItem, type ItemSources } from "../api";
 import { ExternalLink } from "./ExternalLink";
 import { glyphFor } from "./ItemGlyphs";
+import { getLang, t, tx } from "../i18n";
+
+/** Nombre décimal : « 2,60 » en français, « 2.60 » en anglais. */
+const dec = (v: string | number) => (getLang() === "fr" ? String(v).replace(".", ",") : String(v));
 
 /* Icônes introuvables sur le serveur (pas encore téléchargées) : retenues pour toute la page. */
 const failedIcons = new Set<string>();
@@ -43,20 +47,20 @@ export function ItemIcon({ item, size = 36, className }: { item?: Pick<GameItem,
 function ItemSourcesBlock({ id }: { id: number }) {
   const q = useQuery({ queryKey: ["item-sources", id], queryFn: () => get<ItemSources>(`/gamedata/items/${id}/sources`), staleTime: 60_000 });
   const list = q.data?.crafted ?? [];
-  if (q.isPending) return <div className="t-src t-where">Où l'obtenir…</div>;
+  if (q.isPending) return <div className="t-src t-where">{t("Où l'obtenir…")}</div>;
   if (!list.length) return null;
   return (
     <div className="t-where">
-      <div className="t-yellow">Où l'obtenir</div>
+      <div className="t-yellow">{t("Où l'obtenir")}</div>
       {list.map(r => (
         <div key={r.spellId} className="t-row">
-          Fabriqué : {r.profession} ({r.reqSkill})
-          <div className="t-dim t-in">{r.trainer ? "Appris chez un entraîneur" : r.patterns.length ? [...new Set(r.patterns.map(p => p.name))].join(", ") : "Patron inconnu"}</div>
+          {t("Fabriqué : {profession} ({skill})", { profession: r.profession, skill: r.reqSkill })}
+          <div className="t-dim t-in">{r.trainer ? t("Appris chez un entraîneur") : r.patterns.length ? [...new Set(r.patterns.map(p => p.name))].join(", ") : t("Patron inconnu")}</div>
           <div className={`t-in ${r.crafters.length ? "t-green" : "t-dim"}`}>
-            {r.crafters.length ? `Connu par : ${r.crafters.map(c => (c.mine ? `${c.name} (toi)` : `${c.name} (${c.owner})`)).join(", ")}` : "Personne dans tes guildes ne le connaît."}
+            {r.crafters.length ? t("Connu par : {v}", { v: r.crafters.map(c => (c.mine ? t("{name} (toi)", { name: c.name }) : `${c.name} (${c.owner})`)).join(", ") }) : t("Personne dans tes guildes ne le connaît.")}
           </div>
           {!!r.wanted?.length && <div className="t-in t-yellow">
-            Recherché par : {r.wanted!.map(c => (c.mine ? `${c.name} (toi)` : `${c.name} (${c.owner})`)).join(", ")}
+            {t("Recherché par : {v}", { v: r.wanted!.map(c => (c.mine ? t("{name} (toi)", { name: c.name }) : `${c.name} (${c.owner})`)).join(", ") })}
           </div>}
         </div>
       ))}
@@ -73,10 +77,13 @@ export function ItemTooltipBody({ item, compare, compareLabel, owned, note }: {
   item: GameItem; compare?: GameItem | null; compareLabel?: string; owned?: Set<string>; note?: ReactNode;
 }) {
   const d = item.details ?? {};
-  const lines = (d.stats ?? []).map(([t, v]) => statLine(t, v));
+  const lang = getLang();
+  const en = lang === "en";
+  const lines = (d.stats ?? []).map(([tt, v]) => statLine(tt, v, lang));
   const primary = lines.filter(l => l.kind === "primary"), equip = lines.filter(l => l.kind === "equip");
-  const sub = subclassFr(item.kind.split(" · ").at(-1));
-  const diffs = compare ? compareItems(compare, item) : [];
+  const sub = subclassText(item.kind.split(" · ").at(-1), lang);
+  const diffs = compare ? compareItems(compare, item, lang) : [];
+  const slot = (en ? INVENTORY_LABEL_EN : INVENTORY_LABEL)[item.inventoryType];
   const setOwned = d.set ? d.set.items.filter(n => owned?.has(n)).length : 0;
   return (
     <>
@@ -84,39 +91,39 @@ export function ItemTooltipBody({ item, compare, compareLabel, owned, note }: {
         <ItemIcon item={item} size={38} />
         <div>
           <div className={`t-name tq${item.quality}`}>{item.name}</div>
-          {d.bond ? <div className="t-row">{BOND_LABEL[d.bond]}</div> : null}
-          {d.unique && <div className="t-row">Unique</div>}
+          {d.bond ? <div className="t-row">{(en ? BOND_LABEL_EN : BOND_LABEL)[d.bond]}</div> : null}
+          {d.unique && <div className="t-row">{t("Unique")}</div>}
         </div>
       </div>
-      {(INVENTORY_LABEL[item.inventoryType] || sub) && (
-        <div className="t-row t-split"><span>{INVENTORY_LABEL[item.inventoryType] ?? ""}</span><span>{sub}</span></div>
+      {(slot || sub) && (
+        <div className="t-row t-split"><span>{slot ?? ""}</span><span>{sub}</span></div>
       )}
       {d.dmg && (
         <>
-          <div className="t-row t-split"><span>{d.dmg.min} - {d.dmg.max} Dégâts</span><span>Vitesse {d.dmg.speed.toFixed(2).replace(".", ",")}</span></div>
-          <div className="t-row">({String(d.dmg.dps).replace(".", ",")} dégâts par seconde)</div>
+          <div className="t-row t-split"><span>{tx("{min} - {max} Dégâts", { min: d.dmg.min, max: d.dmg.max })}</span><span>{t("Vitesse {v}", { v: dec(d.dmg.speed.toFixed(2)) })}</span></div>
+          <div className="t-row">{t("({v} dégâts par seconde)", { v: dec(d.dmg.dps) })}</div>
         </>
       )}
-      {d.armor ? <div className="t-row">{d.armor} Armure</div> : null}
+      {d.armor ? <div className="t-row">{t("{n} Armure", { n: d.armor })}</div> : null}
       {primary.map((l, i) => <div key={`p${i}`} className="t-row">{l.text}</div>)}
-      {item.reqLevel > 0 && <div className="t-row">Niveau {item.reqLevel} requis</div>}
-      <div className="t-row t-ilvl">Niveau d'objet {item.itemLevel}</div>
-      {equip.map((l, i) => <div key={`e${i}`} className="t-green">Équipé : {l.text}</div>)}
-      {(d.effects ?? []).map((e, i) => <div key={`f${i}`} className="t-green">{TRIGGER_LABEL[e.trigger]} : {e.text}</div>)}
+      {item.reqLevel > 0 && <div className="t-row">{t("Niveau {n} requis", { n: item.reqLevel })}</div>}
+      <div className="t-row t-ilvl">{t("Niveau d'objet {n}", { n: item.itemLevel })}</div>
+      {equip.map((l, i) => <div key={`e${i}`} className="t-green">{tx("Équipé : {text}", { text: l.text })}</div>)}
+      {(d.effects ?? []).map((e, i) => <div key={`f${i}`} className="t-green">{en ? `${TRIGGER_LABEL_EN[e.trigger]}: ${e.text}` : `${TRIGGER_LABEL[e.trigger]} : ${e.text}`}</div>)}
       {d.set && (
         <div className="t-set">
           <div className="t-yellow">{d.set.name} ({setOwned}/{d.set.items.length})</div>
           {d.set.items.map(n => <div key={n} className={owned?.has(n) ? "t-row t-in" : "t-dim t-in"}>{n}</div>)}
-          {d.set.bonuses.map((b, i) => <div key={i} className={setOwned >= b.n ? "t-green" : "t-dim"}>({b.n}) Ensemble : {b.text}</div>)}
+          {d.set.bonuses.map((b, i) => <div key={i} className={setOwned >= b.n ? "t-green" : "t-dim"}>{t("({n}) Ensemble : {text}", { n: b.n, text: b.text })}</div>)}
         </div>
       )}
-      {d.sell ? <div className="t-row t-sell">Prix de vente : {money(d.sell)}</div> : null}
+      {d.sell ? <div className="t-row t-sell">{t("Prix de vente : {money}", { money: money(d.sell, lang) })}</div> : null}
       {item.crafted && <ItemSourcesBlock id={item.id} />}
-      {item.origin === "era" && <div className="t-src">Données de Classic Era : l'objet n'est pas encore connu sur Forever, ses stats peuvent différer.</div>}
+      {item.origin === "era" && <div className="t-src">{t("Données de Classic Era : l'objet n'est pas encore connu sur Forever, ses stats peuvent différer.")}</div>}
       {compare && diffs.length > 0 && (
         <div className="t-cmp">
-          <div className="t-src">{compareLabel ?? "Par rapport à"} {compare.name} :</div>
-          {diffs.map(x => <div key={x.label} className={x.delta > 0 ? "t-up" : "t-down"}>{x.delta > 0 ? "+" : ""}{String(x.delta).replace(".", ",")} {x.label}</div>)}
+          <div className="t-src">{t("{label} {name} :", { label: compareLabel ?? t("Par rapport à"), name: compare.name })}</div>
+          {diffs.map(x => <div key={x.label} className={x.delta > 0 ? "t-up" : "t-down"}>{x.delta > 0 ? "+" : ""}{dec(x.delta)} {x.label}</div>)}
         </div>
       )}
       {note}
@@ -162,7 +169,7 @@ export function ItemHover({ item, compare, compareLabel, children, className, li
   if (link) {
     return (
       <ExternalLink className={`ihover ilink ${className ?? ""}`} href={itemLinks(item.id).wowhead} hint={false} {...events}>
-        {children}<span className="sr-only"> (Wowhead, nouvel onglet)</span>{tip}
+        {children}<span className="sr-only"> {t("(Wowhead, nouvel onglet)")}</span>{tip}
       </ExternalLink>
     );
   }

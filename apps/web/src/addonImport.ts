@@ -5,17 +5,17 @@
  */
 import { addonKeyOf, IMPORT_PARTS, sameCharacter, type CharacterExport, type ImportPart, type ImportResult } from "@forever/game-data";
 import { post, type Character } from "./api";
-import { t } from "./i18n";
+import { N, t, tn } from "./i18n";
 
 export type Part = ImportPart;
 const PART_LABEL: Record<Part, string> = {
-  identity: "Niveau, race et classe", gear: "Équipement porté", professions: "Métiers",
-  recipes: "Patrons connus et recherchés", talents: "Talents", signups: "Inscriptions aux raids",
+  identity: N("Niveau, race et classe"), gear: N("Équipement porté"), professions: N("Métiers"),
+  recipes: N("Patrons connus et recherchés"), talents: N("Talents"), signups: N("Inscriptions aux raids"),
 };
+/** Les parties d'un import et leur libellé français (à traduire à l'affichage : t(label)). */
 export const PARTS: [Part, string][] = IMPORT_PARTS.map(k => [k, PART_LABEL[k]]);
 export const ALL_PARTS = new Set<Part>(IMPORT_PARTS);
 
-const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
 
 /** Fiche choisie pour un perso du jeu : id d'une fiche, « new » (la créer) ou « skip » (l'ignorer). */
 export type Target = string;
@@ -55,13 +55,13 @@ export async function importOnServer(text: string, targets: Record<string, Targe
 
 /** Résumé court d'un bloc (ce que l'export apporte). */
 export function blockSummary(d: CharacterExport) {
-  const parts = [`niv. ${d.level}`];
+  const parts = [t("niv. {n}", { n: d.level })];
   const gear = Object.keys(d.gear).length;
-  if (gear) parts.push(plural(gear, "pièce"));
-  if (d.recipes.length) parts.push(plural(d.recipes.length, "patron"));
-  if (d.talents.length) parts.push(`${d.talents.reduce((a, t) => a + t.rank, 0)} pts de talents`);
-  if (d.signups.length) parts.push(plural(d.signups.length, "inscription"));
-  if (d.wanted.length) parts.push(`${d.wanted.length} recherché${d.wanted.length > 1 ? "s" : ""}`);
+  if (gear) parts.push(tn(gear, "{n} pièce", "{n} pièces"));
+  if (d.recipes.length) parts.push(tn(d.recipes.length, "{n} patron", "{n} patrons"));
+  if (d.talents.length) parts.push(t("{n} pts de talents", { n: d.talents.reduce((a, x) => a + x.rank, 0) }));
+  if (d.signups.length) parts.push(tn(d.signups.length, "{n} inscription", "{n} inscriptions"));
+  if (d.wanted.length) parts.push(tn(d.wanted.length, "{n} recherché", "{n} recherchés"));
   return parts.join(" · ");
 }
 

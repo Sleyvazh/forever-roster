@@ -1,4 +1,4 @@
-import { CLASSES, GEAR_SLOTS, INVTYPE_2H, ITEM_QUALITIES, withoutCurrent, type ClassName } from "@forever/game-data";
+import { CLASSES, GEAR_SLOTS, INVTYPE_2H, withoutCurrent, type ClassName } from "@forever/game-data";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
@@ -7,6 +7,8 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { FloatingTip, iconUsable, ItemIcon, ItemTooltipBody, useIconFailures } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
 import { openSync, syncState } from "../syncPanel";
+import { getLang, t, tx } from "../i18n";
+import { itemQualityLabels } from "../i18n/game";
 
 type Slot = (typeof GEAR_SLOTS)[number];
 type View = "cur" | "bis";
@@ -21,6 +23,8 @@ const SLOT_FR: Record<Slot, string> = {
   Hands: "Mains", Waist: "Taille", Legs: "Jambes", Feet: "Pieds", "Finger 1": "Doigt 1", "Finger 2": "Doigt 2",
   "Trinket 1": "Bijou 1", "Trinket 2": "Bijou 2", "Main Hand": "Main droite", "Off Hand": "Main gauche", "Ranged / Relic": "À distance / Relique",
 };
+/** Nom de l'emplacement : en français, ou le nom anglais du jeu (la clé). */
+const slotName = (s: Slot) => (getLang() === "en" ? s : SLOT_FR[s]);
 
 /** Pictogramme de chaque emplacement (vide, ou objet sans icône). */
 const GLYPH: Record<Slot, string> = {
@@ -95,7 +99,7 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
     const taken = slot === "Off Hand" && !shown && view === "cur" && mh?.inventoryType === INVTYPE_2H;
     return (
       <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}`} aria-expanded={canEdit ? open === slot : undefined}
-        aria-label={`${SLOT_FR[slot]} : ${shown ? shown.name : "vide"}${g.got ? ", BiS obtenu" : ""}`}
+        aria-label={`${t("{slot} : {item}", { slot: slotName(slot), item: shown ? shown.name : t("vide") })}${g.got ? t(", BiS obtenu") : ""}`}
         onClick={act}
         onKeyDown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } }}
         onMouseEnter={e => shown && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
@@ -107,8 +111,8 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
           {g.got && <span className="got" aria-hidden="true">✓</span>}
         </span>
         <span className="gtxt">
-          <span className={`gname${shown?.quality != null ? ` q${shown.quality}` : ""}`}>{shown ? shown.name : "Vide"}{fiche && shown && g.got && <span className="tag ok gbis">BiS</span>}</span>
-          <span className="gmeta"><span>{SLOT_FR[slot]}</span>{taken ? <span>prise par l'arme à deux mains</span> : shown?.item && <span className="num">{fiche ? `niv. ${shown.item.itemLevel}` : shown.item.itemLevel}</span>}</span>
+          <span className={`gname${shown?.quality != null ? ` q${shown.quality}` : ""}`}>{shown ? shown.name : t("Vide")}{fiche && shown && g.got && <span className="tag ok gbis">{t("BiS")}</span>}</span>
+          <span className="gmeta"><span>{slotName(slot)}</span>{taken ? <span>{t("prise par l'arme à deux mains")}</span> : shown?.item && <span className="num">{fiche ? t("niv. {n}", { n: shown.item.itemLevel }) : shown.item.itemLevel}</span>}</span>
         </span>
       </div>
     );
@@ -117,53 +121,53 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
   const top = fiche ? (
     <>
       <div className="gear-top fiche">
-        <h3 style={{ margin: 0 }}>Équipement</h3>
-        {c.addonSyncedAt && <span className={`sy-age ${synced.tone}`}>● relevé par l'addon · {synced.ago}</span>}
+        <h3 style={{ margin: 0 }}>{t("Équipement")}</h3>
+        {c.addonSyncedAt && <span className={`sy-age ${synced.tone}`}>{tx("● relevé par l'addon · {ago}", { ago: synced.ago })}</span>}
         <span className="grow1" />
-        <div className="seg eq" role="group" aria-label="Vue">
-          {(["cur", "bis"] as View[]).map(v => <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => { setView(v); setOpen(null); }}>{v === "cur" ? "Équipé" : "Objectif BiS"}</button>)}
+        <div className="seg eq" role="group" aria-label={t("Vue")}>
+          {(["cur", "bis"] as View[]).map(v => <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => { setView(v); setOpen(null); }}>{v === "cur" ? t("Équipé") : t("Objectif BiS")}</button>)}
         </div>
-        {editable && <button type="button" className="btn" aria-pressed={manual} onClick={() => { setManual(m => !m); setOpen(null); }}>{manual ? "Terminer la saisie" : "Modifier à la main"}</button>}
+        {editable && <button type="button" className="btn" aria-pressed={manual} onClick={() => { setManual(m => !m); setOpen(null); }}>{manual ? t("Terminer la saisie") : t("Modifier à la main")}</button>}
       </div>
       {editable && empty && !c.addonSyncedAt && !manual && (
         <p className="gm-note gear-none"><i aria-hidden="true">i</i>
-          <span><b>Pas encore relevé</b> · <button type="button" className="link" onClick={openSync}>fais ta synchro</button>, ou <button type="button" className="link" onClick={() => setManual(true)}>remplis à la main ›</button></span></p>
+          <span><b>{t("Pas encore relevé")}</b> {tx("· {el}, ou", { el: <button type="button" className="link" onClick={openSync}>{t("fais ta synchro")}</button> })} <button type="button" className="link" onClick={() => setManual(true)}>{t("remplis à la main ›")}</button></span></p>
       )}
     </>
   ) : null;
   return (
     <div className="sec">
       {top ?? <div className="gear-top">
-        <h3 style={{ margin: 0 }}>Équipement</h3>
-        <div className="theme-seg" role="group" aria-label="Vue">
+        <h3 style={{ margin: 0 }}>{t("Équipement")}</h3>
+        <div className="theme-seg" role="group" aria-label={t("Vue")}>
           {/* Pas de <button> : la fiche en lecture seule est dans un fieldset désactivé, et la vue doit rester changeable. */}
           {(["cur", "bis"] as View[]).map(v => (
             <span key={v} role="button" tabIndex={0} aria-pressed={view === v} onClick={() => setView(v)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setView(v); } }}>
-              {v === "cur" ? "Équipé" : "Objectif BiS"}
+              {v === "cur" ? t("Équipé") : t("Objectif BiS")}
             </span>
           ))}
         </div>
       </div>}
       <div className="doll">
         <div className="dcol left">{LEFT.map(slotEl)}</div>
-        <aside className="portrait" aria-label="Résumé de l'équipement" style={cls ? { ["--cc" as string]: cls.color } : undefined}>
+        <aside className="portrait" aria-label={t("Résumé de l'équipement")} style={cls ? { ["--cc" as string]: cls.color } : undefined}>
           <div className={`crest${c.portraitId ? " has-portrait" : ""}`} aria-hidden="true">
             <Portrait id={c.portraitId} size={104} className="round"
               fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={64} /> : <ClassIcon cls={c.cls} size={64} />) : "?"} />
             {c.portraitId && c.cls && <span className="crest-badge">{c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />}</span>}
           </div>
           <div>
-            <div className="spec">{c.spec1 || c.cls || "Spé ?"}</div>
-            {c.spec2 && <div className="small muted">Off-spec : {c.spec2}</div>}
+            <div className="spec">{c.spec1 || c.cls || t("Spé ?")}</div>
+            {c.spec2 && <div className="small muted">{t("Off-spec : {spec}", { spec: c.spec2 })}</div>}
           </div>
           <div className="pstats">
-            <div className="pstat"><span>BiS obtenus</span><b>{got}/{GEAR_SLOTS.length}</b></div>
+            <div className="pstat"><span>{t("BiS obtenus")}</span><b>{got}/{GEAR_SLOTS.length}</b></div>
             <div className="pbar" aria-hidden="true"><i style={{ width: `${Math.round(got / GEAR_SLOTS.length * 100)}%` }} /></div>
-            <div className="pstat"><span>Niveau d'objet moyen</span><b>{avg}</b></div>
-            <div className="pstat"><span>Épiques visés</span><b>{epics}</b></div>
+            <div className="pstat"><span>{t("Niveau d'objet moyen")}</span><b>{avg}</b></div>
+            <div className="pstat"><span>{t("Épiques visés")}</span><b>{epics}</b></div>
           </div>
-          {canEdit && <div className="small">{bisOnly ? "Clique sur un emplacement pour choisir ton objectif BiS." : "Clique sur un emplacement pour choisir l'objet."}</div>}
+          {canEdit && <div className="small">{bisOnly ? t("Clique sur un emplacement pour choisir ton objectif BiS.") : t("Clique sur un emplacement pour choisir l'objet.")}</div>}
         </aside>
         <div className="dcol right">{RIGHT.map(slotEl)}</div>
         <div className="dweapons">{WEAPONS.map(slotEl)}</div>
@@ -180,26 +184,26 @@ function SlotEditor({ slot, g, items, bisOnly, onSet, onClose }: { slot: Slot; g
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => { ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [slot]);
   return (
-    <div className="gedit" ref={ref} role="region" aria-label={`Modifier : ${SLOT_FR[slot]}`}>
-      <div className="row between"><b>{SLOT_FR[slot]}</b><button type="button" className="btn sm ghost" onClick={onClose}>Fermer</button></div>
+    <div className="gedit" ref={ref} role="region" aria-label={t("Modifier : {slot}", { slot: slotName(slot) })}>
+      <div className="row between"><b>{slotName(slot)}</b><button type="button" className="btn sm ghost" onClick={onClose}>{t("Fermer")}</button></div>
       <div className="grid">
         {!bisOnly && <>
-        <div className="fld"><span className="lbl">Équipé</span>
-          <ItemPicker slot={slot} label={`Équipé : ${SLOT_FR[slot]}`} name={g.cur ?? ""} itemId={g.curId} quality={g.q} compareWith={cur} compareLabel="Par rapport à"
+        <div className="fld"><span className="lbl">{t("Équipé")}</span>
+          <ItemPicker slot={slot} label={t("Équipé : {v}", { v: slotName(slot) })} name={g.cur ?? ""} itemId={g.curId} quality={g.q} compareWith={cur} compareLabel={t("Par rapport à")}
             onChange={p => onSet({ cur: p.name, curId: p.id, ...(p.quality !== undefined && { q: p.quality }) })} />
         </div>
-        <div className="fld"><label htmlFor={`gq-${slot}`}>Qualité (saisie libre)</label>
+        <div className="fld"><label htmlFor={`gq-${slot}`}>{t("Qualité (saisie libre)")}</label>
           <select id={`gq-${slot}`} value={g.q ?? ""} onChange={e => onSet({ q: e.target.value === "" ? null : Number(e.target.value) })}>
-            <option value="">—</option>{ITEM_QUALITIES.map((q, i) => <option key={q} value={i}>{q}</option>)}
+            <option value="">—</option>{itemQualityLabels().slice(0, 6).map((q, i) => <option key={i} value={i}>{q}</option>)}
           </select>
         </div>
         </>}
-        <div className="fld"><span className="lbl">Objectif BiS</span>
-          <ItemPicker slot={slot} label={`Objectif BiS : ${SLOT_FR[slot]}`} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ} compareWith={cur} compareLabel="Gain par rapport à"
+        <div className="fld"><span className="lbl">{t("Objectif BiS")}</span>
+          <ItemPicker slot={slot} label={t("Objectif BiS : {slot}", { slot: slotName(slot) })} name={g.bis ?? ""} itemId={g.bisId} quality={g.bisQ} compareWith={cur} compareLabel={t("Gain par rapport à")}
             onChange={p => onSet({ bis: p.name, bisId: p.id, bisQ: p.quality ?? (p.id ? g.bisQ : null) })} />
         </div>
         <label className="row" style={{ gap: 8 }}>
-          <input type="checkbox" checked={!!g.got} onChange={e => onSet({ got: e.target.checked })} /> BiS obtenu
+          <input type="checkbox" checked={!!g.got} onChange={e => onSet({ got: e.target.checked })} /> {t("BiS obtenu")}
         </label>
       </div>
     </div>
@@ -210,7 +214,7 @@ function ItemTip({ slot, rect, g, view, items, owned }: { slot: Slot; rect: DOMR
   const shown = shownFor(g, view, items);
   if (!shown) return null;
   const other = view === "cur" ? g.bis?.trim() : null;
-  const status = g.got ? <div className="t-ok">✓ BiS obtenu</div> : other && other !== shown.name ? <div className="t-warn">Objectif : {other}</div> : null;
+  const status = g.got ? <div className="t-ok">{t("✓ BiS obtenu")}</div> : other && other !== shown.name ? <div className="t-warn">{t("Objectif : {item}", { item: other })}</div> : null;
   // Objet de la base : infobulle complète, comparée à l'objectif (vue Équipé) ou à l'objet équipé (vue BiS)
   if (shown.item) {
     const cur = g.curId ? items[g.curId] : undefined, bis = g.bisId ? items[g.bisId] : undefined;
@@ -218,15 +222,15 @@ function ItemTip({ slot, rect, g, view, items, owned }: { slot: Slot; rect: DOMR
     return (
       <FloatingTip rect={rect}>
         <ItemTooltipBody item={shown.item} owned={owned} compare={compare}
-          compareLabel={view === "cur" ? "Par rapport à l'objectif BiS" : "Gain par rapport à l'équipé"} note={status} />
+          compareLabel={view === "cur" ? t("Par rapport à l'objectif BiS") : t("Gain par rapport à l'équipé")} note={status} />
       </FloatingTip>
     );
   }
   return (
     <FloatingTip rect={rect}>
       <div className={`t-name${shown.quality != null ? ` tq${shown.quality}` : ""}`}>{shown.name}</div>
-      <div className="t-row">{SLOT_FR[slot]}</div>
-      <div className="t-src">Saisie libre (pas encore choisi dans la base)</div>
+      <div className="t-row">{slotName(slot)}</div>
+      <div className="t-src">{t("Saisie libre (pas encore choisi dans la base)")}</div>
       {status}
     </FloatingTip>
   );

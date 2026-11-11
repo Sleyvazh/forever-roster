@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ApiError, get, post, type Character } from "../api";
 import { useGameText } from "../gameText";
 import { meQuery } from "../me";
+import { dateLocale, N, t, tn, tx } from "../i18n";
 
 /**
  * R2b (Roster) : import des persos du compte Battle.net. Battle.net demande l'accord (liste des persos WoW),
@@ -12,14 +13,14 @@ import { meQuery } from "../me";
 
 /** « Il y a 5 min » : dernière lecture chez Blizzard. */
 export function bnetAge(at?: string | null) {
-  if (!at) return "jamais lu chez Blizzard";
+  if (!at) return t("jamais lu chez Blizzard");
   const min = Math.floor((Date.now() - new Date(at).getTime()) / 60_000);
-  if (min < 1) return "lu à l'instant";
-  if (min < 60) return `lu il y a ${min} min`;
+  if (min < 1) return t("lu à l'instant");
+  if (min < 60) return t("lu il y a {n} min", { n: min });
   const h = Math.floor(min / 60);
-  if (h < 24) return `lu il y a ${h} h`;
+  if (h < 24) return t("lu il y a {n} h", { n: h });
   const d = Math.floor(h / 24);
-  return d === 1 ? "lu hier" : `lu il y a ${d} jours`;
+  return d === 1 ? t("lu hier") : t("lu il y a {n} jours", { n: d });
 }
 
 export function useBnetEnabled() {
@@ -35,26 +36,26 @@ export function BnetImportButton({ small }: { small?: boolean }) {
   const go = async () => {
     setError(null); setBusy(true);
     try { const r = await post<{ url: string }>("/auth/battlenet/import"); window.location.assign(r.url); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Battle.net ne répond pas."); setBusy(false); }
+    catch (e) { setError(e instanceof ApiError ? e.message : t("Battle.net ne répond pas.")); setBusy(false); }
   };
   return (
     <>
-      <button type="button" className={`btn bnet${small ? " sm" : ""}`} disabled={busy} onClick={() => void go()}>Importer depuis Battle.net</button>
+      <button type="button" className={`btn bnet${small ? " sm" : ""}`} disabled={busy} onClick={() => void go()}>{t("Importer depuis Battle.net")}</button>
       {error && <span className="warnmsg small" role="alert">{error}</span>}
     </>
   );
 }
 
 const RETURN_MSG: Record<string, string> = {
-  error: "Battle.net n'a pas donné la liste de tes persos. Réessaie dans un instant ; si ça recommence, vérifie que tu as bien accepté le partage des persos.",
-  session: "Ta session a changé pendant le passage par Battle.net. Reconnecte-toi puis relance l'import.",
+  error: N("Battle.net n'a pas donné la liste de tes persos. Réessaie dans un instant ; si ça recommence, vérifie que tu as bien accepté le partage des persos."),
+  session: N("Ta session a changé pendant le passage par Battle.net. Reconnecte-toi puis relance l'import."),
 };
 
 interface ImportResult { created: number; linked: number; failed: { name: string; reason: string }[]; characters: Character[] }
 
 /** Liste de Battle.net : cases à cocher (niveau 90 cochés), puis import. `mode` : retour de Battle.net (?bnet=…). */
 export function BnetImportPanel({ mode, onClose, onImported }: { mode: string; onClose: () => void; onImported: (chars: Character[]) => void }) {
-  const t = useGameText();
+  const gt = useGameText();
   const qc = useQueryClient();
   const listQ = useQuery({
     queryKey: ["bnet-import"], enabled: mode === "import", retry: false, staleTime: Infinity,
@@ -72,8 +73,8 @@ export function BnetImportPanel({ mode, onClose, onImported }: { mode: string; o
 
   if (mode !== "import") return (
     <div className="alert error stack" role="alert" style={{ gap: 8 }}>
-      <span>{RETURN_MSG[mode] ?? RETURN_MSG.error}</span>
-      <span className="row"><BnetImportButton small /><button type="button" className="btn ghost sm" onClick={onClose}>Fermer</button></span>
+      <span>{t(RETURN_MSG[mode] ?? RETURN_MSG.error!)}</span>
+      <span className="row"><BnetImportButton small /><button type="button" className="btn ghost sm" onClick={onClose}>{t("Fermer")}</button></span>
     </div>
   );
 
@@ -87,43 +88,43 @@ export function BnetImportPanel({ mode, onClose, onImported }: { mode: string; o
       await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["bnet-import"] }), qc.invalidateQueries({ queryKey: ["week"] })]);
       setPicked(new Set());
       onImported(r.characters);
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Import impossible."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Import impossible.")); }
     finally { setBusy(false); }
   };
-  const until = listQ.data ? new Date(listQ.data.expiresAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+  const until = listQ.data ? new Date(listQ.data.expiresAt).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" }) : "";
 
   return (
     <section className="panel pad stack bi" aria-labelledby="bi-title">
       <div className="row between">
-        <h3 id="bi-title" style={{ margin: 0 }}>Persos de ton compte Battle.net</h3>
-        <button type="button" className="btn ghost sm" onClick={onClose}>Fermer</button>
+        <h3 id="bi-title" style={{ margin: 0 }}>{t("Persos de ton compte Battle.net")}</h3>
+        <button type="button" className="btn ghost sm" onClick={onClose}>{t("Fermer")}</button>
       </div>
-      {listQ.isLoading && <p className="muted" style={{ margin: 0 }}>Chargement…</p>}
+      {listQ.isLoading && <p className="muted" style={{ margin: 0 }}>{t("Chargement…")}</p>}
       {listQ.error && (
         <div className="stack" style={{ gap: 8 }}>
-          <p style={{ margin: 0 }}>{listQ.error instanceof ApiError ? listQ.error.message : "Liste indisponible."}</p>
+          <p style={{ margin: 0 }}>{listQ.error instanceof ApiError ? listQ.error.message : t("Liste indisponible.")}</p>
           <span><BnetImportButton small /></span>
         </div>
       )}
       {result && (
         <div className="alert ok" role="status">
-          {[result.created && `${result.created} perso${result.created > 1 ? "s" : ""} importé${result.created > 1 ? "s" : ""}`,
-            result.linked && `${result.linked} fiche${result.linked > 1 ? "s" : ""} déjà là, reliée${result.linked > 1 ? "s" : ""} à Battle.net`].filter(Boolean).join(", ")}.
-          {result.failed.length > 0 && <> Niveau d'objet pas lu pour {result.failed.map(f => `${f.name} (${f.reason})`).join(", ")}.</>}
+          {[result.created && tn(result.created, "{n} perso importé", "{n} persos importés"),
+            result.linked && tn(result.linked, "{n} fiche déjà là, reliée à Battle.net", "{n} fiches déjà là, reliées à Battle.net")].filter(Boolean).join(", ")}.
+          {result.failed.length > 0 && <> {t("Niveau d'objet pas lu pour {names}.", { names: result.failed.map(f => `${f.name} (${f.reason})`).join(", ") })}</>}
         </div>
       )}
       {listQ.data && (<>
-        <p className="hint" style={{ margin: 0 }}>Coche les persos à ajouter à Roster. Ceux au niveau {RETAIL_MAX_LEVEL} sont cochés ; les autres, si tu veux. Liste valable jusqu'à {until}.</p>
-        {list.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun perso de WoW Retail sur ce compte (région Europe).</p> : (
+        <p className="hint" style={{ margin: 0 }}>{tx("Coche les persos à ajouter à Roster. Ceux au niveau {v} sont cochés ; les autres, si tu veux. Liste valable jusqu'à {until}.", { v: RETAIL_MAX_LEVEL, until: until })}</p>
+        {list.length === 0 ? <p className="muted" style={{ margin: 0 }}>{t("Aucun perso de WoW Retail sur ce compte (région Europe).")}</p> : (
           <ul className="bi-list" role="list">
             {list.map(c => (
               <li key={c.id}>
-                <label className={`bi-row${c.existing ? " here" : ""}`} style={{ ["--cc" as string]: t.color(c.cls) ?? "var(--line-2)" }}>
+                <label className={`bi-row${c.existing ? " here" : ""}`} style={{ ["--cc" as string]: gt.color(c.cls) ?? "var(--line-2)" }}>
                   <input type="checkbox" checked={sel.has(c.id)} onChange={() => toggle(c.id)} />
                   <span className="lvl-pill num">{c.level}</span>
                   <span className="bi-name">{c.name}</span>
-                  <span className="bi-sub">{t.cls(c.cls)} · {c.realm}</span>
-                  {c.existing && <span className="tag" title="Une fiche de Roster porte déjà ce nom sur ce royaume : l'importer la relie à Battle.net">déjà sur Roster</span>}
+                  <span className="bi-sub">{gt.cls(c.cls)} · {c.realm}</span>
+                  {c.existing && <span className="tag" title={t("Une fiche de Roster porte déjà ce nom sur ce royaume : l'importer la relie à Battle.net")}>{t("déjà sur Roster")}</span>}
                 </label>
               </li>
             ))}
@@ -132,9 +133,9 @@ export function BnetImportPanel({ mode, onClose, onImported }: { mode: string; o
         {error && <div className="alert error" role="alert">{error}</div>}
         <div className="row">
           <button type="button" className="btn primary" disabled={busy || sel.size === 0} onClick={() => void run()}>
-            {sel.size ? `Importer ${sel.size} perso${sel.size > 1 ? "s" : ""}` : "Importer"}
+            {sel.size ? tn(sel.size, "Importer {n} perso", "Importer {n} persos") : t("Importer")}
           </button>
-          <span className="hint">Niveau, niveau d'objet et spé active lus chez Blizzard ; la spé active devient la spé principale d'un nouveau perso.</span>
+          <span className="hint">{t("Niveau, niveau d'objet et spé active lus chez Blizzard ; la spé active devient la spé principale d'un nouveau perso.")}</span>
         </div>
       </>)}
     </section>
@@ -150,8 +151,8 @@ export function useBnetRefresh(onDone: (c: Character) => void) {
     try {
       const r = await post<{ character: Character }>(`/battlenet/characters/${id}/refresh`);
       onDone(r.character);
-      setMsg({ ok: true, text: "Mis à jour." });
-    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Blizzard ne répond pas." }); }
+      setMsg({ ok: true, text: t("Mis à jour.") });
+    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : t("Blizzard ne répond pas.") }); }
     finally { setBusy(false); }
   };
   return { busy, msg, run };
@@ -167,17 +168,17 @@ export function BnetGroupRefresh({ groupId, onDone }: { groupId: string; onDone:
     setBusy(true); setMsg(null);
     try {
       const r = await post<{ updated: number; fresh: number; failed: { name: string; reason: string }[] }>(`/battlenet/groups/${groupId}/refresh`);
-      const parts = [`${r.updated} perso${r.updated > 1 ? "s" : ""} mis à jour`];
-      if (r.fresh) parts.push(`${r.fresh} déjà lu${r.fresh > 1 ? "s" : ""} il y a moins de 10 min`);
-      setMsg({ ok: !r.failed.length, text: `${parts.join(", ")}.${r.failed.length ? ` Pas lus : ${r.failed.map(f => `${f.name} (${f.reason})`).join(", ")}.` : ""}` });
+      const parts = [tn(r.updated, "{n} perso mis à jour", "{n} persos mis à jour")];
+      if (r.fresh) parts.push(tn(r.fresh, "{n} déjà lu il y a moins de 10 min", "{n} déjà lus il y a moins de 10 min"));
+      setMsg({ ok: !r.failed.length, text: `${parts.join(", ")}.${r.failed.length ? ` ${t("Pas lus : {v}.", { v: r.failed.map(f => `${f.name} (${f.reason})`).join(", ") })}` : ""}` });
       onDone();
-    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : "Blizzard ne répond pas." }); }
+    } catch (e) { setMsg({ ok: false, text: e instanceof ApiError ? e.message : t("Blizzard ne répond pas.") }); }
     finally { setBusy(false); }
   };
   return (
     <div className="row bi-group">
-      <button type="button" className="btn sm" disabled={busy} onClick={() => void run()}>{busy ? "Lecture chez Blizzard…" : "Mettre à jour la guilde"}</button>
-      <span className="hint">Niveau, niveau d'objet et spé active de chaque perso de la guilde, lus chez Blizzard.</span>
+      <button type="button" className="btn sm" disabled={busy} onClick={() => void run()}>{busy ? t("Lecture chez Blizzard…") : t("Mettre à jour la guilde")}</button>
+      <span className="hint">{t("Niveau, niveau d'objet et spé active de chaque perso de la guilde, lus chez Blizzard.")}</span>
       {msg && <span className={`small ${msg.ok ? "muted" : "warnmsg"}`} role="status" style={{ flexBasis: "100%" }}>{msg.text}</span>}
     </div>
   );

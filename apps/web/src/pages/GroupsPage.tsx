@@ -98,11 +98,11 @@ export function GroupsPage() {
       {isLoading ? <p className="muted">Chargement…</p> : groups.length === 0 ? (
         <div className="g-empty">
           <section className="panel pad stack">
-            <h2>Rejoindre une guilde</h2>
+            <h2>{t("Rejoindre une guilde")}</h2>
             <p className="muted" style={{ margin: 0 }}>Demande le lien d'invitation à un officier de ta guilde, puis ouvre-le : tu arrives directement dans la guilde du site.</p>
           </section>
           <section className="panel pad stack">
-            <h2>Créer ta guilde</h2>
+            <h2>{t("Créer ta guilde")}</h2>
             <p className="muted" style={{ margin: 0 }}>Pour ta guilde du jeu ou ton groupe de raid : raids, compos, inscriptions, artisans, annonces Discord.</p>
             <CreateForm />
           </section>

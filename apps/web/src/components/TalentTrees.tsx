@@ -5,6 +5,7 @@ import { get } from "../api";
 import { useGameVersion } from "./GameData";
 import { SpecIcon } from "./Icons";
 import { FloatingTip, iconUsable, useIconFailures } from "./ItemTooltip";
+import { colon, t, tx } from "../i18n";
 
 export type TreeView = "gauges" | "grid";
 export interface Talent { id: number; tree: number; tier: number; col: number; linkIndex: number; maxRank: number; name: string; icon: string | null; prereq: number | null; description: string }
@@ -22,14 +23,14 @@ export function useTalentData(cls: string, enabled = true) {
 export function ranksFrom(talents: Talent[], source: { blocks?: readonly string[] | null; nodes?: { id: number; rank: number }[] | null }) {
   const ranks = new Map<number, number>();
   if (source.blocks) {
-    for (const t of talents) ranks.set(t.id, Number(source.blocks[t.tree]?.[t.linkIndex] ?? 0));
+    for (const tt of talents) ranks.set(tt.id, Number(source.blocks[tt.tree]?.[tt.linkIndex] ?? 0));
     // Un lien qui ne colle pas aux arbres (rang au-delà du maximum, trop de chiffres) n'est pas utilisé
-    const fits = source.blocks.every((b, tree) => b.length <= talents.filter(t => t.tree === tree).length)
-      && talents.every(t => (ranks.get(t.id) ?? 0) <= t.maxRank);
+    const fits = source.blocks.every((b, tree) => b.length <= talents.filter(tt => tt.tree === tree).length)
+      && talents.every(tt => (ranks.get(tt.id) ?? 0) <= tt.maxRank);
     return fits ? ranks : null;
   }
   if (source.nodes?.length) {
-    const known = new Set(talents.map(t => t.id));
+    const known = new Set(talents.map(tt => tt.id));
     for (const n of source.nodes) if (known.has(n.id)) ranks.set(n.id, n.rank);
     return ranks.size ? ranks : null;
   }
@@ -64,7 +65,7 @@ export function TalentTrees({ cls, points, mainTree, view = "gauges", ranks, tal
           return (
             <div key={name} className={`tt-col${main ? " main" : ""}`}>
               <div className="tt-colhead"><TreeIcon cls={cls} tree={i} size={18} /><span className="tt-name">{name}</span><b className="num tt-pts">{p}</b></div>
-              <TreeGrid talents={talents!.filter(t => t.tree === i)} ranks={ranks!} spent={p} />
+              <TreeGrid talents={talents!.filter(tt => tt.tree === i)} ranks={ranks!} spent={p} />
             </div>
           );
         }
@@ -72,10 +73,10 @@ export function TalentTrees({ cls, points, mainTree, view = "gauges", ranks, tal
           <div key={name} className={`tt${main ? " main" : ""}${p ? "" : " tt-empty"}`}>
             <TreeIcon cls={cls} tree={i} size={20} />
             <span className="tt-name">{name}</span>
-            <span className="tt-gauge" role="img" aria-label={`${p} points sur 51 dans ${name}, palier ${Math.min(7, Math.floor(p / 5) + 1)}${p >= 31 ? ", talent ultime débloqué" : ""}`}
-              title={p >= 31 ? "Talent ultime débloqué (31 points)" : `Palier ${Math.min(7, Math.floor(p / 5) + 1)} atteint`}>
+            <span className="tt-gauge" role="img" aria-label={`${p} points sur 51 dans ${name}, palier ${Math.min(7, Math.floor(p / 5) + 1)}${p >= 31 ? t(", talent ultime débloqué") : ""}`}
+              title={p >= 31 ? t("Talent ultime débloqué (31 points)") : t("Palier {n} atteint", { n: Math.min(7, Math.floor(p / 5) + 1) })}>
               <i style={{ width: `${Math.min(100, p / 51 * 100)}%` }} />
-              {[5, 10, 15, 20, 25, 30].map(t => <span key={t} className="tick" style={{ left: `${t / 51 * 100}%` }} />)}
+              {[5, 10, 15, 20, 25, 30].map(tt => <span key={tt} className="tick" style={{ left: `${tt / 51 * 100}%` }} />)}
               <span className={`cap${p >= 31 ? " on" : ""}`} style={{ left: `${31 / 51 * 100}%` }} />
             </span>
             <b className="num tt-pts">{p}</b>
@@ -92,37 +93,37 @@ const CELL = 34, GAP = 8;
 function TreeGrid({ talents, ranks, spent }: { talents: Talent[]; ranks: Map<number, number>; spent: number }) {
   useIconFailures();
   const [tip, setTip] = useState<{ t: Talent; rect: DOMRect } | null>(null);
-  const rows = Math.max(7, ...talents.map(t => t.tier + 1));
-  const byId = new Map(talents.map(t => [t.id, t]));
-  const rank = (t: Talent) => Math.min(t.maxRank, ranks.get(t.id) ?? 0);
+  const rows = Math.max(7, ...talents.map(tt => tt.tier + 1));
+  const byId = new Map(talents.map(tt => [tt.id, tt]));
+  const rank = (tt: Talent) => Math.min(tt.maxRank, ranks.get(tt.id) ?? 0);
   const center = (col: number, tier: number) => ({ x: col * (CELL + GAP) + CELL / 2, y: tier * (CELL + GAP) + CELL / 2 });
   const width = 4 * CELL + 3 * GAP, height = rows * CELL + (rows - 1) * GAP;
-  const show = (t: Talent) => (e: React.SyntheticEvent<HTMLElement>) => setTip({ t, rect: e.currentTarget.getBoundingClientRect() });
+  const show = (tt: Talent) => (e: React.SyntheticEvent<HTMLElement>) => setTip({ t: tt, rect: e.currentTarget.getBoundingClientRect() });
   return (
     <div className="tg" style={{ width, height }}>
       <svg className="tg-arrows" width={width} height={height} aria-hidden="true">
-        {talents.filter(t => t.prereq && byId.has(t.prereq)).map(t => {
-          const a = center(byId.get(t.prereq!)!.col, byId.get(t.prereq!)!.tier), b = center(t.col, t.tier);
-          return <line key={t.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={rank(t) > 0 ? "on" : ""} />;
+        {talents.filter(tt => tt.prereq && byId.has(tt.prereq)).map(tt => {
+          const a = center(byId.get(tt.prereq!)!.col, byId.get(tt.prereq!)!.tier), b = center(tt.col, tt.tier);
+          return <line key={tt.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={rank(tt) > 0 ? "on" : ""} />;
         })}
       </svg>
-      {talents.map(t => {
-        const r = rank(t);
+      {talents.map(tt => {
+        const r = rank(tt);
         return (
-          <span key={t.id} className={`tg-slot${r ? " on" : ""}${r && r >= t.maxRank ? " max" : ""}${!r && spent < t.tier * 5 ? " locked" : ""}`} tabIndex={0}
-            style={{ left: t.col * (CELL + GAP), top: t.tier * (CELL + GAP) }} aria-label={`${t.name} : ${r}/${t.maxRank}`}
-            onMouseEnter={show(t)} onFocus={show(t)} onMouseLeave={() => setTip(null)} onBlur={() => setTip(null)}>
-            {iconUsable(t.icon ?? undefined) ? <img src={`/icons/items/${t.icon}.jpg`} alt="" loading="lazy" decoding="async" /> : <span className="tg-ph">{t.name.slice(0, 2)}</span>}
-            <b className="num">{r}/{t.maxRank}</b>
+          <span key={tt.id} className={`tg-slot${r ? " on" : ""}${r && r >= tt.maxRank ? " max" : ""}${!r && spent < tt.tier * 5 ? " locked" : ""}`} tabIndex={0}
+            style={{ left: tt.col * (CELL + GAP), top: tt.tier * (CELL + GAP) }} aria-label={`${tt.name}${colon()}${r}/${tt.maxRank}`}
+            onMouseEnter={show(tt)} onFocus={show(tt)} onMouseLeave={() => setTip(null)} onBlur={() => setTip(null)}>
+            {iconUsable(tt.icon ?? undefined) ? <img src={`/icons/items/${tt.icon}.jpg`} alt="" loading="lazy" decoding="async" /> : <span className="tg-ph">{tt.name.slice(0, 2)}</span>}
+            <b className="num">{r}/{tt.maxRank}</b>
           </span>
         );
       })}
       {tip && (
         <FloatingTip rect={tip.rect}>
           <div className="t-name">{tip.t.name}</div>
-          <div className="t-row">Rang {rank(tip.t)}/{tip.t.maxRank}</div>
-          {rank(tip.t) === 0 && tip.t.tier > 0 && <div className="t-dim">Requiert {tip.t.tier * 5} points dans l'arbre</div>}
-          {rank(tip.t) === 0 && tip.t.prereq && byId.get(tip.t.prereq) && <div className="t-dim">Requiert {byId.get(tip.t.prereq)!.name}</div>}
+          <div className="t-row">{t("Rang {r}/{max}", { r: rank(tip.t), max: tip.t.maxRank })}</div>
+          {rank(tip.t) === 0 && tip.t.tier > 0 && <div className="t-dim">{tx("Requiert {v} points dans l'arbre", { v: tip.t.tier * 5 })}</div>}
+          {rank(tip.t) === 0 && tip.t.prereq && byId.get(tip.t.prereq) && <div className="t-dim">{t("Requiert {name}", { name: byId.get(tip.t.prereq)!.name })}</div>}
           {tip.t.description && <div className="t-yellow" style={{ marginTop: 6 }}>{tip.t.description}</div>}
         </FloatingTip>
       )}

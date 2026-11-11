@@ -6,7 +6,7 @@ import { ApiError, get, put, type Character } from "../api";
 import { useMe } from "../auth";
 import { useViewPref } from "../prefs";
 import { RoleTag } from "./RoleIcon";
-import { dateLocale, t, tn, tx } from "../i18n";
+import { dateLocale, isMany, t, tn, tx } from "../i18n";
 import { signupLabel } from "../i18n/game";
 
 /* ---------- Données (GET /api/week) ---------- */
@@ -111,7 +111,7 @@ function QuickSignup({ raid, chars }: { raid: WeekRaid; chars: Character[] }) {
 
 const Counts = ({ r }: { r: WeekRaid }) => (
   <span className="wk-counts">
-    {tx(r.counts.coming > 1 ? "{n} viennent" : "{n} vient", { n: <b>{r.counts.coming}</b> })} · <RoleTag plain role="Tank" text={tn(r.counts.tank, "{n} tank", "{n} tanks")}><b>{r.counts.tank}</b></RoleTag> · <RoleTag plain role="Heal" text={tn(r.counts.heal, "{n} heal", "{n} heals")}><b>{r.counts.heal}</b></RoleTag> · <RoleTag plain role="DPS" text={`${r.counts.dps} DPS`}><b>{r.counts.dps}</b></RoleTag>
+    {tx(isMany(r.counts.coming) ? "{n} viennent" : "{n} vient", { n: <b>{r.counts.coming}</b> })} · <RoleTag plain role="Tank" text={tn(r.counts.tank, "{n} tank", "{n} tanks")}><b>{r.counts.tank}</b></RoleTag> · <RoleTag plain role="Heal" text={tn(r.counts.heal, "{n} heal", "{n} heals")}><b>{r.counts.heal}</b></RoleTag> · <RoleTag plain role="DPS" text={`${r.counts.dps} DPS`}><b>{r.counts.dps}</b></RoleTag>
     {r.counts.tentative > 0 && <> · {tx("{n} peut-être", { n: <b>{r.counts.tentative}</b> })}</>}
   </span>
 );

@@ -3,7 +3,7 @@ import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { useGameText } from "../gameText";
 import { daysUntil, dayMonth, dayTimeShort, hourMin, longDayTime, milestoneText, placeSuffix, raceDateText, useGuildRace } from "../guild";
 import { ClassDot } from "./Outings";
-import { t, tn, tx } from "../i18n";
+import { colon, isMany, t, tn, tx } from "../i18n";
 
 /**
  * Course au 60 (Forever, lot « Guilde », maquette du 15/10, écran 3) : podium « Premiers 60 », premiers par classe et
@@ -82,7 +82,7 @@ function RankRow({ rank, tie, c, me, sub, alts, open, onToggle, className = "" }
       <span className={`rk-last${last.est ? " est" : ""}`} role="cell">{last.text}</span>
       {marks.map(m => <span key={m.lv} className={`rk-ms${m.none ? " none" : m.est ? " est" : ""}`} role="cell">{m.text}</span>)}
       <span className="rk-meta">
-        {tx(c.weekGain > 1 ? "{gain} niveaux cette semaine · dernière : {last}" : "{gain} niveau cette semaine · dernière : {last}", { gain: <b>+{c.weekGain}</b>, last: <span className={last.est ? "ital" : ""}>{last.text}</span> })}
+        {tx(isMany(c.weekGain) ? "{gain} niveaux cette semaine · dernière : {last}" : "{gain} niveau cette semaine · dernière : {last}", { gain: <b>+{c.weekGain}</b>, last: <span className={last.est ? "ital" : ""}>{last.text}</span> })}
         {marks.some(m => !m.none) && <><br />{marks.filter(m => !m.none).map((m, i) => <Fragment key={m.lv}>{i > 0 && " · "}<span className="ms">{m.lv} {m.text}</span></Fragment>)}</>}
       </span>
     </div>
@@ -110,7 +110,7 @@ export function Podium({ places, mini }: { places: RacePodiumPlace[]; mini?: boo
         // Déjà 60 au premier relevé (guilde liée en cours de course) : ni rang ni date, l'ordre n'est pas connu
         const seen = !!p.reached?.seen;
         return (
-          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? t("déjà 60 au premier relevé : {name}", { name: p.char.name }) : `${p.place}${placeSuffix(p.place)} : ${p.char.name}`}>
+          <div key={pos} className={`pod-step p${pos}`} role="listitem" aria-label={seen ? t("déjà 60 au premier relevé : {name}", { name: p.char.name }) : `${p.place}${placeSuffix(p.place)}${colon()}${p.char.name}`}>
             <ClassDot cls={p.char.cls} size={mini ? "md" : "lg"} />
             <CharName name={p.char.name} cls={p.char.cls} as="span" />
             <span className={`pod-lv${done ? " done" : ""}`}>{done ? `${MAX_LEVEL} ✓` : p.char.xpPct !== null ? `${p.char.level} · ${t("{n} %", { n: p.char.xpPct })}` : p.char.level}</span>

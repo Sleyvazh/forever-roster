@@ -1,11 +1,12 @@
 import { FloatingTip, ItemHover, ItemIcon, ItemTooltipBody } from "./ItemTooltip";
-import { ITEM_QUALITIES, itemLinks, PROFESSION_SKILL_LINES, type GEAR_SLOTS } from "@forever/game-data";
+import { itemLinks, PROFESSION_SKILL_LINES, type GEAR_SLOTS } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ApiError, get, put, type GameItem, type GameRecipe, type GameStatus, type RecipeStatus } from "../api";
 import { ExternalLink } from "./ExternalLink";
+import { t, tn, tx } from "../i18n";
+import { itemQualityLabel } from "../i18n/game";
 
-const QUALITY_LABEL = [...ITEM_QUALITIES, "Artefact", "Héritage"];
 
 /** État de la base du jeu (importée des tables du client). Tant qu'elle est vide, on garde la saisie libre. */
 export function useGameStatus() {
@@ -25,7 +26,7 @@ export function useGameVersion() {
 export const CRAFTING = new Set(["Alchemy", "Blacksmithing", "Enchanting", "Engineering", "Leatherworking", "Mining", "Tailoring", "Cooking", "First Aid"]);
 
 const ExtLink = ({ id }: { id: number }) => (
-  <ExternalLink className="ext" href={itemLinks(id).wowhead} title="Voir sur Wowhead" aria-label="Voir sur Wowhead">↗</ExternalLink>
+  <ExternalLink className="ext" href={itemLinks(id).wowhead} title={t("Voir sur Wowhead")} aria-label={t("Voir sur Wowhead")}>↗</ExternalLink>
 );
 
 /* ---------------------------------------------------------------- Patrons */
@@ -101,7 +102,7 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
       await put(`/characters/${characterId}/recipes/${spellId}`, { status: next });
       void qc.invalidateQueries({ queryKey: ["item-sources"] }); // « Connu par » dans les infobulles
     }
-    catch (e) { qc.setQueryData(key, before); setError(e instanceof ApiError ? e.message : "Enregistrement impossible."); }
+    catch (e) { qc.setQueryData(key, before); setError(e instanceof ApiError ? e.message : t("Enregistrement impossible.")); }
   };
 
   const noData = status.data && !status.data.recipes;
@@ -109,36 +110,36 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
   return (
     <details className="recipes" onToggle={e => setOpen((e.target as HTMLDetailsElement).open)}>
       <summary>
-        <span>Patrons</span>
+        <span>{t("Patrons")}</span>
         <span className="small muted">
-          {mine.data ? <><b className="num">{known}</b> connu{known > 1 ? "s" : ""} · <b className="num">{wanted}</b> recherché{wanted > 1 ? "s" : ""}</> : "Afficher"}
+          {mine.data ? <>{tx(tn(known, "{k} connu", "{k} connus"), { k: <b className="num">{known}</b> })} · {tx(tn(wanted, "{w} recherché", "{w} recherchés"), { w: <b className="num">{wanted}</b> })}</> : t("Afficher")}
         </span>
       </summary>
       <div className="recipes-body">
-        {noData && <p className="hint">La base de données du jeu n'est pas encore importée sur ce serveur.</p>}
-        {list.isLoading && <p className="hint">Chargement des recettes…</p>}
-        {list.error && <p className="hint">Impossible de charger les recettes.</p>}
+        {noData && <p className="hint">{t("La base de données du jeu n'est pas encore importée sur ce serveur.")}</p>}
+        {list.isLoading && <p className="hint">{t("Chargement des recettes…")}</p>}
+        {list.error && <p className="hint">{t("Impossible de charger les recettes.")}</p>}
         {list.data && (
           <>
             {editable && (
               <div className="rfilters">
-                <input type="search" aria-label="Chercher une recette" placeholder="Chercher (recette ou objet)…" value={q} onChange={e => setQ(e.target.value)} />
-                <select aria-label="Source" value={source} onChange={e => setSource(e.target.value as Source)}>
-                  <option value="item">Patrons (objets)</option><option value="trainer">Entraîneur</option><option value="all">Toutes les recettes</option>
+                <input type="search" aria-label={t("Chercher une recette")} placeholder={t("Chercher (recette ou objet)…")} value={q} onChange={e => setQ(e.target.value)} />
+                <select aria-label={t("Source")} value={source} onChange={e => setSource(e.target.value as Source)}>
+                  <option value="item">{t("Patrons (objets)")}</option><option value="trainer">{t("Entraîneur")}</option><option value="all">{t("Toutes les recettes")}</option>
                 </select>
-                <select className="rf-extra" aria-label="Type d'objet" value={category} onChange={e => setCategory(e.target.value)}>
-                  <option value="">Tous les types</option>{categories.map(c => <option key={c}>{c}</option>)}
+                <select className="rf-extra" aria-label={t("Type d'objet")} value={category} onChange={e => setCategory(e.target.value)}>
+                  <option value="">{t("Tous les types")}</option>{categories.map(c => <option key={c}>{c}</option>)}
                 </select>
-                <select className="rf-extra" aria-label="Rareté" value={quality} onChange={e => setQuality(e.target.value)}>
-                  <option value="">Toutes raretés</option>{qualities.map(v => <option key={v} value={v}>{QUALITY_LABEL[v]}</option>)}
+                <select className="rf-extra" aria-label={t("Rareté")} value={quality} onChange={e => setQuality(e.target.value)}>
+                  <option value="">{t("Toutes raretés")}</option>{qualities.map(v => <option key={v} value={v}>{itemQualityLabel(v)}</option>)}
                 </select>
-                <select aria-label="Affichage" value={view} onChange={e => setView(e.target.value as View)}>
-                  <option value="all">Tout</option><option value="marked">Cochés ou recherchés</option><option value="known">Connus</option><option value="wanted">Recherchés</option><option value="none">Non cochés</option>
+                <select aria-label={t("Affichage")} value={view} onChange={e => setView(e.target.value as View)}>
+                  <option value="all">{t("Tout")}</option><option value="marked">{t("Cochés ou recherchés")}</option><option value="known">{t("Connus")}</option><option value="wanted">{t("Recherchés")}</option><option value="none">{t("Non cochés")}</option>
                 </select>
               </div>
             )}
             {error && <div className="alert error" role="alert">{error}</div>}
-            {!filtered.length ? <p className="hint">{editable ? "Aucune recette ne correspond aux filtres." : "Aucun patron renseigné."}</p> : (
+            {!filtered.length ? <p className="hint">{editable ? t("Aucune recette ne correspond aux filtres.") : t("Aucun patron renseigné.")}</p> : (
               <ul className="rlist">
                 {filtered.slice(0, shown).map(r => {
                   const made = r.createdItemId ? items[r.createdItemId] : undefined;
@@ -155,8 +156,8 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                           {r.enchant && <span className="muted small"> · {r.enchant}</span>}
                         </div>
                         <div className="rmeta">
-                          <span className={tooHigh ? "warn" : ""}>Requiert <span className="num">{r.reqSkill}</span></span>
-                          <span>{r.fromItem ? "Patron" : "Entraîneur"}</span>
+                          <span className={tooHigh ? "warn" : ""}>{tx("Requiert {n}", { n: <span className="num">{r.reqSkill}</span> })}</span>
+                          <span>{r.fromItem ? t("Patron") : t("Entraîneur")}</span>
                           {r.reagents.length > 0 && (
                             <span className="reag">{r.reagents.map((x, k) => (
                               <span key={x.id}>{k > 0 && ", "}<ItemHover item={items[x.id]} link>{x.n}× {items[x.id]?.name ?? `#${x.id}`}</ItemHover></span>
@@ -164,13 +165,13 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
                           )}
                         </div>
                       </div>
-                      <div className="rmarks" role="group" aria-label={`Statut de ${r.name}`}>
+                      <div className="rmarks" role="group" aria-label={t("Statut de {name}", { name: r.name })}>
                         <button type="button" className={`rmark known${mark === "known" ? " on" : ""}`} aria-pressed={mark === "known"}
-                          aria-label={`Je connais ${r.name}`} title={mark === "known" ? "Décocher" : "Je connais ce patron"}
-                          onClick={() => void setMark(r.spellId, mark === "known" ? null : "known")}>{mark === "known" ? "✓ " : ""}Connu</button>
+                          aria-label={t("Je connais {name}", { name: r.name })} title={mark === "known" ? t("Décocher") : t("Je connais ce patron")}
+                          onClick={() => void setMark(r.spellId, mark === "known" ? null : "known")}>{mark === "known" ? "✓ " : ""}{t("Connu")}</button>
                         <button type="button" className={`rmark wanted${mark === "wanted" ? " on" : ""}`} aria-pressed={mark === "wanted"}
-                          aria-label={`Je recherche ${r.name}`} title={mark === "wanted" ? "Retirer des recherchés" : "Je recherche ce patron"}
-                          onClick={() => void setMark(r.spellId, mark === "wanted" ? null : "wanted")}>Recherché</button>
+                          aria-label={t("Je recherche {name}", { name: r.name })} title={mark === "wanted" ? t("Retirer des recherchés") : t("Je recherche ce patron")}
+                          onClick={() => void setMark(r.spellId, mark === "wanted" ? null : "wanted")}>{t("Recherché")}</button>
                       </div>
                     </li>
                   );
@@ -178,8 +179,8 @@ export function RecipeCard({ characterId, profession, skill, editable }: { chara
               </ul>
             )}
             <div className="row between small">
-              <span className="muted">{filtered.length} recette{filtered.length > 1 ? "s" : ""} affichée{filtered.length > 1 ? "s" : ""} sur {recipes.length}</span>
-              {filtered.length > shown && <button type="button" className="btn ghost sm" onClick={() => setShown(s => s + PAGE)}>Afficher plus</button>}
+              <span className="muted">{tn(filtered.length, "{n} recette affichée sur {total}", "{n} recettes affichées sur {total}", { total: recipes.length })}</span>
+              {filtered.length > shown && <button type="button" className="btn ghost sm" onClick={() => setShown(s => s + PAGE)}>{t("Afficher plus")}</button>}
             </div>
           </>
         )}
@@ -263,7 +264,7 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange, compa
         aria-expanded={enabled ? open : undefined} aria-controls={enabled ? listId : undefined} aria-autocomplete={enabled ? "list" : undefined}
         aria-activedescendant={open && results[active] ? `${listId}-${active}` : undefined}
         className={quality != null ? `q${quality}` : ""} value={name}
-        placeholder={enabled ? "Chercher un objet…" : ""}
+        placeholder={enabled ? t("Chercher un objet…") : ""}
         onFocus={() => setFocus(true)} onBlur={() => window.setTimeout(() => setFocus(false), 150)}
         onChange={e => type(e.target.value)}
         onKeyDown={e => {
@@ -276,14 +277,14 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange, compa
       {itemId ? <ExtLink id={itemId} /> : null}
       {open && (
         <ul className="picker-list" id={listId} role="listbox" style={rect ?? undefined}>
-          {!results.length && <li className="muted small" role="option" aria-selected={false}>Aucun objet trouvé pour cet emplacement.</li>}
+          {!results.length && <li className="muted small" role="option" aria-selected={false}>{t("Aucun objet trouvé pour cet emplacement.")}</li>}
           {results.map((it, i) => (
             <li key={it.id} id={`${listId}-${i}`} role="option" aria-selected={i === active} ref={el => { optionRefs.current[i] = el; }}
               onMouseDown={e => { e.preventDefault(); pick(it); }} onMouseEnter={() => setActive(i)}>
               <ItemIcon item={it} size={28} />
               <span className="po-txt">
                 <span className={`q${it.quality}`}>{it.name}</span>
-                <small>{[it.kind, `niv. objet ${it.itemLevel}`, it.reqLevel ? `requiert ${it.reqLevel}` : "", it.origin === "era" ? "données Classic Era" : ""].filter(Boolean).join(" · ")}</small>
+                <small>{[it.kind, t("niv. objet {n}", { n: it.itemLevel }), it.reqLevel ? t("requiert {n}", { n: it.reqLevel }) : "", it.origin === "era" ? t("données Classic Era") : ""].filter(Boolean).join(" · ")}</small>
               </span>
             </li>
           ))}
@@ -291,7 +292,7 @@ export function ItemPicker({ slot, label, name, itemId, quality, onChange, compa
       )}
       {open && results[active] && tipRect && (
         <FloatingTip rect={tipRect}>
-          <ItemTooltipBody item={results[active]!} compare={compareWith && compareWith.id !== results[active]!.id ? compareWith : null} compareLabel={compareLabel ?? "Par rapport à"} />
+          <ItemTooltipBody item={results[active]!} compare={compareWith && compareWith.id !== results[active]!.id ? compareWith : null} compareLabel={compareLabel ?? t("Par rapport à")} />
         </FloatingTip>
       )}
     </div>

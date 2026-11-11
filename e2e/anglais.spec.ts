@@ -29,7 +29,10 @@ const PASSWORD = "a passphrase for the english guild";
 // Mots qui trahissent du français (les noms propres et « Français », libellé du choix de langue, sont permis)
 const FRENCH = /\b(le|la|les|des|du|une|pour|avec|dans|sur|est|sont|tes|ton|ta|vos|votre|pas|aucun|aucune|déjà|être|et|au|aux|ou|ici|tu|mon|mes|ce|cette|connexion|compte|mot de passe)\b|[éèêàùç]/i;
 const ALLOWED = [/^Français$/, /Métropole/];
+/** EN_SHOTS=<dossier> : une capture de chaque page vérifiée (relecture de la traduction). */
+let shot = 0;
 async function expectEnglish(page: Page, where: string) {
+  if (process.env.EN_SHOTS) await page.screenshot({ path: `${process.env.EN_SHOTS}/${String(++shot).padStart(2, "0")}-${where.replace(/[^\p{L}\d]+/gu, "-")}.png`, fullPage: true });
   const text = await page.locator("body").innerText();
   // « Mon », « MON » (lundi) ne sont pas « mon »
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
@@ -133,16 +136,18 @@ function frl(now: number) {
 
 /**
  * Lots E2 et E3 : Accueil de la guilde, Raids (liste, création, présence, page d'un raid et ses onglets), Sorties (liste,
- * nouvelle sortie, gestion) et Guilde (Membres, Course au 60, Artisans, Banque, Historique). Un seul compte, créé en base
- * (les inscriptions par le formulaire sont limitées à 20 par quart d'heure pour toute la suite).
+ * nouvelle sortie, gestion) et Guilde (Membres, Course au 60, Artisans, Banque, Historique). Lot E4 : Mes persos (liste,
+ * fiche et ses onglets, profil), Compte (chaque section), Addon, panneau Synchro (erreur de lecture, aperçu d'un export
+ * collé), Signalements (les miens, la fenêtre d'envoi, la page des admins) et Administration de la guilde. Un seul compte,
+ * créé en base, une seule connexion (inscriptions et connexions par formulaire : 20 par quart d'heure pour toute la suite).
  */
-test("accueil, raids, sorties et guilde en anglais", async ({ page }) => {
-  test.setTimeout(120_000);
+test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signalements et administration en anglais", async ({ page }) => {
+  test.setTimeout(240_000);
   const email = `guild-en-${Date.now()}@example.test`;
   const db = new pg.Client({ connectionString: DB }); await db.connect();
-  let group = "", raid = "";
+  let group = "", raid = "", char = "";
   try {
-    const me = (await db.query("insert into users (email, email_verified_at, password_hash, display_name, lang) values ($1, now(), $2, 'Aldwin', 'en') returning id",
+    const me = (await db.query("insert into users (email, email_verified_at, password_hash, display_name, lang, site_admin) values ($1, now(), $2, 'Aldwin', 'en', true) returning id",
       [email, await hash(PASSWORD, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 })])).rows[0].id as string;
     group = (await db.query("insert into groups (name) values ('Silver Lanterns') returning id")).rows[0].id as string;
     await db.query("insert into group_members (group_id, user_id, role) values ($1, $2, 'owner')", [group, me]);
@@ -156,6 +161,7 @@ test("accueil, raids, sorties et guilde en anglais", async ({ page }) => {
         [user, name, race, cls, spec, level, profs, i === 0 ? guid(1) : null])).rows[0].id as string;
       await db.query("insert into group_characters (group_id, character_id, user_id, is_main) values ($1, $2, $3, true)", [group, id, user]);
       chars.push({ id, user, name, cls, spec });
+      if (i === 0) char = id;
     }
     raid = (await db.query("insert into raids (group_id, name, scheduled_at, size, created_by) values ($1, 'Molten Core', $2, 40, $3) returning id",
       [group, new Date(Date.now() + 2 * 86400e3), me])).rows[0].id as string;
@@ -243,6 +249,89 @@ test("accueil, raids, sorties et guilde en anglais", async ({ page }) => {
       await page.goto(`/groups/${group}/membres/${path}`);
       await expect(page.getByText(check).first()).toBeVisible();
       await expectEnglish(page, `Guilde › ${path}`);
+    }
+  });
+
+  await test.step("Mes persos : la liste, puis la fiche et ses onglets", async () => {
+    await page.goto("/persos");
+    await expect(page.getByRole("heading", { name: "My characters" })).toBeVisible();
+    await expectEnglish(page, "Mes persos");
+    await page.goto(`/persos/${char}`);
+    await expect(page.getByRole("heading", { name: "Aldwin Stormhold" }).first()).toBeVisible();
+    await expectEnglish(page, "la fiche d'un perso");
+    for (const [tab, check] of [["Professions", "No known pattern yet"], ["Notes", "Preview section"], ["Gear", "Edit by hand"]] as const) {
+      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await expect(page.getByText(check).first()).toBeVisible();
+      await expectEnglish(page, `l'onglet ${tab} de la fiche`);
+    }
+    // Profil : l'éditeur (identité, spés, talents)
+    await page.getByRole("button", { name: "✎ Edit the profile" }).click();
+    await expect(page.getByRole("button", { name: "Confirm the profile" })).toBeVisible();
+    await expectEnglish(page, "le profil d'un perso");
+    await page.getByRole("button", { name: "Confirm the profile" }).click();
+  });
+
+  await test.step("Compte : chaque section", async () => {
+    for (const [section, check] of [["profil", "Account image"], ["securite", "Change the password"], ["discord", "Discord account"], ["appareils", "Active sessions"],
+      ["journal", "Logged in"], ["supprimer", "Delete my account…"]] as const) {
+      await page.goto(`/account?section=${section}`);
+      await expect(page.getByText(check, { exact: true }).first()).toBeVisible();
+      await expectEnglish(page, `Compte › ${section}`);
+    }
+  });
+
+  await test.step("Addon et panneau Synchro (aperçu d'un export collé)", async () => {
+    await page.goto("/addon");
+    await expect(page.getByRole("heading", { name: "Install the addon" })).toBeVisible();
+    await page.getByText("In-game commands · 6").click();
+    await page.getByText("Security: what the addon does (and doesn't do)").click();
+    await expect(page.getByText("/fr search + Shift+click an item")).toBeVisible();
+    await expectEnglish(page, "la page Addon");
+    await page.goto("/persos");
+    await expect(page.getByRole("heading", { name: "My characters" })).toBeVisible();
+    const paste = (text: string) => page.evaluate(t => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", t);
+      (document.activeElement as HTMLElement | null)?.blur();
+      document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+    }, text);
+    const at = Math.floor(Date.now() / 1000) - 60;
+    // Erreur de lecture (game-data, en français) : traduite par motif
+    await paste(`FRC;9;Aldwin Stormhold;Forever EU;WARRIOR;Orc;31;Horde;${at};1.6.4\nEND;0`);
+    const panel = page.getByRole("dialog");
+    await expect(panel.getByText("Aldwin Stormhold: Unsupported export version (9): update the website or the addon.")).toBeVisible();
+    await expectEnglish(page, "une erreur de lecture dans la synchro");
+    await page.keyboard.press("Escape");
+    await paste(sealText(`FRC;2;Aldwin;Forever EU;WARRIOR;Orc;31;Horde;${at};1.6.4;${guid(1)};Aldwin Stormhold\nG;1:16866\nW;15090;1\nEND;2`));
+    await expect(panel.getByText("1 character recognized")).toBeVisible();
+    await expect(panel.locator(".sy-go")).toHaveText("Update 1 character");
+    await expectEnglish(page, "l'aperçu de la synchro");
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Close without updating your characters?")).toBeVisible();
+    await expectEnglish(page, "la confirmation de fermeture de la synchro");
+    await page.getByRole("button", { name: "Close without updating" }).click();
+  });
+
+  await test.step("Signalements : les miens, la fenêtre d'envoi, la page des admins", async () => {
+    await page.goto("/signalements");
+    await expect(page.getByText("No reports yet.", { exact: false })).toBeVisible();
+    await expectEnglish(page, "Mes signalements");
+    await page.getByRole("button", { name: "New report" }).first().click();
+    await expect(page.getByRole("dialog").getByText("It's about")).toBeVisible();
+    await expectEnglish(page, "la fenêtre d'un signalement");
+    await page.keyboard.press("Escape");
+    await page.goto("/admin/signalements");
+    await expect(page.getByRole("heading", { name: "Website administration" })).toBeVisible();
+    await expectEnglish(page, "l'administration du site");
+  });
+
+  await test.step("Administration de la guilde : chaque section", async () => {
+    await page.goto(`/groups/${group}/admin`);
+    for (const [section, check] of [["Invitations", "Link settings"], ["Guild", "Danger zone"], ["Discord", "Race to 60 announcements"], ["Loot", "Loot"],
+      ["Feedback", "No Discord server linked."], ["Log", "Who"]] as const) {
+      await page.locator(".adm-nav").getByRole("button", { name: section }).click();
+      await expect(page.locator(".adm-body").getByText(check).first()).toBeVisible();
+      await expectEnglish(page, `Administration › ${section}`);
     }
   });
 });

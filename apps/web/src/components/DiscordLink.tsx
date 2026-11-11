@@ -1,5 +1,6 @@
 import type { Game } from "@forever/game-data";
 import { useState, type ReactNode } from "react";
+import { dateLocale, t, tx } from "../i18n";
 
 /** Commande du bot pour lier un salon : la même, sous le nom du site (un seul bot pour les deux). */
 export const linkCommand = (game: Game) => (game === "retail" ? "/roster-lier" : "/forever-lier");
@@ -13,12 +14,12 @@ export function LinkCodeBox({ game, code, intro, label, footer }: {
 }) {
   const [copied, setCopied] = useState(false);
   const cmd = `${linkCommand(game)} code:${code.code}`;
-  const until = new Intl.DateTimeFormat("fr-FR", { timeStyle: "short" }).format(new Date(code.expiresAt));
+  const until = new Intl.DateTimeFormat(dateLocale(), { timeStyle: "short" }).format(new Date(code.expiresAt));
   return (
     <div className="alert info stack" style={{ gap: 8 }}>
-      <span>{intro} (valable jusqu'à {until}, une seule fois) :</span>
+      <span>{tx("{intro} (valable jusqu'à {until}, une seule fois) :", { intro: intro, until: until })}</span>
       <div className="row"><input type="text" readOnly value={cmd} onFocus={e => e.currentTarget.select()} aria-label={label} className="num" style={{ flex: 1 }} />
-        <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? "Copié" : "Copier"}</button></div>
+        <button className="btn sm" type="button" onClick={() => { void navigator.clipboard.writeText(cmd).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? t("Copié") : t("Copier")}</button></div>
       {footer}
     </div>
   );

@@ -1,4 +1,5 @@
 import type { FicheLevelLock } from "@forever/game-data";
+import { dateLocale, t } from "../i18n";
 
 /**
  * Niveau verrouillé d'une fiche (7/11) : relevé en jeu (liste de guilde) ou fixé par un officier de la guilde. Le champ
@@ -13,14 +14,18 @@ export function LockIcon() {
   );
 }
 
-const DAY = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "numeric", timeZone: "Europe/Paris" });
-const day = (at: string | null) => (at && !Number.isNaN(Date.parse(at)) ? DAY.format(new Date(at)) : null);
+const day = (at: string | null) => (at && !Number.isNaN(Date.parse(at))
+  ? new Intl.DateTimeFormat(dateLocale(), { day: "numeric", month: "numeric", timeZone: "Europe/Paris" }).format(new Date(at)) : null);
 
 /** « Niveau relevé en jeu : Necko Brisefer est niveau 34 dans la liste de guilde du 7/11. Il suit le jeu. » */
 export function levelLockText(lock: FicheLevelLock, ficheName: string) {
   const d = day(lock.at);
-  if (lock.by === "game") return `Niveau relevé en jeu : ${lock.name} est niveau ${lock.level} dans la liste de guilde${d ? ` du ${d}` : ""}. Il suit le jeu.`;
-  return `Niveau fixé par ${lock.name}, officier de ta guilde${d ? `, le ${d}` : ""}, tant que le jeu ne donne pas celui de ${ficheName}.`;
+  if (lock.by === "game") {
+    return d ? t("Niveau relevé en jeu : {name} est niveau {level} dans la liste de guilde du {d}. Il suit le jeu.", { name: lock.name, level: lock.level, d })
+      : t("Niveau relevé en jeu : {name} est niveau {level} dans la liste de guilde. Il suit le jeu.", { name: lock.name, level: lock.level });
+  }
+  return d ? t("Niveau fixé par {name}, officier de ta guilde, le {d}, tant que le jeu ne donne pas celui de {fiche}.", { name: lock.name, d, fiche: ficheName })
+    : t("Niveau fixé par {name}, officier de ta guilde, tant que le jeu ne donne pas celui de {fiche}.", { name: lock.name, fiche: ficheName });
 }
 
 /** Champ du niveau en lecture seule (même gabarit que NumberField). */

@@ -12,7 +12,7 @@ import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
 import { NumberField } from "./NumberField";
 import { RoleIcon } from "./RoleIcon";
-import { dateLocale, getLang, N, t, tn, tx } from "../i18n";
+import { dateLocale, getLang, isMany, N, t, tn, tx } from "../i18n";
 import { placeSuffix } from "../guild";
 
 /**
@@ -480,7 +480,7 @@ function NewOuting({ groupId, data, channelName, discordLinked, onClose }: { gro
 
   const chosen = dungeon && dungeon !== OTHER ? dungeonByKey(dungeon) : null;
   const countOf = (key: string) => [...sorted.fit, ...sorted.off].find(c => c.dungeon.key === key)?.count ?? 0;
-  const who = (n: number) => (n === 0 ? <>{t("personne n'a le niveau")}</> : tx(n > 1 ? "{n} persos ont le niveau" : "{n} perso a le niveau", { n: <b>{n}</b> }));
+  const who = (n: number) => (n === 0 ? <>{t("personne n'a le niveau")}</> : tx(isMany(n) ? "{n} persos ont le niveau" : "{n} perso a le niveau", { n: <b>{n}</b> }));
   const match = (name: string) => !q.trim() || name.toLowerCase().includes(q.trim().toLowerCase());
   const fit = sorted.fit.filter(c => match(c.dungeon.name));
   const offAll = sorted.off.filter(c => match(c.dungeon.name));

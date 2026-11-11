@@ -1,4 +1,5 @@
 import type { AnchorHTMLAttributes } from "react";
+import { t } from "../i18n";
 
 /**
  * Lien vers un autre site (Wowhead, Armurerie, Raider.IO, Warcraft Logs, ForeverChanges, GitHub…) : toujours dans un
@@ -10,8 +11,9 @@ import type { AnchorHTMLAttributes } from "react";
  * (/downloads/*.zip, /api/…), mailto, et l'autre adresse du site (Forever Roster ↔ Roster, même compte), qui prend la
  * suite de la page.
  */
-export function ExternalLink({ hint = "nouvel onglet", children, "aria-label": label, ...rest }:
+export function ExternalLink({ hint: given, children, "aria-label": label, ...rest }:
   Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "target" | "rel"> & { href: string; hint?: string | false }) {
+  const hint = given ?? t("nouvel onglet");
   return (
     <a {...rest} aria-label={label && hint ? `${label} (${hint})` : label} target="_blank" rel="noopener noreferrer">
       {children}{hint && !label && <span className="sr-only"> ({hint})</span>}

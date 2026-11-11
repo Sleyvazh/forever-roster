@@ -13,6 +13,7 @@ import { RetailCharacterSheet, RetailCreateForm } from "../components/RetailChar
 import { BnetImportButton, BnetImportPanel } from "../components/BnetImport";
 import { useSite } from "../site";
 import { useGameText } from "../gameText";
+import { t, tx } from "../i18n";
 
 const TALENTS_RE = /^(\d{1,2}\/\d{1,2}\/\d{1,2})?$/;
 const LINK_RE = /^(https:\/\/\S+)?$/;
@@ -27,20 +28,20 @@ export function useAutosave(id: string | null, onSaved: (c: Character) => void) 
     if (!id) return;
     const body = { ...pending.current };
     const held: string[] = [];
-    if (body.talents !== undefined && !TALENTS_RE.test(body.talents)) { held.push("répartition des talents"); delete body.talents; }
-    if (body.talentLink !== undefined && !LINK_RE.test(body.talentLink)) { held.push("lien du build (https)"); delete body.talentLink; }
-    if (body.talents2 !== undefined && !TALENTS_RE.test(body.talents2)) { held.push("répartition de l'off-spec"); delete body.talents2; }
-    if (body.talentLink2 !== undefined && !LINK_RE.test(body.talentLink2)) { held.push("lien du build off-spec (https)"); delete body.talentLink2; }
-    if (body.name !== undefined && !body.name.trim()) { held.push("nom"); delete body.name; }
+    if (body.talents !== undefined && !TALENTS_RE.test(body.talents)) { held.push(t("répartition des talents")); delete body.talents; }
+    if (body.talentLink !== undefined && !LINK_RE.test(body.talentLink)) { held.push(t("lien du build (https)")); delete body.talentLink; }
+    if (body.talents2 !== undefined && !TALENTS_RE.test(body.talents2)) { held.push(t("répartition de l'off-spec")); delete body.talents2; }
+    if (body.talentLink2 !== undefined && !LINK_RE.test(body.talentLink2)) { held.push(t("lien du build off-spec (https)")); delete body.talentLink2; }
+    if (body.name !== undefined && !body.name.trim()) { held.push(t("nom")); delete body.name; }
     pending.current = Object.fromEntries(Object.entries(pending.current).filter(([k]) => !(k in body)));
-    if (!Object.keys(body).length) { setStatus(held.length ? { kind: "held", msg: `À corriger avant enregistrement : ${held.join(", ")}.` } : { kind: "idle" }); return; }
+    if (!Object.keys(body).length) { setStatus(held.length ? { kind: "held", msg: t("À corriger avant enregistrement : {list}.", { list: held.join(", ") }) } : { kind: "idle" }); return; }
     setStatus({ kind: "saving" });
     try {
       const r = await patch<{ character: Character }>(`/characters/${id}`, body);
       onSaved(r.character);
-      setStatus(held.length ? { kind: "held", msg: `À corriger avant enregistrement : ${held.join(", ")}.` } : { kind: "saved" });
+      setStatus(held.length ? { kind: "held", msg: t("À corriger avant enregistrement : {list}.", { list: held.join(", ") }) } : { kind: "saved" });
     } catch (e) {
-      setStatus({ kind: "error", msg: e instanceof ApiError ? e.message : "Enregistrement impossible." });
+      setStatus({ kind: "error", msg: e instanceof ApiError ? e.message : t("Enregistrement impossible.") });
     }
   };
   const queue = (p: Partial<Character>) => {
@@ -66,13 +67,13 @@ export function CharactersPage() {
   const { data, isLoading } = useQuery({ queryKey: ["characters"], queryFn: () => get<{ characters: Character[] }>("/characters") });
   const groupsQ = useQuery({ queryKey: ["groups"], queryFn: () => get<{ groups: GroupSummary[] }>("/groups") });
   const myGroups = (groupsQ.data?.groups ?? []).map(g => ({ id: g.id, name: g.name }));
-  const sections = [...myGroups.map(g => ({ key: g.id, name: g.name })), { key: "", name: "Sans guilde" }];
+  const sections = [...myGroups.map(g => ({ key: g.id, name: g.name })), { key: "", name: t("Sans guilde") }];
   const [local, setLocal] = useState<Character[]>([]);
   // Perso et onglet dans l'adresse : /persos/:charId/:tab (retour arrière, lien direct)
   const params = useParams();
   const nav = useNavigate();
   const tab = editorTabFromSlug(params.tab);
-  const urlFor = (id: string, t: EditorTab = tab) => `/persos/${id}${t === "profil" ? "" : `/${EDITOR_TAB_SLUG[t]}`}`;
+  const urlFor = (id: string, tt: EditorTab = tab) => `/persos/${id}${tt === "profil" ? "" : `/${EDITOR_TAB_SLUG[tt]}`}`;
   const sel = params.charId && local.some(c => c.id === params.charId) ? params.charId : (local[0]?.id ?? null);
   const setSel = (id: string) => nav(urlFor(id));
   const [confirmDel, setConfirmDel] = useState(false);
@@ -116,11 +117,11 @@ export function CharactersPage() {
     setError(null);
     if (retail) { setCreating(true); return; }
     try {
-      const r = await post<{ character: Character }>("/characters", { name: "Nouveau perso" });
+      const r = await post<{ character: Character }>("/characters", { name: t("Nouveau perso") });
       qc.setQueryData<{ characters: Character[] }>(["characters"], d => ({ characters: [...(d?.characters ?? []), r.character] }));
       void qc.invalidateQueries({ queryKey: ["week"] });
       nav(urlFor(r.character.id, "profil")); // un nouveau perso s'ouvre sur son identité
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Création impossible."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Création impossible.")); }
   };
   const remove = async () => {
     if (!current) return;
@@ -134,7 +135,7 @@ export function CharactersPage() {
     try {
       if (to) await put(`/groups/${to}/characters/${c.id}`, { assigned: true, ...(main && { main: true }) });
       else if (c.group) await put(`/groups/${c.group.id}/characters/${c.id}`, { assigned: false });
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Changement impossible."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("Changement impossible.")); }
     await Promise.all([qc.invalidateQueries({ queryKey: ["characters"] }), qc.invalidateQueries({ queryKey: ["group-chars"] }), qc.invalidateQueries({ queryKey: ["week"] }), qc.invalidateQueries({ queryKey: ["groups"] })]);
   };
   const saveOrder = async (ids: string[]) => {
@@ -142,15 +143,15 @@ export function CharactersPage() {
     try { await put("/characters/order", { ids }); } catch { await qc.invalidateQueries({ queryKey: ["characters"] }); }
   };
 
-  if (isLoading) return <p className="muted">Chargement…</p>;
+  if (isLoading) return <p className="muted">{t("Chargement…")}</p>;
 
   return (
     <div className="stack" style={{ gap: 20 }}>
       <div className="page-head">
-        <div><div className="eyebrow">Roster personnel</div><h1>Mes personnages</h1></div>
+        <div><div className="eyebrow">{t("Roster personnel")}</div><h1>{t("Mes personnages")}</h1></div>
         <div className="row">
           {retail && local.length > 0 && !bnet && <BnetImportButton />}
-          {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>+ Ajouter un perso</button>}
+          {local.length > 0 && <button className="btn primary" type="button" onClick={() => void add()}>{t("+ Ajouter un perso")}</button>}
         </div>
       </div>
       {error && <div className="alert error" role="alert">{error}</div>}
@@ -164,8 +165,8 @@ export function CharactersPage() {
         <MyAbsences />
         <div className="split">
           <aside className="stack">
-            <p className="hint" style={{ margin: 0 }}>{myGroups.length ? "Glisse ⋮⋮ pour réordonner, ou vers une autre guilde pour l'y ranger." : "Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner."}</p>
-            <SortableList items={local} sections={myGroups.length ? sections : [{ key: "", name: "Mes persos" }]} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }}
+            <p className="hint" style={{ margin: 0 }}>{myGroups.length ? t("Glisse ⋮⋮ pour réordonner, ou vers une autre guilde pour l'y ranger.") : t("Glisse ⋮⋮ (ou flèches haut/bas) pour réordonner.")}</p>
+            <SortableList items={local} sections={myGroups.length ? sections : [{ key: "", name: t("Mes persos") }]} selected={sel} onSelect={id => { setSel(id); setConfirmDel(false); }}
               onReorder={ids => void saveOrder(ids)} onMove={(id, to) => { const c = local.find(x => x.id === id); if (c) void moveTo(c, to); }} />
           </aside>
           {current && retail && (
@@ -174,11 +175,11 @@ export function CharactersPage() {
               subhead={<GroupBar c={current} groups={myGroups} onMove={to => void moveTo(current, to)} onMain={() => current.group && void moveTo(current, current.group.id, true)} />}
               footer={<>
                 <span className={`small ${saver.status.kind === "error" || saver.status.kind === "held" ? "warnmsg" : "muted"}`} role="status">
-                  {{ idle: "Les modifications sont enregistrées automatiquement.", saving: "Enregistrement…", saved: "Enregistré.", error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}
+                  {{ idle: t("Les modifications sont enregistrées automatiquement."), saving: t("Enregistrement…"), saved: t("Enregistré."), error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}
                 </span>
                 {confirmDel
-                  ? <span className="row small">Supprimer {current.name} définitivement ? <button className="btn danger sm" type="button" onClick={() => void remove()}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
-                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le perso</button>}
+                  ? <span className="row small">{tx("Supprimer {name} définitivement ?", { name: current.name })} <button className="btn danger sm" type="button" onClick={() => void remove()}>{t("Supprimer")}</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>{t("Annuler")}</button></span>
+                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>{t("Supprimer le perso")}</button>}
               </>} />
           )}
           {current && !retail && (
@@ -187,7 +188,7 @@ export function CharactersPage() {
               character={current}
               editable
               tab={tab}
-              onTab={t => nav(urlFor(current.id, t))}
+              onTab={tt => nav(urlFor(current.id, tt))}
               subhead={<GroupBar c={current} groups={myGroups} onMove={to => void moveTo(current, to)} onMain={() => current.group && void moveTo(current, current.group.id, true)} />}
               onChange={edit}
               onPortrait={portraitId => {
@@ -196,11 +197,11 @@ export function CharactersPage() {
               }}
               footer={<>
                 <span className={`small ${saver.status.kind === "error" || saver.status.kind === "held" ? "warnmsg" : "muted"}`} role="status">
-                  {{ idle: "Les modifications sont enregistrées automatiquement.", saving: "Enregistrement…", saved: "Enregistré.", error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}
+                  {{ idle: t("Les modifications sont enregistrées automatiquement."), saving: t("Enregistrement…"), saved: t("Enregistré."), error: saver.status.msg, held: saver.status.msg }[saver.status.kind]}
                 </span>
                 {confirmDel
-                  ? <span className="row small">Supprimer {current.name} définitivement ? <button className="btn danger sm" type="button" onClick={() => void remove()}>Supprimer</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>Annuler</button></span>
-                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>Supprimer le perso</button>}
+                  ? <span className="row small">{tx("Supprimer {name} définitivement ?", { name: current.name })} <button className="btn danger sm" type="button" onClick={() => void remove()}>{t("Supprimer")}</button><button className="btn ghost sm" type="button" onClick={() => setConfirmDel(false)}>{t("Annuler")}</button></span>
+                  : <button className="btn ghost sm" type="button" onClick={() => setConfirmDel(true)}>{t("Supprimer le perso")}</button>}
               </>}
             />
           )}
@@ -211,19 +212,19 @@ export function CharactersPage() {
 }
 
 export function CharacterCard({ c, current, onClick }: { c: Character; current?: boolean; onClick?: () => void }) {
-  const t = useGameText();
-  const cl = { color: t.color(c.cls) };
+  const gt = useGameText();
+  const cl = { color: gt.color(c.cls) };
   const race = RACES[c.race];
-  const specs = [c.spec1, c.spec2].filter(Boolean).map(s => t.spec(c.cls, s)).join(" / ");
+  const specs = [c.spec1, c.spec2].filter(Boolean).map(s => gt.spec(c.cls, s)).join(" / ");
   return (
     <button type="button" className="card" aria-current={current ? "true" : "false"} style={{ ["--cc" as string]: cl?.color ?? "var(--line-2)" }} onClick={onClick}>
       <span className="cav" aria-hidden="true">
         <Portrait id={c.portraitId} size={42} className="round"
           fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={30} /> : <ClassIcon cls={c.cls} size={30} />) : <span className="muted">?</span>} />
       </span>
-      <span className="nm"><span className="lvl-pill num" title={`Niveau ${c.level}`}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title="Main dans cette guilde">★</span>}{c.group && !c.group.isMain && <span className="gm-alt">alt</span>}{c.name}</span>
+      <span className="nm"><span className="lvl-pill num" title={t("Niveau {n}", { n: c.level })}>{c.level}</span>{c.group?.isMain && <span className="gm-star" title={t("Main dans cette guilde")}>★</span>}{c.group && !c.group.isMain && <span className="gm-alt">{t("alt")}</span>}{c.name}</span>
       {race ? <FactionBadge faction={race.faction} /> : <span />}
-      <span className="sub">{[t.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || "À configurer"}{specs && ` · ${specs}`}{c.ilvl ? ` · ilvl ${c.ilvl}` : ""}</span>
+      <span className="sub">{[gt.cls(c.cls), c.race, c.realm].filter(Boolean).join(" · ") || t("À configurer")}{specs && ` · ${specs}`}{c.ilvl ? ` · ilvl ${c.ilvl}` : ""}</span>
     </button>
   );
 }
@@ -286,13 +287,13 @@ function SortableList({ items, sections, selected, onSelect, onReorder, onMove }
             <div className={`ch-sech${sec.key ? "" : " none"}`}><span>{sec.name}</span><small>{list.length ? `${list.length} perso${list.length > 1 ? "s" : ""}` : ""}</small></div>
             {list.map(c => (
               <div key={c.id} data-id={c.id} className={`item${dragging === c.id ? " dragging" : ""}`}>
-                <button type="button" className="grip" aria-label={`Déplacer ${c.name} (flèches haut/bas)`}
+                <button type="button" className="grip" aria-label={t("Déplacer {name} (flèches haut/bas)", { name: c.name })}
                   onPointerDown={e => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); setDragging(c.id); }}
                   onKeyDown={e => { if (e.key === "ArrowUp") { e.preventDefault(); move(c.id, -1); } if (e.key === "ArrowDown") { e.preventDefault(); move(c.id, 1); } }}>⋮⋮</button>
                 <CharacterCard c={c} current={c.id === selected} onClick={() => onSelect(c.id)} />
               </div>
             ))}
-            {!list.length && <p className="ch-drop">{dragging ? "Lâche ici pour ranger ce perso dans cette guilde" : "Aucun perso : glisse-en un ici, ou choisis cette guilde dans sa fiche."}</p>}
+            {!list.length && <p className="ch-drop">{dragging ? t("Lâche ici pour ranger ce perso dans cette guilde") : t("Aucun perso : glisse-en un ici, ou choisis cette guilde dans sa fiche.")}</p>}
           </div>
         );
       })}
@@ -305,18 +306,18 @@ function GroupBar({ c, groups, onMove, onMain }: { c: Character; groups: { id: s
   if (!groups.length) return null;
   return (
     <div className="ch-gbar">
-      <label className="lbl" htmlFor="ch-group">Guilde</label>
+      <label className="lbl" htmlFor="ch-group">{t("Guilde")}</label>
       <select id="ch-group" value={c.group?.id ?? ""} onChange={e => onMove(e.target.value)}>
         {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-        <option value="">Aucune guilde</option>
+        <option value="">{t("Aucune guilde")}</option>
       </select>
       {c.group && (
-        <div className="seg" role="group" aria-label="Main ou alt dans cette guilde">
-          <button type="button" className={c.group.isMain ? "on" : ""} aria-pressed={c.group.isMain} onClick={() => { if (!c.group?.isMain) onMain(); }}>★ Main</button>
-          <button type="button" className={c.group.isMain ? "" : "on"} aria-pressed={!c.group.isMain} disabled={c.group.isMain} title={c.group.isMain ? "Choisis un autre perso comme main pour passer celui-ci en alt" : undefined}>Alt</button>
+        <div className="seg" role="group" aria-label={t("Main ou alt dans cette guilde")}>
+          <button type="button" className={c.group.isMain ? "on" : ""} aria-pressed={c.group.isMain} onClick={() => { if (!c.group?.isMain) onMain(); }}>{t("★ Main")}</button>
+          <button type="button" className={c.group.isMain ? "" : "on"} aria-pressed={!c.group.isMain} disabled={c.group.isMain} title={c.group.isMain ? t("Choisis un autre perso comme main pour passer celui-ci en alt") : undefined}>{t("Alt")}</button>
         </div>
       )}
-      <span className="hint ch-ghint">{c.group ? (c.group.isMain ? "Ton main est proposé en premier pour les inscriptions." : "Un seul main par guilde : en choisir un autre fait passer l'ancien en alt.") : "Sans guilde : il entre dans la guilde du premier raid où tu l'inscris."}</span>
+      <span className="hint ch-ghint">{c.group ? (c.group.isMain ? t("Ton main est proposé en premier pour les inscriptions.") : t("Un seul main par guilde : en choisir un autre fait passer l'ancien en alt.")) : t("Sans guilde : il entre dans la guilde du premier raid où tu l'inscris.")}</span>
     </div>
   );
 }
