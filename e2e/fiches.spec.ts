@@ -179,7 +179,9 @@ test("fiches : rattacher plusieurs persos, créer la fiche d'un joueur, donner u
     await dlg.getByRole("button", { name: "Donner Grumz à Morwen" }).click();
     await expect(dlg.getByRole("heading")).toHaveText("Grumz est à Morwen");
     await dlg.locator(".sg-actions").getByRole("button", { name: "Fermer" }).click();
-    await expect(bar).toContainText("alt de Morwen dans cette guilde");
+    // La fiche est sous la ligne de Grumz, avec son nouveau joueur dans l'en-tête (12/11)
+    await expect(page.locator(".grow[aria-expanded=true] + .gsheet .fi-head")).toContainText("Joueur : Morwen");
+    await expect(page.locator(".gsheet .fi-guild")).toContainText("alt");
     // Liste du jeu : Grumz suit sa fiche
     await page.goto(`/groups/${group}/membres/persos?vue=jeu`);
     await expect(row("Grumz Brisecrâne").locator(".gx-pl")).toContainText("Morwen");

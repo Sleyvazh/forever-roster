@@ -1,10 +1,10 @@
 import { classColor, CLASSES, RACES, roleOf, type ClassName, type Role } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, del, get, put, type Character, type GroupRole, type Member } from "../api";
 import { useViewPref } from "../prefs";
-import { CharacterEditor } from "./CharacterEditor";
+import { CharacterSheet } from "./CharacterSheet";
 import { NumberField } from "./NumberField";
 import { ClassIcon, FactionBadge, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
@@ -23,6 +23,9 @@ import { roleLabel } from "../pages/GroupsPage";
  * Refonte du 09/11 (maquette-guilde-membres.png) : recherche, rôle de même largeur et « Affichage · Mains + alts, Liste ▾ »
  * qui regroupe Persos et Vue ; mes persos surlignés d'or ; la faction n'est plus sur chaque ligne (une fois dans l'en-tête),
  * sauf dans un groupe aux deux factions.
+ * 12/11 (maquette-fiche-guilde.png) : la fiche s'ouvre sous la ligne cliquée (comme la fiche d'un joueur dans « Par joueur »),
+ * plus tout en bas de la liste ; en tuiles, sous la rangée ; par rôle, sous les colonnes. Sur Forever, c'est la fiche de
+ * Mes persos en lecture (CharacterSheet) : identité en texte, plus de cases grisées. Roster garde sa fiche (RetailCharacterView).
  */
 
 type Scope = "mains" | "all" | "split";
@@ -154,10 +157,13 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   // ?perso=<id> : perso ouvert d'emblée (lien depuis la fiche d'un joueur, onglet Membres)
   const [params, setParams] = useSearchParams();
   const [open, setOpen] = useState<string | null>(() => params.get("perso"));
-  const openedRef = useRef<HTMLDivElement>(null);
+  /** Ligne (ou tuile) du perso ouvert, et sa fiche dépliée juste dessous. */
+  const rowRef = useRef<HTMLButtonElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const fromLink = useRef(!!params.get("perso"));
+  const loaded = !!data;
   useEffect(() => {
     if (!params.get("perso") || !data) return;
-    openedRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     setParams(p => { p.delete("perso"); return p; }, { replace: true });
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [filter, setFilter] = useState("");
@@ -166,6 +172,17 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
   const [savedView, setView] = useViewPref<View>("group-chars", "list", ["list", "tiles", "roles", "players"]);
   const view: View = !byPlayer && savedView === "players" ? "list" : savedView;
   const views = byPlayer ? VIEWS : VIEWS.filter(([k]) => k !== "players");
+  // La fiche s'ouvre sous la ligne cliquée. Si elle commence bas dans l'écran (ou plus haut que l'écran), la page s'y
+  // place, la ligne en haut ; un lien ?perso= y mène toujours. Par rôle : la fiche est sous les colonnes, la page y va.
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!open || !loaded || !sheet) return;
+    const top = sheet.getBoundingClientRect().top;
+    if (fromLink.current || view === "roles" || top < 0 || top > window.innerHeight * 0.6) {
+      ((view !== "roles" && rowRef.current) || sheet).scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    fromLink.current = false;
+  }, [open, loaded, view]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** « Corriger le niveau » d'une fiche ouverte (officier, Forever) : fiche et niveau en saisie. */
@@ -232,36 +249,96 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
     </span>
   );
 
+  // Ce que gère celui qui a la main sur le perso (lui-même, ou un officier) : main, niveau, don de la fiche, retrait.
+  // Sur Forever, la barre est dans la fiche (le nom, le joueur et main / alt sont dans son en-tête) : il n'y reste que
+  // le niveau verrouillé ; Roster garde la ligne « main de … dans cette guilde ».
+  const actionBar = (c: Character) => {
+    if (!canManage(c)) return null;
+    const inSheet = gt.game !== "retail";
+    const lock = c.levelLock?.by === "game" ? t("niveau {n} relevé en jeu ({name})", { n: c.levelLock.level, name: c.levelLock.name })
+      : c.levelLock?.by === "officer" ? (c.levelLock.userId === myId ? t("niveau {n} fixé par toi", { n: c.level }) : t("niveau {n} fixé par {name}", { n: c.level, name: c.levelLock.name }))
+      : null;
+    const who = inSheet ? (lock && <span className="gm-who gm-lock">{lock}</span>) : (
+      <span className="gm-who"><Face c={c} size={22} /><b style={{ color: color(c) }}>{c.name}</b>
+        <span className="muted">· {c.userId === myId ? (c.isMain ? t("ton main dans cette guilde") : t("un de tes alts dans cette guilde"))
+          : c.isMain ? t("main de {name} dans cette guilde", { name: c.owner ?? "" }) : t("alt de {name} dans cette guilde", { name: c.owner ?? "" })}</span>
+        {lock && <span className="muted">· {lock}</span>}</span>
+    );
+    const side = inSheet ? undefined : { marginLeft: "auto" };
+    return (
+      <div className="gm-act">
+        {!inSheet && who}
+        {lvEdit?.id === c.id ? (
+          <form className="row gm-lv" style={{ gap: 8, ...side }} onSubmit={e => { e.preventDefault(); void fixLevel(c, lvEdit.level); }}>
+            <label className="muted" htmlFor="gm-lv">{t("Niveau de {name}", { name: c.name })}</label>
+            <NumberField id="gm-lv" min={1} max={60} value={lvEdit.level} onChange={level => setLvEdit({ id: c.id, level })} className="gm-lv-n" />
+            <button type="submit" className="btn sm primary" disabled={busy}>{t("Enregistrer")}</button>
+            <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setLvEdit(null)}>{t("Annuler")}</button>
+          </form>
+        ) : (
+          <span className="row" style={{ gap: 8, ...side }}>
+            {!c.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(c, { assigned: true, main: true })}>{t("★ En faire le main")}</button>}
+            {fixable(c) && (c.levelLock?.by === "officer"
+              ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(c, null)}>{t("Rendre la main sur le niveau")}</button>
+              : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: c.id, level: c.level })}>{t("Corriger le niveau")}</button>)}
+            {gt.game !== "retail" && <button type="button" className="btn sm" disabled={busy} onClick={() => setGiving(c.id)}>{t("Donner la fiche à…")}</button>}
+            <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(c, { assigned: false })}>{t("Retirer de la guilde")}</button>
+          </span>
+        )}
+        {inSheet && who}
+        {c.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>{lvEdit?.id === c.id
+          ? `${data.gameLinked ? t("{name} n'est pas dans la liste de guilde du jeu", { name: c.name }) : t("La guilde n'est pas encore liée au jeu")}${colon()}${t("son niveau ne peut pas être relevé. Une fois fixé, {who} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.", { who: c.owner ?? t("le joueur") })}`
+          : t("Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.")}</span>}
+      </div>
+    );
+  };
+  // La fiche du perso ouvert, dépliée sous sa ligne
+  const sheetOf = (c: Character, role?: "listitem") => (
+    <div className="gsheet" role={role} ref={sheetRef}>
+      {gt.game === "retail"
+        ? <>{actionBar(c)}<RetailCharacterView c={c} /></>
+        : <CharacterSheet key={c.id} c={c} groupName={groupName} mine={c.userId === myId} actions={actionBar(c)} onClose={() => setOpen(null)} />}
+      {giving === c.id && <GiveFicheDialog groupId={groupId} groupName={groupName} c={c} members={members} onClose={() => setGiving(null)} />}
+    </div>
+  );
+
   const list = (chars: Character[]) => (
     <div className="glist" role="list">
       {chars.map(c => (
-        <button key={c.id} type="button" role="listitem" className={`grow${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
+        <Fragment key={c.id}>
+        <button type="button" role="listitem" ref={open === c.id ? rowRef : undefined} className={`grow${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}>
           <Face c={c} size={30} />
           <span className="gname"><Mark c={c} /><span className="lvl-pill num">{c.level}</span><span className="n" style={{ color: color(c) }}>{c.name}</span></span>
           <span className="gcls">{c.cls ? [gt.cls(c.cls), c.realm || c.race, c.ilvl ? `ilvl ${c.ilvl}` : null].filter(Boolean).join(" · ") : <span className="muted">{t("À configurer")}</span>}{mixed && RACES[c.race] && <FactionBadge faction={RACES[c.race]!.faction} size={16} short />}</span>
           <span className="gspecs">{spec(c, c.spec1)}{spec(c, c.spec2, true)}</span>
           {owner(c)}
         </button>
+        {open === c.id && sheetOf(c, "listitem")}
+        </Fragment>
       ))}
     </div>
   );
   const tiles = (chars: Character[]) => (
-    <div className="gtiles">
+    <div className={`gtiles${chars.some(c => c.id === open) ? " has-sheet" : ""}`}>
       {chars.map(c => {
         const r = roleOf(c.spec1);
         return (
-          <button key={c.id} type="button" className={`gtile${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
+          <Fragment key={c.id}>
+          <button type="button" ref={open === c.id ? rowRef : undefined} className={`gtile${c.userId === myId ? " mine" : ""}`} aria-expanded={open === c.id} style={{ ["--cc" as string]: color(c) }} onClick={() => toggle(c.id)}
             title={[gt.spec(c.cls, c.spec1), gt.spec(c.cls, c.spec2)].filter(Boolean).join(" / ")}>
             <Face c={c} size={34} />
             <span className="n">{c.isMain && <span className="gm-star" aria-label={t("Main")}>★</span>}<span className="lvl-pill num">{c.level}</span><span style={{ color: color(c) }}>{c.name}</span></span>
             <span className="r">{r && <RoleIcon role={r} />}</span>
             <span className="s">{(c.cls && gt.specOrClass(c.cls, c.spec1)) || t("À configurer")} · {c.owner}{c.isMain ? "" : t(" · alt")}</span>
           </button>
+          {open === c.id && sheetOf(c)}
+          </Fragment>
         );
       })}
     </div>
   );
   const roles = (chars: Character[]) => (
+    <>
     <div className="groles">
       {(["Tank", "Heal", "DPS"] as const).map(r => {
         const main = chars.filter(c => roleOf(c.spec1) === r), off = chars.filter(c => roleOf(c.spec1) !== r && roleOf(c.spec2) === r);
@@ -286,6 +363,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
         );
       })}
     </div>
+    {opened && chars.some(c => c.id === opened.id) && sheetOf(opened)}
+    </>
   );
   const players = (chars: Character[]) => (
     <div className="gm-players">
@@ -330,6 +409,8 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
             <DisplayMenu scope={scope} onScope={setScope} view={view} onView={setView} views={views} />
           </div>
           {gt.game === "retail" && RANK[myRole] >= 1 && <BnetGroupRefresh groupId={groupId} onDone={() => void qc.invalidateQueries({ queryKey: ["group-chars", groupId] })} />}
+          {/* Perso ouvert que la recherche ou « Mains » cache (lien ?perso=) : sa fiche au-dessus de la liste */}
+          {opened && !shown.some(c => c.id === opened.id) && sheetOf(opened)}
           {!shown.length && <p className="muted">{t("Aucun perso ne correspond.")}</p>}
           {sections.map(([title, chars]) => chars.length > 0 && (
             <div key={title ?? "all"} className="stack" style={{ gap: 8 }}>
@@ -341,42 +422,6 @@ export function GroupCharacters({ groupId, groupName, members, myId, myRole, byP
         </>
       )}
 
-      <div ref={openedRef} />
-      {opened && (
-        <>
-          {canManage(opened) && (
-            <div className="gm-act">
-              <span className="gm-who"><Face c={opened} size={22} /><b style={{ color: color(opened) }}>{opened.name}</b>
-                <span className="muted">· {opened.userId === myId ? (opened.isMain ? t("ton main dans cette guilde") : t("un de tes alts dans cette guilde"))
-                  : opened.isMain ? t("main de {name} dans cette guilde", { name: opened.owner ?? "" }) : t("alt de {name} dans cette guilde", { name: opened.owner ?? "" })}</span>
-                {opened.levelLock?.by === "game" && <span className="muted">· {t("niveau {n} relevé en jeu ({name})", { n: opened.levelLock.level, name: opened.levelLock.name })}</span>}
-                {opened.levelLock?.by === "officer" && <span className="muted">· {opened.levelLock.userId === myId ? t("niveau {n} fixé par toi", { n: opened.level }) : t("niveau {n} fixé par {name}", { n: opened.level, name: opened.levelLock.name })}</span>}</span>
-              {lvEdit?.id === opened.id ? (
-                <form className="row gm-lv" style={{ gap: 8, marginLeft: "auto" }} onSubmit={e => { e.preventDefault(); void fixLevel(opened, lvEdit.level); }}>
-                  <label className="muted" htmlFor="gm-lv">{t("Niveau de {name}", { name: opened.name })}</label>
-                  <NumberField id="gm-lv" min={1} max={60} value={lvEdit.level} onChange={level => setLvEdit({ id: opened.id, level })} className="gm-lv-n" />
-                  <button type="submit" className="btn sm primary" disabled={busy}>{t("Enregistrer")}</button>
-                  <button type="button" className="btn ghost sm" disabled={busy} onClick={() => setLvEdit(null)}>{t("Annuler")}</button>
-                </form>
-              ) : (
-                <span className="row" style={{ gap: 8, marginLeft: "auto" }}>
-                  {!opened.isMain && <button type="button" className="btn sm" disabled={busy} onClick={() => void act(opened, { assigned: true, main: true })}>{t("★ En faire le main")}</button>}
-                  {fixable(opened) && (opened.levelLock?.by === "officer"
-                    ? <button type="button" className="btn ghost sm" disabled={busy} onClick={() => void fixLevel(opened, null)}>{t("Rendre la main sur le niveau")}</button>
-                    : <button type="button" className="btn sm" disabled={busy} onClick={() => setLvEdit({ id: opened.id, level: opened.level })}>{t("Corriger le niveau")}</button>)}
-                  {gt.game !== "retail" && <button type="button" className="btn sm" disabled={busy} onClick={() => setGiving(opened.id)}>{t("Donner la fiche à…")}</button>}
-                  <button type="button" className="btn ghost sm danger-t" disabled={busy} onClick={() => void act(opened, { assigned: false })}>{t("Retirer de la guilde")}</button>
-                </span>
-              )}
-              {opened.userId !== myId && <span className="hint" style={{ flexBasis: "100%", margin: 0 }}>{lvEdit?.id === opened.id
-                ? `${data.gameLinked ? t("{name} n'est pas dans la liste de guilde du jeu", { name: opened.name }) : t("La guilde n'est pas encore liée au jeu")}${colon()}${t("son niveau ne peut pas être relevé. Une fois fixé, {who} ne pourra plus le changer, jusqu'à ce que tu lui rendes la main. C'est noté au journal de la guilde.", { who: opened.owner ?? t("le joueur") })}`
-                : t("Tu es officier : la modification est notée au journal de la guilde. Le joueur garde la main sur ses persos.")}</span>}
-            </div>
-          )}
-          {giving === opened.id && <GiveFicheDialog groupId={groupId} groupName={groupName} c={opened} members={members} onClose={() => setGiving(null)} />}
-          {gt.game === "retail" ? <RetailCharacterView c={opened} /> : <CharacterEditor character={opened} editable={false} onChange={() => {}} />}
-        </>
-      )}
     </div>
   );
 }

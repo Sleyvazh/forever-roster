@@ -16,6 +16,8 @@ import { itemQualityLabel, professionTierText } from "../i18n/game";
  * Ce que l'addon relève est en lecture : « ✓ Connu » ; « ☆ Je le recherche » / « ★ Recherché » se marque toujours (la guilde
  * le voit dans Artisans). « Modifier à la main » ouvre la saisie des métiers et des patrons connus.
  * Les bonus des métiers (Master Chef…) ne sont plus affichés : leurs effets réels ne sont pas connus.
+ * `readOnly` (12/11) : la fiche d'un perso vue depuis la guilde (CharacterSheet). Rien à saisir ni à marquer : pas de
+ * « Modifier à la main », « ✓ Connu » et « ★ Recherché » en texte.
  */
 
 type Key = "prof1" | "prof2" | "cooking" | "fishing" | "firstAid";
@@ -25,7 +27,7 @@ type Source = "all" | "item" | "trainer";
 const SECONDARY: [Key, string][] = [["cooking", "Cooking"], ["fishing", "Fishing"], ["firstAid", "First Aid"]];
 const FIRST = 5, MORE = 50;
 
-export function Professions({ c, onChange }: { c: Character; onChange: (p: Partial<Character>) => void }) {
+export function Professions({ c, onChange, readOnly = false }: { c: Character; onChange: (p: Partial<Character>) => void; readOnly?: boolean }) {
   const pr = c.professions;
   const synced = syncState(c.addonSyncedAt);
   const [manual, setManual] = useState(false);
@@ -68,8 +70,9 @@ export function Professions({ c, onChange }: { c: Character; onChange: (p: Parti
         <div className="pf-src">
           {c.addonSyncedAt
             ? <span className={`sy-age ${synced.tone}`}>{tx("● relevés par l'addon · {ago}", { ago: synced.ago })}</span>
+            : readOnly ? <span>{t("Pas encore relevés par l'addon")}</span>
             : <span>{t("Pas encore relevés ·")} <button type="button" className="link" onClick={openSync}>{t("fais ta synchro")}</button></span>}
-          <button type="button" className="btn sm" aria-pressed={manual} onClick={() => setManual(m => !m)}>{manual ? t("Terminer la saisie") : t("Modifier à la main")}</button>
+          {!readOnly && <button type="button" className="btn sm" aria-pressed={manual} onClick={() => setManual(m => !m)}>{manual ? t("Terminer la saisie") : t("Modifier à la main")}</button>}
         </div>
       </aside>
       <section className="pf-main" aria-labelledby="pf-title">
@@ -89,16 +92,16 @@ export function Professions({ c, onChange }: { c: Character; onChange: (p: Parti
               <NumberField id={`${cur.key === "prof1" ? "p1" : cur.key === "prof2" ? "p2" : `sec-${cur.key}`}-s`} min={0} max={300} step={5} value={cur.skill} onChange={v => setSkill(cur.key, v)} /></div>
           </div>
         )}
-        {!cur.name ? <p className="pf-empty">{t("Choisis ce métier avec « Modifier à la main », ou fais ta synchro : l'addon le relève.")}</p>
+        {!cur.name ? <p className="pf-empty">{readOnly ? t("Pas encore choisi") : t("Choisis ce métier avec « Modifier à la main », ou fais ta synchro : l'addon le relève.")}</p>
           : !CRAFTING.has(cur.name) ? <p className="pf-empty">{tx("{name} n'a pas de patrons.", { name: cur.name })}</p>
-          : <Recipes key={cur.name} characterId={c.id} profession={cur.name} skill={cur.skill} marks={marks} manual={manual} />}
+          : <Recipes key={cur.name} characterId={c.id} profession={cur.name} skill={cur.skill} marks={marks} manual={manual} readOnly={readOnly} />}
       </section>
     </div>
   );
 }
 
 /** Les patrons du métier choisi : Connus (par défaut), Recherchés, Tous ; recherche et filtres. */
-function Recipes({ characterId, profession, skill, marks, manual }: { characterId: string; profession: string; skill: number; marks: Mark[]; manual: boolean }) {
+function Recipes({ characterId, profession, skill, marks, manual, readOnly }: { characterId: string; profession: string; skill: number; marks: Mark[]; manual: boolean; readOnly: boolean }) {
   const qc = useQueryClient();
   const status = useGameStatus();
   const v = useGameVersion();
@@ -182,7 +185,7 @@ function Recipes({ characterId, profession, skill, marks, manual }: { characterI
       </div>
       {err && <div className="alert error" role="alert">{err}</div>}
       {list.isLoading ? <p className="pf-empty">{t("Chargement des patrons…")}</p> : !filtered.length ? (
-        <p className="pf-empty">{filter === "known" && !needle && !nFilters ? t("Aucun patron connu pour l'instant : l'addon les relève à la synchro.") : filter === "wanted" && !needle && !nFilters ? t("Aucun patron recherché : marque-les dans « Tous ».") : t("Aucun patron ne correspond.")}</p>
+        <p className="pf-empty">{filter === "known" && !needle && !nFilters ? t("Aucun patron connu pour l'instant : l'addon les relève à la synchro.") : filter === "wanted" && !needle && !nFilters ? (readOnly ? t("Aucun patron recherché.") : t("Aucun patron recherché : marque-les dans « Tous ».")) : t("Aucun patron ne correspond.")}</p>
       ) : (
         <ul className="pf-rl" aria-label={t("Patrons de {profession}", { profession: profession })}>
           {filtered.slice(0, shown).map(r => {
@@ -196,7 +199,8 @@ function Recipes({ characterId, profession, skill, marks, manual }: { characterI
                 <span className={`pf-req num${skill < r.reqSkill ? " warn" : ""}`}>{t("Comp. {n}", { n: r.reqSkill })}</span>
                 <span className="tag">{r.fromItem ? t("Patron") : t("Entraîneur")}</span>
                 <span className="pf-mark">
-                  {mark === "known"
+                  {readOnly ? (mark === "known" ? <span className="pf-known">{t("✓ Connu")}</span> : mark === "wanted" ? <span className="pf-wanted">{t("★ Recherché")}</span> : null)
+                    : mark === "known"
                     ? (manual
                       ? <button type="button" className="btn sm pf-k on" aria-pressed="true" aria-label={t("Je connais {name}", { name: r.name })} onClick={() => void setMark(r.spellId, null)}>{t("✓ Connu")}</button>
                       : <span className="pf-known">{t("✓ Connu")}</span>)

@@ -2856,3 +2856,23 @@ p.rp-meta { margin: 0; color: var(--ink); }
    Version anglaise (10/11/2026) : FR | EN en bas de chaque page (le doré reste au contenu de la page)
    ========================================================================== */
 .site-foot .lang-seg > [aria-pressed="true"] { background: var(--panel-2); color: var(--ink); font-weight: 700; }
+
+/* ---------- Fiche d'un perso dépliée sous sa ligne (Guilde › Membres › Par perso, 12/11) ---------- */
+.gsheet { display: grid; gap: 10px; min-width: 0; padding: 10px 12px 14px; border-top: 1px solid var(--line); background: var(--bg); scroll-margin-top: 84px; }
+.grow[aria-expanded="true"], .gtile[aria-expanded="true"] { scroll-margin-top: 84px; }
+/* Tuiles : la fiche prend toute la largeur, sous la rangée de la tuile ; les tuiles suivantes finissent la rangée */
+.gtiles.has-sheet { grid-auto-flow: row dense; }
+.gtiles > .gsheet { grid-column: 1 / -1; }
+/* Hors de la liste encadrée (tuiles, par rôle, perso que les filtres cachent) : pas de fond ni de filet */
+.gtiles > .gsheet, .stack > .gsheet { padding: 0; border: 0; background: none; }
+.fi-face.static { cursor: default; }
+.fi-ro > .gm-act { margin: 12px 18px 0; }
+.fi-ro .fi-close { min-height: 36px; }
+.gm-lock { display: inline-block; margin-left: auto; font-size: 13.5px; }
+.gm-lock::first-letter { text-transform: uppercase; }
+.pf-wanted { color: var(--gold); font-weight: 600; font-size: 14px; white-space: nowrap; }
+@media (max-width: 640px) {
+  .gsheet { padding: 8px 6px 10px; }
+  .fi-ro > .gm-act { margin: 10px 10px 0; }
+  .gm-lock { margin-left: 0; }
+}

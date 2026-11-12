@@ -159,7 +159,7 @@ test("aperçus des lots D1 et D2", async ({ page }) => {
   // Un perso d'un autre joueur s'ouvre en lecture dans Guilde › par perso, fiches du site (pas dans Mes persos)
   await page.locator(".ps .ps-char").first().click();
   await expect(page).toHaveURL(new RegExp(`/groups/${group}/membres/persos\\?vue=fiches$`));
-  await expect(page.locator(".gm-who")).toContainText("de Gorrak");
+  await expect(page.locator(".gsheet .fi-head")).toContainText("Joueur : Gorrak");
 });
 
 /**

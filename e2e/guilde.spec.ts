@@ -161,7 +161,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await db.query("INSERT INTO group_characters (group_id, character_id, user_id, is_main) VALUES ($1, $2, $3, true)", [group, id, user]);
     return id;
   };
-  await fiche(me, "Brindille Feuillevive", "Druid", "Tauren", "Restoration", 28, 2);
+  const brindilleId = await fiche(me, "Brindille Feuillevive", "Druid", "Tauren", "Restoration", 28, 2);
   const kaeldraId = await fiche(kael, "Kaeldra Brisevent", "Warrior", "Orc", "Protection", 30, 1);
   await db.end();
 
@@ -270,7 +270,83 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     // Elle y est encore une fois ?perso= retiré de l'adresse
     await expect(page).not.toHaveURL(/perso=/);
     await expect(page.locator(".grow[aria-expanded=true]")).toContainText("Kaeldra Brisevent");
-    // « Liste du jeu » rétablit la liste
+  });
+
+  await test.step("Fiches du site : la fiche s'ouvre sous la ligne cliquée, en lecture comme dans Mes persos (12/11)", async () => {
+    const sheet = page.locator(".gsheet");
+    const rowK = page.locator(".grow", { hasText: "Kaeldra Brisevent" });
+    const rowB = page.locator(".grow", { hasText: "Brindille Feuillevive" });
+    // Juste sous sa ligne, dans la liste (avant : tout en bas, sous le dernier perso)
+    await expect(sheet).toHaveCount(1);
+    await expect(page.locator(".grow[aria-expanded=true] + .gsheet")).toHaveCount(1);
+    // Mesuré d'un seul coup dans la page : elle peut être en train de se placer sur la ligne (défilement doux)
+    const between = async () => {
+      const b = await page.evaluate(() => {
+        const row = document.querySelector('.grow[aria-expanded="true"]')!.getBoundingClientRect();
+        const box = document.querySelector(".gsheet")!.getBoundingClientRect();
+        const next = document.querySelector(".gsheet + .grow")?.getBoundingClientRect();
+        return { rowBottom: row.bottom, top: box.top, bottom: box.bottom, next: next ? next.top : null };
+      });
+      expect(b.top, "la fiche commence sous sa ligne").toBeGreaterThanOrEqual(b.rowBottom - 1);
+      if (b.next !== null) expect(b.next, "la ligne suivante est sous la fiche").toBeGreaterThanOrEqual(b.bottom - 1);
+    };
+    await between();
+    // L'identité en texte, comme dans Mes persos : plus de cases Nom, Niveau, Race, Classe grisées
+    const head = sheet.locator(".fi-head");
+    await expect(head.locator("h2")).toHaveText("Kaeldra Brisevent");
+    await expect(head).toContainText("Niv. 30");
+    await expect(head).toContainText("Joueur : Kael");
+    await expect(head).toContainText("Les Lanternes · ★ main");
+    await expect(sheet.locator("#f-name, #f-level, #f-race, #f-cls")).toHaveCount(0);
+    await expect(sheet.getByText("Lecture seule")).toHaveCount(0);
+    await expect(sheet.getByRole("tab")).toHaveText(["Équipement", "Métiers", "Notes"]);
+    await expect(sheet.getByRole("tab", { name: "Équipement" })).toHaveAttribute("aria-selected", "true");
+    await expect(sheet.getByRole("group", { name: "Vue" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Modifier à la main" })).toHaveCount(0);
+    await sheet.getByRole("tab", { name: "Métiers" }).click();
+    await expect(sheet.getByRole("complementary", { name: "Métiers du perso" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Modifier à la main" })).toHaveCount(0);
+    await sheet.getByRole("tab", { name: "Notes" }).click();
+    await expect(sheet.locator("fieldset[disabled]")).toHaveCount(1);
+    // Le perso du propriétaire, vu par une officière : rien à gérer, pas de lien vers Mes persos
+    await expect(sheet.locator(".gm-act")).toHaveCount(0);
+    await expect(sheet.getByRole("link", { name: "✎ Modifier dans Mes persos" })).toHaveCount(0);
+    // « Fermer » la replie ; un clic sur une autre ligne ouvre sa fiche sous cette ligne
+    await sheet.getByRole("button", { name: "Fermer la fiche de Kaeldra Brisevent" }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(rowK).toHaveAttribute("aria-expanded", "false");
+    await rowB.click();
+    await expect(page.locator(".grow[aria-expanded=true] + .gsheet .fi-head h2")).toHaveText("Brindille Feuillevive");
+    await between();
+    // Mon perso : ce que j'y gère reste là, et un lien mène à Mes persos, où il se modifie
+    await expect(sheet.locator(".fi-head")).toContainText("ton perso");
+    await expect(sheet.locator(".gm-act").getByRole("button", { name: "Retirer de la guilde" })).toBeVisible();
+    await expect(sheet.locator(".gm-act")).not.toContainText("Tu es officier");
+    await page.setViewportSize({ width: 390, height: 800 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), "rien ne déborde à 390 px").toBeLessThanOrEqual(390);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    // Tuiles : sous la rangée de la tuile, sur toute la largeur ; par rôle : sous les colonnes
+    await page.getByRole("button", { name: /^Affichage · / }).click();
+    await page.getByRole("button", { name: "Tuiles", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".gtile[aria-expanded=true] + .gsheet .fi-head h2")).toHaveText("Brindille Feuillevive");
+    const tiles = (await page.locator(".gtiles").boundingBox())!, wide = (await sheet.boundingBox())!;
+    expect(Math.abs(wide.width - tiles.width), "en tuiles, la fiche prend la largeur de la grille").toBeLessThan(2);
+    await page.getByRole("button", { name: /^Affichage · / }).click();
+    await page.getByRole("button", { name: "Par rôle", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".groles + .gsheet .fi-head h2")).toHaveText("Brindille Feuillevive");
+    await page.getByRole("button", { name: /^Affichage · / }).click();
+    await page.getByRole("button", { name: "Liste", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".grow[aria-expanded=true] + .gsheet")).toHaveCount(1);
+    await sheet.getByRole("link", { name: "✎ Modifier dans Mes persos" }).click();
+    await expect(page).toHaveURL(new RegExp(`/persos/${brindilleId}`));
+    await expect(page.locator(".fi-head h2")).toHaveText("Brindille Feuillevive");
+    // Retour à la guilde ; « Liste du jeu » rétablit la liste
+    await page.goto(`/groups/${group}/membres/persos?vue=fiches`);
+    await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();
+    await expect(sheet).toHaveCount(0);
     await mode.getByRole("button", { name: "Liste du jeu" }).click();
     await expect(page.locator(".gx-table")).toBeVisible();
   });

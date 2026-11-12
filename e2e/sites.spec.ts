@@ -405,6 +405,25 @@ test.describe("Roster (WoW Retail)", () => {
       await page.goto(raidUrl);
     });
 
+    await test.step("onglet Personnages : la fiche s'ouvre sous la ligne cliquée ; Roster garde sa fiche (12/11)", async () => {
+      const raid = page.url();
+      const groupId = raid.match(/\/groups\/([0-9a-f-]{36})\//)?.[1];
+      await page.goto(`${RETAIL}/groups/${groupId}/persos`);
+      // Un perso se range dans la guilde d'un clic, s'il n'y est pas déjà
+      const chip = page.locator(".gm-chip", { hasText: "Brumelune" });
+      const row = page.locator(".grow", { hasText: "Brumelune" });
+      await expect(chip.or(row).first()).toBeVisible();
+      if (await chip.count()) await chip.click();
+      await row.click();
+      const sheet = page.locator(".grow[aria-expanded=true] + .gsheet");
+      await expect(sheet.getByRole("region", { name: "Fiche de Brumelune" })).toContainText("Moine");
+      await expect(sheet.locator(".gm-who")).toContainText("dans cette guilde");
+      await expect(sheet.locator(".fi-head")).toHaveCount(0); // la fiche de Forever (Mes persos en lecture) n'est pas pour Roster
+      await row.click();
+      await expect(page.locator(".gsheet")).toHaveCount(0);
+      await page.goto(raid);
+    });
+
     await test.step("noms en anglais au choix du compte", async () => {
       const raid = page.url();
       await page.goto(`${RETAIL}/account`);
