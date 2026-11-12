@@ -163,6 +163,8 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
   };
   const brindilleId = await fiche(me, "Brindille Feuillevive", "Druid", "Tauren", "Restoration", 28, 2);
   const kaeldraId = await fiche(kael, "Kaeldra Brisevent", "Warrior", "Orc", "Protection", 30, 1);
+  // Un build de niveau 60 sur un perso de niveau 30 : la fiche le dit (sans conseil à celui qui la regarde)
+  await db.query("UPDATE characters SET talents = '31/20/0' WHERE id = $1", [kaeldraId]);
   await db.end();
 
   await test.step("Ctrl+V du relevé : la guilde du jeu se lie et la liste arrive", async () => {
@@ -297,6 +299,12 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(head).toContainText("Niv. 30");
     await expect(head).toContainText("Joueur : Kael");
     await expect(head).toContainText("Les Lanternes · ★ main");
+    // Talents en lecture : le build compte plus de points que le niveau n'en donne ; à qui regarde la fiche d'un autre,
+    // le fait seul, sans « pense à mettre à jour son niveau » (12/11)
+    await head.getByRole("button", { name: /^Talents 31 \/ 20 \/ 0/ }).click();
+    await expect(sheet.locator("#fi-talents")).toContainText(/Ce build compte 51 points, mais le perso est niveau 30 \(\d+ points\)\./);
+    await expect(sheet.locator("#fi-talents")).not.toContainText("pense à mettre à jour");
+    await expect(sheet.locator("#fi-talents input, #fi-talents select")).toHaveCount(0);
     await expect(sheet.locator("#f-name, #f-level, #f-race, #f-cls")).toHaveCount(0);
     await expect(sheet.getByText("Lecture seule")).toHaveCount(0);
     await expect(sheet.getByRole("tab")).toHaveText(["Équipement", "Métiers", "Notes"]);
@@ -343,6 +351,19 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await sheet.getByRole("link", { name: "✎ Modifier dans Mes persos" }).click();
     await expect(page).toHaveURL(new RegExp(`/persos/${brindilleId}`));
     await expect(page.locator(".fi-head h2")).toHaveText("Brindille Feuillevive");
+    // Dans Mes persos, un perso dont je règle moi-même le niveau (jamais relevé en jeu) : le conseil cite « Modifier le
+    // profil », plus « Identité », qui n'existe plus sous ce nom depuis la refonte
+    const db2 = new pg.Client({ connectionString: DB });
+    await db2.connect();
+    const tisane = (await db2.query("INSERT INTO characters (user_id, name, race, cls, spec1, level, professions, talents) VALUES ($1, 'Tisane', 'Tauren', 'Druid', 'Restoration', 40, $2, '31/20/0') RETURNING id",
+      [me, PROFS])).rows[0].id as string;
+    await page.goto(`/persos/${tisane}`);
+    await expect(page.locator(".fi-head h2")).toHaveText("Tisane");
+    await page.getByRole("button", { name: /^Talents 31 \/ 20 \/ 0/ }).click();
+    await expect(page.locator("#fi-talents")).toContainText(/Ce build compte 51 points, mais le perso est niveau 40 \(\d+ points\) : pense à mettre à jour son niveau dans « Modifier le profil »\./);
+    await expect(page.locator("#fi-talents")).not.toContainText("Identité");
+    await db2.query("DELETE FROM characters WHERE id = $1", [tisane]);
+    await db2.end();
     // Retour à la guilde ; « Liste du jeu » rétablit la liste
     await page.goto(`/groups/${group}/membres/persos?vue=fiches`);
     await expect(page.getByRole("button", { name: /^Affichage · / })).toBeVisible();

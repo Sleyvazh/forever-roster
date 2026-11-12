@@ -273,7 +273,8 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
               : <span>{t("Pas encore relevés ·")} <button type="button" className="link" onClick={openSync}>{t("fais ta synchro")}</button></span>}
             <button type="button" className="btn sm" aria-pressed={talManual} onClick={() => setTalManual(m => !m)}>{talManual ? t("Terminer la saisie") : c.talentNodes?.length ? t("Modifier à la main") : t("Remplir à la main ›")}</button>
           </div>
-          <TalentsSection c={c} onChange={onChange} editable={talManual} readOnly={!talManual} folded />
+          {/* Le conseil sur le niveau seulement si le joueur le change lui-même : une fois relevé en jeu, il suit le jeu */}
+          <TalentsSection c={c} onChange={onChange} editable={talManual} readOnly={!talManual} folded levelHint={!c.addonSyncedAt && !c.levelLock ? "profile" : undefined} />
         </div>
       )}
       <div className="tabs" role="tablist">

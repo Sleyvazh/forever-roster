@@ -148,7 +148,7 @@ function Profil({ c, onChange, editable }: SubProps) {
         {race && <div className="bonus"><span className="lbl">{t("Raciaux {race}", { race: c.race })}</span><br />{race.racials}</div>}
       </div>
 
-      <TalentsSection c={c} onChange={onChange} editable={editable} />
+      <TalentsSection c={c} onChange={onChange} editable={editable} levelHint={editable ? "identity" : undefined} />
     </>
   );
 }
@@ -157,7 +157,14 @@ function Profil({ c, onChange, editable }: SubProps) {
  * Talents : répartition, lien du calculateur et arbres, pour la spé principale et l'off-spec. `folded` (Mes persos de Forever) :
  * sans titre ni choix de la spé (ils sont dans l'en-tête de la fiche).
  */
-export function TalentsSection({ c, onChange, editable, folded, readOnly }: SubProps & { folded?: boolean; readOnly?: boolean }) {
+/**
+ * Build qui compte plus de points que le niveau n'en donne : où le joueur corrige le niveau, s'il le peut (12/11).
+ * « identity » : la section Identité de cette fiche (ancien onglet Profil) ; « profile » : « Modifier le profil » de Mes
+ * persos. Rien : le fait seul, sans conseil (fiche vue par un autre joueur, ou niveau qui suit le jeu).
+ */
+export type LevelHint = "identity" | "profile";
+
+export function TalentsSection({ c, onChange, editable, folded, readOnly, levelHint }: SubProps & { folded?: boolean; readOnly?: boolean; levelHint?: LevelHint }) {
   const cl = CLASSES[c.cls as ClassName];
   const specs: readonly SpecDef[] = (CLASS_SPECS as Record<string, SpecDef[]>)[c.cls] ?? [];
   const avail = talentPointsAt(c.level);
@@ -186,9 +193,9 @@ export function TalentsSection({ c, onChange, editable, folded, readOnly }: SubP
         )}
         {cl && (
           <div className={`builds${view === "gauges" ? " two" : ""}`}>
-            <Build id="main" hideSpec={folded} readOnly={readOnly} title={t("Spé principale")} view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
+            <Build id="main" hideSpec={folded} readOnly={readOnly} levelHint={levelHint} title={t("Spé principale")} view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" hideSpec={folded} readOnly={readOnly} title={t("Off-spec")} view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
+            <Build id="off" hideSpec={folded} readOnly={readOnly} levelHint={levelHint} title={t("Off-spec")} view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
           </div>
         )}
@@ -204,8 +211,8 @@ export function TalentsSection({ c, onChange, editable, folded, readOnly }: SubP
 const ROLES: Role[] = ["Tank", "Heal", "DPS"];
 
 /** Un build : intitulé de spé (avec son rôle), répartition des points, lien vers le calculateur et arbres. */
-function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange, hideSpec, readOnly }: {
-  id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"]; hideSpec?: boolean;
+function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, talents, link, avail, level, onChange, hideSpec, readOnly, levelHint }: {
+  id: string; title: string; view: TreeView; tree: Talent[]; nodes?: Character["talentNodes"]; hideSpec?: boolean; levelHint?: LevelHint;
   /** Lecture (Mes persos, données de l'addon) : la répartition en texte, sans champs. */
   readOnly?: boolean;
   cls: string; specs: readonly SpecDef[]; spec: string; talents: string; link: string; avail: number; level: number;
@@ -259,7 +266,11 @@ function Build({ id, title, view, tree: treeTalents, nodes, cls, specs, spec, ta
         {/^https:\/\//.test(link) && <ExternalLink className="btn sm" href={link}>{t("Ouvrir le build")}</ExternalLink>}
       </div>
       {total > avail && (avail < 51 && total <= 51
-        ? <div className="hint">{tn(avail, "Ce build compte {total} points, mais le perso est niveau {level} ({n} point) : pense à mettre à jour son niveau dans « Identité ».", "Ce build compte {total} points, mais le perso est niveau {level} ({n} points) : pense à mettre à jour son niveau dans « Identité ».", { total, level })}</div>
+        ? <div className="hint">{levelHint === "identity"
+          ? tn(avail, "Ce build compte {total} points, mais le perso est niveau {level} ({n} point) : pense à mettre à jour son niveau dans « Identité ».", "Ce build compte {total} points, mais le perso est niveau {level} ({n} points) : pense à mettre à jour son niveau dans « Identité ».", { total, level })
+          : levelHint === "profile"
+          ? tn(avail, "Ce build compte {total} points, mais le perso est niveau {level} ({n} point) : pense à mettre à jour son niveau dans « Modifier le profil ».", "Ce build compte {total} points, mais le perso est niveau {level} ({n} points) : pense à mettre à jour son niveau dans « Modifier le profil ».", { total, level })
+          : tn(avail, "Ce build compte {total} points, mais le perso est niveau {level} ({n} point).", "Ce build compte {total} points, mais le perso est niveau {level} ({n} points).", { total, level })}</div>
         : <div className="warnmsg">{tx("{total} points au total : le maximum est de 51 au niveau 60.", { total: total })}</div>)}
     </div>
   );

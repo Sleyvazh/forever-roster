@@ -408,7 +408,12 @@ test.describe("Roster (WoW Retail)", () => {
     await test.step("onglet Personnages : la fiche s'ouvre sous la ligne cliquée ; Roster garde sa fiche (12/11)", async () => {
       const raid = page.url();
       const groupId = raid.match(/\/groups\/([0-9a-f-]{36})\//)?.[1];
-      await page.goto(`${RETAIL}/groups/${groupId}/persos`);
+      // Par l'onglet, pas par l'adresse /groups/:id/persos : ici Roster est servi sur 127.0.0.1, et avant la réponse de
+      // /api/site la page se croit sur Forever (le jeu est deviné d'après le nom de domaine), dont l'ancienne adresse
+      // /persos renvoie vers Membres. En production (roster.…), le nom de domaine suffit et l'adresse directe marche.
+      await page.goto(`${RETAIL}/groups/${groupId}`);
+      await page.getByRole("tab", { name: "Personnages" }).click();
+      await expect(page).toHaveURL(`${RETAIL}/groups/${groupId}/persos`);
       // Un perso se range dans la guilde d'un clic, s'il n'y est pas déjà
       const chip = page.locator(".gm-chip", { hasText: "Brumelune" });
       const row = page.locator(".grow", { hasText: "Brumelune" });
