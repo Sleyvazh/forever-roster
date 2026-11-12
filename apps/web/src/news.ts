@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 73, date: "2026-11-12", kind: "addon", version: "1.7", title: N("Addon 1.7.5 : les mêmes données ne sont plus téléchargées deux fois"),
+    text: N("Quand deux joueurs chargeaient les mêmes données du site à quelques secondes d'écart, toute la guilde téléchargeait les deux copies, l'une après l'autre. L'addon reconnaît maintenant des données qu'il a déjà, et ne demande plus rien. Les joueurs restés sur une ancienne version continuent comme avant. Télécharge la 1.7.5 sur la page Addon.") },
   { n: 72, date: "2026-11-12", kind: "addon", version: "1.7", title: N("Addon 1.7.4 : les données du site passent plus vite entre joueurs"),
     text: N("Quand un joueur charge les données du site (ou les reçoit par Roster Companion), son addon les partage avec la guilde et le raid : elles partent maintenant compressées, sur des canaux réservés. Pour une guilde ordinaire, 10 messages envoyés d'un coup au lieu de 21 en 17 secondes ; pour une grosse guilde, une dizaine de secondes au lieu d'une centaine. Le partage ne prend plus rien aux messages du raid (conseil, jets). Un joueur resté sur une ancienne version reçoit encore les données, dans l'ancien format. Les données restent signées par le site et vérifiées. Télécharge la 1.7.4 sur la page Addon.") },
   { n: 71, date: "2026-11-11", kind: "addon", version: "1.7", title: N("Addon 1.7.3 : les messages du raid ne se perdent plus"),

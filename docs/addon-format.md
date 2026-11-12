@@ -592,6 +592,8 @@ Ainsi le bloc d'un joueur vaut pour tous les membres : deux joueurs du même gro
 
 ## Messages entre addons (SHV, SHQ, SHD, SHW)
 
+**Empreinte des données (Forever Roster 1.7.5 ; Roster ne change pas)** : l'annonce devient `SHV;<kind>;<groupe>;<at>;<len>;<e>`, où `<e>` est l'empreinte des données sans leur date : les 8 premiers caractères hexadécimaux du SHA-256 du texte canonique (champs personnels vidés, sans les lignes `Z` et `END`) dont la date de l'en-tête est vidée (`FRG;1;<groupe>;;<nom>`). `<at>` est l'heure où le joueur a pris le bloc sur le site : deux joueurs qui chargent les mêmes données à quelques secondes d'écart ont deux dates, et la même empreinte. À la réception, si l'empreinte annoncée est celle de mon bloc signé : annonce plus récente, je ne demande rien (une ligne au journal) ; annonce plus ancienne, je ne réponds pas par la mienne. Sans empreinte, ou mal formée (pas 8 caractères hexadécimaux) : comme avant. Une ancienne version ignore le champ en plus. Une diffusion qui passe sur le canal (demandée par un autre) est toujours prise si elle est plus récente. La date des blocs ne change pas : elle sert aussi à l'addon pour savoir si le site a vu une inscription faite en jeu.
+
 **Format compressé (Forever Roster 1.7.4, `addon/ForeverRoster/Share.lua` ; Roster ne change pas)** :
 
 | Message | Sens | Contenu |

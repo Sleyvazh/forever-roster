@@ -2,6 +2,16 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.5
+
+- **The same data is no longer downloaded twice**: when two players loaded the same website data a few seconds apart, the whole guild downloaded both copies, one after the other. An addon that already holds the same data now asks for nothing.
+- Players on an older version keep working as before.
+
+Français :
+
+- **Les mêmes données ne sont plus téléchargées deux fois** : quand deux joueurs chargeaient les mêmes données du site à quelques secondes d'écart, toute la guilde téléchargeait les deux copies, l'une après l'autre. Un addon qui a déjà les mêmes données ne demande plus rien.
+- Les joueurs restés sur une ancienne version continuent comme avant.
+
 ## 1.7.4
 
 - **Website data is shared much faster between players**: the data one player loads is now compressed before going to the guild and the raid, and sent on its own channels. A typical guild goes from 21 messages in about 17 seconds to 10 messages sent at once; a large one (20,000 bytes) from about 100 seconds to about 10.

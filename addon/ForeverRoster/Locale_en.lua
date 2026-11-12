@@ -420,6 +420,7 @@ T["Heure du serveur : décalage de %d s avec l'horloge du PC"] = "Server time: %
 T["Données de %s diffusées sur %s : %d morceau(x) compressé(s), %d octets au lieu de %d."] = "Data for %s broadcast on %s: %d compressed part(s), %d bytes instead of %d."
 T["Réception de %s depuis %s : %d morceau(x) compressé(s) attendu(s)."] = "Receiving %s from %s: %d compressed part(s) expected."
 T["Données compressées de %s illisibles (reçues de %s) : ancien format redemandé."] = "Compressed data for %s unreadable (received from %s): old format requested again."
+T["Annonce SHV de %s sur %s : %s, version du %s : mêmes données que les miennes, rien à demander."] = "SHV announcement from %s on %s: %s, version of %s: same data as mine, nothing to request."
 T["Format compressé coupé jusqu'à la fin de la session : %d versions illisibles."] = "Compressed format turned off until the end of the session: %d unreadable versions."
 T["Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés"] = "Raid messages: %d sent, %d resent after the game refused them, %d dropped"
 T[", %d en attente"] = ", %d waiting"

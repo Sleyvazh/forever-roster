@@ -81,6 +81,13 @@
 --                                         arrivé en 120 s ; jamais pour un groupe dont je ne suis pas dans M) ; pas
 --                                         pour une version déjà en route ni pour une version signée que l'addon n'a
 --                                         pas su appliquer ; pas pour une date à plus d'un jour dans le futur.
+--   SHV;<kind>;<groupe>;<at>;<len>;<e>    (1.7.5) <e> : empreinte des données sans leur date (Sh.Print : 8 caractères
+--                                         hexadécimaux). La date d'un bloc est l'heure où le joueur l'a pris sur le
+--                                         site : deux joueurs qui chargent les mêmes données à quelques secondes
+--                                         d'écart ont deux « versions ». Même empreinte que la mienne : mêmes données,
+--                                         je ne demande rien (annonce plus récente) et je ne réponds pas par mon
+--                                         annonce (annonce plus ancienne). Une ancienne version ignore ce champ ; une
+--                                         annonce sans empreinte (ou mal formée) se traite comme avant.
 --   SHQ;<groupe>;<at>;<canal>;z           (1.7.4) le « z » final : « je lis le format compressé ». Une ancienne
 --                                         version l'ignore et répond en clair (SHD).
 --   SHZ;<groupe>;<at>;<i>;<n>;<morceau>   (1.7.4) morceau i sur n du même texte, compressé (deflate, LibDeflate) puis
@@ -120,6 +127,7 @@ Sh.MAX_PARTS = 400   -- morceaux au plus d'un texte partagé
 Sh.MAX_BUFFERS = 16  -- textes en cours de réception au plus (2 par expéditeur)
 Sh.FUTURE = 86400    -- s : une version datée de plus d'un jour dans le futur est ignorée
 Sh.Z_FAILS = 20      -- versions compressées illisibles dans la session, après quoi je ne lis plus que l'ancien format
+Sh.PRINT_LEN = 8     -- caractères hexadécimaux de l'empreinte des données dans une annonce (SHV)
 Sh.WANT_GAP = 300    -- s : un même joueur n'est écouté qu'une fois par ce temps pour sa demande (SHW)
 Sh.JOURNAL = 40      -- lignes du journal de la session
 
@@ -220,6 +228,17 @@ end
 function Sh.Canonical(text, kind)
   local info = Sh.Parse(text, kind)
   return info and info.canonical or nil
+end
+
+--- Empreinte des données d'un bloc, sans sa date (1.7.5) : les Sh.PRINT_LEN premiers caractères hexadécimaux du SHA-256
+--- du texte canonique dont la date de l'en-tête (« FRG;1;<groupe>;<date>;<nom> ») est vidée. Deux blocs que le site a
+--- générés à deux moments avec les mêmes données ont la même empreinte. nil sans texte ou sans SHA-256.
+function Sh.Print(canonical)
+  local C = ns.Crypto
+  if type(canonical) ~= "string" or not (C and C.sha256 and C.hex) then return nil end
+  local body = canonical:gsub("^([^;\n]*;[^;\n]*;[^;\n]*;)%d+", "%1", 1)
+  local ok, hex = pcall(function() return C.hex(C.sha256(body)) end)
+  return ok and type(hex) == "string" and hex:sub(1, Sh.PRINT_LEN) or nil
 end
 
 -- Vérifications déjà faites : [signature \n texte canonique] = true / false (la clé lie la signature au texte)
@@ -491,6 +510,7 @@ local function mineSigned(group, b)
     elseif not info.shared then why = "unsigned"
     else local ok, w = verify(info) if not ok then why = w end end
     c = { info = not why and info or nil, why = why }
+    if c.info then c.info.print = Sh.Print(info.canonical) end -- empreinte des données sans leur date (annonces)
     parsedN = parsedN + 1
     if parsedN > 32 then parsed, parsedN = {}, 1 end
     parsed[text] = c
@@ -502,7 +522,7 @@ end
 -- Annonces (SHV)
 --------------------------------------------------------------------------------------------------------------------
 local function announce(group, info, dist)
-  if not send(table.concat({ "SHV", cfg.kind, group, info.at, #info.shared }, ";"), dist) then return false end
+  if not send(table.concat({ "SHV", cfg.kind, group, info.at, #info.shared, info.print }, ";"), dist) then return false end
   heard[dist][group] = { at = info.at, t = now() }
   lastDist[group] = dist
   note(N("Annonce SHV faite sur %s : %s, version du %s."), dist, labelOf(group), stamp(info.at))
@@ -690,18 +710,29 @@ end
 
 local function onAnnounce(sender, msg, dist)
   if not CHANNELS[dist] then return end
-  local kind, group, at, len = msg:match("^SHV;([^;]*);([^;]+);(%d+);(%d+)")
+  local kind, group, at, len, print = msg:match("^SHV;([^;]*);([^;]+);(%d+);(%d+);?([^;]*)")
   at, len = tonumber(at), tonumber(len)
   if kind ~= cfg.kind or not (at and len) or at > wall() + Sh.FUTURE then return end
   local t = now()
   local h = heard[dist][group]
   if not h or at >= h.at then heard[dist][group] = { at = at, t = t } end
   local mine = myAt(group)
+  -- Mêmes données que les miennes à une autre date (1.7.5) : l'empreinte annoncée est la mienne
+  local same = false
+  if mine and at ~= mine and #print == Sh.PRINT_LEN and not print:find("%X") then
+    local info = mineSigned(group)
+    same = info ~= nil and info.print == print
+  end
   if mine and at < mine then
-    if mineSigned(group) then answerOlder(group, dist, t) end
+    if not same and mineSigned(group) then answerOlder(group, dist, t) end
     return
   end
   if mine and at == mine then return end
+  if same then -- plus récente, mais les mêmes données : rien à demander
+    noteOnce("same\1" .. group .. "\1" .. at, N("Annonce SHV de %s sur %s : %s, version du %s : mêmes données que les miennes, rien à demander."),
+      shown(sender), dist, labelOf(group), stamp(at))
+    return
+  end
   if len > Sh.MAX_LEN then -- jamais demandé ; dit au journal, une fois par groupe et par version
     if not (outsider[group] and not mine) then
       noteOnce("big\1" .. group .. "\1" .. at, N("Annonce SHV de %s sur %s : %s, version du %s : ignorée, trop gros : %d octets, limite %d."),

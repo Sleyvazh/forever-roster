@@ -4134,7 +4134,7 @@ local function sharingZ()
   assert(ns.UI.LoadFromSite(b1), "mes données, signées")
   advance(10)
   local info = Sh.Parse(myGroup(G1).text, "FRG")
-  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T1 .. ";" .. #info.shared .. "$") == 1, "annonce après le collage")
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T1 .. ";" .. #info.shared .. ";" .. Sh.Print(info.canonical) .. "$") == 1, "annonce après le collage, avec l'empreinte des données (1.7.5)")
   assert(count(nova.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1 and count(vex.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1, "les nouvelles versions demandent avec « z »")
   local plain, zdata = Sh.Chunks(G1, T1, info.shared), pack(info.shared)
   local zlist = Sh.ChunksZ(G1, T1, zdata)
@@ -4388,6 +4388,92 @@ local function sharingZ()
   assert(count(mine, "^SHZ;" .. esc(G1) .. ";" .. T12 .. ";", m1 + 1, true) > 0 and count(mine, "^SHD;", m1 + 1) == 0, "après la coupure : je diffuse toujours en compressé")
   advance(60)
   assert(nova.applied[#nova.applied].at == T12, "et Nova le reçoit")
+
+  -- k. Mêmes données, dates différentes (1.7.5). La date d'un bloc est l'heure où le joueur l'a pris sur le site : deux
+  -- joueurs qui chargent les mêmes données à quelques secondes d'écart ont deux « versions », et toute la guilde
+  -- téléchargeait la seconde (relevé de Necko, 12/11). L'annonce porte maintenant une empreinte des données sans leur
+  -- date : celui qui a déjà les mêmes ne demande rien, et ne répond pas à une annonce plus ancienne des mêmes données.
+  for _, cl in ipairs(peers) do cl.guild = false end
+  Sh.Reset() -- nouvelle session : le format compressé est de nouveau lu
+  advance(Sh.QUIET + 5)
+  local function redate(text, at)
+    local body = (text:gsub("\nZ;[^\n]*\nEND;[^\n]*$", ""))
+    body = (body:gsub("^(FRG;1;[^;]*;)%d+", "%1" .. at))
+    return body .. "\nZ;test0001;" .. checksum(body) .. "\nEND;" .. text:match("\nEND;(%d+)$")
+  end
+  local printOf = function(text) return Sh.Print(Sh.Parse(text, "FRG").canonical) end
+  local T20 = T12 + 1000
+  local c20 = block(G1, T20, 75, MEMBERS)
+  local c23 = redate(c20, T20 + 3)
+  assert(Sh.Parse(c23, "FRG").at == T20 + 3 and Sh.Parse(c23, "FRG").shared ~= Sh.Parse(c20, "FRG").shared, "même bloc, daté 3 s plus tard")
+  local print20 = printOf(c20)
+  assert(#print20 == 8 and print20:match("^%x+$"), "empreinte : 8 caractères hexadécimaux : " .. tostring(print20))
+  assert(printOf(c23) == print20, "mêmes données, autre date : même empreinte")
+  assert(printOf(block(G1, T20, 75, MEMBERS)) ~= print20, "autres données : autre empreinte")
+  local mira = peer("Mira", { new = true, chars = { "Nova" } })
+  hold(mira, c23)
+  assert(ns.UI.LoadFromSite(c20), "mes données")
+  m1 = #mine
+  advance(10)
+  -- Mon annonce porte l'empreinte. Mira a les mêmes données, datées 3 s plus tard : elle ne répond pas par son annonce
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T20 .. ";%d+;" .. print20 .. "$", m1 + 1) == 1, "mon annonce porte l'empreinte")
+  assert(count(mira.sent, "^SHV;") == 0 and count(mira.sent, "^SHQ;") == 0, "Mira : mêmes données, ni annonce en réponse ni demande")
+  -- Mira annonce sa version, plus récente de 3 s : je n'ai rien à demander
+  advance(Sh.QUIET + 5)
+  m1 = #mine
+  assert(mira.Sh.Announce("GUILD") == 1, "Mira annonce")
+  advance(10)
+  assert(count(mira.sent, "^SHV;FRG;" .. esc(G1) .. ";" .. (T20 + 3) .. ";%d+;" .. print20 .. "$") == 1, "l'annonce de Mira porte la même empreinte")
+  assert(count(mine, "^SHQ;", m1 + 1) == 0 and count(mine, "^SHV;", m1 + 1) == 0 and myGroup(G1).at == T20, "mêmes données à une autre date : pas de demande")
+  assert(journalHas("Annonce SHV de Mira", "mêmes données que les miennes"), "journal : mêmes données")
+  -- Un joueur sans données : une seule demande, à la première annonce ; la seconde (mêmes données) ne lui fait rien demander
+  local neo = peer("Neo", { new = true, chars = { "Vex" } })
+  advance(Sh.QUIET + 5)
+  assert(Sh.Announce("GUILD") == 1, "j'annonce")
+  advance(20)
+  assert(count(neo.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1 and #neo.applied == 1 and neo.applied[1].at == T20, "Neo : demandé et reçu une fois")
+  advance(Sh.QUIET + 5)
+  assert(mira.Sh.Announce("GUILD") == 1, "Mira annonce de nouveau")
+  advance(20)
+  assert(count(neo.sent, "^SHQ;") == 1 and #neo.applied == 1, "Neo : mêmes données chez Mira, pas de seconde demande")
+  -- Une ancienne version (sans empreinte) qui a les mêmes données lit l'annonce malgré le champ en plus, et demande
+  -- comme avant ; la diffusion passe sur le canal, tout le monde la prend au passage (elle ne coûte rien de plus)
+  local vieux = peer("Vieux", { chars = { "Oldie" } })
+  hold(vieux, c20)
+  advance(Sh.QUIET + 5)
+  assert(mira.Sh.Announce("GUILD") == 1, "Mira annonce")
+  advance(60)
+  assert(count(vieux.sent, "^SHQ;" .. esc(G1) .. ";" .. T20 .. ";GUILD$") == 1 and vieux.applied[#vieux.applied].at == T20 + 3, "ancienne version : annonce lue, demande comme avant")
+  assert(myGroup(G1).at == T20 + 3 and count(mine, "^SHQ;", m1 + 1) == 0, "diffusion prise au passage, sans rien demander")
+  -- Autres données, plus récentes : demandées (les empreintes diffèrent)
+  local c30 = block(G1, T20 + 10, 75, MEMBERS)
+  hold(mira, c30)
+  advance(Sh.QUIET + 5)
+  m1 = #mine
+  assert(mira.Sh.Announce("GUILD") == 1, "Mira annonce d'autres données")
+  advance(60)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. (T20 + 3) .. ";GUILD", m1 + 1) == 1 and myGroup(G1).at == T20 + 10, "autres données : demandées et reçues")
+  -- Annonce sans empreinte (ancienne version), mêmes données à une date plus récente : demandée, comme avant
+  hold(vieux, redate(c30, T20 + 15))
+  advance(Sh.QUIET + 5)
+  m1 = #mine
+  assert(vieux.Sh.Announce("GUILD") == 1, "l'ancienne version annonce")
+  advance(60)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. (T20 + 10) .. ";GUILD", m1 + 1) == 1 and myGroup(G1).at == T20 + 15, "annonce sans empreinte : demandée, comme avant")
+  -- Empreinte mal formée (pas de l'hexadécimal, ou pas 8 caractères) : lue comme une annonce sans empreinte
+  advance(Sh.TIMEOUT + 5)
+  m1 = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. (T20 + 50) .. ";4000;zz" .. printOf(myGroup(G1).text), "GUILD", "Mira-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. (T20 + 51) .. ";4000;" .. printOf(myGroup(G1).text):sub(1, 6), "GUILD", "Mira-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. (T20 + 52) .. ";4000;" .. printOf(myGroup(G1).text) .. "0", "GUILD", "Mira-Forever EU")
+  advance(1)
+  assert(count(mine, "^SHQ;", m1 + 1) == 3, "empreinte mal formée : demandes comme sans empreinte : " .. count(mine, "^SHQ;", m1 + 1))
+  -- La bonne empreinte, elle, arrête la demande, quelle que soit la date annoncée
+  m1 = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHV;FRG;" .. G1 .. ";" .. (T20 + 60) .. ";4000;" .. printOf(myGroup(G1).text), "GUILD", "Mira-Forever EU")
+  advance(1)
+  assert(count(mine, "^SHQ;", m1 + 1) == 0, "bonne empreinte : pas de demande")
+  advance(Sh.TIMEOUT * 2)
 
   assert(errors() == errorsBefore, "aucune erreur Lua pendant le partage compressé")
   assert(#RA.bulkQueue == 0 and #RA.lowQueue == 0 and #RA.queue == 0, "files vides à la fin")
