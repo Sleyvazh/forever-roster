@@ -1005,6 +1005,7 @@ end
 -- Diagnostic du partage (/fr partage, 1.6.3) : ce que l'addon a reçu, partagé, confié ou relayé pendant la session, en texte
 -- brut à copier. Une ligne par groupe chargé (Group.ShareLines), une ligne de réglages (partage, confier, relais et pourquoi
 -- pas), les messages du raid de la session (1.7.3 : partis, renvoyés après un refus du jeu, abandonnés, en attente),
+-- les morceaux compressés du partage (1.7.4),
 -- puis le journal de la session (Share.Journal : « hh:mm:ss  texte », le plus ancien d'abord).
 function U.ShareDiagText()
   local G, R, lines = ns.Group, ns.Relay, {}
@@ -1028,6 +1029,14 @@ function U.ShareDiagText()
     local text = L("Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés", s.sent, s.retried, s.dropped)
     if waiting > 0 then text = text .. L(", %d en attente", waiting) end
     lines[#lines + 1] = text
+    -- Partage compressé (1.7.4) : morceaux partis sur les préfixes réservés, et bibliothèque de compression présente ou non
+    if RA.bulkStats then
+      local lib = LibStub and LibStub("LibDeflate", true)
+      local z = lib and L("Partage compressé : %d morceau(x) parti(s)", RA.bulkStats.sent) or L["Partage compressé : impossible (LibDeflate absente), partage en clair"]
+      local held = RA.bulkQueue and #RA.bulkQueue or 0
+      if held > 0 then z = z .. L(", %d en attente", held) end
+      lines[#lines + 1] = z
+    end
   end
   -- Heure du serveur (GetServerTime, qui date les clics d'inscription) : son décalage avec l'horloge du PC, ou absente
   local okT, server = false, nil

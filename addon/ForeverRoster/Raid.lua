@@ -115,6 +115,12 @@ end
 -- répondre pour 3 objets d'affilée fait 18 chuchotements, soit 8 de trop. RA.stats compte les envois (/fr partage).
 -- La file de fond du partage (plus bas) attend que celle du raid soit vide, et lui laisse 6 messages de l'allocation.
 --------------------------------------------------------------------------------------------------------------------
+-- Partage compressé (1.7.4) : trois préfixes réservés aux morceaux SHZ de Share.lua, pour ne rien prendre à l'allocation
+-- des messages du raid (10 d'affilée puis 1 par seconde, par préfixe). Une ancienne version ne les écoute pas.
+local BULK = { "FRosterS1", "FRosterS2", "FRosterS3" }
+local BULK_SET = {}
+for i, p in ipairs(BULK) do BULK_SET[p] = i end
+RA.BULK_PREFIXES = BULK
 local handlers = {}
 -- Enregistre le gestionnaire d'un message : fn(prénom de l'expéditeur, champs, canal, message entier, nom brut de
 -- l'expéditeur). Le nom brut est celui que le jeu donne (« Prénom-Royaume ») : chuchoter à ce nom, jamais au prénom seul
@@ -155,7 +161,7 @@ local function outcome(ok, ...)
   return "ok"
 end
 local qTimer, qFlushing = false, false
-local qFlush, lowFlush
+local qFlush, lowFlush, bulkFlush
 local function qLater(delay)
   if qTimer then return end
   qTimer = true
@@ -200,7 +206,10 @@ function qFlush()
   local ok, err = pcall(qDrain)
   qFlushing = false
   if not ok then error(err, 0) end
-  if #RA.queue == 0 and lowFlush then lowFlush() end -- file du raid vide : au tour de la file de fond
+  if #RA.queue == 0 then -- file du raid vide : au tour des files de fond
+    if lowFlush then lowFlush() end
+    if bulkFlush then bulkFlush() end
+  end
 end
 -- Envoi d'un message du raid : mis en file, parti tout de suite si le jeu le prend. Faux hors groupe (rien à qui parler)
 local function send(msg, dist, target)
@@ -228,11 +237,22 @@ function RA.Deliver(sender, msg, dist)
 end
 ns.on("PLAYER_LOGIN", function()
   local reg = (C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix) or RegisterAddonMessagePrefix
-  if reg then pcall(reg, PREFIX) end
+  if reg then
+    pcall(reg, PREFIX)
+    for _, p in ipairs(BULK) do pcall(reg, p) end
+  end
 end)
 -- handlers[code](expéditeur (prénom seul), champs, canal, message entier, expéditeur brut : voir RA.On)
 ns.on("CHAT_MSG_ADDON", function(prefix, text, dist, sender)
-  if prefix ~= PREFIX or type(text) ~= "string" then return end
+  if type(text) ~= "string" then return end
+  if BULK_SET[prefix] then -- morceau compressé du partage, d'un autre joueur : tel quel à Share.lua (octets quelconques)
+    local who = short(sender)
+    if ns.Share and ns.Share.OnMessage and who ~= "" and who ~= short(me()) and text:sub(1, 4) == "SHZ;" then
+      ns.Share.OnMessage(ns.str(sender), text, dist)
+    end
+    return
+  end
+  if prefix ~= PREFIX then return end
   local f = ns.Format.split(text)
   if handlers[f[1]] then handlers[f[1]](short(sender), f, dist, text, ns.str(sender)) end
 end)
@@ -289,7 +309,87 @@ function RA.SendLow(msg, dist, target)
   lowFlush()
   return true
 end
-ns.on("PLAYER_REGEN_ENABLED", function() lowFlush() end)
+ns.on("PLAYER_REGEN_ENABLED", function() lowFlush() if bulkFlush then bulkFlush() end end)
+
+--------------------------------------------------------------------------------------------------------------------
+-- Partage compressé (1.7.4) : file des morceaux SHZ, sur les trois préfixes réservés. Chaque préfixe a sa propre
+-- allocation (10 d'affilée puis 1 par seconde) ; le débit total est plafonné comme le fait ChatThrottleLib, la
+-- bibliothèque d'envoi des autres addons (4 000 octets d'affilée, puis 800 par seconde, 40 octets comptés en plus par
+-- message), parce que trop de données d'un coup sur plusieurs préfixes peut déconnecter le joueur. Jamais en combat,
+-- après les messages du raid, en attendant si le jeu bloque ; un morceau attend 10 min au plus.
+--------------------------------------------------------------------------------------------------------------------
+local BULK_BURST, BULK_RATE, BULK_OVERHEAD = 4000, 800, 40
+RA.bulkQueue = {}
+RA.bulkStats = { sent = 0, bytes = 0 } -- morceaux compressés partis dans la session, et leurs octets
+local bulkTokens, bulkAt, bulkLast = {}, {}, 0
+local bulkBytes, bulkBytesAt = BULK_BURST, nil
+local bulkTimer, bulkFlushing = false, false
+local function bulkLater(delay)
+  if bulkTimer then return end
+  bulkTimer = true
+  C_Timer.After(delay, function() bulkTimer = false bulkFlush() end)
+end
+-- Un préfixe qui a encore un message d'allocation (à tour de rôle), ou nil
+local function bulkPrefix(t)
+  for i = 1, #BULK do
+    bulkAt[i] = bulkAt[i] or t
+    bulkTokens[i] = math.min(BURST, (bulkTokens[i] or BURST) + math.max(0, t - bulkAt[i]))
+    bulkAt[i] = t
+  end
+  for k = 1, #BULK do
+    local i = (bulkLast + k - 1) % #BULK + 1
+    if bulkTokens[i] >= 1 then return i end
+  end
+  return nil
+end
+local function bulkDrain()
+  local q = RA.bulkQueue
+  local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
+  while #q > 0 do
+    local e = q[1]
+    if clock() - e.at > LOW_MAX_WAIT or not api then table.remove(q, 1) -- trop vieux (ou plus d'API) : abandonné
+    else
+      if #RA.queue > 0 then return bulkLater(1) end -- les messages du raid d'abord
+      if inCombat() then return bulkLater(2) end
+      local t = clock()
+      bulkBytesAt = bulkBytesAt or t
+      bulkBytes = math.min(BULK_BURST, bulkBytes + math.max(0, t - bulkBytesAt) * BULK_RATE)
+      bulkBytesAt = t
+      local cost = #e.msg + BULK_OVERHEAD
+      if bulkBytes < cost then return bulkLater(math.max(0.1, (cost - bulkBytes) / BULK_RATE)) end
+      local i = bulkPrefix(t)
+      if not i then return bulkLater(0.34) end
+      local read, why = pcall(outcome, pcall(api, BULK[i], e.msg, e.dist))
+      if not read then why = "ok" end
+      if why == "lockdown" then return bulkLater(3)
+      elseif why == "throttle" then bulkTokens[i] = 0 -- ce préfixe est vide côté jeu : un autre, sinon plus tard
+      elseif why == "error" then
+        e.tries = (e.tries or 0) + 1
+        if e.tries >= MAX_TRIES then table.remove(q, 1) else return bulkLater(1) end
+      elseif why == "refused" or why == "gone" then table.remove(q, 1)
+      else
+        bulkTokens[i], bulkBytes, bulkLast = bulkTokens[i] - 1, bulkBytes - cost, i
+        RA.bulkStats.sent, RA.bulkStats.bytes = RA.bulkStats.sent + 1, RA.bulkStats.bytes + #e.msg
+        table.remove(q, 1)
+      end
+    end
+  end
+end
+function bulkFlush()
+  if bulkFlushing then return end
+  bulkFlushing = true
+  local ok, err = pcall(bulkDrain)
+  bulkFlushing = false
+  if not ok then error(err, 0) end
+end
+-- Envoi d'un morceau compressé du partage (≤ 255 octets, sans octet nul) : dist "GUILD" ou "RAID"
+function RA.SendBulk(msg, dist)
+  if type(msg) ~= "string" or #msg > 255 or msg:find("%z") or (dist ~= "GUILD" and dist ~= "RAID") then return false end
+  local q = RA.bulkQueue
+  q[#q + 1] = { msg = msg, dist = dist, at = clock() }
+  bulkFlush()
+  return true
+end
 -- Message d'un autre joueur (pas l'écho des miens, renvoyés par la guilde et le raid) : le filtre se fait sur le prénom,
 -- Share.lua reçoit le nom brut (ou, sans lui, le prénom) pour chuchoter à ce nom
 for _, code in ipairs({ "SHV", "SHQ", "SHD", "SHW" }) do

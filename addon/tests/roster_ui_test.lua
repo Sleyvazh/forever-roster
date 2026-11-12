@@ -14,7 +14,7 @@ local printed = {}
 function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") LOCALE_AUDIT.show(printed[#printed]) end
 
 -- Cadres : toute méthode existe et ne fait rien (sauf texte, visibilité, scripts et parent, utiles aux vérifications)
-TEXTS = setmetatable({}, { __mode = "v" }) -- dernier cadre qui affiche ce texte
+TEXTS = {} -- dernier cadre qui affiche ce texte ; table ordinaire (pas faible) : le ramasse-miettes ne doit rien changer aux tests
 local function frame(parent)
   local f = { shown = false, text = "", scripts = {}, parent = parent }
   return setmetatable(f, { __index = function(_, k)

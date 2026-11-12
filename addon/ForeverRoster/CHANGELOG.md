@@ -2,6 +2,22 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.4
+
+- **Website data is shared much faster between players**: the data one player loads is now compressed before going to the guild and the raid, and sent on its own channels. A typical guild goes from 21 messages in about 17 seconds to 10 messages sent at once; a large one (20,000 bytes) from about 100 seconds to about 10.
+- **Raid messages are never slowed down by sharing any more**: sharing no longer uses the raid's message allowance.
+- **Older versions still work**: a player on 1.7.3 or older keeps receiving the data in the old format, and a guild switches to the fast format as its players update.
+- Data is still signed by the website and checked before use. Compression uses the LibDeflate library (zlib License, by Haoqian He), embedded in the addon; reading is limited in size, so a tampered message cannot freeze the game.
+- `/fr share` shows the compressed parts sent.
+
+Français :
+
+- **Les données du site passent bien plus vite d'un joueur à l'autre** : les données chargées par un joueur sont maintenant compressées avant de partir à la guilde et au raid, sur des canaux réservés. Une guilde ordinaire passe de 21 messages en 17 secondes environ à 10 messages envoyés d'un coup ; une grosse (20 000 octets), d'environ 100 secondes à environ 10.
+- **Le partage ne ralentit plus jamais les messages du raid** : il ne prend plus rien à l'allocation de messages du raid.
+- **Les anciennes versions marchent toujours** : un joueur en 1.7.3 ou plus ancien reçoit encore les données dans l'ancien format, et une guilde passe au format rapide à mesure que ses joueurs se mettent à jour.
+- Les données restent signées par le site et vérifiées avant d'être utilisées. La compression utilise la bibliothèque LibDeflate (licence zlib, de Haoqian He), embarquée dans l'addon ; la lecture est limitée en taille : un message trafiqué ne peut pas figer le jeu.
+- `/fr partage` affiche les morceaux compressés partis.
+
 ## 1.7.3
 
 - **Raid messages no longer get lost**: loot council answers and votes, rolls, the consumables call and the version check now go through a queue. The game accepts 10 addon messages in a row, then 1 per second (whispers included inside instances), and blocks them during a boss fight: a refused message used to vanish silently. It is now sent again, in order, as soon as the game allows it. Example: with a council of 5 and the loot master, answering for 3 items in a row is 18 whispers; 8 of them could be lost before.

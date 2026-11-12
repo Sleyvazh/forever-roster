@@ -592,6 +592,18 @@ Ainsi le bloc d'un joueur vaut pour tous les membres : deux joueurs du même gro
 
 ## Messages entre addons (SHV, SHQ, SHD, SHW)
 
+**Format compressé (Forever Roster 1.7.4, `addon/ForeverRoster/Share.lua` ; Roster ne change pas)** :
+
+| Message | Sens | Contenu |
+|---|---|---|
+| `SHQ;<groupe>;<at>;<canal>;z` | chuchoté à celui qui annonce | Le `z` final : « je lis le format compressé ». Une ancienne version l'ignore et répond en clair. |
+| `SHZ;<groupe>;<at>;<i>;<n>;<morceau>` | diffusion, GUILD ou RAID, préfixes `FRosterS1` à `FRosterS3` | Morceau `i` sur `n` du texte partagé compressé : `deflate` brut (LibDeflate, niveau 5), puis encodé pour le canal des addons (`EncodeForWoWAddonChannel` : aucun octet nul). Le morceau est le reste du message, octets quelconques. |
+
+- **Choix du format** : la diffusion part 0,5 à 3 s après la première demande ; compressée si toutes les demandes entendues d'ici là portent `z`, en clair (`SHD`) sinon. Une diffusion compressée récente n'empêche pas une diffusion en clair demandée par une ancienne version ; une diffusion en clair récente (moins de 60 s) vaut pour tous.
+- **Réception** : morceaux dans n'importe quel ordre, mêmes limites que `SHD` (400 morceaux, 60 000 octets, 2 textes par expéditeur, 120 s), puis décodage et décompression par `Inflate.lua`, qui s'arrête à 60 000 octets de sortie. Le texte obtenu suit ensuite le même chemin que `SHD` (plus récent, membre, signature du site). Illisible, ou signature fausse : l'ancien format est redemandé à l'expéditeur (`SHQ` sans `z`), une fois par version. Après 20 versions illisibles dans la session (`Sh.Z_FAILS` : un joueur qui en fabrique, ou une compression fautive), le format compressé est coupé jusqu'à la fin de la session : demandes sans `z`, `SHZ` ignorés ; les diffusions de ce joueur, elles, ne changent pas. Sans la bibliothèque (`zOn` de l'adaptateur) : tout en clair, et pas de `z` dans les demandes.
+- **Envoi** (`Raid.lua`, `RA.SendBulk`) : chaque préfixe a son allocation (10 d'affilée, puis 1 par seconde) ; débit total plafonné comme ChatThrottleLib (4 000 octets d'affilée, puis 800 par seconde, 40 octets comptés en plus par message) ; rien en combat, après les messages du raid, attente si le jeu bloque, 10 min au plus. Les messages `SHV`, `SHQ`, `SHW` et `SHD` restent sur `FRoster`.
+- **Mesures** (jeu simulé) : 4 200 octets, 7 à 10 morceaux partis d'un coup au lieu de 22 en 18 s ; 20 000 octets, 29 à 47 morceaux en 6 à 13 s au lieu de 104 en 100 s.
+
 Préfixe de chaque addon (`RosterRT` pour Roster, `FRoster` pour Forever Roster) et sa file d'envoi ; chaque message ≤ 255 octets.
 
 | Message | Sens | Contenu |

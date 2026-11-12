@@ -20,11 +20,13 @@ local function readFile(path)
   return s
 end
 
+-- Bibliothèques d'autres auteurs embarquées telles quelles (Forever Roster 1.7.4) : leurs textes ne sont pas les nôtres
+local THIRD_PARTY = { ["LibStub.lua"] = true, ["LibDeflate.lua"] = true }
 local function tocFiles(addon)
   local files = {}
   for line in io.lines("addon/" .. addon .. "/" .. addon .. ".toc") do
     line = line:gsub("\r", "")
-    if line:match("%.lua$") and not line:match("^#") then
+    if line:match("%.lua$") and not line:match("^#") and not THIRD_PARTY[line] then
       local own = "addon/" .. addon .. "/" .. line
       files[#files + 1] = readFile(own) and own or ("addon/shared/" .. line)
     end

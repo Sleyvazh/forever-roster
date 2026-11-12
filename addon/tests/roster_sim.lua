@@ -46,7 +46,7 @@ end
 --------------------------------------------------------------------------------------------------------------------
 -- Cadres : toute méthode existe et ne fait rien (sauf texte, visibilité et scripts, utiles aux vérifications)
 --------------------------------------------------------------------------------------------------------------------
-TEXTS = setmetatable({}, { __mode = "v" })
+TEXTS = {} -- table ordinaire (pas faible) : un cadre vit jusqu'au /reload, et le ramasse-miettes ne doit rien changer aux tests
 local function frame()
   local f = { shown = false, text = "", scripts = {} }
   return setmetatable(f, { __index = function(_, k)

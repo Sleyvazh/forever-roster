@@ -750,6 +750,24 @@ if Sh.Setup then Sh.Setup({
   enabled = G.ShareOn,
   display = shortName, -- Share.lua reçoit le nom brut (« Prénom-Royaume », pour chuchoter) ; on affiche le prénom
   stamp = function(at) return date("%d/%m %H:%M", at) end,
+  -- Format compressé (1.7.4) : LibDeflate compresse (deflate) et encode pour le canal des addons ; à la réception,
+  -- Inflate.lua décompresse avec une taille maximale (le décompresseur de LibDeflate n'en a pas). Morceaux envoyés
+  -- sur les préfixes réservés au partage (Raid.lua). Sans la bibliothèque : partage en clair, comme avant.
+  pack = function(text)
+    local LD = LibStub and LibStub("LibDeflate", true)
+    if not LD then return nil end
+    -- Niveau 5 : à 10 octets près la taille du niveau 9, en moitié moins de temps (60 Ko : 45 ms hors du jeu)
+    return LD:EncodeForWoWAddonChannel((LD:CompressDeflate(text, { level = 5 })))
+  end,
+  unpack = function(data)
+    local LD = LibStub and LibStub("LibDeflate", true)
+    if not (LD and ns.Inflate) then return nil end
+    local raw = LD:DecodeForWoWAddonChannel(data)
+    if type(raw) ~= "string" then return nil end
+    return (ns.Inflate(raw, Sh.MAX_LEN))
+  end,
+  sendBulk = function(msg, dist) return ns.Raid ~= nil and ns.Raid.SendBulk ~= nil and ns.Raid.SendBulk(msg, dist) end,
+  zOn = function() return LibStub ~= nil and LibStub("LibDeflate", true) ~= nil and ns.Inflate ~= nil end,
 }) end
 
 -- Origine des données d'un groupe, déjà traduite : collées, chargées par Roster Companion ou reçues d'un joueur, et quand

@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 72, date: "2026-11-12", kind: "addon", version: "1.7", title: N("Addon 1.7.4 : les données du site passent plus vite entre joueurs"),
+    text: N("Quand un joueur charge les données du site (ou les reçoit par Roster Companion), son addon les partage avec la guilde et le raid : elles partent maintenant compressées, sur des canaux réservés. Pour une guilde ordinaire, 10 messages envoyés d'un coup au lieu de 21 en 17 secondes ; pour une grosse guilde, une dizaine de secondes au lieu d'une centaine. Le partage ne prend plus rien aux messages du raid (conseil, jets). Un joueur resté sur une ancienne version reçoit encore les données, dans l'ancien format. Les données restent signées par le site et vérifiées. Télécharge la 1.7.4 sur la page Addon.") },
   { n: 71, date: "2026-11-11", kind: "addon", version: "1.7", title: N("Addon 1.7.3 : les messages du raid ne se perdent plus"),
     text: N("En raid, le jeu n'accepte que 10 messages d'addon d'affilée, puis 1 par seconde, et les bloque pendant un combat de boss : une réponse ou un vote au conseil envoyé en trop disparaissait sans rien dire (avec un conseil de 5, répondre pour 3 objets d'affilée suffisait). L'addon garde maintenant chaque message du raid en file et le renvoie dès que le jeu le permet, dans l'ordre : réponses et votes du conseil, jets, appel aux consommables, versions. /fr partage compte les messages partis, renvoyés et abandonnés. Télécharge la 1.7.3 sur la page Addon.") },
   { n: 70, date: "2026-11-11", kind: "addon", version: "1.7", title: N("Addon 1.7.2 : les mots du site anglais"),

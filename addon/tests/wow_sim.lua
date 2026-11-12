@@ -7,7 +7,10 @@ local printed = {}
 function print(...) local t = {} for i = 1, select("#", ...) do t[#t + 1] = tostring(select(i, ...)) end printed[#printed + 1] = table.concat(t, " ") LOCALE_AUDIT.show(printed[#printed]) end
 
 -- Cadres : toute méthode existe et ne fait rien (sauf texte et visibilité, utiles aux vérifications)
-TEXTS = setmetatable({}, { __mode = "v" }) -- dernier cadre qui affiche ce texte (boutons)
+-- TEXTS : dernier cadre qui affiche ce texte (boutons). Table ordinaire, pas une table faible : dans le jeu, un cadre vit
+-- jusqu'au /reload ; avec une table faible, le ramasse-miettes de Lua en retirait des boutons à un moment qui dépendait
+-- de la mémoire utilisée, et une vérification pouvait échouer sans que l'addon ait changé (vu le 12/11/2026).
+TEXTS = {}
 local function frame()
   local f = { shown = false, text = "", scripts = {} }
   return setmetatable(f, { __index = function(t, k)
@@ -1160,7 +1163,7 @@ local function sharing()
   local m0 = #mine
   assert(greta.Sh.Announce("GUILD") == 1 and greta.sent[1].msg == "SHV;FRG;" .. G1 .. ";" .. AT .. ";" .. #info1.shared, "annonce SHV de Greta")
   advance(0.3)
-  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T0 .. ";GUILD$", m0 + 1) == 1 and mine[#mine].dist == "WHISPER" and mine[#mine].target == "Greta-Forever EU", "données plus anciennes : demande chuchotée à Greta, au nom complet")
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T0 .. ";GUILD;z$", m0 + 1) == 1 and mine[#mine].dist == "WHISPER" and mine[#mine].target == "Greta-Forever EU", "données plus anciennes : demande chuchotée à Greta, au nom complet")
   assert(count(thalwen.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(zeph.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(brindille.sent, "^SHQ;" .. esc(G1) .. ";0;") == 1, "sans données : demande")
   advance(4)
   local parts = count(greta.sent, "^SHD;" .. esc(G1) .. ";" .. AT .. ";")
@@ -1191,7 +1194,7 @@ local function sharing()
   brindille.Sh.Announce("GUILD")
   advance(5)
   local g2 = myGroup(G2)
-  assert(count(mine, "^SHQ;" .. esc(G2) .. ";0;GUILD$", m1 + 1) == 1, "sans données : demande")
+  assert(count(mine, "^SHQ;" .. esc(G2) .. ";0;GUILD;z$", m1 + 1) == 1, "sans données : demande")
   assert(g2 and g2.at == AT and g2.origin.from == "Brindille" and g2.mineAt == 0 and raidOf(g2, R2).unknown and raidOf(g2, R2).status == nil, "reçu de Brindille ; raid inconnu pour moi")
   assert(myGroup(G1).at == AT and received() == 2, "l'autre groupe ne bouge pas")
   run("raids")
@@ -1559,7 +1562,7 @@ local function sharing()
   brakka.Sh.Announce("GUILD")
   advance(0.3)
   local ask = mine[#mine]
-  assert(#mine > m14 and ask.msg == "SHQ;" .. G1 .. ";" .. T9 .. ";GUILD" and ask.dist == "WHISPER" and ask.target == "Brakka-Forever EU", "demande chuchotée à Brakka-Forever EU : " .. tostring(ask and ask.target))
+  assert(#mine > m14 and ask.msg == "SHQ;" .. G1 .. ";" .. T9 .. ";GUILD;z" and ask.dist == "WHISPER" and ask.target == "Brakka-Forever EU", "demande chuchotée à Brakka-Forever EU : " .. tostring(ask and ask.target))
   advance(15)
   g = myGroup(G1)
   assert(g.at == T10 and g.origin.from == "Brakka" and lastPrinted("Données de Les Veilleurs reçues de Brakka (site : "), "reçu de Brakka, affiché au prénom")
@@ -3948,6 +3951,458 @@ local function raidQueue()
   RA.CouncilNames, RA.asks = keep.council, keep.asks
 end
 raidQueue()
+
+-- 8 duodecies. Partage compressé (1.7.4 : copie de Share.lua de Forever Roster, LibDeflate, Inflate.lua, préfixes
+-- réservés de Raid.lua). Tournicoti (moi) est l'addon complet ; les autres joueurs sont soit la nouvelle version (même
+-- fichier, mêmes fonctions de compression), soit l'ancienne (addon/shared/Share.lua, celle de la 1.7.3 et de Roster),
+-- qui n'écoute pas les préfixes réservés. Compressé entre nouvelles versions, en clair dès qu'une ancienne demande,
+-- repli sur le clair si le compressé est illisible, « bombe » refusée, débit plafonné, rien en combat.
+local function sharingZ()
+  local G, RA, Sh = ns.Group, ns.Raid, ns.Share
+  local LD = assert(LibStub("LibDeflate"), "LibDeflate chargée avec l'addon")
+  local ME = "Tournicoti"
+  local c = ns.charDB()
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInGuild = IsInGuild, IsInRaid = IsInRaid,
+    IsInGroup = IsInGroup, GetNumGroupMembers = GetNumGroupMembers, InCombatLockdown = InCombatLockdown, UnitAffectingCombat = UnitAffectingCombat,
+    random = Sh.random, verify = ns.Crypto.VerifyRSA, groups = ForeverRosterDB.groups, lastLoad = ForeverRosterDB.lastLoad,
+    noRecord = ForeverRosterDB.noRecord, signups = c.signups, raidLogs = ForeverRosterDB.raidLogs, handover = ForeverRosterDB.handover,
+    greta = ForeverRosterDB.chars["Greta-Forever EU"], libstub = LibStub }
+  ForeverRosterDB.groups, ForeverRosterDB.noRecord, c.signups, ForeverRosterDB.raidLogs, ForeverRosterDB.handover = {}, true, {}, {}, {}
+  ForeverRosterDB.chars["Greta-Forever EU"] = nil
+  local errorsBefore = errors()
+  local clock = 1799000000
+  local timers = {}
+  local function schedule(delay, fn) timers[#timers + 1] = { at = clock + math.max(0, delay or 0), fn = fn } end
+  local function advance(sec)
+    local target = clock + sec
+    while true do
+      local best, bi
+      for i, t in ipairs(timers) do if t.at <= target and (not best or t.at < best.at) then best, bi = t, i end end
+      if not best then break end
+      table.remove(timers, bi)
+      clock = math.max(clock, best.at)
+      best.fn()
+    end
+    clock = target
+  end
+  time = function() return math.floor(clock) end
+  GetTime = function() return clock end
+  C_Timer = { After = function(delay, fn) schedule(delay, fn) end, NewTicker = function() return {} end }
+  Sh.random = function() return 0.5 end
+  Sh.Reset()
+  local S = { guild = true, raid = false, combat = false, lock = false }
+  IsInGuild = function() return S.guild end
+  IsInRaid = function() return S.raid end
+  IsInGroup = function() return S.raid end
+  GetNumGroupMembers = function() return S.raid and 10 or 0 end
+  InCombatLockdown = function() return S.combat end
+  UnitAffectingCombat = function() return S.combat end
+  local function esc(v) return (tostring(v):gsub("%p", "%%%0")) end
+  local function firstName(n) return (tostring(n):match("^[^%-%s]+")) or "" end
+  local function isBulk(prefix) return prefix:match("^FRosterS[123]$") ~= nil end
+
+  -- Canal simulé. Une ancienne version n'a pas enregistré les préfixes réservés : elle ne reçoit rien de ce qui y passe.
+  local peers, mine, throttled = {}, {}, 0
+  local function deliver(from, prefix, msg, dist, target)
+    for _, cl in ipairs(peers) do
+      if cl.name ~= from and (prefix == "FRoster" or cl.new) and ((dist == "GUILD" and cl.guild) or (dist == "RAID" and cl.raid) or (dist == "WHISPER" and cl.name == firstName(target))) then
+        schedule(0.05, function() cl.Sh.OnMessage(from .. "-Forever EU", msg, dist) end)
+      end
+    end
+    if (dist == "GUILD" and S.guild) or (dist == "RAID" and S.raid) or (dist == "WHISPER" and firstName(target) == ME and from ~= ME) then
+      schedule(0.05, function() fire("CHAT_MSG_ADDON", prefix, msg, dist, from .. "-Forever EU") end)
+    end
+  end
+  -- Le jeu, pour mes envois : 10 d'affilée puis 1 par seconde, pour chaque préfixe ; jamais d'octet nul
+  local buckets = {}
+  C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end,
+    SendAddonMessage = function(prefix, msg, dist, target)
+      assert((prefix == "FRoster" or isBulk(prefix)) and #msg <= 255 and not msg:find("%z"), "message d'addon invalide sur " .. tostring(prefix))
+      if S.lock then return 11 end
+      local b = buckets[prefix] or { n = 10, at = clock }
+      buckets[prefix] = b
+      b.n = math.min(10, b.n + (clock - b.at)) b.at = clock
+      if b.n < 1 then throttled = throttled + 1 return 3 end
+      b.n = b.n - 1
+      mine[#mine + 1] = { prefix = prefix, msg = msg, dist = dist, target = target, t = clock }
+      deliver(ME, prefix, msg, dist, target)
+      return 0
+    end }
+  local function pack(text) return LD:EncodeForWoWAddonChannel((LD:CompressDeflate(text, { level = 5 }))) end -- comme Group.lua
+  local function peer(name, opts)
+    opts = opts or {}
+    local cl = { name = name, new = opts.new or false, guild = opts.guild ~= false, raid = opts.raid, groups = {}, applied = {}, sent = {}, bulk = {}, chars = opts.chars or { name } }
+    local cns = { L = ns.L, N = ns.N, Crypto = ns.Crypto, SITE_KEYS = ns.SITE_KEYS, Inflate = ns.Inflate }
+    assert(loadfile(cl.new and "addon/ForeverRoster/Share.lua" or "addon/shared/Share.lua"))("ForeverRoster", cns)
+    cl.Sh = cns.Share
+    cl.Sh.random = function() return opts.rand or 0.5 end
+    local adapter = {
+      kind = "FRG",
+      send = function(msg, dist, target)
+        assert(#msg <= 255, "message de plus de 255 octets")
+        cl.sent[#cl.sent + 1] = { msg = msg, dist = dist, target = target }
+        deliver(name, "FRoster", msg, dist, target)
+      end,
+      blocks = function()
+        local out = {}
+        for id, g in pairs(cl.groups) do out[id] = { at = g.at, text = g.text } end
+        return out
+      end,
+      apply = function(text, sender, dist)
+        local i = cl.Sh.Parse(text, "FRG")
+        cl.groups[i.group] = { at = i.at, text = text }
+        cl.applied[#cl.applied + 1] = { group = i.group, at = i.at, from = sender, dist = dist, text = text }
+        return true
+      end,
+      mine = function(list)
+        for _, n in ipairs(list) do for _, m in ipairs(cl.chars) do if n == m then return true end end end
+        return false
+      end,
+      notify = function() end,
+    }
+    if cl.new then
+      adapter.pack = pack
+      adapter.unpack = function(data)
+        local raw = LD:DecodeForWoWAddonChannel(data)
+        return raw and (ns.Inflate(raw, cl.Sh.MAX_LEN)) or nil
+      end
+      adapter.sendBulk = function(msg, dist)
+        assert(#msg <= 255 and not msg:find("%z"), "morceau compressé invalide")
+        cl.bulk[#cl.bulk + 1] = { msg = msg, dist = dist }
+        if opts.mangle then msg = opts.mangle(msg, #cl.bulk) end
+        -- Morceaux remis dans le désordre (opts.shuffle) : le dernier parti arrive le premier
+        local prefix = "FRosterS" .. ((#cl.bulk - 1) % 3 + 1)
+        if opts.shuffle then
+          local delay = 2 - #cl.bulk * 0.01
+          for _, x in ipairs(peers) do
+            if x ~= cl and x.new and ((dist == "GUILD" and x.guild) or (dist == "RAID" and x.raid)) then schedule(delay, function() x.Sh.OnMessage(name .. "-Forever EU", msg, dist) end) end
+          end
+          schedule(delay, function() fire("CHAT_MSG_ADDON", prefix, msg, dist, name .. "-Forever EU") end)
+        else
+          deliver(name, prefix, msg, dist)
+        end
+      end
+    end
+    cl.Sh.Setup(adapter)
+    peers[#peers + 1] = cl
+    return cl
+  end
+  local function hold(cl, text) local i = cl.Sh.Parse(text, "FRG") cl.groups[i.group] = { at = i.at, text = text } end
+  local function count(list, pattern, from, bulkOnly)
+    local n = 0
+    for i = from or 1, #list do
+      if list[i].msg:find(pattern) and (bulkOnly == nil or (bulkOnly == isBulk(list[i].prefix or "FRoster"))) then n = n + 1 end
+    end
+    return n
+  end
+  local function myGroup(id) return ForeverRosterDB.groups[id] end
+  local function journalHas(...)
+    for _, e in ipairs(Sh.Journal()) do
+      local ok = true
+      for _, part in ipairs({ ... }) do if not e.text:find(part, 1, true) then ok = false end end
+      if ok then return e end
+    end
+  end
+
+  -- Clé simulée « test0001 » (somme de contrôle du texte canonique), comme la section 8 ter
+  local function checksum(str)
+    local a, b = 1, 0
+    for i = 1, #str do a = (a + str:byte(i)) % 65521 b = (b + a) % 65521 end
+    return "T" .. (b * 65536 + a) .. "=="
+  end
+  ns.SITE_KEYS.test0001 = { n = "00", e = 65537 }
+  ns.Crypto.VerifyRSA = function(keyId, message, sig) return keyId == "test0001" and sig == checksum(message) end
+  local seed = 7
+  local function hexId() seed = (seed * 16807) % 2147483647 return ("%08x"):format(seed) end
+  -- Bloc signé de `lines` lignes de patrons (identifiants au hasard : comme un vrai bloc, il ne se compresse qu'à moitié)
+  local function block(group, at, lines, members)
+    local t = { "FRG;1;" .. group .. ";" .. at .. ";Les Veilleurs" }
+    for i = 1, lines do t[#t + 1] = "P;" .. (20000 + i) .. ";" .. hexId() .. "-" .. hexId() .. ";Alchimie;" .. (i % 7) .. ";Greta,Tournicoti" end
+    t[#t + 1] = "M;" .. table.concat(members, ",")
+    t[#t + 1] = "Z;test0001;" .. checksum(table.concat(t, "\n"))
+    t[#t + 1] = "END;" .. lines
+    return table.concat(t, "\n")
+  end
+  local G1 = "7d0c5a11-aaaa-4bbb-8ccc-000000000001"
+  local MEMBERS = { "Greta", "Tournicoti", "Nova", "Vex", "Oldie", "Late", "Zia", "Kor", "Bomb", "Big" }
+  local T1 = clock - 5000
+
+  -- a. Deux nouvelles versions demandent : diffusion compressée, sur les préfixes réservés, d'un seul coup
+  local nova, vex = peer("Nova", { new = true }), peer("Vex", { new = true, rand = 0.2 })
+  local b1 = block(G1, T1, 75, MEMBERS)
+  assert(#b1 > 3500 and #b1 < 6000, "bloc de la taille de celui de Flo : " .. #b1)
+  assert(ns.UI.LoadFromSite(b1), "mes données, signées")
+  advance(10)
+  local info = Sh.Parse(myGroup(G1).text, "FRG")
+  assert(count(mine, "^SHV;FRG;" .. esc(G1) .. ";" .. T1 .. ";" .. #info.shared .. "$") == 1, "annonce après le collage")
+  assert(count(nova.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1 and count(vex.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1, "les nouvelles versions demandent avec « z »")
+  local plain, zdata = Sh.Chunks(G1, T1, info.shared), pack(info.shared)
+  local zlist = Sh.ChunksZ(G1, T1, zdata)
+  assert(#zlist * 2 <= #plain + 1, ("deux fois moins de morceaux : %d compressés, %d en clair"):format(#zlist, #plain))
+  assert(count(mine, "^SHZ;", 1, true) == #zlist and count(mine, "^SHD;") == 0 and count(mine, "^SHZ;", 1, false) == 0, "diffusion compressée seule, sur les préfixes réservés")
+  local first, last, used = nil, nil, {}
+  for _, m in ipairs(mine) do
+    if m.msg:find("^SHZ;") then first, last = first or m.t, m.t used[m.prefix] = true assert(m.dist == "GUILD", "sur le canal de l'annonce") end
+  end
+  assert(last - first < 0.01, ("tous les morceaux partent d'un coup : %.2f s"):format(last - first))
+  assert(used.FRosterS1 and used.FRosterS2 and used.FRosterS3, "répartis sur les trois préfixes")
+  assert(#nova.applied == 1 and nova.applied[1].text == info.shared and nova.applied[1].from == "Tournicoti-Forever EU", "Nova : reçu, texte identique")
+  assert(#vex.applied == 1 and vex.applied[1].text == info.shared, "Vex : reçu")
+  assert(journalHas("diffusées sur GUILD", #zlist .. " morceau(x) compressé(s)", #zdata .. " octets au lieu de " .. #info.shared), "journal : diffusion compressée")
+  assert(throttled == 0 and #RA.bulkQueue == 0 and #RA.lowQueue == 0, "file vide, sans refus du jeu")
+  assert(RA.bulkStats.sent >= #zlist, "morceaux compressés comptés")
+  assert(ns.UI.ShareDiagText():find(("Partage compressé : %d morceau(x) parti(s)"):format(RA.bulkStats.sent), 1, true), "/fr partage : morceaux compressés")
+
+  -- b. Une nouvelle et une ancienne version demandent en même temps : diffusion en clair, lue par les deux
+  advance(Sh.QUIET + 5)
+  local T2 = T1 + 100
+  local nova2, oldie = peer("Nova2", { new = true, chars = { "Nova" } }), peer("Oldie")
+  assert(ns.UI.LoadFromSite(block(G1, T2, 75, MEMBERS)), "version suivante")
+  local m1 = #mine
+  advance(40) -- en clair : 22 morceaux, 4 d'affilée puis 1 par seconde
+  info = Sh.Parse(myGroup(G1).text, "FRG")
+  assert(count(oldie.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD$") == 1 and count(nova2.sent, "^SHQ;" .. esc(G1) .. ";0;GUILD;z$") == 1, "une demande sans « z », une avec")
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T2 .. ";", m1 + 1) == #Sh.Chunks(G1, T2, info.shared) and count(mine, "^SHZ;", m1 + 1) == 0, "une ancienne version demande : en clair, une seule diffusion")
+  advance(120)
+  assert(#oldie.applied == 1 and oldie.applied[1].at == T2 and #nova2.applied == 1 and nova2.applied[1].at == T2, "reçu par l'ancienne et par la nouvelle")
+  assert(nova.applied[#nova.applied].at == T2 and vex.applied[#vex.applied].at == T2, "et par ceux qui avaient l'ancienne version")
+
+  -- c. Diffusion compressée, puis une ancienne version demande dans la minute : diffusion en clair pour elle
+  advance(Sh.QUIET + 5)
+  local T3 = T2 + 100
+  assert(ns.UI.LoadFromSite(block(G1, T3, 75, MEMBERS)), "version suivante")
+  -- Oldie n'entend pas cette annonce (déconnectée) : seules les nouvelles versions demandent
+  oldie.guild = false
+  m1 = #mine
+  advance(12)
+  info = Sh.Parse(myGroup(G1).text, "FRG")
+  assert(count(mine, "^SHZ;" .. esc(G1) .. ";" .. T3 .. ";", m1 + 1, true) > 0 and count(mine, "^SHD;", m1 + 1) == 0, "que des nouvelles versions : compressé")
+  oldie.guild = true
+  local m2 = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHQ;" .. G1 .. ";" .. T2 .. ";GUILD", "WHISPER", "Oldie-Forever EU")
+  advance(40)
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T3 .. ";", m2 + 1) == #Sh.Chunks(G1, T3, info.shared), "l'ancienne version demande après coup : diffusion en clair")
+  -- Une demande « z » juste après : déjà diffusé en clair il y a moins de 60 s, rien de plus
+  m2 = #mine
+  fire("CHAT_MSG_ADDON", "FRoster", "SHQ;" .. G1 .. ";" .. T2 .. ";GUILD;z", "WHISPER", "Nova-Forever EU")
+  advance(5)
+  assert(count(mine, "^SH[DZ];", m2 + 1) == 0 and journalHas("Demande SHQ de Nova", "ignorée", "diffusée il y a moins de 60 s"), "diffusée il y a moins de 60 s : pas de seconde diffusion")
+  advance(120)
+  assert(oldie.applied[#oldie.applied].at == T3, "l'ancienne version a reçu")
+
+  -- d. Je reçois d'une nouvelle version, morceaux dans le désordre (l'ancienne version est déconnectée : sinon sa
+  -- demande ferait diffuser en clair, comme en b)
+  oldie.guild = false
+  advance(Sh.QUIET + 5)
+  local T4 = T3 + 100
+  local zia = peer("Zia", { new = true, shuffle = true })
+  local b4 = block(G1, T4, 75, MEMBERS)
+  hold(zia, b4)
+  m1 = #mine
+  zia.Sh.Announce("GUILD")
+  advance(0.3)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T3 .. ";GUILD;z$", m1 + 1) == 1 and mine[#mine].target == "Zia-Forever EU", "ma demande, avec « z »")
+  advance(10)
+  assert(#zia.bulk > 5 and count(zia.sent, "^SHD;") == 0, "Zia diffuse en compressé")
+  local g = myGroup(G1)
+  assert(g.at == T4 and g.origin.from == "Zia" and Sh.Parse(g.text, "FRG").shared == Sh.Parse(b4, "FRG").shared, "reçu de Zia, dans le désordre, texte identique")
+  assert(journalHas("Réception de", "morceau(x) compressé(s) attendu(s)"), "journal : réception compressée")
+
+  -- e. Compressé illisible (un morceau abîmé en route) : l'ancien format est redemandé, une fois, et arrive
+  advance(Sh.QUIET + 5)
+  local T5 = T4 + 100
+  local kor = peer("Kor", { new = true, mangle = function(msg, i)
+    if i ~= 3 then return msg end
+    local head, body = msg:match("^(SHZ;[^;]+;%d+;%d+;%d+;)(.*)$")
+    return head .. ("\255"):rep(#body)
+  end })
+  hold(kor, block(G1, T5, 75, MEMBERS))
+  m1 = #mine
+  kor.Sh.Announce("GUILD")
+  advance(30)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T4 .. ";GUILD;z$", m1 + 1) == 1 and count(mine, "^SHQ;" .. esc(G1) .. ";" .. T4 .. ";GUILD$", m1 + 1) == 1, "demande avec « z », puis une seule demande en clair")
+  assert(journalHas("Données compressées de", "illisibles", "ancien format redemandé"), "journal : compressé illisible")
+  assert(count(kor.sent, "^SHD;" .. esc(G1) .. ";" .. T5 .. ";") > 0 and myGroup(G1).at == T5 and myGroup(G1).origin.from == "Kor", "reçu en clair")
+
+  -- e bis. Compressé lisible mais faux (la compression de l'expéditeur a changé un mot : la signature ne tient plus) :
+  -- refusé, puis redemandé en clair, où le vrai texte arrive
+  advance(Sh.QUIET + 5)
+  local T5b = T5 + 50
+  local fal = peer("Fal", { new = true })
+  hold(fal, block(G1, T5b, 75, MEMBERS))
+  local setup = fal.Sh.Setup
+  do
+    -- Même adaptateur, compression fautive : le texte compressé n'est pas le texte signé
+    local blocksOf = function() local out = {} for id, x in pairs(fal.groups) do out[id] = { at = x.at, text = x.text } end return out end
+    setup({ kind = "FRG", blocks = blocksOf, apply = function() return true end, mine = function() return true end, notify = function() end,
+      send = function(msg, dist, target) fal.sent[#fal.sent + 1] = { msg = msg, dist = dist, target = target } deliver("Fal", "FRoster", msg, dist, target) end,
+      pack = function(text) return pack((text:gsub("Alchimie", "Alchimia", 1))) end,
+      unpack = function() return nil end,
+      sendBulk = function(msg, dist) fal.bulk[#fal.bulk + 1] = { msg = msg, dist = dist } deliver("Fal", "FRosterS2", msg, dist) end })
+  end
+  m1 = #mine
+  fal.Sh.Announce("GUILD")
+  advance(40)
+  assert(#fal.bulk > 0 and count(mine, "^SHQ;" .. esc(G1) .. ";" .. T5 .. ";GUILD;z$", m1 + 1) == 1, "demande avec « z », réponse compressée")
+  assert(journalHas("refusées (reçues de Fal)", "signature fausse") and count(mine, "^SHQ;" .. esc(G1) .. ";" .. T5 .. ";GUILD$", m1 + 1) == 1, "texte faux : refusé, puis redemandé en clair")
+  assert(myGroup(G1).at == T5b and myGroup(G1).origin.from == "Fal", "le vrai texte est arrivé en clair")
+  fal.guild = false -- déconnecté pour la suite (il ne sait pas lire le compressé : sa demande ferait diffuser en clair)
+
+  -- f. « Bombe » : 8 Mo de zéros compressés, annoncés comme une version plus récente. Refusée tout de suite, sans erreur
+  advance(Sh.QUIET + 5)
+  local T6 = T5 + 100
+  T5 = T5b -- ma version courante
+  local bomb = pack(("\0"):rep(8 * 1024 * 1024))
+  local bombList = Sh.ChunksZ(G1, T6, bomb)
+  assert(#bomb < 25000 and #bombList < 150, "la bombe tient en " .. #bombList .. " messages")
+  m1 = #mine
+  local started = os.clock()
+  for i, msg in ipairs(bombList) do fire("CHAT_MSG_ADDON", "FRosterS" .. (i % 3 + 1), msg, "GUILD", "Bomb-Forever EU") end
+  assert(os.clock() - started < 1, ("bombe traitée en %.2f s"):format(os.clock() - started))
+  assert(myGroup(G1).at == T5 and journalHas("Données compressées de", "reçues de Bomb"), "bombe refusée, mes données intactes")
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T5 .. ";GUILD$", m1 + 1) == 1 and mine[#mine].target == "Bomb-Forever EU", "ancien format redemandé une fois")
+  -- La même bombe une seconde fois : plus rien n'est demandé
+  m1 = #mine
+  for i, msg in ipairs(bombList) do fire("CHAT_MSG_ADDON", "FRosterS" .. (i % 3 + 1), msg, "GUILD", "Bomb-Forever EU") end
+  assert(count(mine, "^SHQ;", m1 + 1) == 0, "seconde bombe : aucune demande")
+  -- Un morceau compressé sur le préfixe ordinaire, ou autre chose qu'un morceau compressé sur un préfixe réservé : ignoré
+  local buffers = 0
+  for _ in pairs(Sh.State().rx) do buffers = buffers + 1 end
+  fire("CHAT_MSG_ADDON", "FRoster", Sh.ChunksZ(G1, T6 + 1, pack(b4))[1], "GUILD", "Zia-Forever EU")
+  fire("CHAT_MSG_ADDON", "FRosterS1", "SHV;FRG;" .. G1 .. ";" .. (T6 + 50) .. ";4000", "GUILD", "Zia-Forever EU")
+  local after = 0
+  for _ in pairs(Sh.State().rx) do after = after + 1 end
+  assert(after == buffers and count(mine, "^SHQ;", m1 + 1) == 0, "mauvais préfixe : ignoré")
+  advance(Sh.TIMEOUT * 9)
+
+  -- g. Gros groupe (20 000 octets) : d'abord 4 000 octets d'affilée, puis 800 par seconde ; jamais de refus du jeu
+  local T7 = T6 + 100
+  local big = peer("Big", { new = true })
+  local b7 = block(G1, T7, 370, MEMBERS)
+  assert(#b7 > 19000 and #b7 < 24000, "gros bloc : " .. #b7)
+  assert(ns.UI.LoadFromSite(b7), "gros bloc chargé")
+  m1 = #mine
+  throttled = 0
+  advance(60)
+  info = Sh.Parse(myGroup(G1).text, "FRG")
+  zlist = Sh.ChunksZ(G1, T7, pack(info.shared))
+  plain = Sh.Chunks(G1, T7, info.shared)
+  assert(count(mine, "^SHZ;" .. esc(G1) .. ";" .. T7 .. ";", m1 + 1, true) == #zlist and count(mine, "^SHD;", m1 + 1) == 0, "gros bloc : compressé")
+  local t0, tEnd, burstBytes, total, run, maxRun, lastPrefix = nil, nil, 0, 0, 0, 0, nil
+  for i = m1 + 1, #mine do
+    local m = mine[i]
+    if m.msg:find("^SHZ;") then
+      t0, tEnd = t0 or m.t, m.t
+      total = total + #m.msg + 40
+      if m.t - t0 < 0.01 then burstBytes = burstBytes + #m.msg + 40 end
+    end
+  end
+  local took = tEnd - t0
+  assert(burstBytes <= 4000 and burstBytes > 2500, "au plus 4 000 octets d'affilée : " .. burstBytes)
+  assert(took >= (total - 4000) / 800 - 0.5 and took <= (total - 4000) / 800 + 3, ("ensuite 800 octets par seconde : %d octets en %.1f s"):format(total, took))
+  assert(took < 16 and (#plain - 4) > took * 5, ("%d morceaux en %.1f s ; en clair : %d morceaux, %d s"):format(#zlist, took, #plain, #plain - 4))
+  assert(throttled == 0, "le jeu n'a jamais eu à refuser : " .. throttled)
+  assert(#big.applied == 1 and big.applied[1].text == info.shared, "gros bloc reçu, identique")
+
+  -- h. En combat, puis jeu bloqué (combat de boss) : rien ne part, tout part ensuite
+  advance(Sh.QUIET + 5)
+  local T8 = T7 + 100
+  assert(ns.UI.LoadFromSite(block(G1, T8, 75, MEMBERS)), "version suivante")
+  S.combat = true
+  m1 = #mine
+  advance(20)
+  assert(count(mine, "^SHZ;", m1 + 1) == 0 and #RA.bulkQueue + #RA.lowQueue > 0, "en combat : rien ne part")
+  S.combat = false
+  S.lock = true
+  fire("PLAYER_REGEN_ENABLED")
+  advance(20)
+  assert(count(mine, "^SHZ;", m1 + 1) == 0, "jeu bloqué : rien ne part")
+  S.lock = false
+  advance(30)
+  assert(count(mine, "^SHZ;" .. esc(G1) .. ";" .. T8 .. ";", m1 + 1, true) > 0 and #RA.bulkQueue == 0, "débloqué : la diffusion part")
+  advance(60)
+  assert(big.applied[#big.applied].at == T8 and nova.applied[#nova.applied].at == T8, "reçue après le combat")
+
+  -- i. Sans LibDeflate (bibliothèque absente) : partage en clair, comme avant, même si seules des nouvelles versions
+  -- demandent (l'ancienne est toujours déconnectée) ; et mes demandes ne disent plus « z »
+  advance(Sh.QUIET + 5)
+  local T9 = T8 + 100
+  LibStub = nil
+  assert(ns.UI.ShareDiagText():find("Partage compressé : impossible (LibDeflate absente)", 1, true), "/fr partage : bibliothèque absente")
+  assert(ns.UI.LoadFromSite(block(G1, T9, 75, MEMBERS)), "version suivante")
+  m1 = #mine
+  advance(20)
+  assert(count(nova.sent, "^SHQ;" .. esc(G1) .. ";" .. T8 .. ";GUILD;z$") == 1, "Nova demande avec « z »")
+  assert(count(mine, "^SHD;" .. esc(G1) .. ";" .. T9 .. ";", m1 + 1) > 0 and count(mine, "^SHZ;", m1 + 1) == 0, "sans LibDeflate : en clair")
+  advance(120)
+  assert(nova.applied[#nova.applied].at == T9 and big.applied[#big.applied].at == T9, "reçue en clair par les nouvelles versions")
+  local T10 = T9 + 100
+  hold(nova, block(G1, T10, 75, MEMBERS))
+  m1 = #mine
+  local novaZ, novaD = #nova.bulk, #nova.sent
+  nova.Sh.Announce("GUILD")
+  advance(0.3)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T9 .. ";GUILD$", m1 + 1) == 1 and count(mine, "^SHQ;.*;z$", m1 + 1) == 0, "sans LibDeflate : ma demande sans « z »")
+  advance(60)
+  assert(#nova.bulk == novaZ and count(nova.sent, "^SHD;" .. esc(G1) .. ";" .. T10 .. ";", novaD + 1) > 0, "Nova me répond en clair")
+  assert(myGroup(G1).at == T10 and myGroup(G1).origin.from == "Nova", "reçu en clair, sans LibDeflate")
+  LibStub = keep.libstub
+  advance(120)
+
+  -- j. Un joueur fabrique des versions illisibles à la chaîne (un message chacune, groupes et dates tous différents) :
+  -- une demande en clair pour chacune, jusqu'à Sh.Z_FAILS dans la session ; ensuite plus rien (ni demande, ni mémoire),
+  -- et je ne lis plus que l'ancien format
+  advance(Sh.QUIET + 5)
+  local failsBefore = Sh.State().zFails
+  assert(failsBefore == 3, "versions illisibles jusqu'ici (e, e bis, f) : " .. failsBefore)
+  m1 = #mine
+  for k = 1, 200 do
+    fire("CHAT_MSG_ADDON", "FRosterS" .. (k % 3 + 1), ("SHZ;faux-%d;%d;1;1;%s"):format(k, T10 + k, ("\255"):rep(40)), "GUILD", "Bomb-Forever EU")
+  end
+  advance(Sh.TIMEOUT * 2)
+  local st = Sh.State()
+  local groupsFailed, buffersLeft = 0, 0
+  for _ in pairs(st.zFailed) do groupsFailed = groupsFailed + 1 end
+  for _ in pairs(st.rx) do buffersLeft = buffersLeft + 1 end
+  assert(st.zFails == Sh.Z_FAILS, "versions illisibles comptées, pas plus que la limite : " .. st.zFails)
+  assert(count(mine, "^SHQ;faux%-", m1 + 1) == Sh.Z_FAILS - failsBefore, "une demande en clair par version illisible, puis plus aucune : " .. count(mine, "^SHQ;faux%-", m1 + 1))
+  assert(groupsFailed <= Sh.Z_FAILS and buffersLeft == 0, "mémoire bornée : " .. groupsFailed .. " groupes retenus")
+  assert(journalHas("Format compressé coupé", Sh.Z_FAILS .. " versions illisibles"), "journal : format compressé coupé")
+  assert(#RA.lowQueue == 0, "demandes parties")
+  -- Une vraie version arrive ensuite : demandée sans « z », reçue en clair
+  local T11 = T10 + 1000
+  hold(nova, block(G1, T11, 75, MEMBERS))
+  m1 = #mine
+  novaZ, novaD = #nova.bulk, #nova.sent
+  nova.Sh.Announce("GUILD")
+  advance(0.3)
+  assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T10 .. ";GUILD$", m1 + 1) == 1, "format compressé coupé : ma demande sans « z »")
+  advance(60)
+  assert(#nova.bulk == novaZ and myGroup(G1).at == T11, "reçu en clair après la coupure")
+  -- Mes diffusions, elles, restent compressées pour ceux qui le lisent
+  advance(Sh.QUIET + 5)
+  local T12 = T11 + 100
+  assert(ns.UI.LoadFromSite(block(G1, T12, 75, MEMBERS)), "version suivante")
+  m1 = #mine
+  advance(20)
+  assert(count(mine, "^SHZ;" .. esc(G1) .. ";" .. T12 .. ";", m1 + 1, true) > 0 and count(mine, "^SHD;", m1 + 1) == 0, "après la coupure : je diffuse toujours en compressé")
+  advance(60)
+  assert(nova.applied[#nova.applied].at == T12, "et Nova le reçoit")
+
+  assert(errors() == errorsBefore, "aucune erreur Lua pendant le partage compressé")
+  assert(#RA.bulkQueue == 0 and #RA.lowQueue == 0 and #RA.queue == 0, "files vides à la fin")
+  time, GetTime, C_Timer, C_ChatInfo = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo
+  IsInGuild, IsInRaid, IsInGroup, GetNumGroupMembers, InCombatLockdown = keep.IsInGuild, keep.IsInRaid, keep.IsInGroup, keep.GetNumGroupMembers, keep.InCombatLockdown
+  UnitAffectingCombat = keep.UnitAffectingCombat
+  Sh.random, ns.Crypto.VerifyRSA = keep.random, keep.verify
+  ns.SITE_KEYS.test0001 = nil
+  ForeverRosterDB.groups, ForeverRosterDB.lastLoad, ForeverRosterDB.noRecord, ForeverRosterDB.share = keep.groups, keep.lastLoad, keep.noRecord, nil
+  ForeverRosterDB.raidLogs, ForeverRosterDB.handover = keep.raidLogs, keep.handover
+  ForeverRosterDB.chars["Greta-Forever EU"] = keep.greta
+  c.signups = keep.signups
+  Sh.Reset()
+end
+sharingZ()
 
 -- 9. Aller-retour avec Roster Companion (lancé par le test Rust de l'appli : RC_HELPER = son exécutable).
 -- L'addon écrit sa sauvegarde, l'appli (Rust) la lit et écrit ForeverRoster_Data, l'addon relit ce fichier.
