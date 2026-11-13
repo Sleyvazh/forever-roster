@@ -2648,9 +2648,12 @@ p.rp-meta { margin: 0; color: var(--ink); }
 .fi-state .sy-age { font-size: 14px; }
 .fi-state .fi-src { font-size: 13px; }
 .fi-edit { min-height: 44px; margin-top: 6px; }
-.fi-talents { padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+/* Talents sous l'équipement (13/11) : une section de l'onglet Équipement, séparée par un filet ; le bouton « Talents › »
+   de l'en-tête y mène (la page s'arrête sous la barre du haut) */
+.fi-talents { display: grid; gap: 10px; padding-top: 20px; border-top: 1px solid var(--line); scroll-margin-top: 84px; }
 .fi-tal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; }
-.fi-tal-head h3 { margin: 0; font-size: 18px; color: var(--gold); }
+.fi-tal-head h3 { margin: 0; } /* comme le titre « Équipement » au-dessus */
+.fi-tal-head .sy-age { margin-left: 0; font-size: 13.5px; } /* à côté du titre, comme « relevé par l'addon » de l'équipement */
 .fi-tal-head .btn { margin-left: auto; }
 .fi-talents .sec { border: 0; padding: 0; margin: 0; }
 .build-ro { margin: 0; font-size: 14px; }

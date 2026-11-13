@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 75, date: "2026-11-13", kind: "site", title: N("Fiches des persos : les talents sous l'équipement"),
+    text: N("Dans Mes persos comme dans la fiche ouverte depuis Guilde › Membres, les talents sont maintenant visibles sous l'équipement, sans clic ; le bouton « Talents › » de l'en-tête y mène. Un perso sans off-spec n'affiche plus de carte vide, et « Épiques visés » quitte le résumé de l'équipement.") },
   { n: 74, date: "2026-11-12", kind: "site", title: N("Guilde : la fiche d'un perso s'ouvre sous son nom"),
     text: N("Dans Guilde › Membres › Par perso (« Fiches du site »), un clic sur un perso ouvre sa fiche juste sous sa ligne, et plus tout en bas de la liste. Elle se lit comme dans Mes persos : nom, niveau, classe et race en texte (plus de cases grisées), puis Équipement, Métiers et Notes. Sur ton propre perso, « Modifier dans Mes persos » t'y emmène.") },
   { n: 73, date: "2026-11-12", kind: "addon", version: "1.7", title: N("Addon 1.7.5 : les mêmes données ne sont plus téléchargées deux fois"),

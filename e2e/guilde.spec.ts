@@ -299,9 +299,15 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await expect(head).toContainText("Niv. 30");
     await expect(head).toContainText("Joueur : Kael");
     await expect(head).toContainText("Les Lanternes · ★ main");
-    // Talents en lecture : le build compte plus de points que le niveau n'en donne ; à qui regarde la fiche d'un autre,
-    // le fait seul, sans « pense à mettre à jour son niveau » (12/11)
-    await head.getByRole("button", { name: /^Talents 31 \/ 20 \/ 0/ }).click();
+    // Talents sous l'équipement, dans l'onglet Équipement, sans clic (13/11) ; « Épiques visés » n'est plus dans le résumé
+    const talents = sheet.locator("#fi-talents");
+    await expect(talents).toBeVisible();
+    await expect(sheet.locator(".pane > .sec:has(.doll) + #fi-talents"), "juste après l'équipement").toHaveCount(1);
+    await expect(talents.getByRole("heading", { name: "Talents" })).toBeVisible();
+    await expect(talents.locator(".build")).toHaveCount(1); // pas d'off-spec : pas de carte vide
+    await expect(sheet.getByText("Épiques visés")).toHaveCount(0);
+    // Le build compte plus de points que le niveau n'en donne ; à qui regarde la fiche d'un autre, le fait seul, sans
+    // « pense à mettre à jour son niveau » (12/11)
     await expect(sheet.locator("#fi-talents")).toContainText(/Ce build compte 51 points, mais le perso est niveau 30 \(\d+ points\)\./);
     await expect(sheet.locator("#fi-talents")).not.toContainText("pense à mettre à jour");
     await expect(sheet.locator("#fi-talents input, #fi-talents select")).toHaveCount(0);
@@ -314,6 +320,11 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await sheet.getByRole("tab", { name: "Métiers" }).click();
     await expect(sheet.getByRole("complementary", { name: "Métiers du perso" })).toBeVisible();
     await expect(sheet.getByRole("button", { name: "Modifier à la main" })).toHaveCount(0);
+    await expect(talents).toHaveCount(0); // les talents sont dans l'onglet Équipement
+    // Le bouton « Talents › » de l'en-tête ramène à l'onglet Équipement, sur les talents
+    await head.getByRole("button", { name: /^Talents 31 \/ 20 \/ 0/ }).click();
+    await expect(sheet.getByRole("tab", { name: "Équipement" })).toHaveAttribute("aria-selected", "true");
+    await expect(talents).toBeInViewport();
     await sheet.getByRole("tab", { name: "Notes" }).click();
     await expect(sheet.locator("fieldset[disabled]")).toHaveCount(1);
     // Le perso du propriétaire, vu par une officière : rien à gérer, pas de lien vers Mes persos

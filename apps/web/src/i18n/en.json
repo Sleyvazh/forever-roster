@@ -1969,7 +1969,6 @@
  "Résumé de l'équipement": "Gear summary",
  "Spé ?": "Spec?",
  "Off-spec : {spec}": "Off-spec: {spec}",
- "Épiques visés": "Targeted epics",
  "Clique sur un emplacement pour choisir ton objectif BiS.": "Click a slot to choose your BiS goal.",
  "Clique sur un emplacement pour choisir l'objet.": "Click a slot to choose the item.",
  "Modifier : {slot}": "Edit: {slot}",
@@ -2768,5 +2767,7 @@
  "Ce build compte {total} points, mais le perso est niveau {level} ({n} point) : pense à mettre à jour son niveau dans « Modifier le profil ».": "This build has {total} points, but the character is level {level} ({n} point): remember to update their level in “Edit the profile”.",
  "Ce build compte {total} points, mais le perso est niveau {level} ({n} points) : pense à mettre à jour son niveau dans « Modifier le profil ».": "This build has {total} points, but the character is level {level} ({n} points): remember to update their level in “Edit the profile”.",
  "Ce build compte {total} points, mais le perso est niveau {level} ({n} point).": "This build has {total} points, but the character is level {level} ({n} point).",
- "Ce build compte {total} points, mais le perso est niveau {level} ({n} points).": "This build has {total} points, but the character is level {level} ({n} points)."
+ "Ce build compte {total} points, mais le perso est niveau {level} ({n} points).": "This build has {total} points, but the character is level {level} ({n} points).",
+ "Fiches des persos : les talents sous l'équipement": "Character sheets: talents under the gear",
+ "Dans Mes persos comme dans la fiche ouverte depuis Guilde › Membres, les talents sont maintenant visibles sous l'équipement, sans clic ; le bouton « Talents › » de l'en-tête y mène. Un perso sans off-spec n'affiche plus de carte vide, et « Épiques visés » quitte le résumé de l'équipement.": "In My characters and in the sheet opened from Guild › Members, talents now show under the gear, without a click; the “Talents ›” button in the header takes you there. A character without an off-spec no longer shows an empty card, and “Targeted epics” leaves the gear summary."
 }

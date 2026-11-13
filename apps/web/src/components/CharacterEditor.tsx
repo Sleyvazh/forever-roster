@@ -195,8 +195,9 @@ export function TalentsSection({ c, onChange, editable, folded, readOnly, levelH
           <div className={`builds${view === "gauges" ? " two" : ""}`}>
             <Build id="main" hideSpec={folded} readOnly={readOnly} levelHint={levelHint} title={t("Spé principale")} view={view} tree={talents} nodes={c.talentNodes} cls={c.cls} specs={specs} spec={c.spec1} talents={c.talents} link={c.talentLink} avail={avail} level={c.level}
               onChange={p => onChange({ ...(p.spec !== undefined && { spec1: p.spec }), ...(p.talents !== undefined && { talents: p.talents }), ...(p.link !== undefined && { talentLink: p.link }) })} />
-            <Build id="off" hideSpec={folded} readOnly={readOnly} levelHint={levelHint} title={t("Off-spec")} view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
-              onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />
+            {/* En lecture, pas de carte vide pour un perso sans off-spec (13/11) */}
+            {(!readOnly || !!(c.spec2 || c.talents2 || c.talentLink2)) && <Build id="off" hideSpec={folded} readOnly={readOnly} levelHint={levelHint} title={t("Off-spec")} view={view} tree={talents} cls={c.cls} specs={specs} spec={c.spec2} talents={c.talents2} link={c.talentLink2} avail={avail} level={c.level}
+              onChange={p => onChange({ ...(p.spec !== undefined && { spec2: p.spec }), ...(p.talents !== undefined && { talents2: p.talents }), ...(p.link !== undefined && { talentLink2: p.link }) })} />}
           </div>
         )}
         <div className="row">

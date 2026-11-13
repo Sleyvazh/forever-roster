@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, del, get, post, put, uploadImage, type Character, type GroupSummary } from "../api";
-import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, TalentsSection, type EditorTab } from "../components/CharacterEditor";
+import { EDITOR_TAB_SLUG, editorTabFromSlug, LegacyTab, type EditorTab } from "../components/CharacterEditor";
+import { TalentsBlock, useGoToTalents } from "../components/TalentsBlock";
 import { Professions } from "../components/Professions";
 import { RoleIcon } from "../components/RoleIcon";
 import { DialogHead, Modal } from "../components/Dialog";
@@ -215,8 +216,7 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
 }) {
   const gt = useGameText();
   const [portrait, setPortrait] = useState(false);
-  const [talents, setTalents] = useState(false);
-  const [talManual, setTalManual] = useState(false);
+  const goTalents = useGoToTalents(tab, onTab);
   const color = gt.color(c.cls) ?? "var(--gold)";
   const age = syncState(c.addonSyncedAt);
   const face = <Portrait id={c.portraitId} size={44} className="round" fallback={c.cls ? (c.spec1 ? <SpecIcon cls={c.cls} spec={c.spec1} size={34} /> : <ClassIcon cls={c.cls} size={34} />) : <span>?</span>} />;
@@ -237,8 +237,9 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
             <div className="fi-specs">
               {c.spec1 ? specLine(c.spec1) : <span className="fi-need">{t("Spé à choisir")}</span>}
               {c.spec2 && <><span>{t("off-spec")}</span>{specLine(c.spec2)}</>}
-              {c.cls && <button type="button" className="fi-tal" aria-expanded={talents} aria-controls="fi-talents" onClick={() => setTalents(o => !o)}>
-                {t("Talents")} {split(c.talents) ? <b className="num">{split(c.talents)}</b> : t("à remplir")} <span aria-hidden="true">{talents ? "▾" : "›"}</span></button>}
+              {/* Les talents sont sous l'équipement (13/11) : le bouton y mène */}
+              {c.cls && <button type="button" className="fi-tal" aria-controls="fi-talents" onClick={goTalents}>
+                {t("Talents")} {split(c.talents) ? <b className="num">{split(c.talents)}</b> : t("à remplir")} <span aria-hidden="true">›</span></button>}
             </div>
           </>}
         </div>
@@ -264,25 +265,16 @@ function CharSheet({ c, groups, tab, onTab, onChange, status, onPortrait, onDele
         </div>
       )}
       {editing && <ProfileEditor c={c} groups={groups} onChange={onChange} onDone={() => onEditing(false)} onDeleted={onDeleted} />}
-      {talents && !editing && (
-        <div className="fi-talents" id="fi-talents">
-          <div className="fi-tal-head">
-            <h3>{t("Talents")}</h3>
-            {c.talentNodes?.length
-              ? <span className={`sy-age ${age.tone}`}>{tx("● relevés par l'addon · {ago}", { ago: age.ago })}</span>
-              : <span>{t("Pas encore relevés ·")} <button type="button" className="link" onClick={openSync}>{t("fais ta synchro")}</button></span>}
-            <button type="button" className="btn sm" aria-pressed={talManual} onClick={() => setTalManual(m => !m)}>{talManual ? t("Terminer la saisie") : c.talentNodes?.length ? t("Modifier à la main") : t("Remplir à la main ›")}</button>
-          </div>
-          {/* Le conseil sur le niveau seulement si le joueur le change lui-même : une fois relevé en jeu, il suit le jeu */}
-          <TalentsSection c={c} onChange={onChange} editable={talManual} readOnly={!talManual} folded levelHint={!c.addonSyncedAt && !c.levelLock ? "profile" : undefined} />
-        </div>
-      )}
       <div className="tabs" role="tablist">
         {TABS.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} disabled={editing} onClick={() => onTab(k)}>{t(l)}</button>)}
       </div>
       <div className={`pane${editing ? " fi-off" : ""}`} inert={editing || undefined}>
         {tab === "metiers" && <Professions c={c} onChange={onChange} />}
-        {tab === "stuff" && <Paperdoll c={c} onChange={onChange} editable fiche />}
+        {tab === "stuff" && <>
+          <Paperdoll c={c} onChange={onChange} editable fiche />
+          {/* Le conseil sur le niveau seulement si le joueur le change lui-même : une fois relevé en jeu, il suit le jeu */}
+          {c.cls && <TalentsBlock key={c.id} c={c} onChange={onChange} canEdit levelHint={!c.addonSyncedAt && !c.levelLock ? "profile" : undefined} />}
+        </>}
         {tab === "legacy" && <LegacyTab c={c} onChange={onChange} />}
       </div>
     </section>

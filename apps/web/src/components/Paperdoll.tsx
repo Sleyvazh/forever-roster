@@ -87,7 +87,6 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
   const got = GEAR_SLOTS.filter(s => c.gear[s]?.got).length;
   const levels = GEAR_SLOTS.map(s => shownFor(c.gear[s] ?? {}, view, items)?.item?.itemLevel).filter((v): v is number => !!v);
   const avg = levels.length ? (levels.reduce((a, b) => a + b, 0) / levels.length).toFixed(1).replace(".", ",") : "—";
-  const epics = GEAR_SLOTS.filter(s => (c.gear[s]?.bisId ? items[c.gear[s]!.bisId!]?.quality : c.gear[s]?.bisQ) === 4).length;
 
   const slotEl = (slot: Slot) => {
     const g = c.gear[slot] ?? {};
@@ -165,7 +164,6 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
             <div className="pstat"><span>{t("BiS obtenus")}</span><b>{got}/{GEAR_SLOTS.length}</b></div>
             <div className="pbar" aria-hidden="true"><i style={{ width: `${Math.round(got / GEAR_SLOTS.length * 100)}%` }} /></div>
             <div className="pstat"><span>{t("Niveau d'objet moyen")}</span><b>{avg}</b></div>
-            <div className="pstat"><span>{t("Épiques visés")}</span><b>{epics}</b></div>
           </div>
           {canEdit && <div className="small">{bisOnly ? t("Clique sur un emplacement pour choisir ton objectif BiS.") : t("Clique sur un emplacement pour choisir l'objet.")}</div>}
         </aside>

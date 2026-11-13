@@ -102,8 +102,10 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".fi-head h2")).toContainText("Tournicoti");
     await expect(page.locator(".fi-specs")).toContainText("Feral Cat");
     await expect(page.locator(".fi-head .sub").first()).toHaveText("Niv. 60 · Druid · Tauren");
-    // Talents dans l'en-tête ; pas encore relevés : « Remplir à la main › » pour importer un build
+    // Talents sous l'équipement (13/11), le bouton de l'en-tête y mène ; pas encore relevés : « Remplir à la main › »
     await page.getByRole("button", { name: /^Talents/ }).click();
+    await expect(page.locator(".pane #fi-talents")).toBeInViewport();
+    await expect(page.getByRole("tab", { name: "Équipement" })).toHaveAttribute("aria-selected", "true");
     await page.locator("#fi-talents").getByRole("button", { name: "Remplir à la main ›" }).click();
     // Import d'un build ForeverChanges : répartition calculée, puis appliquée à la spé principale
     await page.fill("#f-import", "https://foreverchanges.pro/talents/priest?b=5");
