@@ -115,7 +115,7 @@ describe("Roster : WoW Retail", () => {
     const ids = { guildId: "620000000000000002", channelId: "620000000000000003" };
     const { code } = (await r.post(`/api/groups/${g.id}/discord/code`)).json();
     expect((await bot("POST", "/internal/discord/bind", { code, ...ids, discordUserId: "620000000000000001" })).statusCode).toBe(200);
-    const created = (await bot("POST", "/internal/discord/raids", { ...ids, discordUserId: "620000000000000001", name: "Flèche du Vide", scheduledAt: "2026-12-02T19:00:00.000Z" })).json();
+    const created = (await bot("POST", "/internal/discord/raids", { ...ids, discordUserId: "620000000000000001", name: "Flèche du Vide", scheduledAt: new Date(Date.now() + 7 * 86400e3).toISOString() })).json();
     expect(created.raid).toMatchObject({ size: 20, difficulty: "normal" });
     expect(created.group.game).toBe("retail");
     expect(created.raid.url.startsWith(RETAIL)).toBe(true);

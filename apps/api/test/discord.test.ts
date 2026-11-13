@@ -109,7 +109,9 @@ describe("API interne du bot", () => {
     expect((await gm.c.get(`/api/groups/${g.id}`)).json().group.discordLinked).toBe(true);
 
     // /raid : officier seulement
-    const when = "2026-11-12T20:00:00.000Z";
+    // Raid dans une semaine : une date fixe (12/11/2026, écrite le 29/09) fermait les inscriptions par le bot 12 h après
+    // le raid, et le test échouait à partir du 13/11 (13/11/2026, CI du commit 2a2fad5)
+    const when = new Date(Date.now() + 7 * 86400e3).toISOString();
     expect((await bot("POST", "/internal/discord/raids", { ...ids, discordUserId: "333333333333333333", name: "Onyxia", scheduledAt: when })).statusCode).toBe(403);
     const created = (await bot("POST", "/internal/discord/raids", { ...ids, discordUserId: "222222222222222222", name: "Onyxia", scheduledAt: when, description: "Résistance feu" })).json();
     const raidId = created.raid.id;
@@ -167,7 +169,7 @@ describe("API interne du bot", () => {
     };
     await drain();
     await bind("910000000000000002");
-    const raid = (await bot("POST", "/internal/discord/raids", { guildId: "910000000000000001", channelId: "910000000000000002", discordUserId: "555555555555555555", name: "BWL", scheduledAt: "2026-12-01T20:00:00.000Z" })).json();
+    const raid = (await bot("POST", "/internal/discord/raids", { guildId: "910000000000000001", channelId: "910000000000000002", discordUserId: "555555555555555555", name: "BWL", scheduledAt: new Date(Date.now() + 14 * 86400e3).toISOString() })).json();
     const publish = async (channelId: string, messageId: string) => {
       const item = (await bot("GET", "/internal/discord/outbox")).json().raids.find((r: { raid: { id: string } }) => r.raid.id === raid.raid.id);
       await bot("POST", `/internal/discord/raids/${raid.raid.id}/published`, { channelId, messageId, changedAt: item.raid.changedAt });
