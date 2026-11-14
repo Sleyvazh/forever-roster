@@ -2,6 +2,18 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.6
+
+- **Fewer website data copies spent for nothing**: when another player has just shared the website data with you, Roster Companion does not load a copy of its own right away (the 15 minutes start again). The 20 copies of a session last longer.
+- **Fresh data before your dungeon runs**: 15 and 2 minutes before each run you created, joined or wait for, the addon loads the latest website data (like 30 and 5 minutes before a raid).
+- `/fr share`: the line about a "who has the data?" request now says the addon only announces if no one just did.
+
+Français :
+
+- **Moins de copies des données du site dépensées pour rien** : quand un autre joueur vient de te partager les données du site, Roster Companion ne charge pas de copie tout de suite (les 15 minutes repartent). Les 20 copies d'une session durent plus longtemps.
+- **Des données fraîches avant tes sorties** : 15 et 2 minutes avant chaque sortie que tu as créée, rejointe ou attends, l'addon charge les dernières données du site (comme 30 et 5 minutes avant un raid).
+- `/fr partage` : la ligne d'une demande « qui a les données ? » dit maintenant que l'addon n'annonce que si personne ne vient de le faire.
+
 ## 1.7.5
 
 - **The same data is no longer downloaded twice**: when two players loaded the same website data a few seconds apart, the whole guild downloaded both copies, one after the other. An addon that already holds the same data now asks for nothing.

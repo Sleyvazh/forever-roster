@@ -9,7 +9,10 @@
 -- l'addon ne peut pas savoir quand l'appli a du nouveau, il charge donc aux moments utiles (1.5) : ouverture de la
 -- fenêtre, 30 et 5 min avant un raid, appel, entrée en raid, et au moins toutes les 15 min (1.5.1 : toutes les heures ;
 -- 1.6.3 : 15 min, pour que les données du site, que ses utilisateurs partagent ensuite avec la guilde, soient fraîches :
--- 20 copies tiennent ainsi environ 5 h de jeu sans /reload) ; et à la demande (bouton, touche, /fr actualiser). Les 20
+-- 20 copies tiennent ainsi environ 5 h de jeu sans /reload) ; et à la demande (bouton, touche, /fr actualiser).
+-- 1.7.6 (lot C de la synchro) : des données du site reçues d'un autre joueur valent une actualisation (les 15 min
+-- repartent : une copie de gagnée, puisque le partage les apporte à toute la guilde dans la seconde) ; et une
+-- actualisation 15 et 2 min avant chaque sortie dont je fais partie (créateur, inscrit ou en attente). Les 20
 -- copies utilisées : le jeu interdit à un addon de recharger l'interface tout seul (il faut un clic ou une touche),
 -- l'addon le propose donc dans sa propre fenêtre, au plus une fois par heure.
 -- Sans l'appli, rien ne change : la synchro rapide et le copier-coller restent là.
@@ -22,6 +25,7 @@ local ACTIVE_DAYS = 3
 local SLOTS = 20           -- ForeverRoster_Data1 à 20 (9 avec l'appli 0.1.0 : les autres sont simplement absentes)
 local AUTO_GAP = 2 * 60    -- actualisation toute seule seulement si la dernière (ou la connexion) date d'au moins 2 min
 local RAID_MOMENTS = { 30, 5 } -- minutes avant un raid
+local OUTING_MOMENTS = { 15, 2 } -- minutes avant une de mes sorties (1.7.6) : quand son bandeau peut s'ouvrir, et juste avant
 local PASSIVE = 15 * 60    -- mode passif : au moins une actualisation toute seule toutes les 15 min (60 min avant 1.6.3)
 local HOURLY = 3600        -- la proposition de recharger (copies épuisées) au plus une fois par heure
 local dead = {}            -- copies absentes ou refusées pendant cette session
@@ -228,7 +232,22 @@ function C.AutoRefresh(reason)
   return ok
 end
 
--- Moments « avant le raid » : 30 et 5 min avant chaque raid chargé (fenêtre de 2 min, vérifiée toutes les 30 s)
+-- Données du site reçues d'un autre joueur (partage, Group.lua, 1.7.6) : comme une actualisation, les 15 min repartent
+function C.Received() refreshedAt = time() end
+-- Dernière actualisation (ou connexion, ou données reçues d'un joueur) : tests
+function C.LastRefresh() return refreshedAt end
+
+-- Un moment (minutes avant l'heure t) passé il y a moins de 2 min, une seule fois par session
+local function moment(key, t, m, now, reason)
+  local at = t - m * 60
+  if not momentsDone[key] and now >= at then
+    momentsDone[key] = true
+    if now < at + 120 then C.AutoRefresh(reason) end
+  end
+end
+
+-- Moments « avant le raid » : 30 et 5 min avant chaque raid chargé ; avant une sortie (1.7.6) : 15 et 2 min avant
+-- chacune des miennes (fenêtre de 2 min, vérifiée toutes les 30 s)
 function C.Tick()
   if not C.Active() then return end
   local now = time()
@@ -238,12 +257,19 @@ function C.Tick()
   for _, e in ipairs(ns.Group.Raids()) do
     local t = tonumber(e.raid.time) or 0
     if t > now then
-      for _, m in ipairs(RAID_MOMENTS) do
-        local key, at = e.raid.id .. ":" .. m, t - m * 60
-        if not momentsDone[key] and now >= at then
-          momentsDone[key] = true
-          if now < at + 120 then C.AutoRefresh("raid") end
-        end
+      for _, m in ipairs(RAID_MOMENTS) do moment(e.raid.id .. ":" .. m, t, m, now, "raid") end
+    end
+  end
+  -- Sorties : seulement les miennes, à heure fixe (« dès que complet » n'a pas d'heure)
+  local O = ns.Outings
+  if not (O and O.List and O.Me and ns.Group.MyChars) then return end
+  local mine = ns.Group.MyChars()
+  for _, e in ipairs(O.List(now)) do
+    local t = tonumber(e.o.time) or 0
+    if t > now then
+      local me = O.Me(e.o, mine)
+      if me.creator or me.role or me.wait then
+        for _, m in ipairs(OUTING_MOMENTS) do moment("o:" .. e.o.id .. ":" .. m, t, m, now, "outing") end
       end
     end
   end

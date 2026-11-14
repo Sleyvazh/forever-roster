@@ -421,6 +421,7 @@ T["Données de %s diffusées sur %s : %d morceau(x) compressé(s), %d octets au 
 T["Réception de %s depuis %s : %d morceau(x) compressé(s) attendu(s)."] = "Receiving %s from %s: %d compressed part(s) expected."
 T["Données compressées de %s illisibles (reçues de %s) : ancien format redemandé."] = "Compressed data for %s unreadable (received from %s): old format requested again."
 T["Annonce SHV de %s sur %s : %s, version du %s : mêmes données que les miennes, rien à demander."] = "SHV announcement from %s on %s: %s, version of %s: same data as mine, nothing to request."
+T["SHW de %s sur %s : j'annonce mes groupes dans quelques secondes, si personne ne vient de le faire."] = "SHW from %s on %s: announcing my groups in a few seconds, unless someone just did."
 T["Format compressé coupé jusqu'à la fin de la session : %d versions illisibles."] = "Compressed format turned off until the end of the session: %d unreadable versions."
 T["Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés"] = "Raid messages: %d sent, %d resent after the game refused them, %d dropped"
 T[", %d en attente"] = ", %d waiting"

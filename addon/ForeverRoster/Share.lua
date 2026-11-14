@@ -893,7 +893,9 @@ local function onWant(sender, msg, dist)
   end
   for k, at in pairs(wanted) do if t - at >= Sh.WANT_GAP then wanted[k] = nil end end
   wanted[sender] = t
-  note(N("SHW de %s sur %s : j'annonce mes groupes dans quelques secondes."), who, dist)
+  -- « si personne ne vient de le faire » : un groupe que quelqu'un d'autre vient d'annoncer ne l'est pas une seconde fois
+  -- (Sh.Announce attend la fin des 60 s, puis se tait s'il a été réannoncé entre-temps) ; l'annonce faite a sa ligne (1.7.6)
+  note(N("SHW de %s sur %s : j'annonce mes groupes dans quelques secondes, si personne ne vient de le faire."), who, dist)
   after(Sh.Jitter(1, 5), function() Sh.Announce(dist, true) end)
 end
 

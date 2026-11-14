@@ -10,6 +10,10 @@
 -- Code de sortie 1 au moindre problème.
 local ADDONS = { "ForeverRoster", "Roster" }
 local problems, notes = 0, {}
+-- Traductions du fichier commun (addon/shared/Locale_en_Kit.lua) : elle n'y sont inutiles que si aucun des deux addons
+-- ne s'en sert (Forever Roster a sa propre copie de Share.lua depuis 1.7.4, dont les textes peuvent différer de ceux de
+-- Roster). Vérifiées une fois les deux addons lus.
+local sharedUnused = {}
 local function problem(fmt, ...) problems = problems + 1 notes[#notes + 1] = string.format(fmt, ...) end
 
 local function readFile(path)
@@ -174,9 +178,21 @@ for _, addon in ipairs(ADDONS) do
     end
   end
   for k in pairs(en) do
-    if not used[k] then problem("%s : traduction inutile (%s) : « %s »", addon, origin[k], k) end
+    if not used[k] then
+      if origin[k]:match("^addon/shared/") then
+        sharedUnused[k] = sharedUnused[k] or { origin = origin[k], addons = {} }
+        table.insert(sharedUnused[k].addons, addon)
+      else
+        problem("%s : traduction inutile (%s) : « %s »", addon, origin[k], k)
+      end
+    end
   end
   print(string.format("%s : %d textes à traduire, %d traductions", addon, keys, (function() local c = 0 for _ in pairs(en) do c = c + 1 end return c end)()))
+end
+
+-- Fichier commun : inutile seulement si aucun des deux addons ne s'en sert
+for k, u in pairs(sharedUnused) do
+  if #u.addons == #ADDONS then problem("%s : traduction inutile (%s) : « %s »", table.concat(u.addons, " et "), u.origin, k) end
 end
 
 for _, n in ipairs(notes) do print("  " .. n) end

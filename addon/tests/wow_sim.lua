@@ -1634,13 +1634,55 @@ local function sharing()
   local realAuto, autoCalls = Cp.AutoRefresh, {}
   ForeverRosterDB.companion = { seen = time() }
   fire("PLAYER_LOGIN")
-  Cp.AutoRefresh = function(reason) autoCalls[#autoCalls + 1] = reason return true end
+  -- Comme un vrai chargement : la dernière actualisation est maintenant (Cp.Received fait la même chose)
+  Cp.AutoRefresh = function(reason) autoCalls[#autoCalls + 1] = reason Cp.Received() return true end
   advance(10 * 60)
   Cp.Tick()
   assert(#autoCalls == 0, "Roster Companion : pas d'actualisation à 10 min")
   advance(5 * 60)
   Cp.Tick()
   assert(#autoCalls == 1, "Roster Companion : actualisation toute seule à 15 min")
+  -- 1.7.6 (lot C) : des données reçues d'un joueur valent une actualisation, les 15 min repartent (une copie de gagnée)
+  Cp.Received()
+  advance(14 * 60)
+  Cp.Tick()
+  assert(#autoCalls == 1 and Cp.LastRefresh() == time() - 14 * 60, "données reçues d'un joueur : pas de copie 14 min après")
+  advance(60)
+  Cp.Tick()
+  assert(#autoCalls == 2 and autoCalls[2] == "passive", "15 min après les données reçues : actualisation toute seule")
+  -- 1.7.6 (lot C) : 15 et 2 min avant chacune de mes sorties (créateur, inscrit, en attente), jamais pour celle des autres
+  -- ni pour « dès que complet » (pas d'heure) ; une seule fois par moment. Sorties simulées (O.List, O.Me)
+  local O, keepList, keepMe = ns.Outings, ns.Outings.List, ns.Outings.Me
+  local t0 = time()
+  local outs = {
+    { o = { id = "o-mienne", time = t0 + 20 * 60 } },
+    { o = { id = "o-attente", time = t0 + 20 * 60 + 30 } },
+    { o = { id = "o-autre", time = t0 + 18 * 60 } },
+    { o = { id = "o-complet", time = 0 } },
+  }
+  local place = { ["o-mienne"] = { role = "Tank" }, ["o-attente"] = { wait = 1 }, ["o-autre"] = {}, ["o-complet"] = { creator = true } }
+  O.List = function() return outs end
+  O.Me = function(o) return place[o.id] end
+  autoCalls = {}
+  Cp.Received()
+  advance(4 * 60) Cp.Tick()
+  assert(#autoCalls == 0, "sorties : rien 16 min avant")
+  advance(60) Cp.Tick()
+  assert(#autoCalls == 1 and autoCalls[1] == "outing", "15 min avant la sortie où je suis inscrit : actualisation")
+  advance(30) Cp.Tick()
+  assert(#autoCalls == 2 and autoCalls[2] == "outing", "15 min avant celle où je suis en attente : actualisation")
+  advance(30) Cp.Tick()
+  assert(#autoCalls == 2, "une seule fois par moment, rien pour la sortie d'un autre (passée aussi) ni « dès que complet »")
+  advance(13 * 60) Cp.Tick()
+  assert(#autoCalls == 4, "2 min avant : de nouveau : " .. table.concat(autoCalls, ","))
+  advance(10 * 60) Cp.Tick()
+  assert(#autoCalls == 4, "sortie commencée : plus rien")
+  -- Un moment manqué de plus de 2 min (jeu lancé après) : pas d'actualisation en retard
+  outs = { { o = { id = "o-tard", time = time() + 10 * 60 } } }
+  place["o-tard"] = { creator = true }
+  Cp.Tick()
+  assert(#autoCalls == 4, "moment des 15 min manqué de plus de 2 min : rien")
+  O.List, O.Me = keepList, keepMe
   Cp.AutoRefresh = realAuto
   ForeverRosterDB.companion = keep.companion
 
@@ -3396,7 +3438,7 @@ local function diagnostic()
     clock = clock + 7
     Sh.OnMessage("Greta-Forever EU", "SHW;FRG", "GUILD")
     local _, t = opened("partage")
-    local first = date("%H:%M:%S", t0) .. "  SHW de Greta sur GUILD : j'annonce mes groupes dans quelques secondes."
+    local first = date("%H:%M:%S", t0) .. "  SHW de Greta sur GUILD : j'annonce mes groupes dans quelques secondes, si personne ne vient de le faire."
     local second = date("%H:%M:%S", t0 + 7) .. "  SHW de Greta sur GUILD : ignoré, déjà répondu il y a moins de 5 min."
     has(t, first)
     has(t, second)
@@ -4199,6 +4241,9 @@ local function sharingZ()
   local b4 = block(G1, T4, 75, MEMBERS)
   hold(zia, b4)
   m1 = #mine
+  ns.Companion.Received()
+  local refreshed = ns.Companion.LastRefresh()
+  advance(1)
   zia.Sh.Announce("GUILD")
   advance(0.3)
   assert(count(mine, "^SHQ;" .. esc(G1) .. ";" .. T3 .. ";GUILD;z$", m1 + 1) == 1 and mine[#mine].target == "Zia-Forever EU", "ma demande, avec « z »")
@@ -4207,6 +4252,8 @@ local function sharingZ()
   local g = myGroup(G1)
   assert(g.at == T4 and g.origin.from == "Zia" and Sh.Parse(g.text, "FRG").shared == Sh.Parse(b4, "FRG").shared, "reçu de Zia, dans le désordre, texte identique")
   assert(journalHas("Réception de", "morceau(x) compressé(s) attendu(s)"), "journal : réception compressée")
+  -- 1.7.6 (lot C) : données reçues d'un joueur = actualisation faite pour Roster Companion (les 15 min repartent)
+  assert(ns.Companion.LastRefresh() > refreshed, "données reçues : Roster Companion compte une actualisation")
 
   -- e. Compressé illisible (un morceau abîmé en route) : l'ancien format est redemandé, une fois, et arrive
   advance(Sh.QUIET + 5)

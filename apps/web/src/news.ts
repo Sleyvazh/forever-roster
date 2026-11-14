@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 76, date: "2026-11-14", kind: "addon", version: "1.7", title: N("Addon 1.7.6 : des données fraîches avant tes sorties"),
+    text: N("Avec Roster Companion, l'addon charge maintenant les dernières données du site 15 et 2 minutes avant chaque sortie que tu as créée, rejointe ou attends, comme il le faisait déjà avant les raids. Et quand un autre joueur vient de te partager les données, il ne dépense pas de copie pour rien : tes 20 actualisations sans /reload durent plus longtemps. Télécharge la 1.7.6 sur la page Addon.") },
   { n: 75, date: "2026-11-13", kind: "site", title: N("Fiches des persos : les talents sous l'équipement"),
     text: N("Dans Mes persos comme dans la fiche ouverte depuis Guilde › Membres, les talents sont maintenant visibles sous l'équipement, sans clic ; le bouton « Talents › » de l'en-tête y mène. Un perso sans off-spec n'affiche plus de carte vide, et « Épiques visés » quitte le résumé de l'équipement.") },
   { n: 74, date: "2026-11-12", kind: "site", title: N("Guilde : la fiche d'un perso s'ouvre sous son nom"),

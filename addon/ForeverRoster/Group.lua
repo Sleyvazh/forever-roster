@@ -728,6 +728,8 @@ local function applyShared(text, sender, dist)
   if ns.UI and ns.UI.Refresh then ns.safe(N("partage des données du site"), ns.UI.Refresh) end
   if ns.Minimap and ns.Minimap.Update then ns.safe(N("minicarte"), ns.Minimap.Update) end
   G.ShareSoon(dist == "RAID" and "GUILD" or "RAID", 2, 6)
+  -- Données fraîches reçues d'un joueur (1.7.6) : Roster Companion n'a pas besoin de dépenser une copie tout de suite
+  if ns.Companion and ns.Companion.Received then ns.Companion.Received() end
   return true
 end
 
