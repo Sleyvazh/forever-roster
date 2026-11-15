@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
 import { ItemPicker, useGameVersion } from "./GameData";
+import { ItemChooser } from "./ItemChooser";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { FloatingTip, iconUsable, ItemIcon, ItemTooltipBody, useIconFailures } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
@@ -48,7 +49,8 @@ function shownFor(g: GearEntry, view: View, items: Record<number, GameItem>): Sh
 /**
  * Onglet Équipement présenté comme la fiche de personnage du jeu. `fiche` (Mes persos de Forever, refonte du 09/11) : ce que
  * l'addon relève est en lecture (« ● relevé par l'addon · il y a 3 h »), « Modifier à la main » en secours ; l'objectif BiS
- * reste toujours modifiable ; sans relevé, « Pas encore relevé · fais ta synchro » ou « Remplir à la main ».
+ * reste toujours modifiable ; sans relevé, « Pas encore relevé · fais ta synchro » ou « Remplir à la main ». Un clic sur un
+ * emplacement ouvre la liste de ses objets (ItemChooser, 15/11) ; sans `fiche` (Roster), le petit éditeur sous la poupée.
  */
 export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onChange: (p: Partial<Character>) => void; editable: boolean; fiche?: boolean }) {
   const [view, setView] = useState<View>("cur");
@@ -73,15 +75,33 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
   });
   const items = itemsQ.data?.items ?? {};
 
-  const setSlot = (slot: Slot, patch: Partial<GearEntry>) => {
+  /** `item` : l'objet choisi dans la liste, déjà connu (pas besoin de redemander s'il se tient à deux mains). */
+  const setSlot = (slot: Slot, patch: Partial<GearEntry>, item?: GameItem) => {
     const gear = { ...c.gear, [slot]: { ...c.gear[slot], ...patch } };
-    onChange({ gear });
     // Arme à deux mains équipée : la main gauche se vide, comme en jeu
-    if (slot === "Main Hand" && patch.curId && c.gear["Off Hand"]?.cur) {
+    const twoHand = slot === "Main Hand" && !!patch.curId && !!c.gear["Off Hand"]?.cur;
+    if (twoHand && item) {
+      onChange({ gear: item.inventoryType === INVTYPE_2H ? { ...gear, "Off Hand": withoutCurrent(gear["Off Hand"])! } : gear });
+      return;
+    }
+    onChange({ gear });
+    if (twoHand) {
       void get<{ items: Record<number, GameItem> }>(`/gamedata/items/batch?ids=${patch.curId}`).then(r => {
         if (r.items[patch.curId!]?.inventoryType === INVTYPE_2H) onChange({ gear: { ...gear, "Off Hand": withoutCurrent(gear["Off Hand"])! } });
       }).catch(() => {});
     }
+  };
+  // Liste fermée : le focus revient sur l'emplacement, sans rouvrir son infobulle
+  const quiet = useRef(false);
+  const closeList = () => {
+    const slot = open;
+    setOpen(null);
+    if (!slot) return;
+    requestAnimationFrame(() => {
+      quiet.current = true;
+      document.querySelector<HTMLElement>(`.gslot[data-slot="${slot}"]`)?.focus({ preventScroll: true });
+      quiet.current = false;
+    });
   };
 
   const got = GEAR_SLOTS.filter(s => c.gear[s]?.got).length;
@@ -97,13 +117,14 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
     const mh = c.gear["Main Hand"]?.curId ? items[c.gear["Main Hand"]!.curId!] : undefined;
     const taken = slot === "Off Hand" && !shown && view === "cur" && mh?.inventoryType === INVTYPE_2H;
     return (
-      <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}`} aria-expanded={canEdit ? open === slot : undefined}
+      <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}`} data-slot={slot}
+        aria-expanded={canEdit && !fiche ? open === slot : undefined} aria-haspopup={canEdit && fiche ? "dialog" : undefined}
         aria-label={`${t("{slot} : {item}", { slot: slotName(slot), item: shown ? shown.name : t("vide") })}${g.got ? t(", BiS obtenu") : ""}`}
         onClick={act}
         onKeyDown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } }}
         onMouseEnter={e => shown && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
         onMouseLeave={() => setTip(null)}
-        onFocus={e => shown && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
+        onFocus={e => shown && !quiet.current && setTip({ slot, rect: e.currentTarget.getBoundingClientRect() })}
         onBlur={() => setTip(null)}>
         <span className={`gicon${shown ? "" : " none"}${iconOk ? " has-img" : ""}`} style={shown?.quality != null ? { ["--qc" as string]: `var(--q${shown.quality})` } : undefined}>
           {iconOk ? <ItemIcon item={shown!.item} size={42} /> : <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>}
@@ -169,8 +190,10 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
         </aside>
         <div className="dcol right">{RIGHT.map(slotEl)}</div>
         <div className="dweapons">{WEAPONS.map(slotEl)}</div>
-        {canEdit && open && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} bisOnly={bisOnly} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
+        {canEdit && open && !fiche && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} bisOnly={bisOnly} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
       </div>
+      {canEdit && open && fiche && <ItemChooser c={c} slot={open} slotLabel={slotName(open)} view={view} g={c.gear[open] ?? {}}
+        current={c.gear[open]?.curId ? items[c.gear[open]!.curId!] : null} onSet={(p, it) => setSlot(open, p, it)} onClose={closeList} />}
       {tip && <ItemTip slot={tip.slot} rect={tip.rect} g={c.gear[tip.slot] ?? {}} view={view} items={items}
         owned={new Set(GEAR_SLOTS.map(s => shownFor(c.gear[s] ?? {}, view, items)?.name).filter((n): n is string => !!n))} />}
     </div>

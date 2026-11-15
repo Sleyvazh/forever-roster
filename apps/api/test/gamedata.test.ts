@@ -100,6 +100,18 @@ describe("API données du jeu", () => {
     // Les jokers SQL sont traités comme du texte
     expect((await c.get("/api/gamedata/items?q=%25%25")).json().items).toEqual([]);
     expect((await c.get("/api/gamedata/items?q=a")).statusCode).toBe(400);
+    // Tous les objets d'un emplacement (feuille d'équipement, 15/11) : sans texte, filtrés par niveau requis et qualité
+    const all = (await c.get("/api/gamedata/items/slot?slot=Head")).json();
+    expect(all.truncated).toBe(false);
+    expect(all.items.map((i: { name: string }) => i.name)).toContain("Helm of Might");
+    expect(all.items.find((i: { name: string }) => i.name === "Helm of Might")).toMatchObject({ id: 16866, classId: 4, subclassId: 4, reqLevel: 60, quality: 4, details: expect.any(Object) });
+    expect(all.items.every((i: { inventoryType: number }) => i.inventoryType === 1)).toBe(true);
+    const levels = all.items.map((i: { itemLevel: number }) => i.itemLevel);
+    expect(levels).toEqual([...levels].sort((a: number, b: number) => b - a));
+    expect((await c.get("/api/gamedata/items/slot?slot=Head&maxReq=50")).json().items.map((i: { name: string }) => i.name)).not.toContain("Helm of Might");
+    expect((await c.get("/api/gamedata/items/slot?slot=Head&minQuality=5")).json().items).toEqual([]);
+    expect((await c.get("/api/gamedata/items/slot?slot=Tete")).statusCode).toBe(400);
+    expect((await c.get("/api/gamedata/items/slot?slot=Head&maxReq=99")).statusCode).toBe(400);
     const lw = (await c.get("/api/gamedata/professions/Leatherworking/recipes")).json();
     expect(lw.recipes.map((r: { spellId: number }) => r.spellId)).toEqual([2152, 19100, 19080]);
     expect(lw.items[15090].name).toBe("Pattern: Warbear Woolies");

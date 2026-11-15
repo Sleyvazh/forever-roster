@@ -324,6 +324,20 @@ test("accueil, raids, sorties, guilde, persos, compte, addon, synchro, signaleme
     await page.getByText("Helm of Might").first().hover();
     await expect(page.getByRole("tooltip")).toContainText("Item Level");
     await expectEnglish(page, "l'infobulle d'un objet");
+    // Liste des objets d'un emplacement (15/11) : objectif BiS d'un guerrier, les plaques au départ
+    await page.mouse.move(0, 0);
+    await page.getByRole("group", { name: "View" }).getByRole("button", { name: "BiS goal" }).click();
+    await page.getByRole("button", { name: /^Head: Helm of Might/ }).click();
+    const list = page.getByRole("dialog", { name: "Head" });
+    await expect(list.locator(".ic-scope")).toHaveText("Plate · all levels · green and up · 1 item");
+    await list.getByRole("button", { name: "Filters", exact: true }).click();
+    await expect(list.getByRole("checkbox", { name: "Leather" })).not.toBeChecked();
+    await expectEnglish(page, "les filtres de la liste des objets");
+    await list.getByRole("button", { name: "Filters", exact: true }).click();
+    await list.getByRole("button", { name: /^Helm of Might/ }).hover();
+    await expectEnglish(page, "la liste des objets d'un emplacement");
+    await list.getByRole("button", { name: "Helm of Might, lvl 66, requires 60, equipped" }).click();
+    await expect(list).toHaveCount(0);
   });
 
   await test.step("Signalements : les miens, la fenêtre d'envoi, la page des admins", async () => {

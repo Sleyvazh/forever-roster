@@ -119,6 +119,80 @@ export function statLine(type: number, value: number, lang: ItemLang = "fr"): St
   return { kind: "equip", text: f ? f(value) : en ? `Stat #${type}: ${sign}${value}.` : `Caractéristique n° ${type} : ${sign}${value}.`, type, value };
 }
 
+/**
+ * Nom très court d'une caractéristique principale, pour une ligne de liste (« +12 Agi · +8 Endu ») ; les autres gardent
+ * leur nom court (statName).
+ */
+export function statAbbr(type: number, lang: ItemLang = "fr") {
+  const abbr = (lang === "en"
+    ? { 3: "Agi", 4: "Str", 5: "Int", 6: "Spi", 7: "Sta" }
+    : { 3: "Agi", 4: "For", 5: "Int", 6: "Esp", 7: "Endu" }) as Record<number, string>;
+  return abbr[type] ?? statName(type, lang);
+}
+
+/* ---------- Liste des objets d'un emplacement (feuille d'équipement, 15/11) ---------- */
+
+/** Sous-classes d'armure (classe d'objet 4) : tissu, cuir, mailles, plaques. */
+export const ARMOR_SUBCLASSES = [1, 2, 3, 4] as const;
+/** Emplacements où le type d'armure compte (le dos est toujours en tissu ; cou, doigts, bijoux n'en ont pas). */
+export const ARMOR_TYPED_SLOTS = ["Head", "Shoulder", "Chest", "Wrist", "Hands", "Waist", "Legs", "Feet"] as const;
+/**
+ * Type d'armure principal d'une classe à son niveau (sous-classe d'armure) : druide et voleur, cuir ; mage, prêtre,
+ * démoniste, tissu ; chasseur et chaman, cuir puis mailles dès le niveau 40 ; guerrier et paladin, mailles puis plaques
+ * dès le 40. null : classe inconnue (la liste montre alors tous les types).
+ */
+export function mainArmorSubclass(cls: string, level: number): number | null {
+  switch (cls) {
+    case "Druid": case "Rogue": return 2;
+    case "Mage": case "Priest": case "Warlock": return 1;
+    case "Hunter": case "Shaman": return level >= 40 ? 3 : 2;
+    case "Warrior": case "Paladin": return level >= 40 ? 4 : 3;
+    default: return null;
+  }
+}
+
+/** Caractéristique en quelques mots, pour une ligne de liste : « +12 Agi », « +1 % Toucher », « +20 Puissance d'attaque ». */
+export function statShort(type: number, value: number, lang: ItemLang = "fr") {
+  const sign = value >= 0 ? "+" : "";
+  const pct = PERCENT[type];
+  if (pct) {
+    const p = Math.round((value / pct[0]) * 10) / 10;
+    return lang === "en" ? `${sign}${p}% ${statName(type, "en")}` : `${sign}${String(p).replace(".", ",")} % ${statName(type)}`;
+  }
+  return `${sign}${value} ${statAbbr(type, lang)}`;
+}
+
+/** Ce qu'une ligne de liste montre d'un objet : le DPS d'une arme, puis ses caractéristiques (les `max` premières) ; l'armure à défaut. */
+export function itemRowStats(d: ItemDetails | null | undefined, lang: ItemLang = "fr", max = 3) {
+  const out: string[] = [];
+  if (d?.dmg) out.push(`${lang === "en" ? d.dmg.dps : String(d.dmg.dps).replace(".", ",")} DPS`);
+  for (const [type, v] of d?.stats ?? []) out.push(statShort(type, v, lang));
+  if (!out.length && d?.armor) out.push(lang === "en" ? `${d.armor} Armor` : `${d.armor} Armure`);
+  return out.slice(0, max);
+}
+
+/** Texte comparable pour une recherche : minuscules, sans accents (« epee » trouve « Épée »). */
+export const searchKey = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+/**
+ * Tout ce qu'on peut taper pour trouver un objet dans une liste : son nom, son type, ses caractéristiques (en abrégé et en
+ * entier, en français et en anglais : « agi », « endu », « stamina »), ses effets et son ensemble.
+ */
+export function itemSearchText(item: { name: string; kind: string; classId?: number; subclassId?: number; details?: ItemDetails | null }) {
+  const d = item.details ?? {};
+  const sub = itemSubclass(item);
+  const parts = [item.name, subclassText(sub, "fr"), subclassText(sub, "en")];
+  for (const lang of ["fr", "en"] as const) for (const [type, v] of d.stats ?? []) parts.push(statShort(type, v, lang), statName(type, lang));
+  if (d.dmg) parts.push("DPS");
+  for (const e of d.effects ?? []) parts.push(e.text);
+  if (d.set) parts.push(d.set.name);
+  return searchKey(parts.join(" | "));
+}
+/** Chaque mot tapé doit se trouver dans le texte de recherche de l'objet (itemSearchText). */
+export function matchesSearch(text: string, query: string) {
+  return searchKey(query).split(/\s+/).filter(Boolean).every(w => text.includes(w));
+}
+
 /** Nom court d'une caractéristique, pour la comparaison. */
 export function statName(type: number, lang: ItemLang = "fr") {
   if (lang === "en") {
@@ -169,6 +243,17 @@ const SUBCLASS_FR: Record<string, string> = {
   "Fishing Pole": "Canne à pêche", "Fishing Poles": "Canne à pêche",
 };
 export const subclassFr = (name: string | undefined) => (name ? SUBCLASS_FR[name] ?? name : "");
+/** Sous-classes d'armes (2) et d'armures (4) du client, quand le libellé `kind` d'un objet manque. */
+const SUBCLASS_EN: Record<string, string> = {
+  "2:0": "One-Handed Axes", "2:1": "Two-Handed Axes", "2:2": "Bows", "2:3": "Guns", "2:4": "One-Handed Maces", "2:5": "Two-Handed Maces",
+  "2:6": "Polearms", "2:7": "One-Handed Swords", "2:8": "Two-Handed Swords", "2:10": "Staves", "2:13": "Fist Weapons", "2:14": "Miscellaneous",
+  "2:15": "Daggers", "2:16": "Thrown", "2:18": "Crossbows", "2:19": "Wands", "2:20": "Fishing Poles",
+  "4:0": "Miscellaneous", "4:1": "Cloth", "4:2": "Leather", "4:3": "Mail", "4:4": "Plate", "4:6": "Shields", "4:7": "Librams", "4:8": "Idols", "4:9": "Totems",
+};
+/** Sous-classe d'un objet (mot anglais du client) : la fin de son libellé (« Armor · Leather »), sinon d'après ses numéros. */
+export function itemSubclass(item: { kind: string; classId?: number; subclassId?: number }) {
+  return item.kind ? item.kind.split(" · ").at(-1) : SUBCLASS_EN[`${item.classId}:${item.subclassId}`];
+}
 /** Type d'objet affiché : en français (subclassFr), ou le mot anglais du jeu au singulier (« One-Handed Axes » → « Axe »). */
 export function subclassText(name: string | undefined, lang: ItemLang = "fr") {
   if (lang === "fr") return subclassFr(name);

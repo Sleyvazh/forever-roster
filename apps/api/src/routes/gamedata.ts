@@ -1,5 +1,5 @@
 import { CLASSES, GEAR_SLOTS, PROFESSION_SKILL_LINES, SLOT_INVENTORY_TYPES } from "@forever/game-data";
-import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db/client";
@@ -12,6 +12,8 @@ import { currentLines, professionOf } from "../lib/professions";
 /** Échappe les jokers de LIKE : une recherche « 100% » ne doit pas devenir un motif. */
 const escapeLike = (q: string) => q.replace(/[\\%_]/g, c => `\\${c}`);
 export const likeContains = (q: string) => `%${escapeLike(q)}%`;
+/** Objets d'un emplacement renvoyés d'un coup au plus (/items/slot) : de quoi couvrir tout un emplacement d'armure. */
+const SLOT_MAX = 2000;
 
 export const itemSummary = {
   id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel,
@@ -54,6 +56,25 @@ export async function gameDataRoutes(app: FastifyInstance) {
       .limit(limit);
     reply.header("Cache-Control", "private, max-age=300");
     return { items };
+  });
+
+  /**
+   * Tous les objets d'un emplacement (feuille d'équipement, 15/11) : la fenêtre « Tête » les liste d'emblée, filtre le texte et
+   * les types d'armure dans le navigateur. Niveau requis au plus `maxReq`, qualité au moins `minQuality` ; classe et
+   * sous-classe d'objet en plus du résumé (types d'armure et d'arme). Du plus haut niveau d'objet au plus bas, SLOT_MAX au plus.
+   */
+  app.get("/items/slot", async (req, reply) => {
+    const { slot, maxReq, minQuality } = parse(z.object({
+      slot: z.enum(GEAR_SLOTS),
+      maxReq: z.coerce.number().int().min(0).max(60).default(60),
+      minQuality: z.coerce.number().int().min(0).max(5).default(0),
+    }), req.query);
+    const items = await db.select({ ...itemSummary, classId: gameItems.classId, subclassId: gameItems.subclassId }).from(gameItems)
+      .where(and(inArray(gameItems.inventoryType, SLOT_INVENTORY_TYPES[slot]), lte(gameItems.reqLevel, maxReq), gte(gameItems.quality, minQuality)))
+      .orderBy(desc(gameItems.itemLevel), desc(gameItems.quality), asc(gameItems.name), asc(gameItems.id))
+      .limit(SLOT_MAX + 1);
+    reply.header("Cache-Control", "private, max-age=300");
+    return { items: items.slice(0, SLOT_MAX), truncated: items.length > SLOT_MAX };
   });
 
   /** Plusieurs objets d'un coup (fiche d'équipement : jusqu'à 34 identifiants). */

@@ -8,6 +8,8 @@ import { N } from "./i18n";
 export interface NewsItem { n: number; date: string; kind: "site" | "addon" | "bot"; version?: string; title: string; text: string }
 
 export const NEWS: NewsItem[] = [
+  { n: 77, date: "2026-11-15", kind: "site", title: N("Équipement : choisis tes objets dans une liste"),
+    text: N("Dans Mes persos, un clic sur un emplacement (Objectif BiS, ou Équipé avec « Modifier à la main ») ouvre la liste de ses objets, comme sur les sites de base de données : ceux que ton perso peut porter, du plus haut niveau au plus bas, avec leurs caractéristiques. Tape quelques lettres pour filtrer (un nom, ou « agi », « endu »), survole un objet pour le comparer à ton équipement, clique pour le choisir. « Filtres » change le type d'armure, la qualité et le niveau requis ; un objet absent de la base se saisit encore à la main.") },
   { n: 76, date: "2026-11-14", kind: "addon", version: "1.7", title: N("Addon 1.7.6 : des données fraîches avant tes sorties"),
     text: N("Avec Roster Companion, l'addon charge maintenant les dernières données du site 15 et 2 minutes avant chaque sortie que tu as créée, rejointe ou attends, comme il le faisait déjà avant les raids. Et quand un autre joueur vient de te partager les données, il ne dépense pas de copie pour rien : tes 20 actualisations sans /reload durent plus longtemps. Télécharge la 1.7.6 sur la page Addon.") },
   { n: 75, date: "2026-11-13", kind: "site", title: N("Fiches des persos : les talents sous l'équipement"),

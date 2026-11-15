@@ -165,20 +165,60 @@ test("inscription, fiche, portrait, patrons, équipement, groupe", async ({ page
     await expect(page.locator(".pf-rl li").filter({ hasText: "Warbear Woolies" })).toContainText("✓ Connu");
   });
 
-  await test.step("équipement : choisir un objet dans la base", async () => {
+  await test.step("équipement : choisir un objet dans la liste de l'emplacement", async () => {
     await page.getByRole("tab", { name: "Équipement" }).click();
     // Pas encore relevé : l'équipé se remplit à la main ; l'objectif BiS, toujours
     await expect(page.locator(".gear-none")).toContainText("Pas encore relevé");
     await page.getByRole("button", { name: "remplis à la main ›" }).click();
     await page.getByRole("button", { name: /^Tête : vide/ }).click();
-    await page.getByRole("combobox", { name: "Équipé : Tête" }).fill("helm");
+    // Liste des objets de l'emplacement (15/11) : au départ, ce que le druide niv. 60 peut porter (cuir, vert et plus)
+    const list = page.getByRole("dialog", { name: "Tête" });
+    await expect(list).toContainText("Objet équipé · Tournicoti");
+    await expect(list.locator(".ic-scope")).toHaveText("Cuir · tous niveaux · vert et plus · 1 objet");
+    await expect(list.getByRole("button", { name: "Leather Hat, niv. 22, requiert 17" })).toBeVisible();
+    await expect(list.getByRole("button", { name: /Helm of Might/ })).toHaveCount(0);
+    // Filtres : les plaques sont grisées pour un druide ; Échap ferme le menu, pas la fenêtre
+    await list.getByRole("button", { name: "Filtres", exact: true }).click();
+    await expect(list.getByRole("checkbox", { name: "Cuir" })).toBeChecked();
+    await expect(list.getByRole("checkbox", { name: "Plaques" })).toBeDisabled();
+    await list.getByRole("group", { name: "Qualité" }).getByRole("button", { name: "Épique" }).click();
+    await expect(list).toContainText("Aucun objet ne correspond aux filtres.");
+    await list.getByRole("button", { name: "Revenir aux filtres de départ" }).click();
+    await page.keyboard.press("Escape");
+    await expect(list.getByRole("group", { name: "Filtres" })).toHaveCount(0);
+    await expect(list).toBeVisible();
+    // Le champ filtre à chaque lettre : nom, type ou caractéristique
+    const filter = list.getByRole("searchbox", { name: "Filtrer la liste des objets" });
+    await filter.fill("plaques");
+    await expect(list).toContainText("Aucun objet ne correspond aux filtres.");
+    await filter.fill("hat cuir");
+    // Survol : l'infobulle de l'objet ; clic : il est choisi et la fenêtre se ferme
+    await list.getByRole("button", { name: /^Leather Hat/ }).hover();
+    await expect(page.locator(".itip")).toContainText("Niveau d'objet 22");
+    await list.getByRole("button", { name: /^Leather Hat/ }).click();
+    await expect(list).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Tête : Leather Hat/ })).toBeFocused();
+    // Absent de la liste (une pièce de plaque) : saisie à la main, avec la recherche dans la base
+    await page.getByRole("button", { name: /^Tête : Leather Hat/ }).click();
+    await expect(list.getByRole("button", { name: "Leather Hat, niv. 22, requiert 17, équipé" })).toBeVisible();
+    await list.getByRole("button", { name: "Introuvable ? Le saisir à la main" }).click();
+    await list.getByRole("combobox", { name: "Équipé : Tête" }).fill("helm");
     await page.getByRole("option", { name: /Helm of Might/ }).click();
-    await page.getByRole("button", { name: "Fermer" }).click();
+    await list.getByRole("button", { name: "Fermer" }).click();
+    await expect(list).toHaveCount(0);
     await page.getByRole("button", { name: /^Tête : Helm of Might/ }).hover();
     await expect(page.locator(".itip")).toContainText("Niveau d'objet 66");
     await expect(page.locator(".itip")).toContainText("608 Armure");
     await expect(page.locator(".itip")).toContainText("+19 Force");
     await expect(page.locator(".itip")).toContainText("Battlegear of Might");
+    // Sur téléphone, la liste prend tout l'écran
+    const size = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole("button", { name: /^Tête : Helm of Might/ }).click();
+    await expect(list).toBeVisible();
+    expect(await list.boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 844 });
+    await list.getByRole("button", { name: "Fermer" }).click();
+    await page.setViewportSize(size);
   });
 
   await test.step("addon : mise à jour de la fiche depuis l'export du jeu", async () => {
