@@ -5,7 +5,9 @@
  *   node dist/import-gamedata.js --build 1.60.1.70009
  *   node dist/import-gamedata.js --dir ./csv    fichiers <Table>.csv déjà téléchargés
  *   options : --no-era (sans complément Classic Era), --era-dir ./era (ItemSparse.csv et Item.csv de Classic Era)
- *             --cache <DBCache.bin | -> : objets révélés en jeu, lus dans le cache du client (« - » : entrée standard)
+ *             --cache <DBCache.bin | -> : correctifs du serveur lus dans le cache du client (objets révélés en jeu, leurs effets,
+ *               sets, apparences, talents, recettes) ; option répétable (caches de plusieurs joueurs) ; « - » : entrée standard,
+ *               un cache seul ou plusieurs (flux FRCACHES, voir splitCaches)
  *             --no-icons : ne pas chercher les noms d'icônes (listfile communautaire)
  *
  * Les objets absents du client Forever (envoyés par le serveur du jeu, non publiés par wago.tools)
@@ -13,7 +15,9 @@
  */
 import { createDb } from "../db/client";
 import { readFile } from "node:fs/promises";
-import { itemsFromCache, mergeCache, parseDbCache } from "./dbcache";
+import { parseDbCache, splitCaches } from "./dbcache";
+import { applyHotfixes, collectHotfixes, removedItems } from "./hotfix";
+import { HOTFIX_BUILD } from "./hotfix-layouts";
 import { dedupeRecipes, extract, fillFromEra, readItems } from "./extract";
 import { addDetails, appearanceIcons, buildForeverTalents, buildSpellTexts, iconNames } from "./details";
 import { downloadDetailTables, downloadItemTables, downloadTables, latestBuild, latestEraBuild, listfileLines, readDetailTables, readItemTables, readTables } from "./source";
@@ -33,23 +37,40 @@ if (!build) {
 }
 console.log(dir ? `Lecture des tables dans ${dir}` : `Téléchargement des tables du client ${build}`);
 const tables = dir ? await readTables(dir) : await downloadTables(build, fetch, m => console.log(m));
+console.log("Tables des infobulles :");
+const detailTables = dir ? await readDetailTables(dir, m => console.log(m)) : await downloadDetailTables(build, fetch, m => console.log(m));
+
+// Correctifs du serveur (cache du client) : appliqués aux tables comme le fait le jeu, avant tout le reste
+let cacheBuild: string | null = null, cacheItems = 0, removed = new Set<number>();
+const cachePaths = process.argv.flatMap((a, i) => (a === "--cache" && process.argv[i + 1] ? [process.argv[i + 1]!] : []));
+if (cachePaths.length) {
+  const files: Buffer[] = [];
+  for (const p of cachePaths) {
+    if (p === "-") files.push(...splitCaches(await readStdin()));
+    else files.push(await readFile(p));
+  }
+  const caches = files.map(parseDbCache);
+  const hot = collectHotfixes(caches);
+  // Tables des objets et des infobulles ensemble (aucune n'est dans les deux) ; une table non téléchargée reste absente
+  const all: Partial<Record<string, Record<string, string>[]>> = { ...tables, ...detailTables };
+  const report = applyHotfixes(all, hot);
+  for (const k of Object.keys(tables)) (tables as Record<string, unknown>)[k] = all[k];
+  for (const k of Object.keys(detailTables)) (detailTables as Record<string, unknown>)[k] = all[k];
+  removed = removedItems(hot);
+  cacheBuild = [...new Set(caches.map(c => c.build))].join(", ");
+  cacheItems = report.find(r => r.table === "ItemSparse")?.added ?? 0;
+  console.log(`Cache du client : ${caches.length} fichier${caches.length > 1 ? "s" : ""} (build ${cacheBuild}), correctifs appliqués :`);
+  const other = caches.filter(c => !HOTFIX_BUILD.endsWith(`.${c.build}`)).map(c => c.build);
+  if (other.length) console.warn(`  Dispositions des tables : client ${HOTFIX_BUILD}, cache ${[...new Set(other)].join(", ")} ; si des tables sont ignorées, relancer scripts/hotfix-layouts.mjs.`);
+  for (const r of report) {
+    if (r.skipped === "illisible") console.warn(`  ${r.table} : correctifs ignorés (${r.unreadable} lignes illisibles : version du client différente, relancer scripts/hotfix-layouts.mjs)`);
+    else if (r.skipped === "absent") console.warn(`  ${r.table} : correctifs ignorés (table absente des fichiers téléchargés)`);
+    else if (r.added || r.replaced || r.removed) console.log(`  ${r.table} : ${r.added} ajoutées, ${r.replaced} remplacées, ${r.removed} retirées${r.unreadable ? `, ${r.unreadable} illisibles ignorées` : ""}`);
+  }
+}
+
 const data = extract(tables);
 console.log(`${data.items.length} objets, ${data.recipes.length} recettes de métier.`);
-
-// Objets révélés en jeu (cache du client)
-let cacheBuild: string | null = null, cacheItems = 0;
-const cachePath = arg("--cache");
-if (cachePath) {
-  const buf = cachePath === "-" ? await readStdin() : await readFile(cachePath);
-  const cache = parseDbCache(buf);
-  const className = new Map(tables.ItemClass.map(r => [Number(r.ClassID), r.ClassName_lang ?? ""]));
-  const subName = new Map(tables.ItemSubClass.map(r => [`${Number(r.ClassID)}:${Number(r.SubClassID)}`, r.DisplayName_lang || r.VerboseName_lang || ""]));
-  const { rows, unreadable } = itemsFromCache(cache, className, subName);
-  const merged = mergeCache(data.items, rows);
-  data.items = merged.items;
-  cacheBuild = String(cache.build); cacheItems = merged.added;
-  console.log(`Cache du client (build ${cache.build}) : ${rows.length} objets lus, ${merged.added} absents des fichiers du jeu ajoutés${unreadable ? `, ${unreadable} illisibles ignorés` : ""}.`);
-}
 
 // Complément Classic Era
 let eraBuild: string | null = null;
@@ -66,7 +87,9 @@ if (!process.argv.includes("--no-era") && (eraDir || !dir)) {
       eraTables = await downloadItemTables(eraBuild, fetch, m => console.log(m));
     }
     const before = data.items.length;
-    data.items = fillFromEra(data.items, readItems({ ...eraTables, ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items);
+    // Un objet retiré par le serveur de Forever n'est pas repris de Classic Era non plus
+    const eraItems = readItems({ ...eraTables, ItemClass: tables.ItemClass, ItemSubClass: tables.ItemSubClass }, "era").items.filter(i => !removed.has(i.id));
+    data.items = fillFromEra(data.items, eraItems);
     console.log(`${data.items.length - before} objets ajoutés depuis Classic Era (absents du client Forever).`);
   } catch (err) {
     eraBuild = null;
@@ -75,8 +98,6 @@ if (!process.argv.includes("--no-era") && (eraDir || !dir)) {
 }
 
 // Infobulles : barèmes, sorts et sets, puis noms des icônes
-console.log("Tables des infobulles :");
-const detailTables = dir ? await readDetailTables(dir, m => console.log(m)) : await downloadDetailTables(build, fetch, m => console.log(m));
 addDetails(data.items, { ...detailTables, ItemEffect: tables.ItemEffect, ItemXItemEffect: tables.ItemXItemEffect, SpellEffect: tables.SpellEffect });
 const byAppearance = appearanceIcons(detailTables);
 let fromAppearance = 0;

@@ -323,7 +323,7 @@ L'import télécharge 12 tables, plus 19 tables de détail pour les infobulles e
 
 ```bash
 cd ~/forever-roster
-bash scripts/import-gamedata.sh                                                 # dernière version (+ cache du client s'il est là)
+bash scripts/import-gamedata.sh                                                 # dernière version (+ caches de clients dans gamedata/)
 sudo docker compose exec api node dist/import-gamedata.js                       # dernière version de Forever
 sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  # version précise
 ```
@@ -332,24 +332,33 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 
 - **Patrons des joueurs :** les patrons cochés sont liés à l'identifiant du sort de fabrication, qui ne change pas d'une version à l'autre. Un réimport ne les efface pas.
 - **Équipement :** l'objet choisi garde son nom en clair en plus de son identifiant. La fiche reste lisible même si l'objet disparaît du client.
-- **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever n'est jamais remplacé. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
+- **Objets manquants du client :** une partie des objets de Forever (même d'origine, comme Serpent's Shoulders) n'est pas dans les fichiers du jeu : le serveur les envoie au client (correctifs à chaud), et wago.tools ne les publie pas. L'import les complète avec les objets d'origine de la dernière version de Classic Era (identifiants inférieurs à 30 000, sans la Saison de la Découverte), marqués « données Classic Era » sur le site. Un objet présent dans le client Forever, ou dans un cache de joueur (voir plus bas), n'est jamais remplacé par Classic Era. Options : `--no-era` pour s'en passer, `--era-dir` pour des CSV locaux.
 - **Infobulles :** armure, caractéristiques, dégâts des armes, effets « Équipé : » et bonus de set sont calculés à l'import à partir des barèmes du client (RandPropPoints, ItemArmor*, ItemDamage*, Spell*, ItemSet). Si une de ces tables manque ou change de structure, l'import continue et les infobulles se limitent au nom, à l'emplacement et au niveau. Pas encore affichés : durabilité et dégâts des armes à distance. Le nom de l'icône de chaque objet est retrouvé via la [liste de fichiers communautaire](https://github.com/wowdev/wow-listfile) (`--no-icons` pour sauter cette étape).
 - **Talents :** les arbres de Forever ne sont pas ceux de Classic. Le jeu utilise le système `C_Traits` : les talents viennent des tables Trait* (un arbre par classe, avec ses trois spés côte à côte). L'import en tire la position de chaque talent (palier, colonne), son rang maximal, son prérequis, son icône et sa description, dans l'ordre du calculateur ForeverChanges. La vue « Arbres » de la fiche lit donc les rangs d'un lien du calculateur, ou de l'export de l'addon. Le journal affiche « Talents : N talents pour 9 classes » ; si ces tables manquent, les talents déjà importés restent en place.
 - **Recettes en double :** le client contient aussi des recettes de la Saison de la Découverte, au même nom qu'une recette d'origine mais dont l'objet n'existe pas sur Forever. L'import garde la version dont l'objet est connu, et reporte sur elle les patrons que les joueurs avaient cochés sur l'autre.
 - **Changement de structure :** si Blizzard modifie la structure d'une table, l'import s'arrête avant d'écrire quoi que ce soit (« colonnes manquantes ») et les données existantes restent en place.
 
-### Objets révélés en jeu (cache du client)
+### Correctifs du serveur (cache du client)
 
-Environ 40 % des objets de Forever ne sont pas dans les fichiers du jeu : le serveur les envoie aux clients quand un joueur les découvre, et chaque client les garde dans `Cache\ADB\<langue>\DBCache.bin`. Pour les ajouter au site :
+Une bonne part des données de Forever n'est pas dans les fichiers du jeu : le serveur envoie des correctifs aux clients (objets découverts en jeu, leurs effets « Équipé : » et « Utiliser : », sets, apparences qui donnent les icônes, talents modifiés, recettes), et chaque client les garde dans `Cache\ADB\<langue>\DBCache.bin`. wago.tools ne publie que les fichiers ; ce cache est la seule source de ces lignes. Pour les ajouter au site :
 
-1. Fermer le jeu, puis copier le fichier sur le serveur (depuis le PC, PowerShell) :
+1. Fermer le jeu (il réécrit le cache en partant), puis copier le fichier sur le serveur (depuis le PC, PowerShell) :
    ```powershell
    ssh forever "mkdir -p ~/forever-roster/gamedata"
    scp "C:\Games\World of Warcraft\_forever_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
    ```
-2. Sur le serveur : `bash scripts/import-gamedata.sh`. Le script utilise `gamedata/DBCache.bin` s'il existe (dossier ignoré par Git).
+   Le cache d'un autre joueur s'ajoute sous un autre nom en `.bin`, ex. `forever:~/forever-roster/gamedata/DBCache-pahpool.bin` : chacun a vu des objets différents.
+2. Sur le serveur : `bash scripts/import-gamedata.sh`. Le script envoie à l'import tous les `gamedata/*.bin` (dossier ignoré par Git).
 
-Les objets du cache complètent les fichiers du jeu sans jamais les remplacer, et passent avant le complément Classic Era. Plus le client a joué, plus il en contient : recommencer de temps en temps (depuis la sortie : dossier `_forever_`). Si Blizzard change le format, l'import s'arrête sans rien écrire (« le format du client a changé »).
+L'import applique ces correctifs aux tables comme le fait le jeu (`apps/api/src/gamedata/hotfix.ts`) : une ligne du correctif remplace celle des fichiers ou s'y ajoute, une ligne « retirée » par le serveur disparaît (un objet retiré n'est pas non plus repris de Classic Era). Entre plusieurs caches, le correctif le plus récent l'emporte. Le journal donne, par table, les lignes ajoutées, remplacées et retirées ; « Cache du client : 2 fichiers (build 70938) ». Plus le client a joué, plus il en contient : recommencer de temps en temps, surtout après une montée de niveau ou un nouveau raid.
+
+Chaque ligne est lue d'après la disposition de sa table pour la version du client (`apps/api/src/gamedata/hotfix-layouts.ts`, généré depuis les définitions communautaires [WoWDBDefs](https://github.com/wowdev/WoWDBDefs)). Après une mise à jour du client de Forever, si le journal signale « correctifs ignorés (N lignes illisibles) » pour une table, régénérer ce fichier pour la nouvelle version, puis livrer :
+
+```bash
+node scripts/hotfix-layouts.mjs 1.60.1.70938   # numéro du client : en-tête du cache (« build »), ou wago.tools
+```
+
+Une table illisible est seulement laissée de côté (les autres correctifs s'appliquent) ; un cache qui n'est pas un DBCache.bin de version 9 arrête l'import avant d'écrire quoi que ce soit.
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 

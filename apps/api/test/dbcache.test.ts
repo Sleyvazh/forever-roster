@@ -1,69 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { decodeItemSparse, itemsFromCache, mergeCache, parseDbCache, TABLE_HASH } from "../src/gamedata/dbcache";
-import type { ItemRow } from "../src/gamedata/extract";
-
-/** Construit un DBCache.bin (version 9) à partir d'enregistrements. */
-function cacheFile(records: { table: number; id: number; status?: number; data?: Buffer }[]) {
-  const header = Buffer.alloc(44);
-  header.write("XFTH", 0, "latin1"); header.writeUInt32LE(9, 4); header.writeUInt32LE(69977, 8);
-  const parts: Buffer[] = [header];
-  records.forEach((r, i) => {
-    const data = r.data ?? Buffer.alloc(0);
-    const h = Buffer.alloc(32);
-    h.write("XFTH", 0, "latin1"); h.writeInt32LE(70, 4); h.writeInt32LE(1000 + i, 8); h.writeUInt32LE(i, 12);
-    h.writeUInt32LE(r.table, 16); h.writeUInt32LE(r.id, 20); h.writeInt32LE(data.length, 24); h.writeUInt8(r.status ?? 1, 28);
-    parts.push(h, data);
-  });
-  return Buffer.concat(parts);
-}
-function sparse(name: string, ilvl: number, req: number, inv: number, quality: number) {
-  const tail = Buffer.alloc(302);
-  tail.writeUInt16LE(ilvl, 302 - 22); tail.writeUInt8(req, 302 - 4); tail.writeUInt8(inv, 302 - 3); tail.writeUInt8(quality, 302 - 2);
-  for (let k = 0; k < 10; k++) tail.writeInt32LE(-1, 116 + 4 * k);
-  tail.writeInt32LE(3, 116); tail.writeInt32LE(5555, 76); // +Agilité, 55,55 % du budget
-  tail.writeUInt32LE(959, 180); tail.writeUInt8(1, 302 - 9); tail.writeFloatLE(0.4, 4);
-  return Buffer.concat([Buffer.from(`\0\0\0\0${name}\0`, "utf8"), tail]);
-}
-function item(cls: number, sub: number, inv: number) {
-  const b = Buffer.alloc(43); b.writeUInt8(cls, 0); b.writeUInt8(sub, 4); b.writeUInt8(inv, 6); b.writeUInt32LE(135039, 13); return b;
-}
-const row = (id: number, name: string, origin: ItemRow["origin"]): ItemRow =>
-  ({ id, name, quality: 1, itemLevel: 1, reqLevel: 0, classId: 0, subclassId: 0, inventoryType: 0, kind: "", origin });
+import { parseDbCache, splitCaches, TABLE_HASH } from "../src/gamedata/dbcache";
+import { cacheFile } from "./cache-helpers";
 
 describe("cache de correctifs du client (DBCache.bin)", () => {
-  it("lit les objets révélés, garde le dernier état et ignore les autres tables", () => {
+  it("garde le dernier état de chaque ligne : valide, retirée par le serveur ; ignore les identifiants inconnus", () => {
     const buf = cacheFile([
-      { table: TABLE_HASH.ItemSparse, id: 5404, data: sparse("Serpent's Shoulders (v1)", 20, 15, 3, 2) },
-      { table: TABLE_HASH.ItemSparse, id: 5404, data: sparse("Serpent's Shoulders", 23, 18, 3, 3) },
-      { table: TABLE_HASH.Item, id: 5404, data: item(4, 2, 3) },
-      { table: TABLE_HASH.ItemSparse, id: 280000, data: sparse("Objet retiré", 10, 5, 1, 2) },
+      { table: TABLE_HASH.ItemSparse, id: 5404, data: Buffer.from("v1") },
+      { table: TABLE_HASH.ItemSparse, id: 5404, data: Buffer.from("v2") },
+      { table: TABLE_HASH.ItemSparse, id: 280000, data: Buffer.from("retiré ensuite") },
       { table: TABLE_HASH.ItemSparse, id: 280000, status: 2 },
+      { table: TABLE_HASH.ItemSparse, id: 6099, status: 2, push: -1 },
+      { table: TABLE_HASH.ItemSparse, id: 999999, status: 3 }, // demandé par le client, inconnu du serveur
       { table: 0x12345678, id: 1, data: Buffer.from("autre table") },
     ]);
     const cache = parseDbCache(buf);
-    expect(cache.build).toBe(69977);
-    const { rows } = itemsFromCache(cache, new Map([[4, "Armor"]]), new Map([["4:2", "Leather"]]));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      id: 5404, name: "Serpent's Shoulders", quality: 3, itemLevel: 23, reqLevel: 18, classId: 4, subclassId: 2, inventoryType: 3, kind: "Armor · Leather", origin: "forever",
-      iconFileId: 135039, raw: { stats: [[3, 5555]], sellPrice: 959, bonding: 1, itemSet: 0, delay: 0 },
-    });
-    expect(rows[0]!.raw!.variance).toBeCloseTo(0.4);
+    expect(cache.build).toBe(70938);
+    expect(cache.records.map(r => [r.id, r.data.toString()])).toEqual([[5404, "v2"], [1, "autre table"]]);
+    expect(cache.removed.map(r => r.id).sort((x, y) => x - y)).toEqual([6099, 280000]);
   });
 
-  it("ajoute sans jamais écraser un objet des fichiers du jeu, mais remplace un complément Classic Era", () => {
-    const cacheRows = [row(1, "Du cache", "forever"), row(2, "Du cache", "forever"), row(3, "Du cache", "forever")];
-    const { items, added, replacedEra } = mergeCache([row(1, "Fichiers Forever", "forever"), row(2, "Classic Era", "era")], cacheRows);
-    expect(Object.fromEntries(items.map(i => [i.id, i.name]))).toEqual({ 1: "Fichiers Forever", 2: "Du cache", 3: "Du cache" });
-    expect({ added, replacedEra }).toEqual({ added: 1, replacedEra: 1 });
-  });
-
-  it("refuse un fichier inconnu ou une structure qui a changé", () => {
+  it("refuse un fichier inconnu, une autre version ou un fichier tronqué", () => {
     expect(() => parseDbCache(Buffer.from("PNG pas un cache"))).toThrow(/XFTH/);
     const v10 = cacheFile([]); v10.writeUInt32LE(10, 4);
     expect(() => parseDbCache(v10)).toThrow(/Version/);
-    expect(decodeItemSparse(Buffer.concat([Buffer.from("\0\0\0\0Nom\0"), Buffer.alloc(290)]))).toBeNull();
-    const broken = cacheFile(Array.from({ length: 5 }, (_, i) => ({ table: TABLE_HASH.ItemSparse, id: i + 1, data: Buffer.from("\0\0\0\0Nom\0abc") })));
-    expect(() => itemsFromCache(parseDbCache(broken), new Map(), new Map())).toThrow(/format du client a changé/);
+    const cut = cacheFile([{ table: TABLE_HASH.Item, id: 1, data: Buffer.alloc(43) }]);
+    expect(() => parseDbCache(cut.subarray(0, cut.length - 10))).toThrow(/tronqué/);
+  });
+
+  it("plusieurs caches dans un seul flux (entrée standard du conteneur)", () => {
+    const a = cacheFile([{ table: TABLE_HASH.Item, id: 1, data: Buffer.from("a") }]), b = cacheFile([], 70888);
+    expect(splitCaches(a)).toEqual([a]);
+    const stream = Buffer.concat([Buffer.from(`FRCACHES\n${a.length}\n`), a, Buffer.from(`${b.length}\n`), b]);
+    expect(splitCaches(stream).map(parseDbCache).map(c => c.build)).toEqual([70938, 70888]);
+    expect(() => splitCaches(Buffer.from("n'importe quoi"))).toThrow(/illisible/);
+    expect(() => splitCaches(stream.subarray(0, stream.length - 5))).toThrow(/tronqué/);
   });
 });
