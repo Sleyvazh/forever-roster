@@ -82,10 +82,15 @@ export function decodeHotfixRow(table: string, id: number, data: Buffer): Record
 
 /** Correctifs d'une table : ligne décodée, ou null si le serveur l'a retirée. */
 export type TableHotfixes = Map<number, Record<string, string> | null>;
+export interface TableCounts { rows: number; removed: number; unreadable: number; latestBuild: number; latestRows: number; latestUnreadable: number }
 export interface Hotfixes {
   tables: Map<string, TableHotfixes>;
-  /** Par table : lignes lues, retirées, illisibles (disposition différente). */
-  counts: Map<string, { rows: number; removed: number; unreadable: number }>;
+  /**
+   * Par table : lignes lues, retirées, illisibles (disposition différente) ; et pour la version du client la plus récente
+   * de la table, ses lignes lues et illisibles (des lignes d'une ancienne version peuvent ne plus se lire sans que la
+   * table soit en cause).
+   */
+  counts: Map<string, TableCounts>;
   builds: number[];
 }
 
@@ -94,7 +99,7 @@ export interface Hotfixes {
  * des fichiers) ; les tables que l'import ne lit pas sont ignorées.
  */
 export function collectHotfixes(caches: DbCache[]): Hotfixes {
-  const best = new Map<string, { table: string; id: number; push: number; data: Buffer | null }>();
+  const best = new Map<string, { table: string; id: number; push: number; build: number; data: Buffer | null }>();
   for (const cache of caches) {
     const all = [...cache.records.map(r => ({ ...r, removed: false })), ...cache.removed.map(r => ({ ...r, data: Buffer.alloc(0), removed: true }))];
     for (const r of all) {
@@ -103,19 +108,22 @@ export function collectHotfixes(caches: DbCache[]): Hotfixes {
       const key = `${table}:${r.id}`;
       const cur = best.get(key);
       if (cur && cur.push > r.push) continue;
-      best.set(key, { table, id: r.id, push: r.push, data: r.removed ? null : r.data });
+      best.set(key, { table, id: r.id, push: r.push, build: cache.build, data: r.removed ? null : r.data });
     }
   }
   const tables = new Map<string, TableHotfixes>();
-  const counts = new Map<string, { rows: number; removed: number; unreadable: number }>();
-  for (const { table, id, data } of best.values()) {
-    const c = counts.get(table) ?? { rows: 0, removed: 0, unreadable: 0 };
+  const counts = new Map<string, TableCounts>();
+  const latest = new Map<string, number>();
+  for (const { table, build, data } of best.values()) if (data && build > (latest.get(table) ?? -1)) latest.set(table, build);
+  for (const { table, id, build, data } of best.values()) {
+    const c = counts.get(table) ?? { rows: 0, removed: 0, unreadable: 0, latestBuild: latest.get(table) ?? 0, latestRows: 0, latestUnreadable: 0 };
     counts.set(table, c);
     let row: Record<string, string> | null = null;
     if (data) {
       row = decodeHotfixRow(table, id, data);
-      if (!row) { c.unreadable++; continue; }
-      c.rows++;
+      const isLatest = build === c.latestBuild;
+      if (!row) { c.unreadable++; if (isLatest) c.latestUnreadable++; continue; }
+      c.rows++; if (isLatest) c.latestRows++;
     } else c.removed++;
     const t = tables.get(table) ?? new Map();
     t.set(id, row);
@@ -124,7 +132,10 @@ export function collectHotfixes(caches: DbCache[]): Hotfixes {
   return { tables, counts, builds: caches.map(c => c.build) };
 }
 
-/** Part de lignes illisibles au-delà de laquelle une table est ignorée (disposition changée : version du client différente). */
+/**
+ * Part de lignes illisibles, parmi celles de la version du client la plus récente de la table, au-delà de laquelle la table
+ * est ignorée (disposition changée : relancer scripts/hotfix-layouts.mjs). Une ligne illisible est toujours ignorée seule.
+ */
 const MAX_UNREADABLE = 0.1;
 
 /** `skipped` : « absent » (table non téléchargée), « illisible » (trop de lignes ne correspondent pas à la disposition). */
@@ -141,7 +152,7 @@ export function applyHotfixes(tables: Partial<Record<string, Record<string, stri
     const c = hot.counts.get(table)!;
     const r: HotfixReport = { table, added: 0, replaced: 0, removed: 0, unreadable: c.unreadable, skipped: false };
     report.push(r);
-    if (c.unreadable > (c.rows + c.unreadable) * MAX_UNREADABLE) { r.skipped = "illisible"; continue; }
+    if (c.latestUnreadable > (c.latestRows + c.latestUnreadable) * MAX_UNREADABLE) { r.skipped = "illisible"; continue; }
     if (!rows) { r.skipped = "absent"; continue; }
     const at = new Map(rows.map((row, i) => [row.ID, i]));
     const gone = new Set<number>();

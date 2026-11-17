@@ -65,7 +65,7 @@ describe("correctifs du serveur lus dans le cache du jeu", () => {
     expect(names.get(2)?.Name_lang).toBe("Gardé");
     expect(names.get(3)).toBeNull();
     expect(names.has(4)).toBe(false);
-    expect(hot.counts.get("SpellName")).toEqual({ rows: 2, removed: 1, unreadable: 1 });
+    expect(hot.counts.get("SpellName")).toMatchObject({ rows: 2, removed: 1, unreadable: 1 });
     expect([...hot.tables.keys()]).toEqual(["SpellName"]);
   });
 
@@ -92,6 +92,22 @@ describe("correctifs du serveur lus dans le cache du jeu", () => {
       { table: "SpellName", added: 1, replaced: 1, removed: 1, unreadable: 0, skipped: false },
       { table: "TraitEdge", added: 0, replaced: 0, removed: 0, unreadable: 0, skipped: "absent" },
     ]);
+  });
+
+  it("des lignes d'une ancienne version du client illisibles n'écartent pas la table ; celles de la plus récente, si", () => {
+    const tables = (): Partial<Record<string, Record<string, string>[]>> => ({ SpellName: [{ ID: "1", Name_lang: "Fichier" }] });
+    const old = (n: number) => Array.from({ length: n }, (_, i) => ({ table: H("SpellName"), id: 100 + i, data: Buffer.from("ancienne disposition") }));
+    // 5 lignes illisibles d'un ancien client, 1 lisible du client actuel : la table est corrigée, les illisibles ignorées
+    const t1 = tables();
+    const hot1 = collectHotfixes([parseDbCache(cacheFile(old(5), 70700)), parseDbCache(cacheFile([{ table: H("SpellName"), id: 1, data: encodeRow("SpellName", { Name_lang: "Correctif" }) }], 70938))]);
+    expect(hot1.counts.get("SpellName")).toMatchObject({ rows: 1, unreadable: 5, latestBuild: 70938, latestRows: 1, latestUnreadable: 0 });
+    expect(applyHotfixes(t1, hot1)[0]).toMatchObject({ replaced: 1, unreadable: 5, skipped: false });
+    expect(t1.SpellName![0]!.Name_lang).toBe("Correctif");
+    // Les lignes du client le plus récent ne se lisent pas : la table est laissée telle quelle
+    const t2 = tables();
+    const hot2 = collectHotfixes([parseDbCache(cacheFile([{ table: H("SpellName"), id: 1, data: encodeRow("SpellName", { Name_lang: "Ancien client" }) }], 70700)), parseDbCache(cacheFile(old(3), 70950))]);
+    expect(applyHotfixes(t2, hot2)[0]).toMatchObject({ skipped: "illisible" });
+    expect(t2.SpellName![0]!.Name_lang).toBe("Fichier");
   });
 
   it("de bout en bout : un objet révélé avec son effet, un objet corrigé, un objet retiré par le serveur", async () => {

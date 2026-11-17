@@ -11,7 +11,7 @@ import { LegalNoticeEn, PrivacyEn } from "./LegalPagesEn";
  * Les durées de conservation décrivent ce que fait le code (purges : apps/api/src/lib/purges.ts) : à mettre à jour avec lui.
  */
 // Version anglaise (10/11/2026) : LegalPagesEn.tsx, le même texte en anglais : tout changement ici se fait aussi là-bas.
-const UPDATED = "10 novembre 2026";
+const UPDATED = "17 novembre 2026";
 
 export const host = (origin: string) => origin.replace(/^https?:\/\//, "");
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
@@ -278,6 +278,14 @@ const ROWS: Row[] = [
     basis: "Contrat",
     keep: "Appareils : tant que le compte existe ; un appareil délié est effacé 30 jours après, avec sa dernière adresse IP. Demandes d'appairage : effacées un jour après leur expiration, à la demande suivante.",
     who: "Toi.",
+  },
+  {
+    title: "Cache du jeu (contributeurs des données du jeu)",
+    data: "Pour un compte nommé contributeur par un admin du site : le cache du jeu qu'il envoie (DBCache.bin, depuis la page Addon ou par Roster Companion), dont le site ne garde que les données du jeu (objets, sorts, sets, talents) ; pour chaque envoi, le compte, l'appareil, la date, la version du client, la taille et l'empreinte du fichier.",
+    why: "Compléter la base des objets du site avec ce que le serveur de Forever envoie aux joueurs.",
+    basis: "Intérêt légitime",
+    keep: "Envois : 12 mois. Les données du jeu reçues restent : elles ne disent rien de toi, et perdent le lien avec ton compte s'il est supprimé.",
+    who: "Les admins du site. Les données du jeu servent à tous les joueurs.",
   },
   {
     title: "Import Battle.net (Roster)",

@@ -43,6 +43,18 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole("heading", { name: "Ta guilde" })).toBeVisible();
 }
 const openMenu = (page: Page) => page.locator(".acct-btn").click();
+/** Petit DBCache.bin (version 9, client 70938) : deux noms de sorts (table SpellName), comme en écrit le jeu. */
+function tinyCache() {
+  const head = Buffer.alloc(44);
+  head.write("XFTH", 0, "latin1"); head.writeUInt32LE(9, 4); head.writeUInt32LE(70938, 8);
+  const rec = (id: number, name: string, push: number) => {
+    const data = Buffer.from(`${name}\0`, "utf8"), h = Buffer.alloc(32);
+    h.write("XFTH", 0, "latin1"); h.writeInt32LE(93, 4); h.writeInt32LE(push, 8); h.writeUInt32LE(0x46c66698, 16); h.writeUInt32LE(id, 20); h.writeInt32LE(data.length, 24); h.writeUInt8(1, 28);
+    return Buffer.concat([h, data]);
+  };
+  return Buffer.concat([head, rec(900001, "Bénédiction de Forever", 112900), rec(900002, "Frappe d'essai", 112901)]);
+}
+
 const newPage = async (browser: Browser) => (await browser.newContext({ locale: "fr-FR", timezoneId: "Europe/Paris" })).newPage();
 
 test("signaler un bug avec une capture, réponse de l'admin, pastille", async ({ page, browser }) => {
@@ -110,6 +122,29 @@ test("signaler un bug avec une capture, réponse de l'admin, pastille", async ({
     await expect(adminPage.locator(".sg-item", { hasText: "La fenêtre du conseil se ferme" })).toHaveCount(0);
     await adminPage.getByRole("button", { name: /^Faits/ }).click();
     await expect(adminPage.locator(".sg-item", { hasText: "La fenêtre du conseil se ferme" })).toContainText("Fait");
+  });
+  await test.step("données du jeu : l'admin nomme une contributrice, qui envoie le cache de son jeu", async () => {
+    const donnees = adminPage.getByRole("region", { name: "Données du jeu" });
+    await expect(donnees).toContainText("Dernier import");
+    await expect(donnees.locator(".gd-contrib")).toContainText("AdminDuSite");
+    await expect(donnees.locator(".gd-contrib")).toContainText("admin du site");
+    // Pas encore contributrice : rien de plus sur sa page Addon
+    await page.goto("/addon");
+    await expect(page.getByRole("heading", { name: "Installer l'addon" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /tu es contributeur/ })).toHaveCount(0);
+    await donnees.getByLabel("Ajouter un contributeur").fill(player);
+    await donnees.getByRole("button", { name: "Ajouter", exact: true }).click();
+    await expect(donnees.locator(".gd-contrib")).toContainText("Signaleuse");
+    // Elle envoie son DBCache.bin depuis la page Addon (deux lignes de la table SpellName)
+    await page.reload();
+    const card = page.getByRole("region", { name: "Données du jeu · tu es contributeur" });
+    await expect(card).toContainText("Aucun envoi pour l'instant.");
+    await card.locator("input[type=file]").setInputFiles({ name: "DBCache.bin", mimeType: "application/octet-stream", buffer: tinyCache() });
+    await expect(card.getByRole("status")).toContainText("Reçu : 2 nouveautés pour le site, importées cette nuit.");
+    await expect(card).toContainText("depuis cette page");
+    await adminPage.reload();
+    await expect(donnees.locator(".gd-uploads")).toContainText("Signaleuse · depuis la page Addon · client 70938");
+    await expect(donnees).toContainText(/arrivées depuis l'import : au prochain import/);
   });
   await test.step("un joueur n'a pas accès à la page des admins", async () => {
     await page.goto("/admin/signalements");

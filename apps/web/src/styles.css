@@ -1315,6 +1315,20 @@ input.cp-input { width: 12ch; flex: 0 0 auto; text-transform: uppercase; letter-
 .ss-alerts li { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 9px 12px; }
 .ss-alerts li + li { border-top: 1px solid var(--line); }
 .ss-alerts time { font: 500 13px var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+/* Données du jeu (page des admins, lot D2) : contributeurs, derniers envois de cache */
+.gd-h { margin: 0; font-size: 16px; color: var(--ink); }
+.gd-contrib { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.gd-contrib li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 8px 12px; min-height: 44px; }
+.gd-contrib li + li { border-top: 1px solid var(--line); }
+.gd-who { min-width: 0; overflow-wrap: anywhere; }
+.gd-add { display: grid; gap: 6px; }
+.gd-add input { flex: 1 1 240px; min-width: 0; min-height: 44px; }
+.gd-uploads li { grid-template-columns: 96px minmax(0, 1fr) auto; }
+@media (max-width: 640px) {
+  .gd-contrib li { grid-template-columns: minmax(0, 1fr) auto; }
+  .gd-contrib li > .small { grid-column: 1; grid-row: 2; }
+  .gd-uploads li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
 @media (max-width: 640px) { .ss-cards { grid-template-columns: 1fr; } .ss-alerts li { grid-template-columns: minmax(0, 1fr) auto; } .ss-alerts time { grid-column: 1 / -1; } }
 
 /* Avis du Discord suivis par le groupe (Administration → Avis) : préfixe av- */
@@ -2193,6 +2207,9 @@ button.gp-acc:hover > span:last-child { color: var(--gold); text-decoration: und
 .ad-app h2 { font-size: 18px; color: var(--ink); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .ad-app p { margin: 0; font-size: 14px; color: var(--ink-2); }
 .ad-app .hint { font-size: 13px; color: var(--ink-3); }
+.ad-cache .ad-path code { overflow-wrap: anywhere; }
+.ad-cache-msg { font-weight: 600; }
+.ad-cache-msg.ok { color: var(--ok); } .ad-cache-msg.bad { color: var(--bad); }
 .ad-opt { font: 500 12px var(--f-body); letter-spacing: 0; color: var(--ink-3); border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 8px; }
 .ad-more summary { padding: 10px 14px; cursor: pointer; color: var(--ink-2); font-weight: 500; }
 @media (max-width: 860px) { .ad-steps { grid-template-columns: minmax(0, 1fr); } }

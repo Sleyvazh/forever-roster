@@ -8,7 +8,7 @@ import { Contact, host, Sec, useTitle } from "./LegalPages";
  * Legal notice and privacy policy in English (10/11/2026): the same text as LegalPages.tsx, which stays the reference
  * (French law). Any change there is made here too.
  */
-const UPDATED = "November 10, 2026";
+const UPDATED = "November 17, 2026";
 
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
 
@@ -252,6 +252,14 @@ const ROWS: Row[] = [
     basis: "Contract",
     keep: "Devices: as long as the account exists; an unlinked device is deleted 30 days later, with its last IP address. Pairing requests: deleted one day after they expire, at the next request.",
     who: "You.",
+  },
+  {
+    title: "Game cache (game data contributors)",
+    data: "For an account named contributor by a site admin: the game cache it sends (DBCache.bin, from the Addon page or through Roster Companion), of which the website only keeps the game data (items, spells, sets, talents); for each upload, the account, the device, the date, the client version, the size and the fingerprint of the file.",
+    why: "Completing the website's item database with what the Forever server sends to players.",
+    basis: "Legitimate interest",
+    keep: "Uploads: 12 months. The game data received stays: it says nothing about you, and loses its link to your account if the account is deleted.",
+    who: "The site admins. The game data serves all players.",
   },
   {
     title: "Battle.net import (Roster)",

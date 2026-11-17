@@ -5,7 +5,10 @@ import { z } from "zod";
 import type { Db } from "../db/client";
 import { characterRecipes, characters, gameItems, gameRecipes, gameTalents, groupMembers, users } from "../db/schema";
 import { gameDataStatus } from "../gamedata/store";
-import { notFound, parse } from "../lib/http";
+import { CACHE_MAX_BYTES, canSendCache, lastUpload, receiveCache } from "../gamedata/cache-store";
+import { siteOf } from "../lib/site";
+import { badRequest, notFound, parse } from "../lib/http";
+import { N } from "../lib/i18n";
 import { currentUser, requireAuth } from "../lib/session";
 import { currentLines, professionOf } from "../lib/professions";
 
@@ -38,6 +41,21 @@ export async function gameDataRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireAuth);
 
   app.get("/status", async () => gameDataStatus(db));
+
+  /**
+   * Cache du jeu, page Addon (lot D2) : contributeur ou non, dernier envoi ; envoi du DBCache.bin (fichier brut). Roster
+   * Companion envoie le même fichier par /api/sync/gamecache.
+   */
+  app.get("/cache", async req => {
+    const u = currentUser(req);
+    return { contributor: canSendCache(u), last: canSendCache(u) ? await lastUpload(db, u.id) : null };
+  });
+  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: CACHE_MAX_BYTES }, (_req, body, done) => done(null, body));
+  app.post("/cache", { bodyLimit: CACHE_MAX_BYTES, config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async req => {
+    if (siteOf(app.ctx.cfg, req).game !== "forever") throw notFound(N("Le cache du jeu ne sert qu'à Forever Roster."));
+    if (!Buffer.isBuffer(req.body)) throw badRequest(N("Envoie le fichier tel quel (application/octet-stream)."));
+    return receiveCache(db, req.body, { user: currentUser(req) });
+  });
 
   app.get("/items", async (req, reply) => {
     const { q, slot, limit, kind } = parse(z.object({

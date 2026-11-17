@@ -1,12 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { get, type Character } from "../api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { ApiError, get, uploadFile, type CacheResult, type CacheUpload, type Character } from "../api";
 import { useMe } from "../auth";
 import { ExternalLink } from "../components/ExternalLink";
 import { useMyGuilds } from "../nav";
 import { useSite } from "../site";
 import { openSync } from "../syncPanel";
-import { dateLocale, N, t, tx } from "../i18n";
+import { dateLocale, N, t, tn, tx } from "../i18n";
 
 declare const __ADDON_VERSION__: string;
 declare const __ADDON_SHA256__: string;
@@ -25,6 +25,9 @@ export function newerVersion(a: string, b: string) {
 /** Depuis la 1.6.5 (8/11), le site refuse les textes de l'addon sans sceau. */
 const SEALED_SINCE = "1.6.5";
 const ADDONS_PATH = "World of Warcraft\\_forever_\\Interface\\AddOns";
+const CACHE_PATH = "World of Warcraft\\_forever_\\Cache\\ADB\\enUS\\DBCache.bin";
+/** Taille maximale d'un cache envoyé (API : CACHE_MAX_BYTES). */
+const CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const shortDay = (iso: string) => new Intl.DateTimeFormat(dateLocale(), { day: "numeric", month: "short" }).format(new Date(iso));
 
 /**
@@ -100,6 +103,7 @@ function ForeverAddonPage() {
           </div>
         </details>
       )}
+      <GameCacheCard />
       <details className="ad-more">
         <summary>{tx("Commandes en jeu · {length}", { length: COMMANDS.length })}</summary>
         <div className="tscroll" style={{ padding: "0 14px 14px" }}><table className="data">
@@ -117,6 +121,57 @@ function ForeverAddonPage() {
         </ul>
       </details>
     </div>
+  );
+}
+
+/**
+ * Contributeurs des données du jeu (lot D2, nommés par un admin du site) : envoyer le cache de son jeu (DBCache.bin),
+ * qui apporte au site les objets vus en jeu, leurs effets, les sets et les talents modifiés par Forever. Rien pour les
+ * autres joueurs. Roster Companion enverra le même fichier tout seul.
+ */
+function GameCacheCard() {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["game-cache"], queryFn: () => get<{ contributor: boolean; last: CacheUpload | null }>("/gamedata/cache") });
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  if (!q.data?.contributor) return null;
+  const last = q.data.last;
+  const send = async (file: File | undefined) => {
+    if (!file) return;
+    setMsg(null);
+    if (file.size > CACHE_MAX_BYTES) { setMsg({ ok: false, text: t("Fichier trop lourd (32 Mo au plus).") }); return; }
+    setBusy(true);
+    try {
+      const r = await uploadFile<CacheResult>("/gamedata/cache", file);
+      setMsg({ ok: true, text: r.already ? t("Déjà reçu : c'est le même fichier que ton dernier envoi.")
+        : r.newRows ? tn(r.newRows, "Reçu : {n} nouveauté pour le site, importée cette nuit.", "Reçu : {n} nouveautés pour le site, importées cette nuit.", { n: r.newRows.toLocaleString(dateLocale()) })
+        : t("Reçu : rien de nouveau pour le site.") });
+      await qc.invalidateQueries({ queryKey: ["game-cache"] });
+    } catch (err) { setMsg({ ok: false, text: err instanceof ApiError ? err.message : t("Envoi impossible.") }); }
+    finally { setBusy(false); if (input.current) input.current.value = ""; }
+  };
+  return (
+    <section className="ad-app ad-cache" aria-labelledby="ad-gc-t">
+      <div className="stack" style={{ gap: 6 }}>
+        <h2 id="ad-gc-t">{t("Données du jeu · tu es contributeur")}</h2>
+        <p>{t("Ton cache du jeu apporte au site les objets que tu as vus, leurs effets, les sets et les talents modifiés par Forever. Quitte le jeu, puis envoie ce fichier :")}</p>
+        <div className="ad-path">
+          <code>{CACHE_PATH}</code>
+          <button type="button" className="btn" onClick={() => { void navigator.clipboard.writeText(CACHE_PATH).then(() => setCopied(true), () => setCopied(false)); }}>{copied ? t("Copié") : t("Copier le chemin")}</button>
+        </div>
+        <p className="small">{last
+          ? t("Dernier envoi le {date} ({via}) : {n}.", { date: shortDay(last.at), via: last.via === "app" ? t("par Roster Companion") : t("depuis cette page"),
+            n: tn(last.newRows, "{n} nouveauté", "{n} nouveautés", { n: last.newRows.toLocaleString(dateLocale()) }) })
+          : t("Aucun envoi pour l'instant.")} {t("Le site importe les nouveautés chaque nuit.")}</p>
+        {msg && <p className={`ad-cache-msg ${msg.ok ? "ok" : "bad"}`} role="status">{msg.text}</p>}
+      </div>
+      <div>
+        <input ref={input} type="file" accept=".bin" hidden onChange={e => void send(e.target.files?.[0])} />
+        <button type="button" className="btn primary" disabled={busy} onClick={() => input.current?.click()}>{busy ? t("Envoi…") : t("Envoyer mon cache…")}</button>
+      </div>
+    </section>
   );
 }
 

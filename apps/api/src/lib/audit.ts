@@ -21,7 +21,8 @@ export type AuditType =
   | "signup_relayed"
   | "banker_set" | "banker_unset"
   | "character_level_fixed" | "character_level_released"
-  | "character_created_for" | "character_given";
+  | "character_created_for" | "character_given"
+  | "game_contributor_set" | "game_contributor_unset";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

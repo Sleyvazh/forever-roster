@@ -5,6 +5,7 @@ import { ApiError, del, get, patch, post, type Report, type ReportStatus } from 
 import { useMe } from "../auth";
 import { ReportDialog, ReportShot, ReportTags, reportDate, STATUS_LABEL } from "../components/Report";
 import { SiteStatus } from "../components/SiteStatus";
+import { GameDataAdmin } from "../components/GameDataAdmin";
 import { useSite } from "../site";
 import { N, t, tx } from "../i18n";
 
@@ -93,10 +94,11 @@ export function AdminReportsPage() {
       <div className="page-head">
         <div>
           <h1>{t("Administration du site")}</h1>
-          <p className="hint" style={{ margin: "4px 0 0" }}>{t("Réservé aux admins : l'état des services et les signalements des joueurs.")}</p>
+          <p className="hint" style={{ margin: "4px 0 0" }}>{t("Réservé aux admins : l'état des services, les données du jeu et les signalements des joueurs.")}</p>
         </div>
       </div>
       <SiteStatus />
+      <GameDataAdmin />
       <div>
         <h2>{t("Signalements")}</h2>
         <p className="hint" style={{ margin: "4px 0 0" }}>{t("Bugs, idées et questions des joueurs, sur les deux adresses. Ta réponse s'affiche dans « Mes signalements » de son auteur.")}</p>

@@ -55,6 +55,17 @@ export async function uploadImage<T>(path: string, blob: Blob): Promise<T> {
 }
 export const imageUrl = (id: string) => `/api/images/${id}`;
 
+/** Envoi d'un fichier brut (cache du jeu, DBCache.bin) en POST. */
+export async function uploadFile<T>(path: string, file: Blob): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST", credentials: "same-origin", body: file,
+    headers: { Accept: "application/json", "Content-Type": "application/octet-stream", "X-Lang": getLang(), ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}) },
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string } | null)?.error ?? (res.status === 413 ? t("Fichier trop lourd (32 Mo au plus).") : t("Erreur {status}", { status: res.status })));
+  return data as T;
+}
+
 /* ---------- Types renvoyés par l'API ---------- */
 
 export interface User {
@@ -120,7 +131,16 @@ export interface GameRecipe {
   spellId: number; skillLine: number; name: string; reqSkill: number; trivialLow: number; trivialHigh: number; category: string;
   createdItemId: number | null; createdCount: number; enchant: string | null; reagents: { id: number; n: number }[]; taughtBy: number[]; fromItem: boolean;
 }
-export interface GameStatus { build: string | null; importedAt: string | null; items: number; recipes: number }
+export interface GameStatus { build: string | null; importedAt: string | null; items: number; recipes: number; cacheBuild?: string | null; hotfixesAt?: string | null }
+/** Cache du jeu (lot D2) : envoi d'un contributeur, et la vue des admins. */
+export interface CacheUpload { at: string; via: "app" | "site"; build: number; rows: number; newRows: number }
+export interface CacheResult { build: number; rows: number; newRows: number; already: boolean }
+export interface GameDataAdmin {
+  status: GameStatus;
+  hotfixes: { total: number; sinceImport: number };
+  contributors: { id: string; name: string; email: string | null; admin: boolean; lastAt: string | null }[];
+  uploads: (CacheUpload & { name: string | null })[];
+}
 export type RecipeStatus = "known" | "wanted";
 export interface Crafter { characterId: string; name: string; owner: string }
 export interface CraftersRecipe {

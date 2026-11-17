@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   rosterPreview: boolean("roster_preview").notNull().default(false),
   /** Admin du site (signalements : page admin, réponses), donné par site-admin-cli. */
   siteAdmin: boolean("site_admin").notNull().default(false),
+  /** Contributeur des données du jeu : peut envoyer le cache de son client (DBCache.bin) ; nommé par un admin du site. */
+  gameDataContributor: boolean("game_data_contributor").notNull().default(false),
   /** Dernière version de l'addon vue dans un export collé ou envoyé (aide aux signalements). */
   addonVersion: text("addon_version"),
   /** Image du compte (200×200, WebP ré-encodé par le serveur). */
@@ -468,6 +470,49 @@ export const gameMeta = pgTable("game_meta", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+/**
+ * Correctifs du serveur de Forever reçus des caches du jeu (DBCache.bin) des contributeurs : dernier état de chaque ligne
+ * des tables lues par l'import (gamedata/hotfix.ts). Ils s'accumulent : une ligne vue une fois reste connue même si le
+ * cache du joueur est vidé ; un correctif plus récent (numéro de diffusion plus grand) remplace le précédent.
+ */
+export const gameHotfixes = pgTable("game_hotfixes", {
+  /** Empreinte de la table du client (ex. 0x919be54e pour ItemSparse). */
+  tableHash: bigint("table_hash", { mode: "number" }).notNull(),
+  rowId: integer("row_id").notNull(),
+  push: integer("push").notNull(),
+  /** Ligne retirée par le serveur (elle disparaît des fichiers du jeu). */
+  removed: boolean("removed").notNull().default(false),
+  /** Ligne brute du cache ; vide si retirée. */
+  data: bytea("data").notNull(),
+  /** Version du client qui a écrit la ligne (sa disposition en dépend). */
+  build: integer("build").notNull(),
+  contributorId: uuid("contributor_id").references(() => users.id, { onDelete: "set null" }),
+  /** Arrivée de cette version de la ligne : l'import de la nuit ne tourne que s'il y a du nouveau. */
+  receivedAt: ts("received_at").notNull().defaultNow(),
+}, t => [
+  primaryKey({ columns: [t.tableHash, t.rowId] }),
+  index("game_hotfixes_received_idx").on(t.receivedAt),
+]);
+
+/** Envois de cache du jeu (page Addon ou Roster Companion) : la page des admins montre les derniers ; gardés 12 mois. */
+export const gameCacheUploads = pgTable("game_cache_uploads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  deviceId: uuid("device_id").references(() => devices.id, { onDelete: "set null" }),
+  /** Par Roster Companion (« app ») ou depuis la page Addon (« site »). */
+  via: text("via").$type<"app" | "site">().notNull().default("site"),
+  build: integer("build").notNull(),
+  bytes: integer("bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  /** Lignes utiles du cache (tables lues par l'import), et celles qui étaient nouvelles pour le site. */
+  rows: integer("rows").notNull(),
+  newRows: integer("new_rows").notNull(),
+  receivedAt: ts("received_at").notNull().defaultNow(),
+}, t => [
+  index("game_cache_uploads_user_idx").on(t.userId, t.receivedAt),
+  index("game_cache_uploads_received_idx").on(t.receivedAt),
+]);
 
 /** Patrons connus ou recherchés par un personnage. */
 export const characterRecipes = pgTable("character_recipes", {

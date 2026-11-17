@@ -422,5 +422,12 @@
  "Le mot de passe ne doit pas contenir ton adresse e-mail.": "The password must not contain your e-mail address.",
  "L'équipe": "The team",
  "le serveur": "the server",
- "Erreur interne.": "Internal error."
+ "Erreur interne.": "Internal error.",
+ "Réservé aux contributeurs des données du jeu : un admin du site peut t'ajouter.": "Only game data contributors can do this: a site admin can add you.",
+ "Fichier vide.": "Empty file.",
+ "Ce fichier n'est pas un cache du jeu lisible (DBCache.bin, dans Cache\\ADB\\enUS du dossier _forever_).": "This file isn't a readable game cache (DBCache.bin, in Cache\\ADB\\enUS of the _forever_ folder).",
+ "Aucun compte avec cette adresse ou ce pseudo.": "No account with this address or name.",
+ "Plusieurs comptes portent ce pseudo : donne son adresse e-mail.": "Several accounts use this name: give their email address.",
+ "Le cache du jeu ne sert qu'à Forever Roster.": "The game cache is only used by Forever Roster.",
+ "Envoie le fichier tel quel (application/octet-stream).": "Send the file as is (application/octet-stream)."
 }

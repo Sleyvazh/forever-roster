@@ -8,7 +8,7 @@ const chunk = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(lis
 
 /** Remplace le contenu des tables du jeu en une seule transaction : l'application ne voit jamais une base à moitié importée. */
 export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: RecipeRow[]; talents?: TalentRow[] }, build: string,
-  extra: { eraBuild?: string | null; cacheBuild?: string | null; cacheItems?: number; replacedRecipes?: Map<number, number> } = {}) {
+  extra: { eraBuild?: string | null; cacheBuild?: string | null; cacheItems?: number; replacedRecipes?: Map<number, number>; hotfixesAt?: Date } = {}) {
   await db.transaction(async tx => {
     // Patrons cochés sur une recette écartée comme doublon : reportés sur celle qui la remplace
     for (const [from, to] of extra.replacedRecipes ?? []) {
@@ -35,6 +35,8 @@ export async function storeGameData(db: Db, data: { items: ItemRow[]; recipes: R
     const meta = {
       build, importedAt: new Date().toISOString(), source: "wago.tools", eraBuild: extra.eraBuild ?? "", eraItems: String(eraItems),
       cacheBuild: extra.cacheBuild ?? "", cacheItems: String(extra.cacheItems ?? 0),
+      // Correctifs gardés par le site lus jusqu'à cette heure (début de l'import) : ceux arrivés après seront pour le suivant
+      hotfixesAt: (extra.hotfixesAt ?? new Date()).toISOString(),
     };
     for (const [key, value] of Object.entries(meta)) {
       await tx.insert(gameMeta).values({ key, value }).onConflictDoUpdate({ target: gameMeta.key, set: { value: sql`excluded.value` } });
@@ -49,5 +51,6 @@ export async function gameDataStatus(db: Db) {
     build: meta.build ?? null, importedAt: meta.importedAt ?? null, items: items?.n ?? 0, recipes: recipes?.n ?? 0,
     eraBuild: meta.eraBuild || null, eraItems: Number(meta.eraItems ?? 0),
     cacheBuild: meta.cacheBuild || null, cacheItems: Number(meta.cacheItems ?? 0),
+    hotfixesAt: meta.hotfixesAt || meta.importedAt || null,
   };
 }

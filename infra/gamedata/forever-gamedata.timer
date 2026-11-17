@@ -1,0 +1,10 @@
+[Unit]
+Description=Import des données du jeu de Forever Roster, chaque nuit
+
+[Timer]
+OnCalendar=*-*-* 04:40
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

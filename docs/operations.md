@@ -340,17 +340,40 @@ sudo docker compose exec api node dist/import-gamedata.js --build 1.60.1.70009  
 
 ### Correctifs du serveur (cache du client)
 
-Une bonne part des données de Forever n'est pas dans les fichiers du jeu : le serveur envoie des correctifs aux clients (objets découverts en jeu, leurs effets « Équipé : » et « Utiliser : », sets, apparences qui donnent les icônes, talents modifiés, recettes), et chaque client les garde dans `Cache\ADB\<langue>\DBCache.bin`. wago.tools ne publie que les fichiers ; ce cache est la seule source de ces lignes. Pour les ajouter au site :
+Une bonne part des données de Forever n'est pas dans les fichiers du jeu : le serveur envoie des correctifs aux clients (objets découverts en jeu, leurs effets « Équipé : » et « Utiliser : », sets, apparences qui donnent les icônes, talents modifiés, recettes), et chaque client les garde dans `Cache\ADB\<langue>\DBCache.bin`. wago.tools ne publie que les fichiers ; ce cache est la seule source de ces lignes.
 
-1. Fermer le jeu (il réécrit le cache en partant), puis copier le fichier sur le serveur (depuis le PC, PowerShell) :
+Le site **garde** ces correctifs (table `game_hotfixes`, migration 0048) : ils s'accumulent d'un envoi à l'autre, et une ligne vue une fois reste connue même si le cache du joueur est vidé ; un correctif plus récent (numéro de diffusion plus grand) remplace le précédent. Trois façons de les apporter :
+
+1. **Contributeurs des données du jeu** (choix de Flo : seulement des joueurs de confiance, car un cache se fabrique à la main) : les admins du site en sont toujours ; les autres sont nommés dans *Administration du site › Données du jeu* (adresse e-mail ou pseudo du compte), retirés au même endroit, et le journal du compte nommé le note. Un contributeur voit l'encadré « Données du jeu · tu es contributeur » sur la page Addon : jeu fermé, il envoie son `DBCache.bin` (32 Mo au plus). Même fichier deux fois de suite : « déjà reçu ».
+2. **Roster Companion** d'un contributeur (à venir) : même fichier, envoyé par l'appli (`POST /api/sync/gamecache`, jeton de l'appareil).
+3. **Sur le serveur** (secours, ou sans compte contributeur) : fermer le jeu, puis depuis le PC (PowerShell)
    ```powershell
    ssh forever "mkdir -p ~/forever-roster/gamedata"
    scp "C:\Games\World of Warcraft\_forever_\Cache\ADB\enUS\DBCache.bin" forever:~/forever-roster/gamedata/
    ```
-   Le cache d'un autre joueur s'ajoute sous un autre nom en `.bin`, ex. `forever:~/forever-roster/gamedata/DBCache-pahpool.bin` : chacun a vu des objets différents.
-2. Sur le serveur : `bash scripts/import-gamedata.sh`. Le script envoie à l'import tous les `gamedata/*.bin` (dossier ignoré par Git).
+   Un autre joueur sous un autre nom en `.bin` (ex. `DBCache-pahpool.bin`). `bash scripts/import-gamedata.sh` les ajoute aux correctifs gardés, puis importe.
 
-L'import applique ces correctifs aux tables comme le fait le jeu (`apps/api/src/gamedata/hotfix.ts`) : une ligne du correctif remplace celle des fichiers ou s'y ajoute, une ligne « retirée » par le serveur disparaît (un objet retiré n'est pas non plus repris de Classic Era). Entre plusieurs caches, le correctif le plus récent l'emporte. Le journal donne, par table, les lignes ajoutées, remplacées et retirées ; « Cache du client : 2 fichiers (build 70938) ». Plus le client a joué, plus il en contient : recommencer de temps en temps, surtout après une montée de niveau ou un nouveau raid.
+*Administration du site › Données du jeu* montre aussi le dernier import, les correctifs gardés (« 312 arrivées depuis l'import : au prochain import ») et les 10 derniers envois.
+
+L'import applique tous les correctifs gardés aux tables comme le fait le jeu (`apps/api/src/gamedata/hotfix.ts`) : une ligne du correctif remplace celle des fichiers ou s'y ajoute, une ligne « retirée » par le serveur disparaît (un objet retiré n'est pas non plus repris de Classic Era). Le journal donne, par table, les lignes ajoutées, remplacées et retirées. Options : `--no-db-cache` (seulement les fichiers passés à l'import).
+
+#### Import de la nuit
+
+Une minuterie relance l'import chaque nuit vers 4 h 40, **seulement s'il y a du nouveau** (`--if-new` : des correctifs arrivés depuis le dernier import, ou une nouvelle version du client sur wago.tools ; sinon « Rien de nouveau depuis le dernier import », sans téléchargement). Installation, une fois :
+
+```bash
+cd ~/forever-roster
+sed "s#@REPO@#$PWD#g" infra/gamedata/forever-gamedata.service | sudo tee /etc/systemd/system/forever-gamedata.service >/dev/null
+sudo install -m 644 infra/gamedata/forever-gamedata.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now forever-gamedata.timer
+sudo systemctl start forever-gamedata.service       # un essai tout de suite (2 à 3 min s'il y a du nouveau)
+journalctl -u forever-gamedata.service -n 40        # ce qu'il a fait
+```
+
+`systemctl list-timers forever-gamedata.timer` donne le prochain passage. Lancée par root, la minuterie rend les icônes téléchargées au propriétaire du dépôt.
+
+#### Version du client et dispositions des tables
 
 Chaque ligne est lue d'après la disposition de sa table pour la version du client (`apps/api/src/gamedata/hotfix-layouts.ts`, généré depuis les définitions communautaires [WoWDBDefs](https://github.com/wowdev/WoWDBDefs)). Après une mise à jour du client de Forever, si le journal signale « correctifs ignorés (N lignes illisibles) » pour une table, régénérer ce fichier pour la nouvelle version, puis livrer :
 
@@ -358,7 +381,7 @@ Chaque ligne est lue d'après la disposition de sa table pour la version du clie
 node scripts/hotfix-layouts.mjs 1.60.1.70938   # numéro du client : en-tête du cache (« build »), ou wago.tools
 ```
 
-Une table illisible est seulement laissée de côté (les autres correctifs s'appliquent) ; un cache qui n'est pas un DBCache.bin de version 9 arrête l'import avant d'écrire quoi que ce soit.
+Une ligne illisible est seulement ignorée ; une table n'est laissée de côté que si plus de 10 % des lignes de la version du client la plus récente ne se lisent pas. Un fichier qui n'est pas un DBCache.bin de version 9 est refusé à l'envoi, et arrête l'import sur le serveur avant d'écrire quoi que ce soit.
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 

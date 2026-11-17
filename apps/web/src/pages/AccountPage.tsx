@@ -39,6 +39,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   // Bug du journal (refonte du 09/11) : actions de guilde sans libellé, qui s'affichaient en code (« loot_count_corrected »)
   loot_count_corrected: [N("Compte d'objets reçus corrigé"), ""], group_loot_settings: [N("Réglages du butin d'une guilde changés"), ""],
   raid_council: [N("Conseil du butin d'un raid changé"), ""], group_orders_linked: [N("Salon des commandes lié"), ""], group_orders_unlinked: [N("Salon des commandes délié"), ""],
+  // Cache du jeu (17/11) : nommé ou retiré par un admin du site
+  game_contributor_set: [N("Nommé contributeur des données du jeu"), "warn"], game_contributor_unset: [N("Retiré des contributeurs des données du jeu"), ""],
 };
 /**
  * Libellé d'une ligne du journal : ceux du compte, sinon ceux du journal de guilde à la deuxième personne (« a créé un raid »

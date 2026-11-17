@@ -1,0 +1,10 @@
+[Unit]
+Description=Import des données du jeu de Forever Roster, s'il y a du nouveau
+Requires=docker.service
+After=docker.service
+
+# @REPO@ : dossier du dépôt, remplacé à l'installation (docs/operations.md, « Import de la nuit »)
+[Service]
+Type=oneshot
+WorkingDirectory=@REPO@
+ExecStart=/usr/bin/bash @REPO@/scripts/import-gamedata.sh --if-new

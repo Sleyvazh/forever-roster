@@ -5,12 +5,13 @@ import { devices } from "../db/schema";
 import { ignoredKeys, importAddonText, unignore } from "../lib/addon-import";
 import { sha256 } from "../lib/crypto";
 import { currentDevice, deviceAuth } from "../lib/device-auth";
-import { notFound, parse } from "../lib/http";
+import { badRequest, notFound, parse } from "../lib/http";
 import { currentUser } from "../lib/session";
 import { otherSite, siteOf } from "../lib/site";
 import { syncSigner } from "../lib/sync-signing";
 import { allGroupsExport, MAX_ADDON_TEXT, UPLOAD_BODY_LIMIT } from "./addon";
-import { reqLang } from "../lib/i18n";
+import { N, reqLang } from "../lib/i18n";
+import { CACHE_MAX_BYTES, receiveCache } from "../gamedata/cache-store";
 
 /**
  * Synchro de Roster Companion (lot K1), jeton de l'appareil obligatoire. Le jeu suit l'adresse appelée (un site,
@@ -76,6 +77,17 @@ export async function syncRoutes(app: FastifyInstance) {
     });
     if (r.results.length) await synced(d.id);
     return r;
+  });
+
+  /**
+   * Cache du jeu (DBCache.bin, envoyé tel quel) : les correctifs du serveur de Forever qu'il contient s'ajoutent à ceux
+   * que garde le site, importés la nuit (lot D2). Contributeurs des données du jeu seulement ; Forever seulement.
+   */
+  app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: CACHE_MAX_BYTES }, (_req, body, done) => done(null, body));
+  app.post("/gamecache", { bodyLimit: CACHE_MAX_BYTES, config: { rateLimit: { max: 10, timeWindow: "1 hour" } } }, async (req) => {
+    if (siteOf(cfg, req).game !== "forever") throw notFound(N("Le cache du jeu ne sert qu'à Forever Roster."));
+    if (!Buffer.isBuffer(req.body)) throw badRequest(N("Envoie le fichier tel quel (application/octet-stream)."));
+    return receiveCache(db, req.body, { user: currentUser(req), deviceId: currentDevice(req).id });
   });
 
   /** Persos ignorés (options de l'appli) : liste, et « Ne plus ignorer ». */
