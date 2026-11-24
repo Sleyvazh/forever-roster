@@ -1,4 +1,4 @@
-import type { BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets } from "@forever/game-data";
+import type { BisSource, BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets, Weights } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -1330,3 +1330,31 @@ export const addonIgnored = pgTable("addon_ignored", {
   key: text("key").notNull(),
   createdAt: ts("created_at").notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.userId, t.game, t.key] })]);
+
+/* ---------- Module BiS (lot BiS-1, 24/11/2026) ---------- */
+
+/**
+ * Corrections d'un admin du site sur un objet : « non obtenable » (l'objet sort de toutes les BiS), faction quand le
+ * jeu ne la donne pas, provenance (remplace celle de départ, BIS_SOURCE_SEED).
+ */
+export const itemOverrides = pgTable("item_overrides", {
+  itemId: integer("item_id").primaryKey(),
+  unobtainable: boolean("unobtainable").notNull().default(false),
+  /** null : faction trouvée automatiquement ; "both" : les deux factions. */
+  faction: text("faction", { enum: ["Alliance", "Horde", "both"] }),
+  source: jsonb("source").$type<BisSource>(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Poids des caractéristiques par spé : ceux d'une guilde (officiers) ou d'un joueur pour lui. */
+export const bisWeights = pgTable("bis_weights", {
+  scope: text("scope", { enum: ["group", "user"] }).notNull(),
+  /** Identifiant du groupe ou du joueur, selon scope. */
+  scopeId: uuid("scope_id").notNull(),
+  /** Clé du profil (BIS_PROFILES, ex. druid-feral-cat). */
+  profile: text("profile").notNull(),
+  weights: jsonb("weights").$type<Weights>().notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.scope, t.scopeId, t.profile] })]);

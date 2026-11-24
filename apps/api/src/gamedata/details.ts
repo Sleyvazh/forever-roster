@@ -19,6 +19,8 @@ export interface RawItem {
   bonding: number; maxCount: number; sellPrice: number; delay: number; variance: number; itemSet: number;
   /** [type, part du budget sur 10 000] */
   stats: [number, number][];
+  /** Module BiS : rang JcJ requis (valeur du jeu : rang + 4), réputation requise, masque des races (-1 : toutes). */
+  pvpRank?: number; minFaction?: number; minReputation?: number; races?: number;
 }
 
 export function rawFromSparse(s: Row): Omit<RawItem, "classId" | "subclassId" | "inventoryType"> & { inventoryType: number } {
@@ -31,6 +33,8 @@ export function rawFromSparse(s: Row): Omit<RawItem, "classId" | "subclassId" | 
     itemLevel: I(s.ItemLevel), quality: I(s.OverallQualityID), inventoryType: I(s.InventoryType),
     bonding: I(s.Bonding), maxCount: I(s.MaxCount), sellPrice: I(s.SellPrice), delay: I(s.ItemDelay), variance: F(s.DmgVariance),
     itemSet: I(s.ItemSet), stats,
+    pvpRank: I(s.RequiredPVPRank), minFaction: I(s.MinFactionID), minReputation: I(s.MinReputation),
+    races: s.AllowableRace_0 === undefined || s.AllowableRace_0 === "" ? -1 : I(s.AllowableRace_0),
   };
 }
 
@@ -62,6 +66,10 @@ export function computeDetails(raw: RawItem, sc: Scales): ItemDetails {
   if (raw.bonding) d.bond = raw.bonding;
   if (raw.maxCount === 1) d.unique = true;
   if (raw.sellPrice > 0) d.sell = raw.sellPrice;
+  // Module BiS : rang JcJ (le jeu range les rangs 1 à 14 de 5 à 18), réputation, races autorisées si restreintes
+  if ((raw.pvpRank ?? 0) > 4) d.pvpRank = Math.min(14, raw.pvpRank! - 4);
+  if ((raw.minFaction ?? 0) > 0) d.rep = { factionId: raw.minFaction!, standing: Math.max(0, Math.min(7, raw.minReputation ?? 0)) };
+  if (raw.races !== undefined && raw.races !== -1 && raw.races !== 0) d.races = raw.races;
   const q = Math.min(raw.quality, 6);
   const inv = raw.inventoryType === 20 ? 5 : raw.inventoryType; // robe = torse
 
@@ -231,7 +239,8 @@ export function evaluate(expr: string): number | null {
  * Calcule l'infobulle de chaque objet (stats, armure, dégâts, effets, set) à partir des données brutes.
  * Les noms des pièces de set sont pris dans la liste finale des objets.
  */
-export function addDetails(items: ItemRow[], t: DetailTables & { ItemEffect?: Row[]; ItemXItemEffect?: Row[]; SpellEffect?: Row[] }) {
+export function addDetails(items: ItemRow[], t: DetailTables & { ItemEffect?: Row[]; ItemXItemEffect?: Row[]; SpellEffect?: Row[]; Faction?: Row[] }) {
+  const factionName = new Map((t.Faction ?? []).map(r => [I(r.ID), r.Name_lang ?? ""]));
   const scales = buildScales(t);
   const spells = buildSpellTexts(t);
   const effects = itemEffects(t, spells);
@@ -239,6 +248,7 @@ export function addDetails(items: ItemRow[], t: DetailTables & { ItemEffect?: Ro
   const nameOf = new Map(items.map(i => [i.id, i.name]));
   for (const it of items) {
     const d: ItemDetails = it.raw ? computeDetails(it.raw, scales) : {};
+    if (d.rep) { const n = factionName.get(d.rep.factionId); if (n) d.rep.name = n; }
     const fx = effects.get(it.id);
     if (fx?.length) d.effects = fx;
     const set = it.raw?.itemSet ? sets.get(it.raw.itemSet) : undefined;

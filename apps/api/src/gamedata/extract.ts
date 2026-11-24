@@ -58,6 +58,8 @@ export const DETAIL_TABLES = {
   TraitDefinition: ["ID", "SpellID"],
   TraitNodeXTraitNodeEntry: ["TraitNodeID", "TraitNodeEntryID"],
   TraitEdge: ["LeftTraitNodeID", "RightTraitNodeID"],
+  // Module BiS : nom des factions de réputation requise (ItemSparse.MinFactionID)
+  Faction: ["ID", "Name_lang"],
 } as const;
 export type DetailTableName = keyof typeof DETAIL_TABLES;
 export type DetailTables = Partial<Record<DetailTableName, Record<string, string>[]>>;

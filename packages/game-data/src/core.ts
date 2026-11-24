@@ -56,7 +56,7 @@ export const RACES: Record<string, { faction: Faction; classes: ClassName[]; rac
   "Skyborne (High Order)": { faction: "Alliance", classes: ["Warrior", "Hunter", "Rogue", "Mage", "Druid"], racials: "Walk on Air · Read Ley Line · Wind Blessed (+1 % hâte) · Elemental Insight" },
   Orc: { faction: "Horde", classes: ["Warrior", "Hunter", "Rogue", "Shaman", "Mage", "Warlock"], racials: "Axe Specialization · Blood Fury · Shatter Curse · Hardiness" },
   Undead: { faction: "Horde", classes: ["Warrior", "Paladin", "Rogue", "Priest", "Mage", "Warlock"], racials: "Will of the Forsaken · Cannibalize · Underwater Breathing · Touch of the Grave" },
-  Tauren: { faction: "Horde", classes: ["Warrior", "Hunter", "Shaman", "Druid"], racials: "Cultivation · War Stomp · Plainsrunning · Endurance (+5 % PV, +1 % toucher)" },
+  Tauren: { faction: "Horde", classes: ["Warrior", "Hunter", "Shaman", "Druid"], racials: "Cultivation · War Stomp · Plainsrunning · Endurance (+5 % PV)" },
   Troll: { faction: "Horde", classes: ["Warrior", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock"], racials: "Berserking · Rapid Regeneration · Beast Slaying · Regeneration" },
   "Skyborne (Windshaper)": { faction: "Horde", classes: ["Warrior", "Hunter", "Rogue", "Shaman", "Druid"], racials: "Walk on Air · Skysight · Wind Blessed (+1 % hâte) · Elemental Insight" },
 };

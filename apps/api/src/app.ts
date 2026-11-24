@@ -27,6 +27,7 @@ import { outingRoutes } from "./routes/outings";
 import { guildRoutes } from "./routes/guild";
 import { groupFeedbackRoutes } from "./routes/group-feedback";
 import { prepRoutes } from "./routes/prep";
+import { bisRoutes } from "./routes/bis";
 import { eventRoutes } from "./routes/events";
 import { raidRoutes } from "./routes/raids";
 import { addonRoutes } from "./routes/addon";
@@ -121,6 +122,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(guildRoutes, { prefix: "/api/groups" });
   await app.register(groupFeedbackRoutes, { prefix: "/api/groups" });
   await app.register(prepRoutes, { prefix: "/api/groups" });
+  await app.register(bisRoutes, { prefix: "/api/bis" });
   await app.register(absenceRoutes, { prefix: "/api/absences" });
   await app.register(imageRoutes, { prefix: "/api/images" });
   await app.register(eventRoutes, { prefix: "/api/events" });

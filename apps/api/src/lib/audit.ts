@@ -19,6 +19,7 @@ export type AuditType =
   | "group_feedback_linked" | "group_feedback_unlinked"
   | "guild_linked" | "guild_unlinked" | "guild_announces" | "guild_member_linked" | "guild_member_unlinked"
   | "signup_relayed"
+  | "bis_weights_group" | "item_override"
   | "banker_set" | "banker_unset"
   | "character_level_fixed" | "character_level_released"
   | "character_created_for" | "character_given"

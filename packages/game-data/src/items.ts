@@ -24,6 +24,12 @@ export interface ItemDetails {
   icon?: string;
   /** Identifiant du fichier d'icône dans les données du jeu (pour le récupérer quand Blizzard ne le sert pas). */
   iconId?: number;
+  /** Rang JcJ requis (1 à 14), module BiS. */
+  pvpRank?: number;
+  /** Réputation requise : faction du jeu, son nom s'il est connu, rang (0 détesté … 7 exalté). */
+  rep?: { factionId: number; name?: string; standing: number };
+  /** Masque des races autorisées, quand il est restreint (sert à trouver la faction de l'objet). */
+  races?: number;
 }
 
 export const BOND_LABEL: Record<number, string> = {

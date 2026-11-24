@@ -40,6 +40,8 @@ const EVENT: Record<string, [string, "ok" | "warn" | "bad" | ""]> = {
   loot_count_corrected: [N("Compte d'objets reçus corrigé"), ""], group_loot_settings: [N("Réglages du butin d'une guilde changés"), ""],
   raid_council: [N("Conseil du butin d'un raid changé"), ""], group_orders_linked: [N("Salon des commandes lié"), ""], group_orders_unlinked: [N("Salon des commandes délié"), ""],
   // Cache du jeu (17/11) : nommé ou retiré par un admin du site
+  // Module BiS (24/11)
+  bis_weights_group: [N("Poids BiS d'une guilde changés"), ""], item_override: [N("Objet corrigé pour la BiS (admin du site)"), ""],
   game_contributor_set: [N("Nommé contributeur des données du jeu"), "warn"], game_contributor_unset: [N("Retiré des contributeurs des données du jeu"), ""],
 };
 /**

@@ -429,5 +429,6 @@
  "Aucun compte avec cette adresse ou ce pseudo.": "No account with this address or name.",
  "Plusieurs comptes portent ce pseudo : donne son adresse e-mail.": "Several accounts use this name: give their email address.",
  "Le cache du jeu ne sert qu'à Forever Roster.": "The game cache is only used by Forever Roster.",
- "Envoie le fichier tel quel (application/octet-stream).": "Send the file as is (application/octet-stream)."
+ "Envoie le fichier tel quel (application/octet-stream).": "Send the file as is (application/octet-stream).",
+ "Spé inconnue pour la BiS.": "Unknown spec for BiS."
 }

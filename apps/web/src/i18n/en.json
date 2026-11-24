@@ -2853,5 +2853,7 @@
  "{n} nouveauté": "{n} new row",
  "{n} nouveautés": "{n} new rows",
  "Le site importe les nouveautés chaque nuit.": "The website imports new rows every night.",
- "Envoyer mon cache…": "Send my cache…"
+ "Envoyer mon cache…": "Send my cache…",
+ "Poids BiS d'une guilde changés": "Guild BiS weights changed",
+ "Objet corrigé pour la BiS (admin du site)": "Item corrected for BiS (site admin)"
 }

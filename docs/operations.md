@@ -385,6 +385,27 @@ Une ligne illisible est seulement ignorée ; une table n'est laissée de côté 
 
 En développement : `npm run gamedata:import -w apps/api` (options `--build` ou `--dir <dossier de CSV>`).
 
+## Module BiS (classement des objets)
+
+Lot BiS-1 (24/11/2026) : le moteur (`packages/game-data/src/bis.ts`) classe les objets d'une spé avec des poids de
+caractéristiques ; le toucher ne compte que jusqu'au cap (8 % contre un boss de raid). L'API sert les objets candidats
+(`GET /api/bis/<profil>/items`), les poids (`/api/bis/<profil>/weights`) et les corrections d'un admin du site
+(`PUT /api/bis/items/<id>`).
+
+- **Obtenable** : un objet entre dans une BiS s'il a été **vu en jeu** (ligne ItemSparse non retirée dans `game_hotfixes`,
+  donc dans le cache d'un contributeur) ou s'il a une **provenance connue** : table de départ `BIS_SOURCE_SEED`
+  (`packages/game-data/src/bis-sources.ts`, relevée sur le web) ou correction d'un admin. Une recette, une réputation ou un
+  rang JcJ lus dans les données du jeu s'affichent comme provenance « auto » mais ne suffisent pas.
+- **Non obtenable**, **faction**, **provenance** : corrections d'un admin du site (`item_overrides`) ; elles l'emportent sur
+  le calcul automatique. Une correction remise à zéro disparaît.
+- **Faction** : les données de Forever ne la portent pas pour les objets JcJ ; elle vient du masque de races quand il est
+  restreint, sinon du nom (titres des rangs JcJ, Theramore / Darkspear, Stormpike / Frostwolf).
+- **Rang JcJ, réputation, races** : lus à l'import dans ItemSparse (`RequiredPVPRank` − 4, `MinFactionID` /
+  `MinReputation`, `AllowableRace`), nom de la faction dans la table `Faction`. Après le déploiement du lot BiS-1, relancer
+  une fois l'import complet : `bash scripts/import-gamedata.sh` (sans `--if-new`).
+- **Compléter les provenances** : ajouter les objets à `BIS_SOURCE_SEED` avec la page qui l'affirme (`ref`) ; ne jamais
+  y mettre une provenance devinée.
+
 ## Icônes du jeu
 
 Les icônes de classes et de spécialisations sont l'œuvre de **Pahpool** (crédité en pied de page du site et dans les Nouveautés) ; les autres (métiers, rôles, objets, classes propres à Retail) sont des fichiers de Blizzard. Toutes restent sur le serveur, dans `~/forever-roster/icons/` (ignoré par Git), et Caddy les sert sous `/icons/` pour les deux adresses : Roster reprend celles des classes communes aux deux jeux (Holy du paladin → Holy Heal, Discipline → Discipline Heal, Feral → Feral Cat, Guardian → Feral Bear, Enhancement → Enhancement DPS, Outlaw → Combat ; `iconSpec` dans `packages/game-data`) et prend les icônes officielles de Blizzard pour les quatre classes qu'il est seul à avoir (voir « Icônes des classes propres à Retail »). Les visiteurs ne contactent aucun site tiers. Si une icône manque, le site affiche l'initiale de la classe à la place.
