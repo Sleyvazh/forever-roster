@@ -69,7 +69,37 @@ export interface BisProfile {
   /** Cap de toucher contre un boss de raid (%). */
   hitCap: number;
   weights: Weights;
+  /** Enchantements conseillés par emplacement (lot BiS-2) ; absent : aucun conseil pour cet emplacement. */
+  enchants?: Partial<Record<GearSlot, BisEnchantPick>>;
 }
+
+/**
+ * Enchantement : une recette d'Enchantement (nom anglais du jeu, retrouvé dans les recettes de la base pour la liste de
+ * courses) ou un objet (arcanum), avec un libellé court en français et en anglais.
+ */
+export interface BisEnchantRef { recipe?: string; item?: string; fr: string; en: string }
+export interface BisEnchantPick { best: BisEnchantRef; cheaper?: BisEnchantRef }
+
+const ench = (recipe: string, fr: string, en: string): BisEnchantRef => ({ recipe, fr, en });
+const VORACITY: BisEnchantRef = { item: "Lesser Arcanum of Voracity", fr: "Lesser Arcanum of Voracity", en: "Lesser Arcanum of Voracity" };
+/**
+ * Enchantements du Félin (relevés le 24/11 : blizzardwatch pour les nouveaux de Forever, rankedboost, wowtbc.gg) ; à
+ * vérifier en jeu. Une recette introuvable dans la base s'affiche quand même, sans composants.
+ */
+const CAT_ENCHANTS: Partial<Record<GearSlot, BisEnchantPick>> = {
+  Head: { best: VORACITY }, Legs: { best: VORACITY },
+  Neck: { best: ench("Enchant Necklace - Agility", "Agilité (+5)", "Agility (+5)") },
+  Back: { best: ench("Enchant Cloak - Agility", "Agilité (+5)", "Agility (+5)"), cheaper: ench("Enchant Cloak - Lesser Agility", "Agilité inférieure (+3)", "Lesser Agility (+3)") },
+  Chest: { best: ench("Enchant Chest - Greater Stats", "Caractéristiques supérieures (+4)", "Greater Stats (+4)"), cheaper: ench("Enchant Chest - Stats", "Caractéristiques (+3)", "Stats (+3)") },
+  Wrist: { best: ench("Enchant Bracer - Superior Agility", "Agilité supérieure (+9)", "Superior Agility (+9)"), cheaper: ench("Enchant Bracer - Lesser Agility", "Agilité inférieure (+4)", "Lesser Agility (+4)") },
+  Hands: { best: ench("Enchant Gloves - Greater Agility", "Agilité supérieure (+7)", "Greater Agility (+7)"), cheaper: ench("Enchant Gloves - Agility", "Agilité (+5)", "Agility (+5)") },
+  Feet: { best: ench("Enchant Boots - Greater Agility", "Agilité supérieure (+7)", "Greater Agility (+7)"), cheaper: ench("Enchant Boots - Lesser Agility", "Agilité inférieure (+4)", "Lesser Agility (+4)") },
+  "Main Hand": { best: ench("Enchant 2H Weapon - Agility", "Agilité (+25)", "Agility (+25)") },
+};
+
+/** Cap de toucher selon la cible : boss de raid (3 niveaux au-dessus) ou boss de donjon (2 niveaux au-dessus). */
+export const HIT_TARGETS = { raid: 8, dungeon: 6 } as const;
+export type HitTarget = keyof typeof HIT_TARGETS;
 
 /**
  * Valeurs par défaut (équivalent puissance d'attaque pour le Félin) : 1 Force = 2 PA, 1 Agilité = 1 PA + 1/20 % de
@@ -79,7 +109,7 @@ export interface BisProfile {
 export const BIS_PROFILES: BisProfile[] = [
   {
     key: "druid-feral-cat", cls: "Druid", spec: "Feral Cat", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8,
-    weights: { str: 2, agi: 2.1, ap: 1, crit: 22, hit: 20, wdps: 14, sta: 0, exp: 1.5 },
+    weights: { str: 2, agi: 2.1, ap: 1, crit: 22, hit: 20, wdps: 14, sta: 0, exp: 1.5 }, enchants: CAT_ENCHANTS,
   },
   {
     key: "druid-feral-bear", cls: "Druid", spec: "Feral Bear", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8,
@@ -191,6 +221,8 @@ export function itemFaction(name: string, races?: number | null): Faction | null
 
 export interface BisItem {
   id: number; name: string; quality: number; itemLevel: number; reqLevel: number;
+  /** Libellé du jeu (« Armure · Cuir »), pour l'affichage. */
+  kind?: string;
   classId: number; subclassId: number; inventoryType: number;
   details: ItemDetails;
   /** Faction qui peut le porter (null : les deux). */
@@ -246,13 +278,86 @@ export const slotAccepts = (slot: GearSlot, it: BisItem, p: BisProfile) =>
 /* ---------- Score ---------- */
 
 export interface ItemScore {
-  /** Valeur sans le toucher. */
+  /** Valeur sans le toucher (bonus de set compris, quand on le sait). */
   base: number;
-  /** Toucher de l'objet (%). */
+  /** Toucher de l'objet (%), bonus de set compris. */
   hit: number;
   /** Valeur avec le toucher qui compte encore (jusqu'au cap). */
   total: number;
   effect: boolean;
+  /** Pièce d'un set : où en est le set avec cette pièce, et ce que cette pièce débloque. */
+  set?: SetProgress;
+}
+
+/* ---------- Bonus de set (demande de Flo, 24/11 : Feralheart Raiment) ---------- */
+
+/** Bonus d'un set lu dans son texte : caractéristiques chiffrées, ou null (effet à déclenchement, non chiffré). */
+export interface SetBonus { n: number; text: string; stats: Partial<Record<WeightKey, number>> | null }
+export interface SetProgress { id: number; name: string; have: number; total: number; unlocked: SetBonus[]; next: SetBonus | null }
+
+const SET_STAT: [RegExp, WeightKey | null][] = [
+  [/^\+(\d+) Attack Power\.?$/i, "ap"],
+  [/^Increases damage and healing done by magical spells and effects by up to (\d+)\.?$/i, "sp"],
+  [/^Increases healing done by spells and effects by up to (\d+)\.?$/i, "heal"],
+  [/^Restores (\d+) mana per 5 sec\.?$/i, "mp5"],
+  [/^Improves your chance to hit(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "hit"],
+  [/^Improves your chance to get a critical strike(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "crit"],
+  [/^\+(\d+) Strength\.?$/i, "str"], [/^\+(\d+) Agility\.?$/i, "agi"], [/^\+(\d+) Stamina\.?$/i, "sta"],
+  [/^\+(\d+) Intellect\.?$/i, "int"], [/^\+(\d+) Spirit\.?$/i, "spi"], [/^\+(\d+) Armor\.?$/i, "armor"],
+  [/^Increased Defense \+(\d+)\.?$/i, "def"],
+  // Résistances : chiffrées à zéro (rien pour le score, mais ce n'est pas un effet à déclenchement)
+  [/^\+(\d+) (?:All Resistances|\w+ Resistance)\.?$/i, null],
+];
+/** Bonus d'un set, lus dans le texte du jeu (anglais). */
+export function setBonuses(set: ItemDetails["set"] | null | undefined): SetBonus[] {
+  return (set?.bonuses ?? []).map(b => {
+    const text = b.text.trim();
+    for (const [re, k] of SET_STAT) {
+      const m = re.exec(text);
+      if (m) return { n: b.n, text, stats: k ? { [k]: Number(m[1]) } : {} };
+    }
+    return { n: b.n, text, stats: null };
+  }).sort((a, b) => a.n - b.n);
+}
+
+/** Valeur (sans le toucher) et toucher apportés par des bonus. */
+function bonusValue(list: SetBonus[], w: Weights) {
+  let base = 0, hit = 0;
+  for (const b of list) for (const [k, v] of Object.entries(b.stats ?? {}) as [WeightKey, number][]) {
+    if (k === "hit") hit += v; else base += (w[k] ?? 0) * v;
+  }
+  return { base, hit };
+}
+
+/** Bonus actifs d'une sélection d'objets (chaque objet compté une fois). */
+export function activeSetBonuses(items: (BisItem | null | undefined)[]) {
+  const sets = new Map<number, { name: string; ids: Set<number>; bonuses: SetBonus[]; total: number }>();
+  for (const it of items) {
+    const set = it?.details.set;
+    if (!it || !set) continue;
+    const cur = sets.get(set.id) ?? { name: set.name, ids: new Set<number>(), bonuses: setBonuses(set), total: set.items.length };
+    cur.ids.add(it.id);
+    sets.set(set.id, cur);
+  }
+  const active: SetBonus[] = [];
+  const progress: SetProgress[] = [];
+  for (const [id, s] of sets) {
+    const unlocked = s.bonuses.filter(b => b.n <= s.ids.size);
+    active.push(...unlocked);
+    progress.push({ id, name: s.name, have: s.ids.size, total: s.total, unlocked, next: s.bonuses.find(b => b.n > s.ids.size) ?? null });
+  }
+  return { active, progress, unscored: active.filter(b => !b.stats) };
+}
+
+/** Score d'une sélection entière : caractéristiques des objets et bonus de set actifs, toucher jusqu'au cap. */
+export function scoreSelection(items: (BisItem | null | undefined)[], w: Weights, hitRoom: number) {
+  let base = 0, hit = 0;
+  for (const it of items) if (it) { const sc = scoreItem(it, w, 0); base += sc.base; hit += sc.hit; }
+  const sets = activeSetBonuses(items);
+  const bonus = bonusValue(sets.active, w);
+  base += bonus.base; hit += bonus.hit;
+  const r = (x: number) => Math.round(x * 10) / 10;
+  return { base: r(base), hit: r(hit), total: r(base + (w.hit ?? 0) * Math.min(hit, Math.max(0, hitRoom))), sets };
 }
 
 /** Score d'un objet ; `hitRoom` = toucher qui manque encore avant le cap (%), sans compter cet objet. */
@@ -268,15 +373,35 @@ export function scoreItem(it: BisItem, w: Weights, hitRoom: number): ItemScore {
 
 export interface RankedItem { item: BisItem; score: ItemScore }
 
+/** Ajoute à une pièce de set les bonus qu'elle débloque avec les pièces déjà choisies ailleurs. */
+function withSet(it: BisItem, sc: ItemScore, w: Weights, hitRoom: number, others: (BisItem | null | undefined)[]): ItemScore {
+  const set = it.details.set;
+  if (!set) return sc;
+  const same = new Set(others.filter(o => o && o.id !== it.id && o.details.set?.id === set.id).map(o => o!.id));
+  const have = same.size + 1;
+  const bonuses = setBonuses(set);
+  const unlocked = bonuses.filter(b => b.n === have);
+  const v = bonusValue(unlocked, w);
+  const hit = sc.hit + v.hit;
+  const base = sc.base + v.base;
+  const r = (x: number) => Math.round(x * 10) / 10;
+  return {
+    ...sc, base: r(base), hit: r(hit), total: r(base + (w.hit ?? 0) * Math.min(hit, Math.max(0, hitRoom))),
+    set: { id: set.id, name: set.name, have, total: set.items.length, unlocked: bonuses.filter(b => b.n <= have), next: bonuses.find(b => b.n > have) ?? null },
+  };
+}
+
 /**
  * Toutes les options d'un emplacement : d'abord les objets chiffrés, du plus fort au moins fort ; puis les objets à
  * effet, à part, par ordre alphabétique (leur effet n'est pas chiffré).
  */
-export function rankSlot(items: BisItem[], slot: GearSlot, p: BisProfile, w: Weights, hitRoom: number, f: BisFilters = {}) {
+export function rankSlot(items: BisItem[], slot: GearSlot, p: BisProfile, w: Weights, hitRoom: number, f: BisFilters = {},
+  /** Objets des autres emplacements (objectif actuel) : une pièce de set compte ce qu'elle débloque avec eux. */
+  others: (BisItem | null | undefined)[] = []) {
   const scored: RankedItem[] = [], effects: RankedItem[] = [];
   for (const it of items) {
     if (!slotAccepts(slot, it, p) || !usable(it, p, f)) continue;
-    const score = scoreItem(it, w, hitRoom);
+    const score = withSet(it, scoreItem(it, w, hitRoom), w, hitRoom, others);
     (score.effect ? effects : scored).push({ item: it, score });
   }
   scored.sort((a, b) => b.score.total - a.score.total || b.item.itemLevel - a.item.itemLevel || a.item.name.localeCompare(b.item.name));
@@ -293,6 +418,9 @@ export interface BisProposal {
   /** Toucher total (talents + race + équipement), plafonné à l'affichage par l'appelant. */
   totalHit: number;
   total: number;
+  /** Sets de la BiS proposée, et leurs bonus actifs non chiffrés (effets à déclenchement). */
+  sets: SetProgress[];
+  unscored: SetBonus[];
 }
 
 const TWO_HAND = 17;
@@ -303,66 +431,91 @@ const TWO_HAND = 17;
  * effet ne sont pas proposés (non chiffrés). `fixed` garde un objet imposé (déjà obtenu…) dans un emplacement.
  */
 export function proposeBis(
-  items: BisItem[], p: BisProfile, w: Weights, opts: { hitHave: number; filters?: BisFilters; fixed?: Partial<Record<GearSlot, BisItem>>; slots?: GearSlot[] },
+  items: BisItem[], p: BisProfile, w: Weights,
+  opts: { hitHave: number; hitCap?: number; filters?: BisFilters; fixed?: Partial<Record<GearSlot, BisItem>>; slots?: GearSlot[] },
 ): BisProposal {
   const f = opts.filters ?? {};
+  const cap = opts.hitCap ?? p.hitCap;
   const slots = (opts.slots ?? GEAR_SLOTS.filter(s => s !== "Ranged / Relic")).slice();
   const cands = new Map<GearSlot, BisItem[]>();
   for (const s of slots) {
     // Objets sans valeur pour la spé (score nul ou négatif) : jamais proposés, l'emplacement reste à choisir.
-    const list = items.filter(it => slotAccepts(s, it, p) && usable(it, p, f) && !hasEffect(it) && scoreItem(it, w, p.hitCap).total > 0);
-    list.sort((a, b) => scoreItem(b, w, p.hitCap).total - scoreItem(a, w, p.hitCap).total);
-    cands.set(s, list.slice(0, 40));
+    const list = items.filter(it => slotAccepts(s, it, p) && usable(it, p, f) && !hasEffect(it) && scoreItem(it, w, cap).total > 0);
+    list.sort((a, b) => scoreItem(b, w, cap).total - scoreItem(a, w, cap).total);
+    // Les pièces de set restent candidates même faibles seules : leur bonus peut tout changer
+    cands.set(s, [...new Set([...list.slice(0, 40), ...list.filter(it => it.details.set)])]);
   }
   const sel = new Map<GearSlot, BisItem | null>();
   const evaluate = (m: Map<GearSlot, BisItem | null>) => {
     const main = m.get("Main Hand");
-    let hit = 0, base = 0;
-    for (const [s, it] of m) {
-      if (!it || (s === "Off Hand" && main?.inventoryType === TWO_HAND)) continue;
-      const sc = scoreItem(it, w, 0);
-      hit += sc.hit; base += sc.base;
-    }
-    const room = Math.max(0, p.hitCap - opts.hitHave);
-    return { total: base + (w.hit ?? 0) * Math.min(hit, room), hit };
+    const chosen = [...m].filter(([s, it]) => it && !(s === "Off Hand" && main?.inventoryType === TWO_HAND)).map(([, it]) => it);
+    const sc = scoreSelection(chosen, w, Math.max(0, cap - opts.hitHave));
+    return { total: sc.total, hit: sc.hit, sets: sc.sets };
   };
   const conflicts = (m: Map<GearSlot, BisItem | null>, s: GearSlot, it: BisItem) => {
     for (const [o, x] of m) if (o !== s && x && x.id === it.id) return true;
     return false;
   };
+  const climb = (start: Map<GearSlot, BisItem | null>) => {
+    const cur = new Map(start);
+    for (let pass = 0; pass < 6; pass++) {
+      let changed = false;
+      for (const s of slots) {
+        if (opts.fixed?.[s]) continue;
+        let best = cur.get(s) ?? null, bestTotal = evaluate(cur).total;
+        for (const it of cands.get(s)!) {
+          if (it === best || conflicts(cur, s, it)) continue;
+          const t = evaluate(new Map(cur).set(s, it)).total;
+          if (t > bestTotal + 1e-9) { best = it; bestTotal = t; }
+        }
+        if (best !== cur.get(s)) { cur.set(s, best); changed = true; }
+      }
+      if (!changed) break;
+    }
+    return cur;
+  };
   for (const s of slots) sel.set(s, opts.fixed?.[s] ?? null);
   for (const s of slots) if (!sel.get(s)) sel.set(s, cands.get(s)!.find(it => !conflicts(sel, s, it)) ?? null);
-  for (let pass = 0; pass < 6; pass++) {
-    let changed = false;
-    for (const s of slots) {
-      if (opts.fixed?.[s]) continue;
-      let best = sel.get(s) ?? null, bestTotal = evaluate(sel).total;
-      for (const it of cands.get(s)!) {
-        if (it === best || conflicts(sel, s, it)) continue;
-        const trial = new Map(sel).set(s, it);
-        const t = evaluate(trial).total;
-        if (t > bestTotal + 1e-9) { best = it; bestTotal = t; }
-      }
-      if (best !== sel.get(s)) { sel.set(s, best); changed = true; }
-    }
-    if (!changed) break;
+  let bestSel = climb(sel);
+  // Chaque set présent dans au moins deux emplacements : on part de toutes ses pièces, puis on revoit le reste
+  const setSlots = new Map<number, Map<GearSlot, BisItem>>();
+  for (const s of slots) for (const it of cands.get(s)!) {
+    const id = it.details.set?.id;
+    if (!id) continue;
+    const m = setSlots.get(id) ?? new Map<GearSlot, BisItem>();
+    const prev = m.get(s);
+    if (!prev || scoreItem(it, w, cap).total > scoreItem(prev, w, cap).total) m.set(s, it);
+    setSlots.set(id, m);
   }
+  for (const m of setSlots.values()) {
+    if (m.size < 2) continue;
+    const start = new Map(sel);
+    for (const [s, it] of m) if (!opts.fixed?.[s] && !conflicts(start, s, it)) start.set(s, it);
+    const tried = climb(start);
+    if (evaluate(tried).total > evaluate(bestSel).total + 1e-9) bestSel = tried;
+  }
+  for (const [s, it] of bestSel) sel.set(s, it);
   // Arme à deux mains : la main gauche reste vide.
   if (sel.get("Main Hand")?.inventoryType === TWO_HAND) sel.set("Off Hand", null);
-  const { total, hit } = evaluate(sel);
-  const room = Math.max(0, p.hitCap - opts.hitHave);
+  const { total, hit, sets } = evaluate(sel);
+  const room = Math.max(0, cap - opts.hitHave);
   const out: Partial<Record<GearSlot, RankedItem>> = {};
   let used = 0;
+  const chosen = [...sel.values()];
   for (const [s, it] of sel) {
     if (!it) continue;
     const before = Math.max(0, room - used);
-    const score = scoreItem(it, w, before);
+    const score = withSet(it, scoreItem(it, w, before), w, before, chosen.filter(x => x && x.details.set?.id === it.details.set?.id && x.id !== it.id && chosen.indexOf(x) < chosen.indexOf(it)));
     used += score.hit;
     out[s] = { item: it, score };
   }
   const r = (x: number) => Math.round(x * 10) / 10;
-  return { slots: out, gearHit: r(hit), totalHit: r(hit + opts.hitHave), total: r(total) };
+  return { slots: out, gearHit: r(hit), totalHit: r(hit + opts.hitHave), total: r(total), sets: sets.progress, unscored: sets.unscored };
 }
+
+/** Toucher (%) apporté par une liste d'objets. */
+export const gearHit = (items: (BisItem | { details?: ItemDetails | null } | null | undefined)[]) =>
+  Math.round(items.reduce((s, it) => s + (itemStats(it?.details).hit ?? 0), 0) * 10) / 10;
 
 /* ---------- Import de poids (Pawn) ---------- */
 

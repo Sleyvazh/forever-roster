@@ -1,7 +1,9 @@
 import { ARMOR_TYPED_SLOTS, INVENTORY_LABEL, INVENTORY_LABEL_EN, itemRowStats, itemSearchText, itemSubclass, mainArmorSubclass, matchesSearch, subclassText, type GEAR_SLOTS } from "@forever/game-data";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
+import type { BisItem, RankedItem } from "@forever/game-data";
+import { sourceOf, toggleUnobtainable, useSiteAdmin, type BisState } from "./Bis";
 import { DialogHead, Modal } from "./Dialog";
 import { ItemPicker, useGameStatus, useGameVersion } from "./GameData";
 import { FloatingTip, ItemIcon, ItemTooltipBody } from "./ItemTooltip";
@@ -13,7 +15,7 @@ type Slot = (typeof GEAR_SLOTS)[number];
 type View = "cur" | "bis";
 /** Objet de la liste d'un emplacement : la classe et la sous-classe du jeu servent au filtre « Type ». */
 type SlotItem = GameItem & { classId: number; subclassId: number };
-type SortKey = "il" | "req" | "name";
+type SortKey = "il" | "req" | "name" | "bis";
 
 /** Lignes affichées d'un coup, puis « Afficher la suite ». */
 const PAGE = 50;
@@ -42,8 +44,10 @@ interface TypeInfo { label: string; def: boolean; off: boolean; order: number }
  * pièces d'armure le type principal de la classe à ce niveau (mainArmorSubclass) ; les types qu'elle ne peut pas porter
  * sont grisés. Ce que la base ne connaît pas se saisit encore à la main (« Introuvable ? Le saisir à la main »).
  */
-export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClose }: {
+export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClose, bis: bisData }: {
   c: Character; slot: Slot; slotLabel: string; view: View; g: GearEntry;
+  /** Module BiS (lot 2) : tri « Classement BiS » par défaut, avec score, toucher et provenance. */
+  bis?: BisState;
   /** Objet équipé dans l'emplacement : les infobulles de la liste s'y comparent. */
   current?: GameItem | null;
   onSet: (p: Partial<GearEntry>, item?: GameItem) => void; onClose: () => void;
@@ -62,7 +66,12 @@ export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClo
   const [quality, setQuality] = useState(2);
   const [lvl, setLvl] = useState(defLevel);
   const [picked, setPicked] = useState<Record<string, boolean>>({});
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "il", desc: true });
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: bisData?.profile ? "bis" : "il", desc: true });
+  const qc = useQueryClient();
+  const admin = useSiteAdmin();
+  const bisMode = sort.key === "bis" && !!bisData?.profile;
+  const ranked = useMemo(() => (bisMode ? bisData!.rank(slot) : null), [bisMode, bisData, slot]);
+  const asRow = (it: BisItem): SlotItem => ({ ...it, kind: it.kind ?? "" });
   const [shown, setShown] = useState(PAGE);
   const [pop, setPop] = useState(false);
   const [manual, setManual] = useState(false);
@@ -119,7 +128,13 @@ export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClo
     return () => document.removeEventListener("pointerdown", out);
   }, [pop]);
 
-  const reset = () => { setQuality(2); setLvl(defLevel); setPicked({}); setSort({ key: "il", desc: true }); };
+  const reset = () => { setQuality(2); setLvl(defLevel); setPicked({}); setSort({ key: bisData?.profile ? "bis" : "il", desc: true }); };
+  // Classement BiS : objets chiffrés puis objets à effet, filtrés par le texte
+  const bisRows = useMemo(() => {
+    if (!ranked) return null;
+    const keep = (r: RankedItem) => !q.trim() || matchesSearch(itemSearchText(asRow(r.item)), q);
+    return { scored: ranked.scored.filter(keep), effects: ranked.effects.filter(keep) };
+  }, [ranked, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Infobulle de la ligne survolée (ou atteinte au clavier), comparée à l'objet équipé
   const [tip, setTip] = useState<{ item: SlotItem; rect: DOMRect } | null>(null);
@@ -191,6 +206,51 @@ export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClo
             </div>
           )}
         </div>
+        {bisData?.profile && (
+          <div className="seg eq ic-mode" role="group" aria-label={t("Tri")}>
+            <button type="button" className={bisMode ? "on" : ""} aria-pressed={bisMode} onClick={() => setSort({ key: "bis", desc: true })}>{t("Classement BiS")}</button>
+            <button type="button" className={!bisMode ? "on" : ""} aria-pressed={!bisMode} onClick={() => setSort({ key: "il", desc: true })}>{t("Tous les objets")}</button>
+          </div>
+        )}
+        {bisMode && bisRows ? <>
+          <p className="ic-scope" aria-live="polite">{t("Objets obtenables pour ta spé, du plus fort au moins fort")} · <b>{tn(bisRows.scored.length + bisRows.effects.length, "{n} objet", "{n} objets")}</b>
+            {bisData!.roomFor(slot) > 0 ? ` · ${t("il te manque {p} % de toucher", { p: String(bisData!.roomFor(slot)).replace(".", getLang() === "en" ? "." : ",") })}` : ""}</p>
+          <div className="ic-th bis"><span /><span>{t("Objet")}</span><span>{t("Score")}</span><span>{t("Toucher")}</span><span>{t("Provenance")}</span></div>
+          {!bisRows.scored.length && !bisRows.effects.length ? <p className="ic-msg">{t("Aucun objet obtenable connu pour cet emplacement.")}</p> : (
+            <ul className="ic-list" ref={listRef} aria-label={t("Classement BiS : {slot}", { slot: slotLabel })} onScroll={() => setTip(null)}>
+              {[...bisRows.scored.map((r, i) => ({ r, i: i + 1 })), ...bisRows.effects.map(r => ({ r, i: 0 }))].map(({ r, i }, k, arr) => {
+                const it = asRow(r.item);
+                const src = sourceOf(r.item);
+                const isCur = !!g.curId && g.curId === it.id, isBis = !!g.bisId && g.bisId === it.id;
+                const stats = itemRowStats(it.details, lang).join(" · ");
+                const firstFx = i === 0 && (k === 0 || arr[k - 1]!.i !== 0);
+                const atPointer = (e: MouseEvent) => setTip({ item: it, rect: new DOMRect(e.clientX + 6, e.clientY + 10, 0, 0) });
+                return (
+                  <li key={it.id} className="ic-bisli">
+                    {firstFx && <p className="ic-sep">{t("À effet · non chiffré")}</p>}
+                    <button type="button" className={`ic-row bis${mine === it.id ? " on" : ""}`}
+                      aria-label={[i ? `${i}.` : "", it.name, r.score.effect ? t("effet non chiffré") : t("score {n}", { n: r.score.total }), src?.text ?? ""].filter(Boolean).join(", ")}
+                      onClick={() => choose(it)} onKeyDown={rowKey} onMouseEnter={atPointer} onMouseMove={atPointer} onMouseLeave={() => setTip(null)} onBlur={() => setTip(null)}>
+                      <ItemIcon item={it} size={36} />
+                      <span className="ic-name">
+                        <span className={`q${it.quality}`}>{i ? `${i}. ` : ""}{it.name}</span>
+                        {(isCur || isBis) && <span className="ic-tags">{isCur && <span className="tag gold">{t("Équipé")}</span>}{isBis && <span className="tag ok">{t("Objectif BiS")}</span>}</span>}
+                        <small>{[typeOf(it, slot), t("niv. {n}", { n: it.itemLevel }), stats].filter(Boolean).join(" · ")}</small>
+                        {r.score.set && <small className="bis-set">{t("{set} {have}/{total}", { set: r.score.set.name, have: r.score.set.have, total: r.score.set.total })}
+                          {r.score.set.unlocked.filter(b => b.n === r.score.set!.have).map(b => ` · (${b.n}) ${b.text}`).join("")}
+                          {r.score.set.next ? ` · ${t("prochain bonus à {n}", { n: r.score.set.next.n })}` : ""}</small>}
+                      </span>
+                      <span className="ic-n num">{r.score.effect ? "—" : String(r.score.total).replace(".", lang === "en" ? "." : ",")}</span>
+                      <span className={`ic-n num${r.score.hit > 0 ? " t-ok" : ""}`}>{r.score.hit > 0 ? `${String(r.score.hit).replace(".", lang === "en" ? "." : ",")} %` : "—"}</span>
+                      <span className={`ic-st t-${src?.tone ?? "warn"}`}>{src?.text ?? ""}</span>
+                    </button>
+                    {admin && <button type="button" className="link ic-admin" onClick={() => void toggleUnobtainable(bisData!.profile!.key, r.item, qc)}>{t("Marquer non obtenable")}</button>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </> : <>
         <p className="ic-scope" aria-live="polite">{scope} · <b>{tn(filtered.length, "{n} objet", "{n} objets")}</b></p>
         <div className="ic-th">
           <span />
@@ -237,7 +297,8 @@ export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClo
               })}
             </ul>
           )}
-        {list.data?.truncated && <p className="hint ic-cut">{t("Liste coupée aux {n} objets du plus haut niveau : resserre les filtres (qualité, niveau).", { n: list.data.items.length })}</p>}
+        </>}
+        {!bisMode && list.data?.truncated && <p className="hint ic-cut">{t("Liste coupée aux {n} objets du plus haut niveau : resserre les filtres (qualité, niveau).", { n: list.data.items.length })}</p>}
       </>}
       {(manual || noBase) && (
         <div className="ic-manual" role="group" aria-label={t("Saisie à la main")}>
@@ -257,7 +318,7 @@ export function ItemChooser({ c, slot, slotLabel, view, g, current, onSet, onClo
         </div>
       )}
       <div className="ic-foot">
-        {!noBase && filtered.length > shown && <button type="button" className="link" onClick={() => setShown(s => s + PAGE)}>{t("Afficher la suite ›")}</button>}
+        {!noBase && !bisMode && filtered.length > shown && <button type="button" className="link" onClick={() => setShown(s => s + PAGE)}>{t("Afficher la suite ›")}</button>}
         {bis && has && <label className="ic-got"><input type="checkbox" checked={!!g.got} onChange={e => onSet({ got: e.target.checked })} /> {t("BiS obtenu")}</label>}
         <span className="grow1" />
         {has && <button type="button" className="btn ghost sm" onClick={clear}>{t("Retirer l'objet")}</button>}

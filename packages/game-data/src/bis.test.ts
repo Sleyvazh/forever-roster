@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BIS_SOURCE_SEED } from "./bis-sources";
 import {
-  bisProfile, itemFaction, sourceLabel, hasEffect, isObtainable, itemStats, mergeWeights, parseWeightsImport, proposeBis, rankSlot, scoreItem, talentHit, usable,
+  bisProfile, gearHit, HIT_TARGETS, setBonuses, itemFaction, sourceLabel, hasEffect, isObtainable, itemStats, mergeWeights, parseWeightsImport, proposeBis, rankSlot, scoreItem, talentHit, usable,
   type BisItem,
 } from "./bis";
 
@@ -150,5 +150,71 @@ describe("provenances et faction", () => {
     expect(itemFaction("Theramore Pauldrons")).toBe("Alliance");
     expect(itemFaction("Darkspear Pauldrons")).toBe("Horde");
     expect(itemFaction("Cape of the Black Baron")).toBeNull();
+  });
+});
+
+describe("lot 2 : cible, toucher de l'équipement, enchantements", () => {
+  it("cap selon la cible : le donjon demande moins de toucher", () => {
+    expect(HIT_TARGETS).toEqual({ raid: 8, dungeon: 6 });
+    // 5 % de talents : contre un boss de donjon, l'anneau suffit ; contre un boss de raid, la tête doit en apporter
+    const dungeon = proposeBis(all, cat, w, { hitHave: 5, hitCap: HIT_TARGETS.dungeon, filters: { faction: "Horde" } });
+    expect(dungeon.slots.Head?.item.name).toBe("Outlaw's Collar");
+    const raid = proposeBis(all, cat, w, { hitHave: 5, filters: { faction: "Horde" } });
+    expect(raid.slots.Head?.item.name).toBe("Scarlet Executioner's Guise");
+  });
+
+  it("toucher apporté par une liste d'objets", () => {
+    expect(gearHit([mask, julio, null, guise])).toBe(4.5);
+  });
+
+  it("enchantements conseillés du Félin", () => {
+    expect(cat.enchants?.Wrist?.best.recipe).toBe("Enchant Bracer - Superior Agility");
+    expect(cat.enchants?.Head?.best.item).toBe("Lesser Arcanum of Voracity");
+    expect(bisProfile("Druid", "Feral Bear")!.enchants).toBeUndefined();
+  });
+});
+
+describe("bonus de set (Feralheart Raiment, capture de Flo du 24/11)", () => {
+  const SET = {
+    id: 1667, name: "Feralheart Raiment",
+    items: ["Feralheart Boots", "Feralheart Chest", "Feralheart Gloves", "Feralheart Helm", "Feralheart Legs", "Feralheart Shoulders", "Feralheart Waist", "Feralheart Bands"],
+    bonuses: [
+      { n: 2, text: "+8 All Resistances." }, { n: 3, text: "Restores 8 mana per 5 sec." },
+      { n: 4, text: "Chance on spellcast to restore 200 Mana, on melee attack to regenerate 20 Energy over 5 sec, and when struck by a melee attack to generate 10 Rage." },
+      { n: 5, text: "When struck in combat, has a 5% chance to increase your movement speed by 10% for 8 sec." },
+      { n: 6, text: "+40 Attack Power." }, { n: 6, text: "Increases damage and healing done by magical spells and effects by up to 23." },
+    ],
+  };
+  // Six pièces un peu moins fortes que les meilleures seules (comme les Feralheart Bands : 10 For, 8 Agi)
+  const piece = (id: number, inv: number) => item({ id, name: `Feralheart ${id}`, inventoryType: inv, details: { stats: [[4, 10], [3, 8], [7, 9], [5, 9]], set: SET } });
+  const fh = [piece(226788, 9), piece(226792, 1), piece(226795, 5), piece(226793, 10), piece(226797, 6), piece(226799, 7)];
+  const rival = (id: number, inv: number) => item({ id, name: `Solo ${id}`, inventoryType: inv, details: { stats: [[4, 12], [3, 8]] } }); // 40,8 contre 36,8 : 6 × 4 = 24 < 40 PA
+  const solos = [rival(1, 9), rival(2, 1), rival(3, 5), rival(4, 10), rival(5, 6), rival(6, 7)];
+
+  it("bonus lus dans le texte : PA et dégâts des sorts chiffrés, résistances à zéro, effets non chiffrés", () => {
+    const b = setBonuses(SET);
+    expect(b.map(x => [x.n, x.stats])).toEqual([[2, {}], [3, { mp5: 8 }], [4, null], [5, null], [6, { ap: 40 }], [6, { sp: 23 }]]);
+  });
+
+  it("la BiS monte le set entier quand son bonus l'emporte", () => {
+    const p = proposeBis([...fh, ...solos], cat, w, { hitHave: 8 });
+    const names = ["Wrist", "Head", "Chest", "Hands", "Waist", "Legs"].map(s => p.slots[s as keyof typeof p.slots]?.item.name);
+    expect(names.every(n => n?.startsWith("Feralheart"))).toBe(true);
+    expect(p.sets[0]).toMatchObject({ name: "Feralheart Raiment", have: 6 });
+    expect(p.unscored.map(b => b.n)).toEqual([4, 5]);
+    // Sans le bonus de 40 PA (poids nul), les pièces seules gagnent
+    const noAp = proposeBis([...fh, ...solos], cat, { ...w, ap: 0 }, { hitHave: 8 });
+    expect(noAp.slots.Wrist?.item.name).toBe("Solo 1");
+  });
+
+  it("dans le classement, une pièce compte ce qu'elle débloque avec les autres", () => {
+    const five = fh.slice(1, 6); // 5 pièces déjà dans l'objectif : les poignets débloquent le bonus de 6
+    const r = rankSlot([fh[0]!, solos[0]!], "Wrist", cat, w, 0, {}, five);
+    expect(r.scored[0]!.item.name).toBe("Feralheart 226788");
+    expect(r.scored[0]!.score.set).toMatchObject({ have: 6, total: 8, next: null });
+    expect(r.scored[0]!.score.total).toBe(76.8); // 36,8 + 40 PA
+    const alone = rankSlot([fh[0]!, solos[0]!], "Wrist", cat, w, 0);
+    expect(alone.scored[0]!.item.name).toBe("Solo 1");
+    expect(alone.scored[1]!.score.set).toMatchObject({ have: 1, next: { n: 2 } });
   });
 });

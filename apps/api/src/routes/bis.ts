@@ -1,8 +1,8 @@
 import {
   BIS_PROFILES, BIS_SOURCE_SEED, itemFaction, SKILL_LINE_NAMES, WEIGHT_KEYS,
-  type BisItem, type BisProfile, type BisSource, type ItemDetails, type Weights,
+  type BisEnchantRef, type BisItem, type BisProfile, type BisSource, type ItemDetails, type Weights,
 } from "@forever/game-data";
-import { and, eq, gte, lte, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { bisWeights, gameHotfixes, gameItems, gameRecipes, itemOverrides, users } from "../db/schema";
@@ -35,6 +35,8 @@ const overrideBody = z.object({
   source: sourceSchema.nullable().optional(),
 }).strict();
 
+const ITEM_COLS = { id: gameItems.id, name: gameItems.name, quality: gameItems.quality, inventoryType: gameItems.inventoryType, details: gameItems.details };
+
 const STANDING = ["neutral", "neutral", "neutral", "neutral", "friendly", "honored", "revered", "exalted"] as const;
 
 function profileOf(key: string): BisProfile {
@@ -58,14 +60,17 @@ export async function bisRoutes(app: FastifyInstance) {
   const { db } = app.ctx;
   app.addHook("preHandler", requireAuth);
 
-  /** Objets que la spé peut porter (niveau requis 40 à 60, qualité Inhabituel et plus), prêts pour le moteur. */
+  /**
+   * Objets que la spé peut porter (niveau requis 40 à 60, ou sans niveau requis avec un niveau d'objet de 50 et plus ;
+   * qualité Inhabituel et plus), prêts pour le moteur.
+   */
   app.get("/:profile/items", async (req, reply) => {
     const p = profileOf(parse(profileParam, req.params).profile);
     const armor = p.armor.length ? sql`(${gameItems.classId} = 4 and ${gameItems.inventoryType} <> 28 and ${gameItems.subclassId} in ${p.armor})` : sql`false`;
     const relic = p.relic !== undefined ? sql`(${gameItems.classId} = 4 and ${gameItems.inventoryType} = 28 and ${gameItems.subclassId} = ${p.relic})` : sql`false`;
     const weapons = p.weapons.length ? sql`(${gameItems.classId} = 2 and ${gameItems.subclassId} in ${p.weapons})` : sql`false`;
     const rows = await db.select({
-      id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel,
+      id: gameItems.id, name: gameItems.name, quality: gameItems.quality, itemLevel: gameItems.itemLevel, reqLevel: gameItems.reqLevel, kind: gameItems.kind,
       classId: gameItems.classId, subclassId: gameItems.subclassId, inventoryType: gameItems.inventoryType, details: gameItems.details,
       seen: sql<boolean>`exists (select 1 from ${gameHotfixes} where ${gameHotfixes.tableHash} = ${TABLE_HASH.ItemSparse}
         and ${gameHotfixes.rowId} = ${gameItems.id} and not ${gameHotfixes.removed})`,
@@ -73,7 +78,10 @@ export async function bisRoutes(app: FastifyInstance) {
         from ${gameRecipes} where ${gameRecipes.createdItemId} = ${gameItems.id} order by ${gameRecipes.reqSkill} limit 1)`,
       unobtainable: itemOverrides.unobtainable, factionOverride: itemOverrides.faction, sourceOverride: itemOverrides.source,
     }).from(gameItems).leftJoin(itemOverrides, eq(itemOverrides.itemId, gameItems.id))
-      .where(and(or(armor, relic, weapons), gte(gameItems.reqLevel, 40), lte(gameItems.reqLevel, 60), gte(gameItems.quality, 2)));
+      .where(and(or(armor, relic, weapons), gte(gameItems.quality, 2),
+        // Niveau requis 40 à 60, ou aucun (la plupart des récompenses de quête et les sets de donjon de Forever) avec un
+        // niveau d'objet de fin de jeu
+        or(and(gte(gameItems.reqLevel, 40), lte(gameItems.reqLevel, 60)), and(eq(gameItems.reqLevel, 0), gte(gameItems.itemLevel, 50)))));
 
     const items: BisItem[] = rows.map(r => {
       const d = r.details ?? {};
@@ -82,12 +90,45 @@ export async function bisRoutes(app: FastifyInstance) {
       const source = r.sourceOverride ? { ...r.sourceOverride, from: "admin" as const }
         : seed ? { ...seed, from: "seed" as const } : autoSource(d, r.recipe);
       return {
-        id: r.id, name: r.name, quality: r.quality, itemLevel: r.itemLevel, reqLevel: r.reqLevel, classId: r.classId, subclassId: r.subclassId,
+        id: r.id, name: r.name, quality: r.quality, itemLevel: r.itemLevel, reqLevel: r.reqLevel, kind: r.kind, classId: r.classId, subclassId: r.subclassId,
         inventoryType: r.inventoryType, details: d, faction, pvpRank: d.pvpRank ?? 0, seen: r.seen, source, unobtainable: !!r.unobtainable,
       };
     });
     reply.header("Cache-Control", "private, max-age=300");
     return { profile: p.key, items };
+  });
+
+  /**
+   * Enchantements conseillés de la spé (lot BiS-2), retrouvés dans la base : recette d'Enchantement (composants pour la
+   * liste de courses, icône du patron) ou objet (arcanum). Introuvable : le libellé seul, sans composants.
+   */
+  app.get("/:profile/enchants", async (req, reply) => {
+    const p = profileOf(parse(profileParam, req.params).profile);
+    const refs = Object.values(p.enchants ?? {}).flatMap(e => [e!.best, e!.cheaper]).filter((r): r is BisEnchantRef => !!r);
+    const recipeNames = [...new Set(refs.flatMap(r => (r.recipe ? [r.recipe.toLowerCase()] : [])))];
+    const itemNames = [...new Set(refs.flatMap(r => (r.item ? [r.item.toLowerCase()] : [])))];
+    const recipes = recipeNames.length ? await db.select({ spellId: gameRecipes.spellId, name: gameRecipes.name, reqSkill: gameRecipes.reqSkill, reagents: gameRecipes.reagents, taughtBy: gameRecipes.taughtBy })
+      .from(gameRecipes).where(and(eq(gameRecipes.skillLine, 333), inArray(sql`lower(${gameRecipes.name})`, recipeNames))) : [];
+    const named = itemNames.length ? await db.select(ITEM_COLS).from(gameItems).where(inArray(sql`lower(${gameItems.name})`, itemNames)) : [];
+    const ids = new Set<number>();
+    for (const r of recipes) { for (const g of r.reagents) ids.add(g.id); if (r.taughtBy[0]) ids.add(r.taughtBy[0]); }
+    const extra = ids.size ? await db.select(ITEM_COLS).from(gameItems).where(inArray(gameItems.id, [...ids])) : [];
+    const byId = new Map([...named, ...extra].map(i => [i.id, i]));
+    const recipeBy = new Map(recipes.map(r => [r.name.toLowerCase(), r]));
+    const itemBy = new Map(named.map(i => [i.name.toLowerCase(), i]));
+    const resolve = (r: BisEnchantRef) => {
+      if (r.item) return { ...r, item: itemBy.get(r.item.toLowerCase()) ?? null, recipe: null, reagents: [] };
+      const rec = r.recipe ? recipeBy.get(r.recipe.toLowerCase()) : undefined;
+      if (!rec) return { ...r, recipe: null, item: null, reagents: [] };
+      return {
+        ...r, item: rec.taughtBy[0] ? byId.get(rec.taughtBy[0]) ?? null : null,
+        recipe: { spellId: rec.spellId, name: rec.name, reqSkill: rec.reqSkill },
+        reagents: rec.reagents.map(g => ({ n: g.n, item: byId.get(g.id) ?? { id: g.id, name: `#${g.id}`, quality: 1, inventoryType: 0, details: {} } })),
+      };
+    };
+    const slots = Object.fromEntries(Object.entries(p.enchants ?? {}).map(([slot, e]) => [slot, { best: resolve(e!.best), cheaper: e!.cheaper ? resolve(e!.cheaper) : null }]));
+    reply.header("Cache-Control", "private, max-age=300");
+    return { profile: p.key, slots };
   });
 
   /** Poids : défaut de la spé, ceux de la guilde (si groupId) et ceux du joueur. */

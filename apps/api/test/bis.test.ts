@@ -31,14 +31,27 @@ beforeAll(async () => {
     { ...base, id: 12796, name: "Hammer of the Titans", classId: 2, subclassId: 5, inventoryType: 17, details: { dmg: { min: 163, max: 246, speed: 3.8, dps: 53.9 } } },
     // Niveau trop bas
     { ...base, id: 2, name: "Low Cap", reqLevel: 20, classId: 4, subclassId: 2, inventoryType: 1, details: {} },
+    // Sans niveau requis (récompense de quête, set de donjon de Forever) : gardé d'après son niveau d'objet
+    { ...base, id: 226788, name: "Feralheart Bands", reqLevel: 0, itemLevel: 65, classId: 4, subclassId: 2, inventoryType: 9, details: { stats: [[4, 10], [3, 8]] } },
+    { ...base, id: 4, name: "Low Quest Reward", reqLevel: 0, itemLevel: 30, classId: 4, subclassId: 2, inventoryType: 9, details: {} },
   ]);
   await db.insert(gameHotfixes).values([
     { tableHash: TABLE_HASH.ItemSparse, rowId: 13404, push: 1, data: Buffer.from([1]), build: 71037 },
     { tableHash: TABLE_HASH.ItemSparse, rowId: 16564, push: 1, data: Buffer.from([1]), build: 71037 },
+    { tableHash: TABLE_HASH.ItemSparse, rowId: 226788, push: 1, data: Buffer.from([1]), build: 71037 },
     // Retiré par le serveur : ne compte pas comme vu
     { tableHash: TABLE_HASH.ItemSparse, rowId: 21693, push: 1, removed: true, data: Buffer.alloc(0), build: 71037 },
   ]);
   await db.insert(gameRecipes).values({ spellId: 19107, skillLine: 165, name: "Crafted Pants", reqSkill: 300, trivialLow: 320, trivialHigh: 340, createdItemId: 3 });
+  // Enchantements : une recette avec ses composants et son patron, un arcanum
+  await db.insert(gameItems).values([
+    { ...base, id: 16203, name: "Greater Eternal Essence", quality: 2, classId: 7, subclassId: 0, inventoryType: 0, details: { icon: "inv_enchant_essenceeternallarge" } },
+    { ...base, id: 16204, name: "Illusion Dust", quality: 1, classId: 7, subclassId: 0, inventoryType: 0, details: {} },
+    { ...base, id: 900001, name: "Formula: Enchant Bracer - Superior Agility", classId: 9, subclassId: 8, inventoryType: 0, details: { icon: "inv_misc_note_01" } },
+    { ...base, id: 18330, name: "Lesser Arcanum of Voracity", classId: 0, subclassId: 0, inventoryType: 0, details: { icon: "inv_misc_gem_02" } },
+  ]);
+  await db.insert(gameRecipes).values({ spellId: 990001, skillLine: 333, name: "Enchant Bracer - Superior Agility", reqSkill: 300, trivialLow: 310, trivialHigh: 320,
+    reagents: [{ id: 16203, n: 2 }, { id: 16204, n: 6 }], taughtBy: [900001], fromItem: true });
 });
 afterAll(async () => { await env.close(); });
 
@@ -52,7 +65,7 @@ describe("objets candidats", () => {
     const items = r.json().items as any[];
     const by = Object.fromEntries(items.map(i => [i.name, i]));
     expect(Object.keys(by).sort()).toEqual([
-      "Crafted Pants", "Don Julio's Band", "General's Leather Legguards", "Guise of the Devourer", "Hammer of the Titans",
+      "Crafted Pants", "Don Julio's Band", "Feralheart Bands", "General's Leather Legguards", "Guise of the Devourer", "Hammer of the Titans",
       "Idol of the Dream", "Mask of the Unforgiven",
     ]);
     expect(by["Mask of the Unforgiven"]).toMatchObject({ seen: true, faction: null, source: { kind: "drop", where: "Stratholme", from: "seed" } });
@@ -66,6 +79,20 @@ describe("objets candidats", () => {
 
   it("connexion requise", async () => {
     expect((await env.app.inject({ method: "GET", url: "/api/bis/druid-feral-cat/items" })).statusCode).toBe(401);
+  });
+});
+
+describe("enchantements conseillés", () => {
+  it("recette avec ses composants et l'icône de son patron, arcanum, recette introuvable", async () => {
+    const { c } = await signedIn(env, "Enchanteur");
+    const r = (await c.get("/api/bis/druid-feral-cat/enchants")).json();
+    const wrist = r.slots.Wrist.best;
+    expect(wrist.recipe).toEqual({ spellId: 990001, name: "Enchant Bracer - Superior Agility", reqSkill: 300 });
+    expect(wrist.item.details.icon).toBe("inv_misc_note_01");
+    expect(wrist.reagents.map((g: any) => [g.n, g.item.name])).toEqual([[2, "Greater Eternal Essence"], [6, "Illusion Dust"]]);
+    expect(r.slots.Head.best.item.name).toBe("Lesser Arcanum of Voracity");
+    expect(r.slots.Feet.best).toMatchObject({ recipe: null, item: null, reagents: [], fr: "Agilité supérieure (+7)" });
+    expect((await c.get("/api/bis/druid-feral-bear/enchants")).json().slots).toEqual({});
   });
 });
 
