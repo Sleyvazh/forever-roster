@@ -24,3 +24,4 @@ export * from "./seal";
 export * from "./addon-errors";
 export * from "./bis";
 export * from "./bis-sources";
+export * from "./bis-sources-web";

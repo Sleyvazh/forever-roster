@@ -14,7 +14,7 @@ const TIMESAVER = "https://timesaver.gg/tools/wow-forever/leveling-gear/druid/fe
 
 const drop = (where: string, npc: string, ref: string): BisSource => ({ kind: "drop", where, npc, ref });
 const craft = (profession: string, skill: number | undefined, ref: string): BisSource => ({ kind: "craft", profession, ...(skill ? { skill } : {}), ref });
-const pix = (cost: number): BisSource => ({ kind: "vendor", where: "Stranglethorn Vale", npc: "Pix Xizzix", cost: `${cost} Tarnished Undermine Real`, ref: WOWTBC });
+const pix = (cost: number): BisSource => ({ kind: "vendor", where: "Booty Bay", npc: "Pix Xizzix", cost: `${cost} Tarnished Undermine Real`, ref: WOWTBC });
 const av: BisSource = { kind: "reputation", faction: "Stormpike Guard / Frostwolf Clan", standing: "exalted", ref: WOWTBC };
 
 export const BIS_SOURCE_SEED: Record<number, BisSource> = {

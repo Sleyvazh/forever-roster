@@ -19,14 +19,14 @@ export type GearSlot = (typeof GEAR_SLOTS)[number];
 /* ---------- Caractéristiques et poids ---------- */
 
 export const WEIGHT_KEYS = [
-  "str", "agi", "sta", "int", "spi", "ap", "crit", "hit", "exp", "haste", "wdps", "armor", "def", "dodge", "parry", "sp", "heal", "mp5",
+  "str", "agi", "sta", "int", "spi", "ap", "fap", "crit", "hit", "exp", "haste", "wdps", "armor", "def", "dodge", "parry", "sp", "heal", "mp5",
 ] as const;
 export type WeightKey = (typeof WEIGHT_KEYS)[number];
 export type Weights = Partial<Record<WeightKey, number>>;
 
 /** Unité de chaque poids : « point », « % » ou « DPS ». */
 export const WEIGHT_UNIT: Record<WeightKey, "point" | "%" | "DPS"> = {
-  str: "point", agi: "point", sta: "point", int: "point", spi: "point", ap: "point", crit: "%", hit: "%", exp: "point",
+  str: "point", agi: "point", sta: "point", int: "point", spi: "point", ap: "point", fap: "point", crit: "%", hit: "%", exp: "point",
   haste: "point", wdps: "DPS", armor: "point", def: "point", dodge: "point", parry: "point", sp: "point", heal: "point", mp5: "point",
 };
 
@@ -37,13 +37,53 @@ const STAT_KEY: Record<number, [WeightKey, number]> = {
   43: ["mp5", 1], 50: ["armor", 1],
 };
 
-/** Caractéristiques d'un objet dans les unités des poids (toucher et critique en %). */
+/**
+ * Effets « Équipé » qui sont en fait des caractéristiques exactes (demande de Flo, 25/11 : « +140 PA en forme de félin »,
+ * « +2 % de critique » écrits comme un effet) : ils comptent dans le score. Mêmes textes que les bonus de set.
+ * `fap` : puissance d'attaque en forme de félin et d'ours, qui ne vaut que pour le Druide farouche.
+ */
+const STAT_TEXT: [RegExp, WeightKey | null][] = [
+  [/^\+(\d+) Attack Power(?:, doubled against [\w ]+ units)?\.?$/i, "ap"],
+  [/^\+(\d+) Attack Power in Cat, Bear, and Dire Bear forms only\.?$/i, "fap"],
+  [/^Increases damage and healing done by magical spells and effects by up to (\d+)\.?$/i, "sp"],
+  [/^Increases healing done by spells and effects by up to (\d+)\.?$/i, "heal"],
+  [/^Restores (\d+) mana per 5 sec\.?$/i, "mp5"],
+  [/^Improves your chance to hit(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "hit"],
+  [/^Improves your chance to get a critical strike(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "crit"],
+  [/^\+(\d+) Strength\.?$/i, "str"], [/^\+(\d+) Agility\.?$/i, "agi"], [/^\+(\d+) Stamina\.?$/i, "sta"],
+  [/^\+(\d+) Intellect\.?$/i, "int"], [/^\+(\d+) Spirit\.?$/i, "spi"], [/^\+(\d+) Armor\.?$/i, "armor"],
+  [/^Increased Defense \+(\d+)\.?$/i, "def"],
+  // Résistances : chiffrées à zéro (rien pour le score, mais ce n'est pas un effet à déclenchement)
+  [/^\+(\d+) (?:All Resistances|\w+ Resistance)\.?$/i, null],
+];
+/** Caractéristiques lues dans un texte d'effet ou de bonus ; null : effet à déclenchement, non chiffré. */
+export function statsFromText(text: string): Partial<Record<WeightKey, number>> | null {
+  for (const [re, k] of STAT_TEXT) {
+    const m = re.exec(text.trim());
+    if (m) return k ? { [k]: Number(m[1]) } : {};
+  }
+  return null;
+}
+/** Effets d'un objet : ceux de « Équipé » convertis en caractéristiques, et les autres (déclenchement, « Utiliser »). */
+export function itemEffects(d: ItemDetails | null | undefined) {
+  const stats: Partial<Record<WeightKey, number>> = {};
+  const rest: { trigger: number; text: string }[] = [];
+  for (const e of d?.effects ?? []) {
+    const st = e.trigger === 1 ? statsFromText(e.text) : null;
+    if (!st) { rest.push(e); continue; }
+    for (const [k, v] of Object.entries(st) as [WeightKey, number][]) stats[k] = (stats[k] ?? 0) + v;
+  }
+  return { stats, rest };
+}
+
+/** Caractéristiques d'un objet dans les unités des poids (toucher et critique en %), effets « Équipé » exacts compris. */
 export function itemStats(d: ItemDetails | null | undefined): Partial<Record<WeightKey, number>> {
   const out: Partial<Record<WeightKey, number>> = {};
   for (const [type, v] of d?.stats ?? []) {
     const k = STAT_KEY[type];
     if (k) out[k[0]] = (out[k[0]] ?? 0) + v / k[1];
   }
+  for (const [k, v] of Object.entries(itemEffects(d).stats) as [WeightKey, number][]) out[k] = (out[k] ?? 0) + v;
   if (d?.armor) out.armor = (out.armor ?? 0) + d.armor;
   if (d?.dmg) out.wdps = d.dmg.dps;
   return out;
@@ -71,6 +111,8 @@ export interface BisProfile {
   weights: Weights;
   /** Enchantements conseillés par emplacement (lot BiS-2) ; absent : aucun conseil pour cet emplacement. */
   enchants?: Partial<Record<GearSlot, BisEnchantPick>>;
+  /** Effets utiles à la spé dans la section « Objets à effet » : offensifs en mêlée, ou défensifs (tank). */
+  focus: "melee" | "tank";
 }
 
 /**
@@ -108,12 +150,12 @@ export type HitTarget = keyof typeof HIT_TARGETS;
  */
 export const BIS_PROFILES: BisProfile[] = [
   {
-    key: "druid-feral-cat", cls: "Druid", spec: "Feral Cat", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8,
-    weights: { str: 2, agi: 2.1, ap: 1, crit: 22, hit: 20, wdps: 14, sta: 0, exp: 1.5 }, enchants: CAT_ENCHANTS,
+    key: "druid-feral-cat", cls: "Druid", spec: "Feral Cat", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8, focus: "melee",
+    weights: { str: 2, agi: 2.1, ap: 1, fap: 1, crit: 22, hit: 20, wdps: 14, sta: 0, exp: 1.5 }, enchants: CAT_ENCHANTS,
   },
   {
-    key: "druid-feral-bear", cls: "Druid", spec: "Feral Bear", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8,
-    weights: { sta: 1.5, armor: 0.1, def: 1.5, dodge: 1.2, agi: 1.2, str: 0.6, ap: 0.3, hit: 8, crit: 4, wdps: 3, exp: 1 },
+    key: "druid-feral-bear", cls: "Druid", spec: "Feral Bear", armor: [0, 1, 2], weapons: [4, 5, 10, 13, 15], relic: 8, offHand: [23], hitCap: 8, focus: "tank",
+    weights: { sta: 1.5, armor: 0.1, def: 1.5, dodge: 1.2, agi: 1.2, str: 0.6, ap: 0.3, fap: 0.3, hit: 8, crit: 4, wdps: 3, exp: 1 },
   },
 ];
 
@@ -238,8 +280,11 @@ export interface BisItem {
 
 export const isPvp = (it: BisItem) => (it.pvpRank ?? 0) > 0 || it.source?.kind === "pvp";
 export const isBoe = (it: BisItem) => it.details.bond === 2;
-/** Objet à effet : relique, ou effet « Utiliser », « Équipé » ou « Chances quand vous touchez » (non chiffré). */
-export const hasEffect = (it: BisItem) => it.inventoryType === 28 || (it.details.effects?.length ?? 0) > 0;
+/**
+ * Objet à effet : il a un effet non chiffré (« Utiliser », « Chances quand vous touchez », ou un « Équipé » qui n'est pas
+ * une caractéristique exacte). Ces objets sont classés à part (section « Objets à effet », 25/11).
+ */
+export const hasEffect = (it: BisItem) => itemEffects(it.details).rest.length > 0;
 export const isObtainable = (it: BisItem) => !it.unobtainable && (!!it.seen || (!!it.source && it.source.from !== "auto"));
 
 export interface BisFilters {
@@ -295,29 +340,10 @@ export interface ItemScore {
 export interface SetBonus { n: number; text: string; stats: Partial<Record<WeightKey, number>> | null }
 export interface SetProgress { id: number; name: string; have: number; total: number; unlocked: SetBonus[]; next: SetBonus | null }
 
-const SET_STAT: [RegExp, WeightKey | null][] = [
-  [/^\+(\d+) Attack Power\.?$/i, "ap"],
-  [/^Increases damage and healing done by magical spells and effects by up to (\d+)\.?$/i, "sp"],
-  [/^Increases healing done by spells and effects by up to (\d+)\.?$/i, "heal"],
-  [/^Restores (\d+) mana per 5 sec\.?$/i, "mp5"],
-  [/^Improves your chance to hit(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "hit"],
-  [/^Improves your chance to get a critical strike(?: with all spells and attacks)? by (\d+(?:\.\d+)?)%\.?$/i, "crit"],
-  [/^\+(\d+) Strength\.?$/i, "str"], [/^\+(\d+) Agility\.?$/i, "agi"], [/^\+(\d+) Stamina\.?$/i, "sta"],
-  [/^\+(\d+) Intellect\.?$/i, "int"], [/^\+(\d+) Spirit\.?$/i, "spi"], [/^\+(\d+) Armor\.?$/i, "armor"],
-  [/^Increased Defense \+(\d+)\.?$/i, "def"],
-  // Résistances : chiffrées à zéro (rien pour le score, mais ce n'est pas un effet à déclenchement)
-  [/^\+(\d+) (?:All Resistances|\w+ Resistance)\.?$/i, null],
-];
+
 /** Bonus d'un set, lus dans le texte du jeu (anglais). */
 export function setBonuses(set: ItemDetails["set"] | null | undefined): SetBonus[] {
-  return (set?.bonuses ?? []).map(b => {
-    const text = b.text.trim();
-    for (const [re, k] of SET_STAT) {
-      const m = re.exec(text);
-      if (m) return { n: b.n, text, stats: k ? { [k]: Number(m[1]) } : {} };
-    }
-    return { n: b.n, text, stats: null };
-  }).sort((a, b) => a.n - b.n);
+  return (set?.bonuses ?? []).map(b => ({ n: b.n, text: b.text.trim(), stats: statsFromText(b.text) })).sort((a, b) => a.n - b.n);
 }
 
 /** Valeur (sans le toucher) et toucher apportés par des bonus. */
@@ -407,6 +433,60 @@ export function rankSlot(items: BisItem[], slot: GearSlot, p: BisProfile, w: Wei
   scored.sort((a, b) => b.score.total - a.score.total || b.item.itemLevel - a.item.itemLevel || a.item.name.localeCompare(b.item.name));
   effects.sort((a, b) => a.item.name.localeCompare(b.item.name));
   return { scored, effects };
+}
+
+/* ---------- Section « Objets à effet » (demande de Flo, 25/11) ---------- */
+
+/**
+ * Effets utiles à la spé, lus dans le texte du jeu (anglais) : pour la mêlée, ce qui touche à l'attaque, au critique, à la
+ * vitesse, à l'énergie ou aux dégâts ; pour le tank, la défense. Le reste (sorts, soins, vitesse de course, autres
+ * classes…) va dans « Autres ».
+ */
+const USEFUL: Record<BisProfile["focus"], [RegExp, RegExp]> = {
+  melee: [
+    /attack|melee|critical|haste|energy|damage|agility|strength|armor penetration|Feral Combat|Cat Form|Claw|Rake|Shred|Rip\b|Ferocious Bite|Tiger's Fury/i,
+    /\bspells?\b|healing|\bmana\b|when struck|struck in combat|struck by|victim|absorb|dodge|parry|block|ranged|stealth|run speed|movement speed|\bfear\b|silence|interrupt|threat|resistance|cannot cast spells or attack|strikes you|enemy's attack power|lowers their attack power|Ghost Wolf|Sprint|Hamstring|Multi-Shot|Arcane Shot|Paladin|Judgement/i,
+  ],
+  tank: [
+    /armor|dodge|parry|block|absorb|health|stamina|threat|when struck|struck in combat|damage taken|defense|Feral Combat|Bear Form|Maul|Swipe/i,
+    /\bspells?\b|healing|\bmana\b|ranged|stealth|run speed|reduce your threat|less likely to attack|Ghost Wolf|Paladin/i,
+  ],
+};
+export function effectUseful(text: string, p: BisProfile) {
+  const [yes, no] = USEFUL[p.focus];
+  return yes.test(text) && !no.test(text);
+}
+
+export interface EffectOption {
+  item: BisItem;
+  /** Score de l'objet sans son effet (caractéristiques et « Équipé » exacts). */
+  score: ItemScore;
+  /** Effets non chiffrés (trigger 0 « Utiliser », 1 « Équipé », 2 « Chances quand vous touchez »). */
+  effects: { trigger: number; text: string }[];
+  useful: boolean;
+}
+
+/**
+ * Objets à effet que la spé peut porter, groupés par emplacement (les doigts et les bijoux une seule fois), du plus fort
+ * au moins fort sans leur effet. `seenOnly` (coché par défaut) : seulement les objets vus en jeu.
+ */
+export function effectOptions(items: BisItem[], p: BisProfile, w: Weights, hitRoom: number, f: BisFilters = {}, seenOnly = true) {
+  const slots = GEAR_SLOTS.filter(s => s !== "Finger 2" && s !== "Trinket 2");
+  const groups = new Map<GearSlot, EffectOption[]>();
+  for (const it of items) {
+    if (seenOnly && !it.seen) continue;
+    const rest = itemEffects(it.details).rest;
+    if (!rest.length || !usable(it, p, f)) continue;
+    const slot = slots.find(s => slotAccepts(s, it, p));
+    if (!slot) continue;
+    const list = groups.get(slot) ?? [];
+    list.push({ item: it, score: scoreItem(it, w, hitRoom), effects: rest, useful: rest.some(e => effectUseful(e.text, p)) });
+    groups.set(slot, list);
+  }
+  return slots.filter(s => groups.has(s)).map(slot => ({
+    slot,
+    items: groups.get(slot)!.sort((a, b) => b.score.total - a.score.total || a.item.name.localeCompare(b.item.name)),
+  }));
 }
 
 /* ---------- Proposition d'une BiS complète ---------- */
@@ -522,7 +602,7 @@ export const gearHit = (items: (BisItem | { details?: ItemDetails | null } | nul
 /** Noms des caractéristiques chez Pawn (et quelques variantes courantes) → clé de poids. */
 const PAWN_KEYS: Record<string, WeightKey> = {
   strength: "str", agility: "agi", stamina: "sta", intellect: "int", spirit: "spi",
-  ap: "ap", attackpower: "ap", feralap: "ap", rap: "ap",
+  ap: "ap", attackpower: "ap", feralap: "fap", feralattackpower: "fap", rap: "ap",
   crit: "crit", critrating: "crit", critpercent: "crit", meleecrit: "crit", spellcrit: "crit",
   hit: "hit", hitrating: "hit", hitpercent: "hit", meleehit: "hit", spellhit: "hit",
   expertise: "exp", expertiserating: "exp", haste: "haste", hasterating: "haste",

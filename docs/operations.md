@@ -405,6 +405,15 @@ caractéristiques ; le toucher ne compte que jusqu'au cap (8 % contre un boss de
   une fois l'import complet : `bash scripts/import-gamedata.sh` (sans `--if-new`).
 - **Compléter les provenances** : ajouter les objets à `BIS_SOURCE_SEED` avec la page qui l'affirme (`ref`) ; ne jamais
   y mettre une provenance devinée.
+- **Provenances par nom** (lot BiS-3, 25/11) : `packages/game-data/src/bis-sources-web.ts` (`BIS_SOURCE_BY_NAME`) reprend
+  les tables de butin et les quêtes des donjons de niveau 50 à 60 (wowtbc.gg), la boutique de Pix Xizzix et les quêtes du
+  Tier 0.5. Par nom, parce que Forever a souvent plusieurs objets du même nom : la route ne l'applique qu'à l'homonyme vu
+  en jeu (le plus récent s'il y en a plusieurs), sinon au plus récent. `BIS_SOURCE_SEED` et les corrections d'admin passent
+  avant. La tâche planifiée du lundi le complète par patch.
+- **Effets** (lot BiS-3) : un effet « Équipé » qui est une caractéristique exacte (« +N Attack Power », « +N Attack Power in
+  Cat, Bear, and Dire Bear forms only » → poids `fap`, toucher et critique en %) compte dans le score ; les autres effets
+  (déclenchement, « Utiliser ») rendent l'objet « à effet » : il n'entre pas dans « Proposer la BiS » et s'affiche dans la
+  section « Objets à effet », avec le score de l'objet sans son effet.
 
 ## Icônes du jeu
 

@@ -34,11 +34,15 @@ beforeAll(async () => {
     // Sans niveau requis (récompense de quête, set de donjon de Forever) : gardé d'après son niveau d'objet
     { ...base, id: 226788, name: "Feralheart Bands", reqLevel: 0, itemLevel: 65, classId: 4, subclassId: 2, inventoryType: 9, details: { stats: [[4, 10], [3, 8]] } },
     { ...base, id: 4, name: "Low Quest Reward", reqLevel: 0, itemLevel: 30, classId: 4, subclassId: 2, inventoryType: 9, details: {} },
+    // Provenance par nom (bis-sources-web) : seul l'homonyme vu en jeu la reçoit
+    { ...base, id: 18420, name: "Bonecrusher", classId: 2, subclassId: 5, inventoryType: 17, details: {} },
+    { ...base, id: 280420, name: "Bonecrusher", classId: 2, subclassId: 5, inventoryType: 17, details: {} },
   ]);
   await db.insert(gameHotfixes).values([
     { tableHash: TABLE_HASH.ItemSparse, rowId: 13404, push: 1, data: Buffer.from([1]), build: 71037 },
     { tableHash: TABLE_HASH.ItemSparse, rowId: 16564, push: 1, data: Buffer.from([1]), build: 71037 },
     { tableHash: TABLE_HASH.ItemSparse, rowId: 226788, push: 1, data: Buffer.from([1]), build: 71037 },
+    { tableHash: TABLE_HASH.ItemSparse, rowId: 18420, push: 1, data: Buffer.from([1]), build: 71037 },
     // Retiré par le serveur : ne compte pas comme vu
     { tableHash: TABLE_HASH.ItemSparse, rowId: 21693, push: 1, removed: true, data: Buffer.alloc(0), build: 71037 },
   ]);
@@ -65,7 +69,7 @@ describe("objets candidats", () => {
     const items = r.json().items as any[];
     const by = Object.fromEntries(items.map(i => [i.name, i]));
     expect(Object.keys(by).sort()).toEqual([
-      "Crafted Pants", "Don Julio's Band", "Feralheart Bands", "General's Leather Legguards", "Guise of the Devourer", "Hammer of the Titans",
+      "Bonecrusher", "Crafted Pants", "Don Julio's Band", "Feralheart Bands", "General's Leather Legguards", "Guise of the Devourer", "Hammer of the Titans",
       "Idol of the Dream", "Mask of the Unforgiven",
     ]);
     expect(by["Mask of the Unforgiven"]).toMatchObject({ seen: true, faction: null, source: { kind: "drop", where: "Stratholme", from: "seed" } });
@@ -74,6 +78,10 @@ describe("objets candidats", () => {
     expect(by["Crafted Pants"].source).toEqual({ kind: "craft", profession: "Leatherworking", skill: 300, from: "auto" });
     expect(by["General's Leather Legguards"]).toMatchObject({ faction: "Horde", pvpRank: 12, seen: true });
     expect(by["Idol of the Dream"].source).toMatchObject({ kind: "craft", profession: "Enchanting", skill: 320, from: "seed" });
+    const bone = items.filter(i => i.name === "Bonecrusher");
+    expect(bone.find(i => i.id === 18420).source).toMatchObject({ kind: "quest", where: "Dire Maul West", npc: "The Treasure of the Shen'dralar", from: "seed" });
+    expect(bone.find(i => i.id === 280420).source).toBeNull();
+    expect(by["Feralheart Bands"].source).toMatchObject({ kind: "quest", npc: "An Earnest Proposition", from: "seed" });
     expect((await c.get("/api/bis/inconnu/items")).statusCode).toBe(404);
   });
 

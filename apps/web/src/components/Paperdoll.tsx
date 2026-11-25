@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { get, type Character, type GameItem, type GearEntry } from "../api";
 import { ItemPicker, useGameVersion } from "./GameData";
 import { ItemChooser } from "./ItemChooser";
-import { BisBar, BisEnchants, bisHitPill, BisProposalDialog, BisSlotInfo, BisWeightsDialog, useBis } from "./Bis";
+import { BisBar, BisEffects, BisEmptyActions, BisEnchants, BisMidPanel, BisProposalDialog, BisSlotText, BisWeightsDialog, useBis } from "./Bis";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { FloatingTip, iconUsable, ItemIcon, ItemTooltipBody, useIconFailures } from "./ItemTooltip";
 import { Portrait } from "./ImageUpload";
@@ -121,8 +121,10 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
     // Main gauche vide sous une arme à deux mains : dit pourquoi, comme en jeu
     const mh = c.gear["Main Hand"]?.curId ? items[c.gear["Main Hand"]!.curId!] : undefined;
     const taken = slot === "Off Hand" && !shown && view === "cur" && mh?.inventoryType === INVTYPE_2H;
-    return (
-      <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}`} data-slot={slot}
+    // Vue Objectif BiS (lot 3) : sans objectif, l'objet porté s'affiche en pointillés avec « En faire l'objectif »
+    const noGoal = bisOn && !g.bis?.trim();
+    const el = (
+      <div key={slot} role="button" tabIndex={0} className={`gslot${canEdit ? "" : " ro"}${bisOn ? " bis" : ""}${noGoal ? " nogoal" : ""}`} data-slot={slot}
         aria-expanded={canEdit && !fiche ? open === slot : undefined} aria-haspopup={canEdit && fiche ? "dialog" : undefined}
         aria-label={`${t("{slot} : {item}", { slot: slotName(slot), item: shown ? shown.name : t("vide") })}${g.got ? t(", BiS obtenu") : ""}`}
         onClick={act}
@@ -135,11 +137,19 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
           {iconOk ? <ItemIcon item={shown!.item} size={42} /> : <svg aria-hidden="true"><use href={`#g-${GLYPH[slot]}`} /></svg>}
           {g.got && <span className="got" aria-hidden="true">✓</span>}
         </span>
-        <span className="gtxt">
+        {bisOn ? <BisSlotText bis={bis} slot={slot} g={g} name={shown?.name ?? null} quality={shown?.quality ?? null} slotName={slotName(slot)} empty={noGoal}
+          level={shown?.item?.itemLevel ?? (shown?.id ? bis.byId.get(shown.id)?.itemLevel ?? null : null)} /> : <span className="gtxt">
           <span className={`gname${shown?.quality != null ? ` q${shown.quality}` : ""}`}>{shown ? shown.name : t("Vide")}{fiche && shown && g.got && <span className="tag ok gbis">{t("BiS")}</span>}</span>
-          <span className="gmeta"><span>{slotName(slot)}</span>{taken ? <span>{t("prise par l'arme à deux mains")}</span> : shown?.item && <span className="num">{fiche ? t("niv. {n}", { n: shown.item.itemLevel }) : shown.item.itemLevel}</span>}{bisOn && bisHitPill(bis, g.bisId)}</span>
-          {bisOn && <BisSlotInfo bis={bis} slot={slot} itemId={g.bis?.trim() ? g.bisId : null} />}
-        </span>
+          <span className="gmeta"><span>{slotName(slot)}</span>{taken ? <span>{t("prise par l'arme à deux mains")}</span> : shown?.item && <span className="num">{fiche ? t("niv. {n}", { n: shown.item.itemLevel }) : shown.item.itemLevel}</span>}</span>
+        </span>}
+      </div>
+    );
+    if (!noGoal || !canEdit) return el;
+    return (
+      <div key={slot} className="gwrap">
+        {el}
+        <BisEmptyActions g={g} onChoose={() => { setTip(null); setOpen(slot); }}
+          onAdopt={() => setSlot(slot, { bis: g.cur ?? "", bisId: g.curId ?? null, bisQ: g.q ?? null, got: true })} />
       </div>
     );
   };
@@ -176,7 +186,7 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
         </div>
       </div>}
       {bisOn && <BisBar bis={bis} onPropose={() => setBisDlg("propose")} onWeights={() => setBisDlg("weights")} />}
-      <div className="doll">
+      <div className={`doll${bisOn ? " bis-wide" : ""}`}>
         <div className="dcol left">{LEFT.map(slotEl)}</div>
         <aside className="portrait" aria-label={t("Résumé de l'équipement")} style={cls ? { ["--cc" as string]: cls.color } : undefined}>
           <div className={`crest${c.portraitId ? " has-portrait" : ""}`} aria-hidden="true">
@@ -190,6 +200,7 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
           </div>
           <div className="pstats">
             {bisOn && bis.ready && <div className="pstat"><span>{t("Score de la BiS")}</span><b className="num">{Math.round(bis.objScore).toLocaleString(getLang() === "en" ? "en-US" : "fr-FR")}</b></div>}
+            {bisOn && bis.ready && <BisMidPanel bis={bis} />}
             <div className="pstat"><span>{t("BiS obtenus")}</span><b>{got}/{GEAR_SLOTS.length}</b></div>
             <div className="pbar" aria-hidden="true"><i style={{ width: `${Math.round(got / GEAR_SLOTS.length * 100)}%` }} /></div>
             <div className="pstat"><span>{t("Niveau d'objet moyen")}</span><b>{avg}</b></div>
@@ -200,6 +211,7 @@ export function Paperdoll({ c, onChange, editable, fiche }: { c: Character; onCh
         <div className="dweapons">{WEAPONS.map(slotEl)}</div>
         {canEdit && open && !fiche && <SlotEditor slot={open} g={c.gear[open] ?? {}} items={items} bisOnly={bisOnly} onSet={p => setSlot(open, p)} onClose={() => setOpen(null)} />}
       </div>
+      {bisOn && bis.ready && <BisEffects bis={bis} onAim={(slot, it) => setSlot(slot, { bis: it.name, bisId: it.id, bisQ: it.quality, got: c.gear[slot]?.curId === it.id })} />}
       {bisOn && <BisEnchants bis={bis} c={c} />}
       {bisOn && bisDlg === "propose" && <BisProposalDialog bis={bis} c={c} onApply={gear => onChange({ gear })} onClose={() => setBisDlg(null)} />}
       {bisOn && bisDlg === "weights" && <BisWeightsDialog bis={bis} c={c} onClose={() => setBisDlg(null)} />}

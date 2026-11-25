@@ -1,5 +1,5 @@
 import {
-  BIS_PROFILES, BIS_SOURCE_SEED, itemFaction, SKILL_LINE_NAMES, WEIGHT_KEYS,
+  BIS_PROFILES, BIS_SOURCE_BY_NAME, BIS_SOURCE_SEED, itemFaction, SKILL_LINE_NAMES, WEIGHT_KEYS,
   type BisEnchantRef, type BisItem, type BisProfile, type BisSource, type ItemDetails, type Weights,
 } from "@forever/game-data";
 import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
@@ -83,10 +83,18 @@ export async function bisRoutes(app: FastifyInstance) {
         // niveau d'objet de fin de jeu
         or(and(gte(gameItems.reqLevel, 40), lte(gameItems.reqLevel, 60)), and(eq(gameItems.reqLevel, 0), gte(gameItems.itemLevel, 50)))));
 
+    // Provenance par nom (bis-sources-web) : un seul objet par nom la reçoit, celui vu en jeu (le plus récent s'il y en
+    // a plusieurs), sinon le plus récent. Les autres homonymes (anciennes versions Classic) restent sans provenance.
+    const byName = new Map<string, { id: number; seen: boolean }>();
+    for (const r of rows) {
+      if (!BIS_SOURCE_BY_NAME[r.name]) continue;
+      const cur = byName.get(r.name);
+      if (!cur || (r.seen && !cur.seen) || (r.seen === cur.seen && r.id > cur.id)) byName.set(r.name, { id: r.id, seen: !!r.seen });
+    }
     const items: BisItem[] = rows.map(r => {
       const d = r.details ?? {};
       const faction = r.factionOverride === "both" ? null : r.factionOverride ?? itemFaction(r.name, d.races);
-      const seed = BIS_SOURCE_SEED[r.id];
+      const seed = BIS_SOURCE_SEED[r.id] ?? (byName.get(r.name)?.id === r.id ? BIS_SOURCE_BY_NAME[r.name] : undefined);
       const source = r.sourceOverride ? { ...r.sourceOverride, from: "admin" as const }
         : seed ? { ...seed, from: "seed" as const } : autoSource(d, r.recipe);
       return {

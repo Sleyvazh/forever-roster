@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BIS_SOURCE_SEED } from "./bis-sources";
+import { BIS_SOURCE_BY_NAME } from "./bis-sources-web";
 import {
-  bisProfile, gearHit, HIT_TARGETS, setBonuses, itemFaction, sourceLabel, hasEffect, isObtainable, itemStats, mergeWeights, parseWeightsImport, proposeBis, rankSlot, scoreItem, talentHit, usable,
+  bisProfile, effectOptions, effectUseful, gearHit, itemEffects, HIT_TARGETS, setBonuses, itemFaction, sourceLabel, hasEffect, isObtainable, itemStats, mergeWeights, parseWeightsImport, proposeBis, rankSlot, scoreItem, talentHit, usable,
   type BisItem,
 } from "./bis";
 
@@ -134,7 +135,7 @@ describe("provenances et faction", () => {
     expect(sourceLabel(BIS_SOURCE_SEED[13340]!)).toBe("Stratholme · Baron Rivendare");
     expect(sourceLabel(BIS_SOURCE_SEED[19049]!)).toBe("Travail du cuir 300");
     expect(sourceLabel(BIS_SOURCE_SEED[19049]!, "en")).toBe("Leatherworking 300");
-    expect(sourceLabel(BIS_SOURCE_SEED[272396]!)).toBe("Stranglethorn Vale · Pix Xizzix · 100 Tarnished Undermine Real");
+    expect(sourceLabel(BIS_SOURCE_SEED[272396]!)).toBe("Booty Bay · Pix Xizzix · 100 Tarnished Undermine Real");
     expect(sourceLabel(BIS_SOURCE_SEED[19325]!)).toBe("Stormpike Guard / Frostwolf Clan (exalté)");
     expect(sourceLabel(BIS_SOURCE_SEED[16710]!)).toBe("Butin du monde");
   });
@@ -216,5 +217,47 @@ describe("bonus de set (Feralheart Raiment, capture de Flo du 24/11)", () => {
     const alone = rankSlot([fh[0]!, solos[0]!], "Wrist", cat, w, 0);
     expect(alone.scored[0]!.item.name).toBe("Solo 1");
     expect(alone.scored[1]!.score.set).toMatchObject({ have: 1, next: { n: 2 } });
+  });
+});
+
+describe("effets des objets (25/11)", () => {
+  const painweaver = item({ id: 13098, name: "Painweaver Band", inventoryType: 11, subclassId: 0, details: { stats: [[7, 9], [32, 14], [38, 12]] } });
+  const hoj = item({ id: 11815, name: "Hand of Justice", inventoryType: 12, subclassId: 0, details: { stats: [[38, 12]], effects: [{ trigger: 1, text: "% chance on Melee hit to gain 1 extra attack." }] } });
+  const mace = item({ id: 21407, name: "Mace of Unending Life", quality: 4, classId: 2, subclassId: 4, inventoryType: 21, details: { stats: [[4, 9]], dmg: { min: 50, max: 90, speed: 2, dps: 35 }, effects: [{ trigger: 1, text: "+140 Attack Power in Cat, Bear, and Dire Bear forms only." }] } });
+  const lodestone = item({ id: 18537, name: "Counterattack Lodestone", inventoryType: 12, subclassId: 0, details: { effects: [{ trigger: 1, text: "+30 Attack Power, doubled against Mechanical units." }, { trigger: 0, text: "Energize the lodestone for 10 s." }] } });
+  const sprint = item({ id: 5, name: "Sprinter's Boots", inventoryType: 8, details: { stats: [[3, 10]], effects: [{ trigger: 1, text: "Increases the duration of your Sprint ability by 3 sec." }] } });
+
+  it("les « Équipé » exacts comptent, les déclenchements restent à part", () => {
+    expect(hasEffect(painweaver)).toBe(false);
+    expect(itemStats(mace.details)).toMatchObject({ fap: 140, str: 9 });
+    expect(hasEffect(mace)).toBe(false);
+    expect(scoreItem(mace, w, 0).base).toBeCloseTo(9 * 2 + 140 * 1 + 35 * 14);
+    expect(itemEffects(lodestone.details)).toEqual({ stats: { ap: 30 }, rest: [{ trigger: 0, text: "Energize the lodestone for 10 s." }] });
+    expect(hasEffect(lodestone)).toBe(true);
+    expect(hasEffect(hoj)).toBe(true);
+    // Le PA farouche ne vaut rien pour une spé qui n'a pas ce poids
+    expect(scoreItem(mace, { ap: 1 }, 0).base).toBe(0);
+  });
+
+  it("section à part : groupée par emplacement, effets utiles au Félin repérés", () => {
+    const g = effectOptions([painweaver, hoj, lodestone, sprint, mace, idol], cat, w, 2);
+    expect(g.map(x => x.slot)).toEqual(["Feet", "Trinket 1", "Ranged / Relic"]);
+    const trinkets = g.find(x => x.slot === "Trinket 1")!.items;
+    expect(trinkets.map(x => x.item.name)).toEqual(["Counterattack Lodestone", "Hand of Justice"]);
+    expect(trinkets.find(x => x.item.name === "Hand of Justice")!.useful).toBe(true);
+    expect(g.find(x => x.slot === "Feet")!.items[0]!.useful).toBe(false);
+    expect(effectUseful("Increases the duration of Rip by 2 sec.", cat)).toBe(true);
+    expect(effectUseful("Deals 7 Fire damage to anyone who strikes you with a melee attack.", cat)).toBe(false);
+    expect(effectOptions([{ ...hoj, seen: false, source: { kind: "drop", from: "seed" } }], cat, w, 2)).toEqual([]);
+    expect(effectOptions([{ ...hoj, seen: false, source: { kind: "drop", from: "seed" } }], cat, w, 2, {}, false)).toHaveLength(1);
+  });
+
+  it("provenances croisées par nom : quêtes de donjon, Pix Xizzix, Tier 0.5", () => {
+    expect(sourceLabel(BIS_SOURCE_BY_NAME["Bonecrusher"]!)).toBe("Dire Maul West · The Treasure of the Shen'dralar");
+    expect(sourceLabel(BIS_SOURCE_BY_NAME["Howler's Furs"]!)).toBe("Booty Bay · Pix Xizzix · 75 Tarnished Undermine Real");
+    expect(BIS_SOURCE_BY_NAME["Feralheart Cap"]).toMatchObject({ kind: "quest", npc: "Saving the Best for Last" });
+    expect(BIS_SOURCE_BY_NAME["Feralheart Bands"]).toMatchObject({ kind: "quest", npc: "An Earnest Proposition" });
+    expect(BIS_SOURCE_BY_NAME["Painweaver Band"]).toMatchObject({ kind: "drop", where: "Upper Blackrock Spire", npc: "General Drakkisath" });
+    expect(BIS_SOURCE_BY_NAME["Blackhand's Breadth"]).toMatchObject({ kind: "quest", npc: "General Drakkisath's Demise" });
   });
 });

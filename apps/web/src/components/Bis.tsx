@@ -1,7 +1,7 @@
 import {
-  bisProfile, GEAR_SLOTS, gearHit, HIT_TARGETS, hasEffect, isObtainable, isPvp, mergeWeights, parseTalentLink, parseWeightsImport, proposeBis,
-  RACE_HIT, RACES, rankSlot, scoreSelection, sourceLabel, talentHit, usable, WEIGHT_KEYS,
-  type BisFilters, type BisItem, type BisProposal, type GearSlot, type HitTarget, type ItemDetails, type WeightKey, type Weights,
+  bisProfile, effectOptions, GEAR_SLOTS, gearHit, HIT_TARGETS, isObtainable, isPvp, mergeWeights, parseTalentLink, parseWeightsImport, proposeBis,
+  RACE_HIT, RACES, rankSlot, scoreSelection, setBonuses, sourceLabel, talentHit, WEIGHT_KEYS,
+  type BisFilters, type BisSource, type EffectOption, type BisItem, type BisProposal, type GearSlot, type HitTarget, type ItemDetails, type WeightKey, type Weights,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useMemo, useState } from "react";
@@ -17,16 +17,21 @@ import { ranksFrom, useTalentData } from "./TalentTrees";
  * bandeau du toucher, « Proposer la BiS » (aperçu puis valider), la provenance, l'enchantement et le toucher sous chaque
  * objet, le tri « Classement BiS » de la fenêtre de choix, l'écran des poids (défaut, guilde, les miens, import Pawn) et
  * le récapitulatif des enchantements avec la liste de courses. Une icône du jeu devant chaque objet, partout.
+ *
+ * Lot 3 (25/11, maquette v2 validée) : chaque emplacement sur trois lignes (nom et score ; emplacement, niveau,
+ * toucher ; pastilles de provenance, set, enchantement et gain), les emplacements sans objectif en pointillés avec
+ * « En faire l'objectif », l'avancement des sets bonus par bonus au milieu, et la section « Objets à effet » à part.
  */
 
 type Mode = "default" | "group" | "me";
 type PvpChoice = "all" | "none" | number;
-interface Prefs { target: HitTarget; pvp: PvpChoice; boe: boolean; mode: Mode | null }
+interface Prefs { target: HitTarget; pvp: PvpChoice; boe: boolean; mode: Mode | null; fxSeen: boolean; fxTab: "useful" | "other" }
 
 const PREFS_KEY = (p: string) => `fr-bis-${p}`;
+const DEFAULT_PREFS: Prefs = { target: "raid", pvp: "all", boe: true, mode: null, fxSeen: true, fxTab: "useful" };
 function loadPrefs(p: string): Prefs {
-  try { const v = JSON.parse(localStorage.getItem(PREFS_KEY(p)) ?? "null"); if (v && typeof v === "object") return { target: "raid", pvp: "all", boe: true, mode: null, ...v }; } catch { /* stockage indisponible */ }
-  return { target: "raid", pvp: "all", boe: true, mode: null };
+  try { const v = JSON.parse(localStorage.getItem(PREFS_KEY(p)) ?? "null"); if (v && typeof v === "object") return { ...DEFAULT_PREFS, ...v }; } catch { /* stockage indisponible */ }
+  return DEFAULT_PREFS;
 }
 function savePrefs(p: string, v: Prefs) { try { localStorage.setItem(PREFS_KEY(p), JSON.stringify(v)); } catch { /* stockage indisponible */ } }
 
@@ -102,6 +107,19 @@ export function useBis(c: Character, on: boolean, items: Record<number, GameItem
   const objKey = objItems.map(o => o?.id ?? 0).join(",");
   const objSel = useMemo(() => scoreSelection(objItems, weights, Math.max(0, cap - baseHit)), [objKey, weights, cap, baseHit]); // eslint-disable-line react-hooks/exhaustive-deps
   const objScore = objSel.total;
+  // Ce que tu portes, chiffré pareil : pour le gain de chaque emplacement et le total « À gagner »
+  const curItems = GEAR_SLOTS.map(s => { const id = c.gear[s]?.curId; return id ? byId.get(id) ?? null : null; });
+  const curKey = curItems.map(o => o?.id ?? 0).join(",");
+  const curScore = useMemo(() => scoreSelection(curItems, weights, Math.max(0, cap - baseHit)).total, [curKey, weights, cap, baseHit]); // eslint-disable-line react-hooks/exhaustive-deps
+  const others = (slot: GearSlot, list: (BisItem | null)[]) => GEAR_SLOTS.filter(s => s !== slot).map(s => list[GEAR_SLOTS.indexOf(s)]);
+  /** Score d'un objet dans un emplacement (bonus de set compris avec le reste de l'objectif) ; null : objet à effet ou inconnu. */
+  const slotScore = (slot: GearSlot, it: BisItem | null | undefined) => {
+    if (!profile || !it) return null;
+    const r = rankSlot([it], slot, profile, weights, roomFor(slot), { ...filters, includeUnobtainable: true, pvp: "all", noBoe: false, faction: null }, others(slot, objItems));
+    return r.scored[0]?.score ?? (r.effects[0] ? { ...r.effects[0].score, effect: true } : null);
+  };
+  /** Objets visés sans provenance connue (ni graine, ni addon, ni admin ; JcJ exclu). */
+  const unknownSources = objItems.filter((it): it is BisItem => !!it && !isPvp(it) && !it.source).length;
 
   return {
     objScore, objSets: objSel.sets, profile, ready: enabled && itemsQ.isSuccess, loading: enabled && itemsQ.isPending, all, byId, weights, weightsData: w, mode, prefs, setPrefs,
@@ -113,8 +131,9 @@ export function useBis(c: Character, on: boolean, items: Record<number, GameItem
       for (const s of GEAR_SLOTS) { const g = c.gear[s]; const it = g?.got && g.bisId ? byId.get(g.bisId) : undefined; if (it) fixed[s] = it; }
       return proposeBis(all, profile, weights, { hitHave: baseHit, hitCap: cap, filters, fixed });
     },
-    /** Objets à effet que la spé peut porter dans un emplacement (bijoux, relique) : à choisir soi-même. */
-    effectCount: (slot: GearSlot) => (profile ? all.filter(it => hasEffect(it) && usable(it, profile, filters) && rankSlot([it], slot, profile, weights, 0, filters).effects.length).length : 0),
+    curScore, slotScore, unknownSources, objItems,
+    /** Section « Objets à effet » : par emplacement, vus en jeu seulement si la case est cochée. */
+    effectGroups: () => (profile ? effectOptions(all, profile, weights, Math.max(0, cap - baseHit - objHit), filters, prefs.fxSeen) : []),
   };
 }
 export type BisState = ReturnType<typeof useBis>;
@@ -172,33 +191,171 @@ export function BisBar({ bis, onPropose, onWeights }: { bis: BisState; onPropose
   );
 }
 
-/* ---------- Sous chaque objet de la fiche ---------- */
+/* ---------- Chaque emplacement de la fiche (lot 3, 25/11) ---------- */
 
-export function BisSlotInfo({ bis, slot, itemId }: { bis: BisState; slot: GearSlot; itemId: number | null | undefined }) {
-  const it = itemId ? bis.byId.get(itemId) : undefined;
-  const src = sourceOf(it);
-  const e = bis.enchants[slot];
+const KIND_GLYPH: Record<BisSource["kind"], string> = { drop: "☠", raid: "☠", world: "☠", vendor: "◈", craft: "⚒", quest: "⚑", reputation: "✪", pvp: "⚔", other: "•" };
+
+/**
+ * Texte d'un emplacement de la vue Objectif BiS : nom et score ; emplacement, niveau, toucher et « provenance inconnue » ;
+ * puis les pastilles. `empty` : pas d'objectif, l'objet affiché est celui que tu portes.
+ */
+export function BisSlotText({ bis, slot, g, name, quality, level, slotName, empty }: {
+  bis: BisState; slot: GearSlot; g: GearEntry; name: string | null; quality: number | null; level: number | null; slotName: string; empty: boolean;
+}) {
   const en = getLang() === "en";
-  if (!itemId) {
-    const n = bis.effectCount(slot);
-    return n ? <span className="bis-src t-warn">{tn(n, "objet à effet : à toi de choisir ({n})", "objets à effet : à toi de choisir ({n})")}</span> : null;
-  }
+  const it = !empty && g.bisId ? bis.byId.get(g.bisId) : undefined;
+  const worn = g.curId ? bis.byId.get(g.curId) : undefined;
+  const sc = empty ? bis.slotScore(slot, worn) : bis.slotScore(slot, it);
+  const wornSc = !empty && worn && worn.id !== it?.id ? bis.slotScore(slot, worn) : null;
+  const got = !!g.got || (!!it && g.curId === it.id);
+  // Gain seulement face à un objet porté (face à un emplacement vide, il répéterait le score)
+  const gain = it && sc && !sc.effect && !got && worn && wornSc ? Math.round(sc.total - (wornSc.effect ? wornSc.base : wornSc.total)) : 0;
+  const hit = it ? gearHit([it]) : 0;
+  const src = it ? sourceOf(it) : null;
+  const known = src && !(src.tone === "warn" && !it?.source);
+  const pr = it?.details.set ? bis.objSets.progress.find(x => x.id === it.details.set!.id) : undefined;
+  const e = !empty ? bis.enchants[slot] : undefined;
+  return (
+    <span className="gtxt">
+      <span className="bis-l1">
+        <span className={`gname${quality != null && !empty ? ` q${quality}` : ""}`}>{name ?? t("Vide")}{got && <span className="tag ok gbis">{t("BiS")}</span>}</span>
+        {sc && <span className="bis-sc num">{sc.effect ? t("effet") : fmt(sc.total)}</span>}
+      </span>
+      <span className="gmeta">
+        <span>{slotName}</span>
+        {level != null && <span className="num">{t("niv. {n}", { n: level })}</span>}
+        {hit > 0 && <span className="bis-hit num">{t("+{p} % toucher", { p: fmt(hit) })}</span>}
+        {empty ? <><b className="t-warn">{t("pas d'objectif")}</b>{name && <span>{t("tu portes cet objet")}</span>}</>
+          : it && !known ? <span className="t-warn">{src?.text === t("pas encore vu en jeu") ? src.text : t("provenance inconnue")}</span> : null}
+        {it && !isObtainable(it) && it.unobtainable && <span className="t-bad">{t("marqué non obtenable")}</span>}
+      </span>
+      {!empty && (known || pr || e || gain > 0 || got) && (
+        <span className="bis-chips">
+          {known && src && it && <span className={`bis-ch src t-${src.tone === "bad" ? "bad" : "ink"}`} title={src.text}>
+            <span aria-hidden="true">{isPvp(it) ? KIND_GLYPH.pvp : KIND_GLYPH[it.source?.kind ?? "other"]} </span>{src.text}</span>}
+          {pr && <span className="bis-ch set">◆ {t("{set} {have}/{total}", { set: pr.name.replace(/ (Raiment|Armor|Garb|Battlegear|Regalia|Vestments)$/, ""), have: pr.have, total: pr.total })}</span>}
+          {e && <span className="bis-ch ench" title={en ? e.best.en : e.best.fr}>✦ {en ? e.best.en : e.best.fr}</span>}
+          {gain > 0 && <span className="bis-ch up">▲ {t("+{n} sur ton objet", { n: gain })}</span>}
+          {got && <span className="bis-ch">✓ {t("obtenu")}</span>}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Sous un emplacement sans objectif : en faire l'objectif (l'objet porté) ou en choisir un autre. */
+export function BisEmptyActions({ g, onAdopt, onChoose }: { g: GearEntry; onAdopt: () => void; onChoose: () => void }) {
+  return (
+    <div className="bis-acts">
+      {g.cur?.trim() && <button type="button" className="link" onClick={onAdopt}>{t("En faire l'objectif")}</button>}
+      <button type="button" className="link" onClick={onChoose}>{g.cur?.trim() ? t("Choisir un autre objet") : t("Choisir un objet")}</button>
+    </div>
+  );
+}
+
+/** Milieu de la fiche : ton équipement chiffré, le gain, l'avancement des sets bonus par bonus, les provenances manquantes. */
+export function BisMidPanel({ bis }: { bis: BisState }) {
+  const loc = getLang() === "en" ? "en-US" : "fr-FR";
+  const diff = Math.round(bis.objScore - bis.curScore);
+  // Le pourcentage n'a de sens que si tu portes déjà l'essentiel de ton équipement
+  const pct = bis.curScore > 0 ? Math.round((bis.objScore / bis.curScore - 1) * 100) : null;
   return (
     <>
-      {src && <span className={`bis-src t-${src.tone}`}>{src.tone === "warn" ? "● " : ""}{src.text}</span>}
-      {it && !isObtainable(it) && it.unobtainable && <span className="bis-src t-bad">{t("marqué non obtenable")}</span>}
-      {it?.details.set && (() => {
-        const pr = bis.objSets.progress.find(x => x.id === it.details.set!.id);
-        return pr ? <span className="bis-set">{t("{set} {have}/{total}", { set: pr.name, have: pr.have, total: pr.total })}{pr.next ? ` · ${t("prochain bonus à {n}", { n: pr.next.n })}` : ""}</span> : null;
-      })()}
-      {e && <span className="bis-ench">+ {en ? e.best.en : e.best.fr}</span>}
+      <div className="pstat"><span>{t("Ton équipement actuel")}</span><b className="num">{Math.round(bis.curScore).toLocaleString(loc)}</b></div>
+      {diff > 0 && <div className="pstat"><span>{t("À gagner")}</span><b className="num t-ok">+{diff.toLocaleString(loc)}{pct != null && pct <= 100 ? ` (+${pct} %)` : ""}</b></div>}
+      {bis.objSets.progress.map(st => {
+        const all = setBonusesOf(bis, st.id);
+        return (
+          <div key={st.id} className="bis-setp">
+            <div className="bis-setn"><b>{st.name}</b><span className="bis-pips" aria-hidden="true">{Array.from({ length: st.total }, (_, i) => <i key={i} className={i < st.have ? "on" : ""} />)}</span><b className="num">{st.have}/{st.total}</b></div>
+            <ul>
+              {all.map((b, i) => {
+                const on = b.n <= st.have;
+                return (
+                  <li key={i} className={on ? "on" : "next"}><span className="num">({b.n})</span>
+                    <span><span className="bis-btext" title={b.text}>{b.text}</span>{!on && <small>{tn(b.n - st.have, "encore {n} pièce", "encore {n} pièces")}</small>}</span>
+                    <span className="num">{bonusLabel(b.stats, bis.weights)}</span></li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+      {bis.unknownSources > 0 && <p className="bis-unk">● {tn(bis.unknownSources, "{n} objet visé n'a pas encore de provenance connue : elle est recherchée chaque semaine.", "{n} objets visés n'ont pas encore de provenance connue : elle est recherchée chaque semaine.")}</p>}
     </>
   );
 }
-export function bisHitPill(bis: BisState, itemId: number | null | undefined) {
-  const it = itemId ? bis.byId.get(itemId) : undefined;
-  const h = it ? gearHit([it]) : 0;
-  return h > 0 ? <span className="bis-hit num">{t("+{p} % toucher", { p: fmt(h) })}</span> : null;
+/** Ce que vaut un bonus de set avec tes poids : points, toucher, ou « effet » (non chiffré). */
+function bonusLabel(stats: Partial<Record<WeightKey, number>> | null, w: Weights) {
+  if (!stats) return t("effet");
+  if (stats.hit) return t("+{p} % toucher", { p: fmt(stats.hit) });
+  const v = Object.entries(stats).reduce((n, [k, x]) => n + (w[k as WeightKey] ?? 0) * x, 0);
+  return v > 0 ? `+${fmt(v)}` : "0";
+}
+function setBonusesOf(bis: BisState, setId: number) {
+  const it = bis.objItems.find(o => o?.details.set?.id === setId);
+  return it ? setBonuses(it.details.set) : [];
+}
+
+/* ---------- Section « Objets à effet » (lot 3, 25/11) ---------- */
+
+const TRIGGER_FR: Record<number, string> = { 0: "Utiliser :", 1: "Équipé :", 2: "Chances quand vous touchez :" };
+
+export function BisEffects({ bis, onAim }: { bis: BisState; onAim: (slot: GearSlot, it: BisItem) => void }) {
+  const id = useId();
+  const groups = bis.effectGroups();
+  const [more, setMore] = useState<Record<string, boolean>>({});
+  const tab = bis.prefs.fxTab;
+  const count = (useful: boolean) => groups.reduce((n, g) => n + g.items.filter(x => x.useful === useful).length, 0);
+  const shown = groups.map(g => ({ ...g, items: g.items.filter(x => x.useful === (tab === "useful")) })).filter(g => g.items.length);
+  const spec = bis.profile?.focus === "tank" ? t("Utiles au tank") : t("Utiles au Félin");
+  return (
+    <section className="bis-fx" aria-labelledby={`${id}-h`}>
+      <div className="bis-fx-head">
+        <h4 id={`${id}-h`}>{t("Objets à effet")}</h4>
+        <div className="seg eq" role="group" aria-label={t("Effets")}>
+          <button type="button" className={tab === "useful" ? "on" : ""} aria-pressed={tab === "useful"} onClick={() => bis.setPrefs({ fxTab: "useful" })}>{spec} · {count(true)}</button>
+          <button type="button" className={tab === "other" ? "on" : ""} aria-pressed={tab === "other"} onClick={() => bis.setPrefs({ fxTab: "other" })}>{t("Autres")} · {count(false)}</button>
+        </div>
+        <span className="grow1" />
+        <label className="bis-check"><input type="checkbox" checked={bis.prefs.fxSeen} onChange={e => bis.setPrefs({ fxSeen: e.target.checked })} /> {t("Vus en jeu seulement")}</label>
+      </div>
+      <p className="hint">{t("Leur effet se déclenche ou s'utilise : il ne compte pas dans le score. Le chiffre est celui de l'objet sans son effet.")}</p>
+      {!shown.length ? <p className="hint">{t("Aucun objet à effet ici pour l'instant.")}</p> : shown.map(gr => {
+        const open = more[gr.slot];
+        const list = open ? gr.items : gr.items.slice(0, 5);
+        const pair = gr.slot === "Finger 1" ? (["Finger 1", "Finger 2"] as GearSlot[]) : gr.slot === "Trinket 1" ? (["Trinket 1", "Trinket 2"] as GearSlot[]) : [gr.slot];
+        return (
+          <div key={gr.slot} className="bis-fx-grp">
+            <p className="eyebrow">{gr.slot === "Finger 1" ? t("Doigts") : gr.slot === "Trinket 1" ? t("Bijoux") : slotLabel(gr.slot)}</p>
+            <ul>
+              {list.map(x => <BisEffectRow key={x.item.id} x={x} pair={pair} onAim={onAim} />)}
+            </ul>
+            {gr.items.length > 5 && <button type="button" className="link" onClick={() => setMore(m => ({ ...m, [gr.slot]: !open }))}>
+              {open ? t("Voir moins") : tn(gr.items.length - 5, "Voir {n} autre objet", "Voir les {n} autres objets")}</button>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+function BisEffectRow({ x, pair, onAim }: { x: EffectOption; pair: GearSlot[]; onAim: (slot: GearSlot, it: BisItem) => void }) {
+  const src = sourceOf(x.item);
+  const en = getLang() === "en";
+  return (
+    <li className="bis-fx-row">
+      <ItemIcon item={x.item} size={36} />
+      <span className="bis-fx-txt">
+        <span><span className={`bis-fx-n q${x.item.quality}`}>{x.item.name}</span> <span className="num">{t("niv. {n}", { n: x.item.itemLevel })}</span></span>
+        {x.effects.map((e, i) => <span key={i} className="bis-fx-e"><b>{en ? ["Use:", "Equip:", "Chance on hit:"][e.trigger] ?? "" : TRIGGER_FR[e.trigger] ?? ""}</b> {e.text}</span>)}
+      </span>
+      <span className="bis-fx-s"><small>{t("sans l'effet")}</small><b className="num">{fmt(x.score.total)}</b></span>
+      <span className={`bis-fx-src t-${src?.tone === "ok" ? "ink" : src?.tone ?? "ink"}`}>{src?.text}</span>
+      <span className="bis-fx-act">
+        {pair.map(s => <button key={s} type="button" className="btn sm" onClick={() => onAim(s, x.item)}>{pair.length > 1 ? slotLabel(s) : t("Viser")}</button>)}
+      </span>
+    </li>
+  );
 }
 
 /* ---------- Proposer la BiS : aperçu puis valider ---------- */
@@ -257,7 +414,7 @@ export function BisProposalDialog({ bis, c, onApply, onClose }: {
           ))}
         </div>
       )}
-      <p className="hint">{t("Les objectifs déjà obtenus restent en place ; bijoux et relique, objets à effet, sont à choisir toi-même.")}</p>
+      <p className="hint">{t("Les objectifs déjà obtenus restent en place ; les objets à effet sont à choisir toi-même, dans la section « Objets à effet ».")}</p>
       <div className="row end">
         <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
         <button type="button" className="btn primary" disabled={!changes.length} onClick={apply}>

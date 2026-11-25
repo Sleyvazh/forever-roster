@@ -55,10 +55,11 @@ test("BiS du Félin : toucher, proposition, classement et poids", async ({ page,
     ON CONFLICT DO NOTHING`);
   const char = (await db.query(`INSERT INTO characters (user_id, name, race, cls, spec1, spec2, level, professions, gear, talent_nodes)
     VALUES ($1, 'Tournicoti', 'Tauren', 'Druid', 'Feral Cat', 'Feral Bear', 60, $2, $3, $4) RETURNING id`,
-  [me, PROFS, JSON.stringify({ Head: { cur: "Mask of the Unforgiven", curId: 13404, q: 3 } }),
+  [me, PROFS, JSON.stringify({ Head: { cur: "Mask of the Unforgiven", curId: 13404, q: 3 }, "Trinket 2": { cur: "Hand of Justice", curId: 11815, q: 3 } }),
     JSON.stringify([{ id: 990001, rank: 2, max: 2, x: 0, y: 0, spell: 16819, sub: 0, tree: 0 }])])).rows[0].id as string;
   await db.end();
 
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/persos/${char}/equipement`);
   await page.getByRole("button", { name: "Objectif BiS" }).click();
 
@@ -71,7 +72,7 @@ test("BiS du Félin : toucher, proposition, classement et poids", async ({ page,
   // Proposer la BiS : aperçu, puis Appliquer
   await page.getByRole("button", { name: "Proposer la BiS" }).click();
   const dlg = page.getByRole("dialog", { name: "Proposer la BiS" });
-  await expect(dlg).toContainText("Eye of Rend");
+  await expect(dlg).toContainText("Feralheart Cap");
   await expect(dlg).toContainText("Timbermaw Tunic");
   await expect(dlg).not.toContainText("Guise of the Devourer"); // jamais vu, sans provenance
   await expect(dlg).not.toContainText("Marshal's Leather Leggings"); // Alliance
@@ -82,9 +83,30 @@ test("BiS du Félin : toucher, proposition, classement et poids", async ({ page,
   // Sous les objets : provenance, toucher, enchantement
   await expect(page.locator(".gslot[data-slot='Back']")).toContainText("Stratholme · Baron Rivendare");
   await expect(page.locator(".gslot[data-slot='Legs']")).toContainText("JcJ · rang 12");
-  await expect(page.locator(".gslot[data-slot='Wrist']")).toContainText("+ Agilité supérieure (+9)");
+  await expect(page.locator(".gslot[data-slot='Wrist']")).toContainText("✦ Agilité supérieure (+9)");
   await expect(bar).toContainText("Objectif BiS");
+  // Set de donjon (Tier 0.5) : provenance de la quête, bonus par bonus au milieu
+  await expect(page.locator(".gslot[data-slot='Head']")).toContainText("Feralheart Cap");
+  await expect(page.locator(".gslot[data-slot='Head']")).toContainText("◆ Feralheart 1/8");
+  await expect(page.locator(".gslot[data-slot='Head']")).toContainText("Saving the Best for Last");
+  await expect(page.locator(".portrait")).toContainText("Ton équipement actuel");
+  await expect(page.locator(".portrait")).toContainText("+40 Attack Power.encore 5 pièces+40");
+
+  // Bijou 2 sans objectif : l'objet porté en pointillés, « En faire l'objectif »
+  const t2 = page.locator(".gslot[data-slot='Trinket 2']");
+  await expect(t2).toHaveClass(/nogoal/);
+  await expect(t2).toContainText("pas d'objectif");
   await shot(page, "bis-fiche.png");
+  await page.locator(".gwrap", { has: t2 }).getByRole("button", { name: "En faire l'objectif" }).click();
+  await expect(t2).not.toHaveClass(/nogoal/);
+  await expect(t2).toContainText("Hand of Justice");
+
+  // Section à part : les objets à effet, utiles au Félin d'abord
+  const fx = page.getByRole("region", { name: "Objets à effet" });
+  await expect(fx.getByRole("button", { name: /^Utiles au Félin/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(fx).toContainText("Hand of Justice");
+  await expect(fx).toContainText("sans l'effet");
+  await shot(page, "bis-effets.png", ".bis-fx");
 
   // Fenêtre de choix : classement BiS par défaut, objets à effet à part
   await page.locator(".gslot[data-slot='Head']").click();
@@ -93,6 +115,7 @@ test("BiS du Félin : toucher, proposition, classement et poids", async ({ page,
   await expect(chooser.locator(".ic-row.bis").first()).toContainText("1. ");
   await expect(chooser.getByText("À effet · non chiffré")).toBeVisible();
   await expect(chooser).toContainText("Brewmancer Nightcap");
+  await expect(chooser).toContainText("Feralheart Cap");
   await shot(page, "bis-classement.png", "dialog");
   await page.keyboard.press("Escape");
 
