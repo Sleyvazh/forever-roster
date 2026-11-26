@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { del, get, post, put, type Creators, type CraftersRecipe } from "../api";
 import { CRAFTING } from "./GameData";
-import { colon, dateLocale, N, t, tn, tx } from "../i18n";
+import { colon, dateLocale, getLang, N, t, tn, tx } from "../i18n";
 import { ItemHover, ItemIcon } from "./ItemTooltip";
 import { NumberField } from "./NumberField";
 import { CraftOrders, type OrderPrefill } from "./CraftOrders";
@@ -34,7 +34,7 @@ export const EVENT_LABEL: Record<string, string> = {
   group_character_changed: N("a modifié les persos d'un membre"), group_loot_settings: N("a changé les réglages du butin"), loot_history_imported: N("a importé un historique de butin"),
   group_nudge_settings: N("a changé les relances Discord"), raid_nudged: N("a relancé les sans-réponse"), raid_ask_sent: N("a demandé à un joueur de venir"),
   group_feedback_linked: N("a relié les avis d'un serveur Discord"), group_feedback_unlinked: N("a retiré les avis d'un serveur Discord"),
-  group_outings_linked: N("a lié le salon des sorties"), group_outings_unlinked: N("a délié le salon des sorties"), group_creators: N("a changé qui crée les raids et les sorties"),
+  group_outings_linked: N("a lié le salon des sorties"), group_outings_unlinked: N("a délié le salon des sorties"), group_creators: N("a changé qui crée les raids, les sorties ou les sondages"),
   // Lot « Guilde » (Forever) : guilde du jeu, annonces de la course, mains et alts
   guild_linked: N("a lié la guilde du jeu"), guild_unlinked: N("a délié la guilde du jeu"), guild_announces: N("a changé les annonces de la Course au 60"),
   guild_member_linked: N("a rattaché un perso"), guild_member_unlinked: N("a détaché un perso"),
@@ -48,6 +48,8 @@ export const EVENT_LABEL: Record<string, string> = {
   character_created_for: N("a créé la fiche d'un joueur"), character_given: N("a donné une fiche"),
   // Version anglaise (lot E6) : langue du bot sur Discord
   group_lang: N("a changé la langue du bot"),
+  // Sondages (site, /sondage et /dispos)
+  poll_created: N("a posé un sondage"), poll_closed: N("a clos un sondage"), poll_deleted: N("a effacé un sondage"),
 };
 /** Langues du bot, chacune dans sa propre langue (comme le sélecteur FR | EN du site). */
 const BOT_LANG: Record<"fr" | "en", string> = { fr: "Français", en: "English" };
@@ -59,6 +61,7 @@ export function eventDetail(e: GroupEvent) {
   const m = e.meta;
   const str = (k: string) => (typeof m[k] === "string" ? (m[k] as string) : null);
   if (e.type === "group_renamed" && str("from") && str("to")) return ` · ${str("from")} → ${str("to")}`;
+  if (e.type.startsWith("poll_") && str("question")) return ` · ${getLang() === "en" ? `“${str("question")}”` : `« ${str("question")} »`}`;
   if (e.type === "guild_linked") return ` · ${str("guild") ?? "?"}${m.auto === true ? t(" (à son premier relevé)") : ""}${str("replaced") ? t(", à la place de {name}", { name: str("replaced")! }) : ""}`;
   if (e.type === "guild_unlinked") return ` · ${str("guild") ?? "?"}`;
   if (e.type === "group_lang") { const l = str("lang"); return ` · ${l === "fr" || l === "en" ? BOT_LANG[l] : l ?? "?"}`; }
@@ -368,11 +371,11 @@ export function OutingsChannel({ groupId, linked, name, hasDiscord, guard }: { g
   );
 }
 
-/** Qui peut créer les raids et les sorties (site, /raid et /sortie) : les officiers, ou tous les membres. */
-export function CreatorsSettings({ groupId, creators, guard }: { groupId: string; creators: { raids: Creators; outings: Creators }; guard: Guard }) {
+/** Qui peut créer les raids, les sorties et les sondages (site, /raid, /sortie, /sondage et /dispos) : les officiers, ou tous les membres. */
+export function CreatorsSettings({ groupId, creators, guard }: { groupId: string; creators: { raids: Creators; outings: Creators; polls: Creators }; guard: Guard }) {
   const qc = useQueryClient();
   const forever = useSite().game === "forever";
-  const save = (b: Partial<{ raids: Creators; outings: Creators }>) => void guard(async () => {
+  const save = (b: Partial<{ raids: Creators; outings: Creators; polls: Creators }>) => void guard(async () => {
     await put(`/groups/${groupId}/creators`, b);
     await qc.invalidateQueries({ queryKey: ["group", groupId] });
   });
@@ -385,14 +388,17 @@ export function CreatorsSettings({ groupId, creators, guard }: { groupId: string
   );
   return (
     <section className="stack admin-sec" aria-labelledby="cr-title">
-      <h3 id="cr-title" style={{ margin: 0 }}>{forever ? t("Qui crée les raids et les sorties") : t("Qui crée les raids")}</h3>
+      <h3 id="cr-title" style={{ margin: 0 }}>{forever ? t("Qui crée les raids, les sorties et les sondages") : t("Qui crée les raids et les sondages")}</h3>
       <div className="cr-set">
         <span>{t("Qui peut créer des raids")}</span>{seg(t("Qui peut créer des raids"), creators.raids, v => save({ raids: v }))}
         {forever && <><span>{t("Qui peut créer des sorties")}</span>{seg(t("Qui peut créer des sorties"), creators.outings, v => save({ outings: v }))}</>}
+        <span>{t("Qui peut créer des sondages")}</span>{seg(t("Qui peut créer des sondages"), creators.polls, v => save({ polls: v }))}
       </div>
       <p className="hint" style={{ margin: 0 }}>
-        {forever ? tx("Sur le site comme sur Discord ({raid} et {outing}).", { raid: "/raid", outing: "/sortie" }) : tx("Sur le site comme sur Discord ({raid}).", { raid: "/raid" })}
+        {forever ? tx("Sur le site comme sur Discord ({raid}, {outing}, {poll} et {dates}).", { raid: "/raid", outing: "/sortie", poll: "/sondage", dates: "/dispos" })
+          : tx("Sur le site comme sur Discord ({raid}, {poll} et {dates}).", { raid: "/raid", poll: "/sondage", dates: "/dispos" })}
         {forever && t(" Une sortie se modifie ou s'annule par son créateur et par les officiers.")} {t("Un raid se modifie par les officiers ; un raid récurrent se crée par les officiers.")}
+        {" "}{t("Un sondage se clôt par son créateur et par les officiers.")}
       </p>
     </section>
   );

@@ -46,6 +46,26 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
       { type: ApplicationCommandOptionType.String, name: "note", ...d("Facultatif : quêtes, point de rendez-vous… (80 caractères)", "Optional: quests, meeting point… (80 characters)"), required: false, max_length: 80 },
     ],
   },
+  // Sondages : droits vérifiés par le site (réglage « Qui peut créer des sondages » du groupe, officiers par défaut) ;
+  // la question et les choix se tapent dans une fenêtre
+  {
+    type: ApplicationCommandType.ChatInput,
+    name: "sondage",
+    ...d("Pose un sondage à la guilde liée à ce salon : une question, 2 à 10 choix, des boutons pour voter.", "Posts a poll to the guild linked to this channel: a question, 2 to 10 choices, buttons to vote."),
+    contexts: [InteractionContextType.Guild],
+    options: [
+      { type: ApplicationCommandOptionType.Boolean, name: "anonyme", ...d("Vote anonyme : personne ne voit qui a voté quoi (oui par défaut)", "Anonymous vote: nobody sees who voted what (yes by default)"), required: false },
+      { type: ApplicationCommandOptionType.Boolean, name: "plusieurs", ...d("Chacun peut cocher plusieurs choix (non par défaut)", "Everyone can tick several choices (no by default)"), required: false },
+      { type: ApplicationCommandOptionType.String, name: "resultats", ...d("Résultats en direct, ou cachés jusqu'à la fin", "Results live, or hidden until the end"), required: false,
+        choices: [{ name: "Live", name_localizations: { fr: "En direct" }, value: "direct" }, { name: "At the end", name_localizations: { fr: "À la fin" }, value: "fin" }] },
+    ],
+  },
+  {
+    type: ApplicationCommandType.ChatInput,
+    name: "dispos",
+    ...d("Demande à la guilde ses dispos pour un raid : 2 à 8 créneaux, chacun répond Oui ou Si besoin.", "Asks the guild when it can raid: 2 to 8 time slots, everyone answers Yes or If needed."),
+    contexts: [InteractionContextType.Guild],
+  },
   // Signalements du site (bug, idée, question) : le salon privé des admins du site
   {
     type: ApplicationCommandType.ChatInput,

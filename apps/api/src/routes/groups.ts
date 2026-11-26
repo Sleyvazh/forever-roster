@@ -20,6 +20,7 @@ import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outings";
+import { pollCounts, retirePollMessages } from "../lib/polls";
 import { bus, charsChanged } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
@@ -141,8 +142,13 @@ export async function groupRoutes(app: FastifyInstance) {
       outingsLinked: !!g!.outingsChannelId, outingsChannelName: g!.outingsChannelId ? g!.outingsChannelName : null,
     };
     // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
-    const creators = { raids: g!.raidCreators, outings: g!.outingCreators, canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role) };
-    return { group: { id: g!.id, name: g!.name, game: g!.game, lang: g!.lang, site: { name: site.name, origin: site.origin }, ...channels, creators }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
+    const creators = {
+      raids: g!.raidCreators, outings: g!.outingCreators, polls: g!.pollCreators,
+      canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role), canCreatePoll: mayCreate(g!.pollCreators, role),
+    };
+    // Sondages ouverts, et ceux où il n'a pas répondu (pastille de l'onglet Sondages)
+    const pollsInfo = await pollCounts(db, g!.id, u.id);
+    return { group: { id: g!.id, name: g!.name, game: g!.game, lang: g!.lang, site: { name: site.name, origin: site.origin }, ...channels, creators, polls: pollsInfo }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
   });
 
   /** Langue du bot Discord pour la guilde (annonces, réponses, messages privés des joueurs sans langue choisie). */
@@ -162,18 +168,20 @@ export async function groupRoutes(app: FastifyInstance) {
     return { lang };
   });
 
-  /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
+  /** Qui peut créer les raids (site et /raid), les sorties (site et /sortie) et les sondages (site, /sondage et /dispos) : les officiers, ou tous les membres. */
   app.put("/:id/creators", async (req) => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
     const who = z.enum(["officers", "members"]);
-    const body = parse(z.object({ raids: who.optional(), outings: who.optional() }), req.body);
-    const [g] = await db.update(groups).set({ ...(body.raids && { raidCreators: body.raids }), ...(body.outings && { outingCreators: body.outings }) })
-      .where(eq(groups.id, id)).returning({ raids: groups.raidCreators, outings: groups.outingCreators });
+    const body = parse(z.object({ raids: who.optional(), outings: who.optional(), polls: who.optional() }), req.body);
+    const [g] = await db.update(groups).set({
+      ...(body.raids && { raidCreators: body.raids }), ...(body.outings && { outingCreators: body.outings }), ...(body.polls && { pollCreators: body.polls }),
+    }).where(eq(groups.id, id)).returning({ raids: groups.raidCreators, outings: groups.outingCreators, polls: groups.pollCreators });
     await audit(db, req, "group_creators", { userId: u.id, groupId: id, meta: { ...body } });
     bus.group({ t: "group", g: id });
     bus.group({ t: "outings", g: id });
+    bus.group({ t: "polls", g: id });
     return { creators: g };
   });
 
@@ -198,6 +206,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await retireAnnouncements(db, id, { all: true });
     await retireOrderMessages(db, id);
     await retireOutingMessages(db, id, { all: true });
+    await retirePollMessages(db, id);
     const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
     for (const m of members) await bus.membership(db, m.u);

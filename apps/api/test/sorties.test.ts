@@ -113,13 +113,13 @@ describe("qui crée : réglage des officiers, pour les raids et pour les sorties
   it("sorties réservées aux officiers, raids ouverts à tous les membres ; /raid suit le réglage", async () => {
     const s = await scene("Reglages", [["Ana", "Kaelys", "Priest", 31]]);
     const ana = s.people.Kaelys!;
-    // Défauts : raids → officiers, sorties → tous
+    // Défauts : raids → officiers, sorties → tous, sondages → officiers
     const d0 = (await ana.s.c.get(`/api/groups/${s.g.id}`)).json().group.creators;
-    expect(d0).toEqual({ raids: "officers", outings: "members", canCreateRaid: false, canCreateOuting: true });
+    expect(d0).toEqual({ raids: "officers", outings: "members", polls: "officers", canCreateRaid: false, canCreateOuting: true, canCreatePoll: false });
     expect((await ana.s.c.post(`/api/groups/${s.g.id}/raids`, { name: "Onyxia", size: 40 })).statusCode).toBe(403);
     // Un membre ne change pas le réglage
     expect((await ana.s.c.put(`/api/groups/${s.g.id}/creators`, { raids: "members" })).statusCode).toBe(403);
-    expect((await s.gm.c.put(`/api/groups/${s.g.id}/creators`, { raids: "members", outings: "officers" })).json().creators).toEqual({ raids: "members", outings: "officers" });
+    expect((await s.gm.c.put(`/api/groups/${s.g.id}/creators`, { raids: "members", outings: "officers" })).json().creators).toEqual({ raids: "members", outings: "officers", polls: "officers" });
     expect((await ana.s.c.post(`/api/groups/${s.g.id}/raids`, { name: "Onyxia", size: 40 })).statusCode).toBe(201);
     // Le raid récurrent reste aux officiers
     expect((await ana.s.c.post(`/api/groups/${s.g.id}/raids`, { name: "Onyxia", size: 40, scheduledAt: tomorrowAt(), weekly: { leadDays: 7 } })).statusCode).toBe(403);

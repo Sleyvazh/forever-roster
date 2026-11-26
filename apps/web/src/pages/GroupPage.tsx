@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ApiError, del, get, patch, type GroupDetail } from "../api";
 import { useMe } from "../auth";
 import { GroupRaids } from "../components/GroupRaids";
+import { PollsTab } from "../components/Polls";
 import { GroupFeedback } from "../components/GroupFeedback";
 import { GroupCharacters } from "../components/GroupRoster";
 import { LootSettingsPanel } from "../components/Loot";
@@ -12,15 +13,15 @@ import { roleLabel } from "./GroupsPage";
 import { useSite } from "../site";
 import { SiteMembers } from "../components/GroupMembers";
 import { BotLanguage, CreatorsSettings, DeleteGroup, DiscordChannel, GroupName, Invites, Journal, OrdersChannel } from "../components/AdminSections";
-import { N, t, tx } from "../i18n";
+import { N, t, tn, tx } from "../i18n";
 
 /**
  * Page d'une guilde sur Roster (WoW Retail) : onglets Raids · Membres · Personnages · Présence & butin · Administration.
  * Forever Roster a sa propre navigation (refonte du 23/10, pages/GuildPages.tsx).
  */
 
-type GroupTab = "raids" | "members" | "characters" | "presence" | "admin";
-const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", presence: "presence", admin: "admin" };
+type GroupTab = "raids" | "members" | "characters" | "presence" | "polls" | "admin";
+const GROUP_TAB_SLUG: Record<GroupTab, string> = { raids: "raids", members: "membres", characters: "persos", presence: "presence", polls: "sondages", admin: "admin" };
 
 /** Une guilde de l'autre jeu s'ouvre sur son site (un site, deux adresses). */
 export function OtherSite({ group }: { group: GroupDetail["group"] }) {
@@ -59,7 +60,7 @@ export function GroupPage() {
   const { group, role, members } = detail.data;
   if (group.game !== site.game) return <OtherSite group={group} />;
 
-  const tabs: [GroupTab, string][] = [["raids", t("Raids")], ["members", t("Membres ({n})", { n: members.length })], ["characters", t("Personnages")], ["presence", t("Présence & butin")]];
+  const tabs: [GroupTab, string][] = [["raids", t("Raids")], ["members", t("Membres ({n})", { n: members.length })], ["characters", t("Personnages")], ["presence", t("Présence & butin")], ["polls", t("Sondages")]];
   if (isOfficer) tabs.push(["admin", t("Administration")]);
   // Onglet dans l'adresse (/groups/:id/membres…) : retour arrière, lien direct à partager
   const wanted = (Object.entries(GROUP_TAB_SLUG).find(([, s]) => s === tabSlug)?.[0] as GroupTab | undefined) ?? "raids";
@@ -86,13 +87,15 @@ export function GroupPage() {
       {error && <div className="alert error" role="alert">{error}</div>}
       <div className="panel lift">
         <div className="tabs" role="tablist">
-          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}{k === "admin" && !!unseen && <span className="av-badge" aria-label={t("{n} avis avec du nouveau", { n: unseen })}>{unseen}</span>}</button>)}
+          {tabs.map(([k, l]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}{k === "admin" && !!unseen && <span className="av-badge" aria-label={t("{n} avis avec du nouveau", { n: unseen })}>{unseen}</span>}
+            {k === "polls" && !!group.polls.toAnswer && <span className="av-badge" aria-label={tn(group.polls.toAnswer, "{n} sondage où tu n'as pas répondu", "{n} sondages où tu n'as pas répondu")}>{group.polls.toAnswer}</span>}</button>)}
         </div>
         <div className="pane">
           {tab === "raids" && <GroupRaids groupId={groupId} canEdit={!!isOfficer} canCreate={group.creators.canCreateRaid} guard={guard} discordLinked={group.discordLinked} />}
           {tab === "members" && <SiteMembers groupId={groupId} members={members} myRole={role} myId={myId} guard={guard} hint={t("Clique un nom pour voir sa fiche dans la guilde : persos, présence, butin.")} />}
           {tab === "characters" && <GroupCharacters groupId={groupId} groupName={group.name} members={members} myId={myId} myRole={role} />}
           {tab === "presence" && <AttendanceTab groupId={groupId} />}
+          {tab === "polls" && <PollsTab groupId={groupId} guard={guard} />}
           {tab === "admin" && isOfficer && (
             <Admin isOwner={isOwner} unseen={unseen} initial={avis !== undefined ? "feedback" : undefined} sections={{
               invites: <Invites groupId={groupId} guard={guard} />,

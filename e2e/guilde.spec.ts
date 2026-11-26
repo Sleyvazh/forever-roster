@@ -530,7 +530,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     expect(rank.y, "rang, joueur et connexion sous le nom").toBeGreaterThan(name.y + name.height - 2);
     expect((await row.locator(".gx-lv").boundingBox())!.y, "niveau sur la ligne du nom").toBeLessThan(name.y + name.height);
     expect(await page.locator(".gx-table").evaluate(t => t.parentElement!.scrollWidth <= t.parentElement!.clientWidth)).toBe(true);
-    // 360, 375 et 390 px : les cinq onglets de Guilde tiennent sans défiler, rien ne déborde (Membres, Banque)
+    // 360, 375 et 390 px : les six onglets de Guilde (Sondages compris, deux rangées de trois) tiennent sans défiler, rien ne déborde (Membres, Banque)
     for (const width of [360, 375, 390]) {
       await page.setViewportSize({ width, height: 800 });
       for (const url of [`/groups/${group}/membres`, `/groups/${group}/membres/banque`]) {
@@ -557,7 +557,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await db2.query("UPDATE game_guilds SET podium = $2 WHERE group_id = $1", [group, JSON.stringify(podium)]);
     await db2.end();
     await page.goto(`/groups/${group}/membres/course`);
-    await expect(page.locator(".panel > .tabs [role=tab]")).toHaveText(["Membres", "Artisans", "Banque", "Historique", "Palmarès"]);
+    await expect(page.locator(".panel > .tabs [role=tab]")).toHaveText(["Membres", "Artisans", "Sondages", "Banque", "Historique", "Palmarès"]);
     await expect(page.getByRole("tab", { name: "Palmarès" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "Palmarès" })).toBeVisible();
     const sixties = page.getByRole("region", { name: "Les 60 de la guilde" });

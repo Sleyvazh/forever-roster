@@ -23,7 +23,8 @@ export type AuditType =
   | "banker_set" | "banker_unset"
   | "character_level_fixed" | "character_level_released"
   | "character_created_for" | "character_given"
-  | "game_contributor_set" | "game_contributor_unset";
+  | "game_contributor_set" | "game_contributor_unset"
+  | "poll_created" | "poll_closed" | "poll_deleted";
 
 export async function audit(
   db: Db, req: FastifyRequest | null, type: AuditType,

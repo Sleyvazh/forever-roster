@@ -11,7 +11,7 @@ import { LegalNoticeEn, PrivacyEn } from "./LegalPagesEn";
  * Les durées de conservation décrivent ce que fait le code (purges : apps/api/src/lib/purges.ts) : à mettre à jour avec lui.
  */
 // Version anglaise (10/11/2026) : LegalPagesEn.tsx, le même texte en anglais : tout changement ici se fait aussi là-bas.
-const UPDATED = "17 novembre 2026";
+const UPDATED = "27 novembre 2026";
 
 export const host = (origin: string) => origin.replace(/^https?:\/\//, "");
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
@@ -232,6 +232,14 @@ const ROWS: Row[] = [
     who: "Les membres de la guilde et le salon Discord de la sortie.",
   },
   {
+    title: "Sondages",
+    data: "Question, choix ou créneaux, créateur ; ton vote (choix, ou Oui / Si besoin par créneau) avec le nom de ton perso principal et son rôle ; depuis Discord sans compte : ton identifiant et ton pseudo Discord.",
+    why: "Poser une question à la guilde et trouver le soir où le plus de monde peut raider.",
+    basis: "Contrat",
+    keep: "Un sondage dure 30 jours au plus. Il est effacé automatiquement 90 jours après sa fin, ou plus tôt par son créateur ou un officier, avec ses votes et son message Discord.",
+    who: "Les membres de la guilde et le salon Discord du sondage. Vote anonyme : personne ne voit qui a voté quoi, seulement le total ; disponibilités : les réponses sont visibles de la guilde.",
+  },
+  {
     title: "Guilde du jeu (Forever)",
     data: "Liste de la guilde du jeu relevée par l'addon d'un membre : nom complet, classe, niveau, rang, notes de guilde (notes d'officier relevées par un officier, montrées aux officiers seulement), en ligne et dernière connexion, arrivée et départ ; journal de guilde (arrivées, départs, promotions, avec les noms) ; niveaux atteints et XP (heure exacte avec l'addon) ; rattachement des persos à leurs joueurs. Banque de la guilde : contenu des onglets, or, journal des dépôts et retraits (avec les noms), le compte du site qui a envoyé chaque relevé de la banque (jamais affiché).",
     why: "Montrer qui joue quoi dans la guilde (mains et alts), la Course au 60, l'historique et la banque de la guilde.",
@@ -421,7 +429,7 @@ function PrivacyFr() {
         <ul className="legal-list">
           <li>
             <span className="tag legal-basis">Contrat</span> : le service que tu demandes en créant un compte ou en utilisant le bot
-            (compte, persos, guildes, raids, absences, commandes, sorties, Roster Companion, e-mails du compte).
+            (compte, persos, guildes, raids, absences, commandes, sorties, sondages, Roster Companion, e-mails du compte).
           </li>
           <li>
             <span className="tag legal-basis li">Intérêt légitime</span> : la sécurité du site (journal, sessions, journaux du

@@ -10,6 +10,7 @@ export type LiveEvent =
   | { t: "chars"; g: string }
   | { t: "feedback"; g: string }
   | { t: "outings"; g: string }
+  | { t: "polls"; g: string }
   | { t: "guild"; g: string }
   | { t: "membership" };
 
@@ -25,6 +26,7 @@ function refresh(qc: QueryClient, e: LiveEvent) {
     case "chars": inv(["guild", e.g]); inv(["guild-race", e.g]); inv(["guild-home", e.g]); inv(["group-chars", e.g]); inv(["outings", e.g]); inv(["crafters", e.g]); inv(["group", e.g]); inv(["item-sources"]); break;
     case "feedback": inv(["feedback", e.g]); inv(["group", e.g]); inv(["group-audit", e.g]); break;
     case "outings": inv(["outings", e.g]); inv(["guild-home", e.g]); break;
+    case "polls": inv(["polls", e.g]); inv(["group", e.g]); break;
     // Guilde du jeu (Forever) : relevé reçu, rattachements, lien, annonces → Membres, Course, Historique, Accueil, Administration
     case "guild": for (const k of GUILD_QUERY_ROOTS) inv([k, e.g]); inv(["group-audit", e.g]); break;
     case "membership": inv(["groups"]); inv(["week"]); break;

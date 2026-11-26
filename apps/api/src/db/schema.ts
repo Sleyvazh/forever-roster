@@ -1,4 +1,4 @@
-import type { BisSource, BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets, Weights } from "@forever/game-data";
+import type { BisSource, BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, PollKind, PollOption, PollResults, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets, Weights } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -241,6 +241,8 @@ export const groups = pgTable("groups", {
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
   raidCreators: text("raid_creators").$type<Creators>().notNull().default("officers"),
   outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
+  /** Qui peut créer les sondages (site, /sondage et /dispos) : les officiers par défaut (choix de Flo, 26/11/2026). */
+  pollCreators: text("poll_creators").$type<Creators>().notNull().default("officers"),
   /** Course au 60 (Forever) : annonces des montées de niveau dans le salon de la guilde (rien, les 60, tous les 10 niveaux). */
   levelAnnounces: text("level_announces").$type<LevelAnnounce>().notNull().default("sixty"),
   /** Langue du bot Discord pour cette guilde (annonces, réponses ; version anglaise, lot E6). */
@@ -253,6 +255,7 @@ export const groups = pgTable("groups", {
   check("groups_game", sql`${t.game} IN ('forever', 'retail')`),
   check("groups_raid_creators_chk", sql`${t.raidCreators} in ('officers', 'members')`),
   check("groups_outing_creators_chk", sql`${t.outingCreators} in ('officers', 'members')`),
+  check("groups_poll_creators_chk", sql`${t.pollCreators} in ('officers', 'members')`),
   // Groupes liés à un serveur Discord (avis : seuls ceux-là sont proposés), quel que soit le nombre de groupes
   index("groups_discord_guild_idx").on(t.discordGuildId),
   index("groups_orders_guild_idx").on(t.ordersGuildId),
@@ -1358,3 +1361,62 @@ export const bisWeights = pgTable("bis_weights", {
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.scope, t.scopeId, t.profile] })]);
+
+/* ---------- Sondages (26/11/2026) ---------- */
+
+/**
+ * Sondage de la guilde, posé depuis Discord (/sondage, /dispos) ou depuis le site (Guilde › Sondages) :
+ * - « choice » : une question, 2 à 10 choix, un ou plusieurs par votant, anonyme ou public, résultats en direct ou à la fin ;
+ * - « dates » : 2 à 8 créneaux (date de chacun) ; chacun répond Oui ou Si besoin à chaque créneau ; jamais anonyme ;
+ *   le meilleur créneau peut devenir un raid (raid_id).
+ * Le message Discord est posé dans `channel_id` (salon de la commande, ou celui des raids du groupe pour un sondage du
+ * site ; null : sondage du site seulement) et republié quand discord_changed_at > discord_synced_at.
+ */
+export const polls = pgTable("polls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<PollKind>().notNull(),
+  question: text("question").notNull(),
+  options: jsonb("options").$type<PollOption[]>().notNull(),
+  multi: boolean("multi").notNull().default(false),
+  anonymous: boolean("anonymous").notNull().default(false),
+  results: text("results").$type<PollResults>().notNull().default("live"),
+  /** Disponibilités : nom du raid à créer sur le meilleur créneau (facultatif, repris dans « Créer le raid sur ★ »). */
+  raidName: text("raid_name").notNull().default(""),
+  /** Fin prévue (null : jusqu'à ce qu'il soit clos, au plus POLL_MAX_DAYS jours) ; clos le (à la main ou à la fin). */
+  closesAt: ts("closes_at"),
+  closedAt: ts("closed_at"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /** Nom du créateur (recopié : « Posé par … »). */
+  creatorName: text("creator_name").notNull(),
+  raidId: uuid("raid_id").references(() => raids.id, { onDelete: "set null" }),
+  channelId: text("channel_id"),
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+}, t => [
+  index("polls_group_idx").on(t.groupId, t.createdAt),
+  index("polls_open_idx").on(t.closedAt, t.closesAt),
+  check("polls_kind_chk", sql`${t.kind} in ('choice', 'dates')`),
+  check("polls_results_chk", sql`${t.results} in ('live', 'end')`),
+  check("polls_question_chk", sql`char_length(${t.question}) between 1 and 200`),
+]);
+
+/**
+ * Vote : un compte du site (voter_key « u:<compte> », sur le site ou depuis Discord quand il est lié et membre) ou,
+ * depuis Discord sans compte, un identifiant Discord seul (« d:<id> »). yes : choix votés (A) ou créneaux « Oui » (B) ;
+ * maybe : créneaux « Si besoin » (B). name et role : perso (ou pseudo) et rôle de son main au moment du vote.
+ */
+export const pollVotes = pgTable("poll_votes", {
+  pollId: uuid("poll_id").notNull().references(() => polls.id, { onDelete: "cascade" }),
+  voterKey: text("voter_key").notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  discordUserId: text("discord_user_id"),
+  name: text("name").notNull(),
+  role: text("role").$type<"Tank" | "Heal" | "DPS">(),
+  yes: jsonb("yes").$type<number[]>().notNull().default([]),
+  maybe: jsonb("maybe").$type<number[]>().notNull().default([]),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [primaryKey({ columns: [t.pollId, t.voterKey] })]);

@@ -101,6 +101,30 @@ export interface LevelAnnounce {
   rank: number; at: string; exact: boolean; when: string;
 }
 export interface DungeonChoice { key: string; name: string; levels: string; count: number; fits: boolean }
+/* ---------- Sondages (/sondage, /dispos) ---------- */
+
+export type PollKind = "choice" | "dates";
+export type PollRole = "Tank" | "Heal" | "DPS";
+export interface PollOptionView {
+  id: number; label: string; at: string | null;
+  /** null : résultats cachés jusqu'à la fin. */
+  yes: number | null; maybe: number | null; no: number | null; roles: Record<PollRole, number> | null;
+}
+/** Sondage dans son salon Discord (même vue que le site). */
+export interface PollView {
+  id: string; kind: PollKind; question: string; multi: boolean; anonymous: boolean; results: "live" | "end"; hidden: boolean;
+  options: PollOptionView[]; voters: number; best: number | null; leaders: number[];
+  closesAt: string | null; deadline: string; closedAt: string | null; createdAt: string;
+  creator: string; createdBy: string | null; raidName: string;
+  raid: { id: string; name: string; scheduledAt: string | null; url: string } | null;
+  group: { id: string; name: string; lang?: Lang };
+  channelId: string | null; messageId: string | null; changedAt: string; url: string;
+}
+export interface PollVoter { name: string; role: PollRole | null; guest: boolean }
+export interface PollNewBody {
+  guildId: string; channelId: string; discordUserId: string; kind: PollKind; question: string; options: { label: string; at?: string | null }[];
+  multi?: boolean; anonymous?: boolean; results?: "live" | "end"; closesAt?: string | null; raidName?: string;
+}
 
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
 export interface ChoiceChar { id: string; name: string; cls: string; spec1: string; spec2: string; specs: { name: string; role: Role }[] }
@@ -262,6 +286,34 @@ export class InternalApi {
     return this.req<{ choices: DungeonChoice[] }>("GET", `/internal/discord/outings/dungeons?${qs}`);
   }
   claimOutingNotices() { return this.req<{ notices: OutingNotice[] }>("POST", "/internal/discord/outings/notices/claim", {}); }
+  /* Sondages */
+  pollCanCreate(b: { guildId: string; channelId: string; discordUserId: string }) {
+    return this.req<{ ok: true; group: { id: string; name: string; lang?: Lang } }>("GET", `/internal/discord/polls/can-create?${new URLSearchParams(b)}`);
+  }
+  createPoll(b: PollNewBody) { return this.req<{ view: PollView }>("POST", "/internal/discord/polls", b); }
+  pollsOutbox() { return this.req<{ polls: PollView[] }>("GET", "/internal/discord/polls/outbox"); }
+  pollPublished(id: string, b: { channelId: string; messageId: string; changedAt: string }) {
+    return this.req<{ ok: true }>("POST", `/internal/discord/polls/${id}/published`, b);
+  }
+  pollView(id: string) { return this.req<PollView>("GET", `/internal/discord/polls/${id}/view`); }
+  pollVote(id: string, b: { discordUserId: string; discordName: string; optionId: number }) {
+    return this.req<{ vote: { yes: number[] }; name: string; guest: boolean; view: PollView }>("POST", `/internal/discord/polls/${id}/vote`, b);
+  }
+  pollDates(id: string, b: { discordUserId: string; discordName: string; yes?: number[]; maybe?: number[] }) {
+    return this.req<{ vote: { yes: number[]; maybe: number[] }; name: string; role: PollRole | null; guest: boolean; view: PollView }>("PUT", `/internal/discord/polls/${id}/dates`, b);
+  }
+  pollMine(id: string, b: { discordUserId: string; discordName: string }) {
+    return this.req<{ vote: { yes: number[]; maybe: number[] } | null; name: string; role: PollRole | null; guest: boolean; view: PollView }>(
+      "GET", `/internal/discord/polls/${id}/mine?${new URLSearchParams(b)}`);
+  }
+  pollVoters(id: string) {
+    return this.req<{ options: { id: number; yes: PollVoter[]; maybe: PollVoter[] }[]; none: PollVoter[]; view: PollView }>("GET", `/internal/discord/polls/${id}/voters`);
+  }
+  pollClose(id: string, discordUserId: string) { return this.req<{ already: boolean; view: PollView }>("POST", `/internal/discord/polls/${id}/close`, { discordUserId }); }
+  pollRaid(id: string, b: { discordUserId: string; name: string; scheduledAt: string }) {
+    return this.req<{ raid: { id: string; name: string; scheduledAt: string; url: string | null }; hasChannel: boolean; announcement: RaidView | null; view: PollView }>(
+      "POST", `/internal/discord/polls/${id}/raid`, b);
+  }
   /* Demandes de retrait à la banque (Forever) */
   claimBankNotices() { return this.req<{ notices: BankNotice[] }>("POST", "/internal/discord/bank/notices/claim", {}); }
   bankNoticeSent(id: number) { return this.req<{ ok: true }>("POST", `/internal/discord/bank/notices/${id}/sent`, {}); }

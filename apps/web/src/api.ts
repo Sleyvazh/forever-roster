@@ -167,7 +167,9 @@ export interface GroupDetail {
     /** Langue du bot sur Discord (annonces, MP, réponses) : choisie à la création (langue de la page), puis par les officiers. */
     lang: "fr" | "en";
     /** Qui crée les raids et les sorties, et si je le peux. */
-    creators: { raids: Creators; outings: Creators; canCreateRaid: boolean; canCreateOuting: boolean };
+    creators: { raids: Creators; outings: Creators; polls: Creators; canCreateRaid: boolean; canCreateOuting: boolean; canCreatePoll: boolean };
+    /** Sondages ouverts, et ceux où je n'ai pas répondu (pastille de l'onglet Sondages). */
+    polls: { open: number; toAnswer: number };
   };
   role: GroupRole;
   /** Je suis banquier (Forever) : je traite les demandes de retrait à la banque, comme les officiers. */

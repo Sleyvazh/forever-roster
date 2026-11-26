@@ -8,7 +8,7 @@ import { Contact, host, Sec, useTitle } from "./LegalPages";
  * Legal notice and privacy policy in English (10/11/2026): the same text as LegalPages.tsx, which stays the reference
  * (French law). Any change there is made here too.
  */
-const UPDATED = "November 17, 2026";
+const UPDATED = "November 27, 2026";
 
 const gameOf = (game: SiteData["game"]) => (game === "retail" ? "WoW Retail" : "WoW Forever");
 
@@ -206,6 +206,14 @@ const ROWS: Row[] = [
     who: "The guild's members and the run's Discord channel.",
   },
   {
+    title: "Polls",
+    data: "Question, choices or time slots, creator; your vote (choices, or Yes / If needed for each slot) with your main character's name and role; from Discord without an account: your Discord ID and Discord name.",
+    why: "Asking the guild a question and finding the evening when the most people can raid.",
+    basis: "Contract",
+    keep: "A poll lasts 30 days at most. It is deleted automatically 90 days after it ends, or sooner by its creator or an officer, with its votes and its Discord message.",
+    who: "The guild's members and the poll's Discord channel. Anonymous vote: nobody sees who voted what, only the totals; availability: answers are visible to the guild.",
+  },
+  {
     title: "In-game guild (Forever)",
     data: "The in-game guild roster recorded by a member's addon: full name, class, level, rank, guild notes (officer notes recorded by an officer, shown to officers only), online status and last login, joining and leaving; guild log (joins, departures, promotions, with names); levels reached and XP (exact time with the addon); characters attached to their players. Guild bank: tab contents, gold, deposit and withdrawal log (with names), the website account that sent each bank scan (never shown).",
     why: "Showing who plays what in the guild (mains and alts), the Race to 60, the guild's history and bank.",
@@ -391,7 +399,7 @@ export function PrivacyEn() {
         <ul className="legal-list">
           <li>
             <span className="tag legal-basis">Contract</span>: the service you ask for by creating an account or using the bot
-            (account, characters, guilds, raids, absences, orders, runs, Roster Companion, account e-mails).
+            (account, characters, guilds, raids, absences, orders, runs, polls, Roster Companion, account e-mails).
           </li>
           <li>
             <span className="tag legal-basis li">Legitimate interest</span>: the website's security (log, sessions, server logs),
