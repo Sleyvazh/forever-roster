@@ -206,6 +206,14 @@ const ROWS: Row[] = [
     who: "The guild's members and the run's Discord channel.",
   },
   {
+    title: "Guild quests",
+    data: "Quest (title, description, objective, reward, spots, deadline) and its giver; for each player who takes it: their main character's name, the steps (taken, turned in, validated, reward handed over, received) with their date, the note left when turning in or in reply; your reliability (quests done, given, rewards paid), computed from these steps.",
+    why: "Offering favors between guild members and tracking the handover of rewards, which happens in game.",
+    basis: "Contract",
+    keep: "Deleted automatically 12 months after their last activity, unless a player is still on them, with their Discord message. The bot's private messages: deleted 7 days after they are sent.",
+    who: "The guild's members (board, player sheet) and the Discord quests channel.",
+  },
+  {
     title: "Polls",
     data: "Question, choices or time slots, creator; your vote (choices, or Yes / If needed for each slot) with your main character's name and role; from Discord without an account: your Discord ID and Discord name.",
     why: "Asking the guild a question and finding the evening when the most people can raid.",
@@ -399,7 +407,7 @@ export function PrivacyEn() {
         <ul className="legal-list">
           <li>
             <span className="tag legal-basis">Contract</span>: the service you ask for by creating an account or using the bot
-            (account, characters, guilds, raids, absences, orders, runs, polls, Roster Companion, account e-mails).
+            (account, characters, guilds, raids, absences, orders, runs, polls, guild quests, Roster Companion, account e-mails).
           </li>
           <li>
             <span className="tag legal-basis li">Legitimate interest</span>: the website's security (log, sessions, server logs),

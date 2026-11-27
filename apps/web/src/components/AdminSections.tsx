@@ -25,6 +25,9 @@ export interface GroupEvent { id: number; type: string; actor: string | null; me
 export const fmt = { format: (d: Date) => new Intl.DateTimeFormat(dateLocale(), { dateStyle: "medium", timeStyle: "short", hourCycle: "h23" }).format(d) };
 export const EVENT_LABEL: Record<string, string> = {
   group_created: N("a créé la guilde"), group_renamed: N("a renommé la guilde"), group_joined: N("a rejoint la guilde"), group_left: N("a quitté la guilde"),
+  // Quêtes de guilde (Forever, 27/11/2026)
+  group_quests_linked: N("a lié le salon des quêtes"), group_quests_unlinked: N("a délié le salon des quêtes"),
+  quest_created: N("a publié une quête"), quest_updated: N("a modifié une quête"), quest_cancelled: N("a annulé une quête"), quest_closed: N("a clos une quête"), quest_taker_removed: N("a retiré un preneur d'une quête"),
   group_member_removed: N("a retiré un membre"), group_role_changed: N("a changé un rôle"), invite_created: N("a créé une invitation"),
   invite_revoked: N("a révoqué une invitation"), raid_created: N("a créé un raid"), raid_deleted: N("a supprimé un raid"),
   raid_template_created: N("a créé un raid récurrent"), raid_template_updated: N("a modifié un raid récurrent"), raid_template_deleted: N("a supprimé un raid récurrent"),
@@ -406,11 +409,46 @@ export function PollsChannel({ groupId, linked, name, hasDiscord, guard }: { gro
   );
 }
 
+/**
+ * Salon des quêtes de guilde (Forever, 27/11/2026) : facultatif, lié par code comme celui des sondages. Lié, toutes les
+ * quêtes y sont annoncées ; sinon elles vont dans le salon Discord de la guilde.
+ */
+export function QuestsChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: string; linked: boolean; name: string | null; hasDiscord: boolean; guard: Guard }) {
+  const game = useSite().game;
+  const qc = useQueryClient();
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [wantCode, setWantCode] = useState(false);
+  return (
+    <section className="stack admin-sec" aria-labelledby="qc-title">
+      <div className="row between">
+        <h3 id="qc-title" style={{ margin: 0 }}>{t("Salon des quêtes")}</h3>
+        <ChannelTag linked={linked} name={name} />
+      </div>
+      <p className="hint" style={{ margin: 0 }}>{linked
+        ? t("Toutes les quêtes de la guilde y sont annoncées, avec un bouton « Prendre » ; l'annonce disparaît quand la quête est finie.")
+        : t("Facultatif. Sans lui, les quêtes sont annoncées dans le salon Discord de la guilde.")}</p>
+      {!hasDiscord && wantCode && <div className="alert info">{tx("Lie d'abord ton propre Discord dans {el} : le bot vérifie que c'est bien un officier qui tape la commande.", { el: <Link to="/account">{t("Compte & sécurité")}</Link> })}</div>}
+      <div className="row">
+        <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/quests-code`));
+        }); }}>{linked ? t("Changer de salon") : t("Générer un code de liaison")}</button>
+        {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
+          await del(`/groups/${groupId}/discord/quests`); setCode(null);
+          await qc.invalidateQueries({ queryKey: ["group", groupId] });
+          await qc.invalidateQueries({ queryKey: ["quests", groupId] });
+        })}>{t("Délier le salon")}</button>}
+      </div>
+      {code && <LinkCodeBox key={code.code} game={game} code={code} intro={t("Dans le salon Discord des quêtes, tape cette commande")} label={t("Commande de liaison du salon des quêtes")}
+        footer={<span className="small muted">{t("Les quêtes en cours y sont déplacées dès que le salon est lié.")}</span>} />}
+    </section>
+  );
+}
+
 /** Qui peut créer les raids, les sorties et les sondages (site, /raid, /sortie, /sondage et /dispos) : les officiers, ou tous les membres. */
-export function CreatorsSettings({ groupId, creators, guard }: { groupId: string; creators: { raids: Creators; outings: Creators; polls: Creators }; guard: Guard }) {
+export function CreatorsSettings({ groupId, creators, guard }: { groupId: string; creators: { raids: Creators; outings: Creators; polls: Creators; quests?: Creators }; guard: Guard }) {
   const qc = useQueryClient();
   const forever = useSite().game === "forever";
-  const save = (b: Partial<{ raids: Creators; outings: Creators; polls: Creators }>) => void guard(async () => {
+  const save = (b: Partial<{ raids: Creators; outings: Creators; polls: Creators; quests: Creators }>) => void guard(async () => {
     await put(`/groups/${groupId}/creators`, b);
     await qc.invalidateQueries({ queryKey: ["group", groupId] });
   });
@@ -423,14 +461,15 @@ export function CreatorsSettings({ groupId, creators, guard }: { groupId: string
   );
   return (
     <section className="stack admin-sec" aria-labelledby="cr-title">
-      <h3 id="cr-title" style={{ margin: 0 }}>{forever ? t("Qui crée les raids, les sorties et les sondages") : t("Qui crée les raids et les sondages")}</h3>
+      <h3 id="cr-title" style={{ margin: 0 }}>{forever ? t("Qui crée les raids, les sorties, les sondages et les quêtes") : t("Qui crée les raids et les sondages")}</h3>
       <div className="cr-set">
         <span>{t("Qui peut créer des raids")}</span>{seg(t("Qui peut créer des raids"), creators.raids, v => save({ raids: v }))}
         {forever && <><span>{t("Qui peut créer des sorties")}</span>{seg(t("Qui peut créer des sorties"), creators.outings, v => save({ outings: v }))}</>}
         <span>{t("Qui peut créer des sondages")}</span>{seg(t("Qui peut créer des sondages"), creators.polls, v => save({ polls: v }))}
+        {forever && creators.quests && <><span>{t("Qui peut publier des quêtes")}</span>{seg(t("Qui peut publier des quêtes"), creators.quests, v => save({ quests: v }))}</>}
       </div>
       <p className="hint" style={{ margin: 0 }}>
-        {forever ? tx("Sur le site comme sur Discord ({raid}, {outing}, {poll} et {dates}).", { raid: "/raid", outing: "/sortie", poll: "/sondage", dates: "/dispos" })
+        {forever ? tx("Sur le site comme sur Discord ({raid}, {outing}, {poll}, {dates} et {quest}).", { raid: "/raid", outing: "/sortie", poll: "/sondage", dates: "/dispos", quest: "/quete" })
           : tx("Sur le site comme sur Discord ({raid}, {poll} et {dates}).", { raid: "/raid", poll: "/sondage", dates: "/dispos" })}
         {forever && t(" Une sortie se modifie ou s'annule par son créateur et par les officiers.")} {t("Un raid se modifie par les officiers ; un raid récurrent se crée par les officiers.")}
         {" "}{t("Un sondage se clôt par son créateur et par les officiers.")}

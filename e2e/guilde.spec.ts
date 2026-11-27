@@ -557,7 +557,7 @@ test("guilde : relevé collé, Membres, rattacher, Course au 60, Historique, Acc
     await db2.query("UPDATE game_guilds SET podium = $2 WHERE group_id = $1", [group, JSON.stringify(podium)]);
     await db2.end();
     await page.goto(`/groups/${group}/membres/course`);
-    await expect(page.locator(".panel > .tabs [role=tab]")).toHaveText(["Membres", "Artisans", "Sondages", "Banque", "Historique", "Palmarès"]);
+    await expect(page.locator(".panel > .tabs [role=tab]")).toHaveText(["Membres", "Artisans", "Sondages", "Banque", "Quêtes", "Historique", "Palmarès"]);
     await expect(page.getByRole("tab", { name: "Palmarès" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "Palmarès" })).toBeVisible();
     const sixties = page.getByRole("region", { name: "Les 60 de la guilde" });

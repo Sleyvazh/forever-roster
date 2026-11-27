@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { ApiError, get, patch, post, put, type Character, type GroupDetail } from "../api";
 import { useMe } from "../auth";
 import { daysUntil, longDay, seenText, useGuildHome, useGuildLink, useGuildMembers } from "../guild";
+import { QuestsHomeCard } from "../components/Quests";
 import { absenceLabel, MyAbsences, type Absence } from "../components/Absences";
 import { GuildHead, InviteButton } from "../components/GuildHead";
 import { QuestionBand, refreshGuild } from "../components/GuildMembers";
@@ -453,6 +454,7 @@ export function HomePage({ groupId, detail }: { groupId: string; detail: GroupDe
           <TodoCard groupId={groupId} groupName={group.name} chars={chars} officer={officer} nextRaid={nextRaid}
             feedback={officer ? detail.feedback?.unseen ?? 0 : 0} bankPending={d.bankRequests ?? 0} linked={d.guild.linked} />
           <MyCharsCard groupId={groupId} chars={chars} />
+          {group.game === "forever" && <QuestsHomeCard groupId={groupId} base={base} />}
           {race}
         </div>
       </div>

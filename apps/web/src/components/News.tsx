@@ -3,7 +3,9 @@ import { NEWS } from "../news";
 import { dateLocale, t } from "../i18n";
 
 const SEEN = "fr-news-seen";
-const latest = NEWS[0]?.n ?? 0;
+// Les plus récentes d'abord, d'après leur numéro (deux patchs livrés en parallèle peuvent les ranger autrement dans news.ts)
+const SORTED = [...NEWS].sort((a, b) => b.n - a.n);
+const latest = SORTED[0]?.n ?? 0;
 const readSeen = () => { try { return Number(localStorage.getItem(SEEN) ?? 0) || 0; } catch { return latest; } };
 const dateText = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString(dateLocale(), { day: "numeric", month: "long" });
 
@@ -44,7 +46,7 @@ export function News() {
         <section className="news" id="news-panel" aria-label={t("Nouveautés")}>
           <div className="news-head"><h3>{t("Nouveautés")}</h3><span className="muted small">{t("site et addon")}</span></div>
           <ol>
-            {NEWS.map(x => (
+            {SORTED.map(x => (
               <li key={x.n} className={x.n > seenAtOpen ? "new" : ""}>
                 <span className="news-when">
                   <span className={`news-k ${x.kind}`}>{x.kind === "addon" ? `Addon${x.version ? ` ${x.version}` : ""}` : x.kind === "bot" ? t("Bot Discord") : t("Site")}</span>

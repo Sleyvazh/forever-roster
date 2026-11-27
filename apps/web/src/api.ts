@@ -163,13 +163,15 @@ export interface GroupDetail {
     id: string; name: string; game: import("@forever/game-data").Game; site: { name: string; origin: string };
     /** Salons liés et leur nom (null : inconnu, rapporté par le bot sous peu). */
     discordLinked: boolean; discordChannelName: string | null; ordersLinked: boolean; ordersChannelName: string | null;
-    outingsLinked: boolean; outingsChannelName: string | null; pollsLinked: boolean; pollsChannelName: string | null;
+    outingsLinked: boolean; outingsChannelName: string | null; pollsLinked: boolean; pollsChannelName: string | null; questsLinked: boolean; questsChannelName: string | null;
     /** Langue du bot sur Discord (annonces, MP, réponses) : choisie à la création (langue de la page), puis par les officiers. */
     lang: "fr" | "en";
     /** Qui crée les raids et les sorties, et si je le peux. */
-    creators: { raids: Creators; outings: Creators; polls: Creators; canCreateRaid: boolean; canCreateOuting: boolean; canCreatePoll: boolean };
+    creators: { raids: Creators; outings: Creators; polls: Creators; quests: Creators; canCreateRaid: boolean; canCreateOuting: boolean; canCreatePoll: boolean; canCreateQuest: boolean };
     /** Sondages ouverts, et ceux où je n'ai pas répondu (pastille de l'onglet Sondages). */
     polls: { open: number; toAnswer: number };
+    /** Quêtes de guilde (Forever) : ce qui m'attend (valider, remettre, confirmer) et celles que je peux prendre. */
+    quests: { todo: number; open: number };
   };
   role: GroupRole;
   /** Je suis banquier (Forever) : je traite les demandes de retrait à la banque, comme les officiers. */

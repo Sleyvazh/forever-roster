@@ -3086,6 +3086,138 @@ p.rp-meta { margin: 0; color: var(--ink); }
 .dcol.right .bis-l1 .gname { text-align: right; }
 @media (max-width: 860px) { .dcol.right .bis-l1 .gname { text-align: left; } }
 
+/* ---------- Quêtes de guilde (Forever, 27/11/2026 ; maquette validée par Flo) : cadres d'infobulle, marqueurs ! et ?,
+   pièces du jeu, fiche sur parchemin. Classes « qu- ». ---------- */
+.qu-head { display: flex; flex-wrap: wrap; gap: 14px 16px; align-items: center; }
+.qu-h { margin: 0; font: 400 28px/1.15 var(--f-disp); color: var(--gold); }
+.qu-h3 { margin: 0; font: 400 19px/1.2 var(--f-disp); color: var(--gold); padding: 0; }
+.qu-h4 { margin: 0; font-size: 15px; font-weight: 600; }
+.qu-mk { flex: none; width: 38px; height: 38px; border-radius: 50%; display: inline-grid; place-items: center; font: 400 24px/1 var(--f-disp);
+  color: #ffd100; text-shadow: 0 0 10px rgba(255, 179, 0, .55), 0 1px 0 #000; background: radial-gradient(circle at 50% 30%, #2c2410, #090d17 72%);
+  border: 1px solid #8a6d2a; box-shadow: 0 0 0 3px rgba(4, 7, 15, .6), 0 0 14px rgba(255, 179, 0, .12); }
+.qu-mk.lg { width: 52px; height: 52px; font-size: 33px; }
+.qu-mk.sm { width: 28px; height: 28px; font-size: 18px; }
+.qu-mk.grey { color: #8a8f99; text-shadow: none; }
+.qu-mk.ok { color: #4fd35f; text-shadow: 0 0 8px rgba(79, 211, 95, .5); }
+.qu-filters { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; }
+.qu-n { font: 500 12px var(--f-mono); opacity: .75; margin-left: 4px; }
+.qu-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.qu-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 18px; border: 1px solid var(--line-2);
+  background: transparent; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.qu-chip.sm { min-height: 32px; padding: 0 10px; font-family: var(--f-mono); font-size: 13px; border-radius: 6px; }
+.qu-chip.on { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 600; }
+.qu-chip:disabled { opacity: .55; cursor: default; }
+.qu-search { margin-left: auto; min-width: 200px; }
+.qu-split { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
+@media (max-width: 980px) { .qu-split { grid-template-columns: minmax(0, 1fr); } .qu-search { margin-left: 0; flex: 1; } }
+.qu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 14px; }
+.qu-empty { grid-column: 1 / -1; }
+.qu-card, .qu-panel { position: relative; border: 1px solid var(--frame); border-radius: 8px; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18), inset 0 1px 0 rgba(255, 255, 255, .06), var(--shadow); }
+.qu-card { display: flex; flex-direction: column; gap: 10px; padding: 15px 15px 13px; min-width: 0; }
+.qu-card.cancelled, .qu-card.closed { opacity: .72; }
+.qu-card-top { display: flex; gap: 12px; align-items: center; }
+.qu-title { all: unset; cursor: pointer; display: block; font-weight: 600; font-size: 16px; line-height: 1.25; text-wrap: balance; }
+.qu-title:hover, .qu-title:focus-visible { color: var(--gold); text-decoration: underline; }
+.qu-by, .qu-meta { display: block; font-size: 13px; opacity: .8; }
+.qu-by svg { vertical-align: -2px; }
+.qu-desc { margin: 0; font-size: 14px; text-wrap: pretty; }
+.qu-hair { height: 1px; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: .6; }
+.qu-obj { display: flex; align-items: center; gap: 10px; font-size: 14px; min-width: 0; }
+.qu-obj-none { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 5px; border: 1px solid var(--line-2); background: var(--icon-bg); color: var(--gold); }
+.qu-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; }
+.qu-lbl { margin: 4px 0 0; font: 600 11px/1.2 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; opacity: .8; }
+.qu-line .qu-lbl { margin: 0; }
+.qu-reward { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.qu-reward.sm { font-size: 13px; }
+.qu-rtext { opacity: .9; }
+.qu-money { display: inline-flex; align-items: center; gap: 4px; font: 600 14px var(--f-mono); }
+.qu-coin { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; box-shadow: inset 0 -1px 1px rgba(0, 0, 0, .45); }
+.qu-coin.g { background: radial-gradient(circle at 35% 35%, #fff1a8, #e0a91a 55%, #7a560a); }
+.qu-coin.s { background: radial-gradient(circle at 35% 35%, #fff, #b9c0cc 55%, #5d6470); }
+.qu-coin.c { background: radial-gradient(circle at 35% 35%, #ffd2a8, #c2702e 55%, #5e300c); }
+.qu-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 2px; }
+.qu-seats { display: inline-flex; align-items: center; gap: 4px; }
+.qu-seats > span:not(.qu-meta) { width: 14px; height: 14px; border-radius: 50%; border: 1.5px dashed var(--line-2); }
+.qu-seats > span.on { background: var(--gold); border: 0; }
+.qu-seats .qu-meta { margin-left: 4px; }
+.qu-take { border-color: var(--gold); color: var(--gold); min-height: 38px; padding: 0 16px; }
+.qu-status { all: unset; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--gold); text-align: right; }
+.qu-side { display: grid; gap: 14px; }
+.qu-panel { display: grid; gap: 10px; padding: 16px; }
+.qu-panel.gold { border-color: var(--gold); }
+.qu-jrow { all: unset; cursor: pointer; display: flex; gap: 10px; align-items: flex-start; padding: 6px; margin: 0 -6px; border-radius: 6px; }
+.qu-jrow:hover, .qu-jrow:focus-visible { background: var(--gold-soft); }
+.qu-jt { display: block; font-weight: 500; }
+.qu-rel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; }
+.qu-rel > div { display: grid; padding: 8px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.qu-rel b { font: 500 20px var(--f-mono); color: var(--gold); }
+.qu-rel b.ok { color: var(--ok); } .qu-rel b.warn { color: var(--warn); }
+.qu-rel span { font-size: 12px; }
+/* Fiche d'une quête : parchemin à gauche, actions à droite */
+.sg-dialog.qu-dlg { width: min(1040px, calc(100vw - 24px)); padding: 16px; }
+.qu-dlg-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+@media (max-width: 860px) { .qu-dlg-body { grid-template-columns: minmax(0, 1fr); } .sg-dialog.qu-dlg { padding: 10px; } }
+.qu-frame { padding: 7px; border-radius: 10px; background: linear-gradient(180deg, #3a2c14, #1c1408); box-shadow: 0 0 0 1px #8a6d2a, 0 14px 40px rgba(0, 0, 0, .55); }
+.qu-parch { display: grid; gap: 16px; padding: 24px 28px 22px; border-radius: 6px; color: #3b2a12;
+  background: radial-gradient(120% 90% at 50% 0%, #f6ebcf 0%, #ecdcb4 55%, #dcc591 100%); box-shadow: inset 0 0 50px rgba(160, 122, 60, .35), inset 0 0 0 1px #b8955a; }
+.qu-parch .q1 { color: #3b2a12 !important; } .qu-parch .q2 { color: #186e05 !important; } .qu-parch .q3 { color: #0058b0 !important; } .qu-parch .q4 { color: #7e26c2 !important; }
+.qu-ptitle { margin: 0; font: 400 30px/1.1 var(--f-disp); color: #3a2205; }
+.qu-pmeta { margin: 4px 0 0; font-size: 14px; color: #6b4f25; }
+.qu-ph { margin: 0 0 6px; display: flex; align-items: center; gap: 10px; font: 400 20px/1.2 var(--f-disp); color: #5b3a0e; }
+.qu-ph::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(138, 106, 58, .55), transparent); }
+.qu-ptext { margin: 0; font-size: 16px; line-height: 1.5; color: #3b2a12; text-wrap: pretty; white-space: pre-line; }
+.qu-ptext.small { font-size: 14px; color: #6b4f25; margin-bottom: 8px; }
+.qu-preward .qu-money, .qu-preward > .qu-reward > span { padding: 6px 12px; border-radius: 6px; background: #1a1409; border: 1px solid #8a6d2a; color: #f3eee2; }
+.qu-preward .q1 { color: #f3eee2 !important; } .qu-preward .q2 { color: #3ee35f !important; } .qu-preward .q3 { color: #5aa8ff !important; } .qu-preward .q4 { color: #c88cff !important; }
+.qu-pfoot { margin: 0; padding-top: 10px; border-top: 1px solid #b8955a; font-size: 14px; color: #6b4f25; }
+.qu-parch .qu-obj { font-size: 16px; font-weight: 600; }
+.qu-parch .qu-obj-none { background: #1a1409; border-color: #8a6d2a; }
+.qu-parch .qu-x { color: #5b3a0e; }
+.qu-dside { gap: 14px; }
+.qu-taker { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.qu-taker b { display: block; }
+.qu-tstate { display: block; font-size: 13px; color: var(--gold); }
+.qu-tstate.received { color: var(--ok); }
+.qu-reject { grid-column: 1 / -1; }
+.qu-reject input { flex: 1; min-width: 0; }
+.qu-owner { gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.qu-ask { display: grid; gap: 8px; }
+.qu-steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.qu-steps li { position: relative; padding: 0 0 12px 26px; }
+.qu-steps li::before { content: ""; position: absolute; left: 2px; top: 4px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-2); box-sizing: border-box; }
+.qu-steps li::after { content: ""; position: absolute; left: 7px; top: 18px; bottom: 0; width: 2px; background: var(--line); }
+.qu-steps li:last-child::after { display: none; }
+.qu-steps li.done::before { background: var(--ok); border-color: var(--ok); }
+.qu-steps li.done::after { background: var(--ok); }
+.qu-steps li.now::before { background: #ffd100; border-color: #ffd100; box-shadow: 0 0 0 4px rgba(255, 209, 0, .15); }
+.qu-steps b { display: block; font-weight: 600; }
+/* Formulaire « Nouvelle quête » : 5 étapes numérotées */
+.sg-dialog.qu-fdlg { width: min(720px, calc(100vw - 24px)); }
+.qu-step { display: flex; gap: 14px; }
+.qu-num { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--frame); color: var(--gold); font: 400 14px var(--f-disp); }
+.qu-fs { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
+.qu-fs legend { margin-bottom: 8px; }
+.qu-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 14px; }
+.qu-coins-in { gap: 10px; align-items: center; }
+.qu-coins-in input { width: 72px; text-align: right; font-family: var(--f-mono); }
+.qu-dash { border-style: dashed; }
+.qu-picked { gap: 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.qu-isearch { display: grid; gap: 6px; }
+.qu-hits { list-style: none; margin: 0; padding: 4px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); max-height: 240px; overflow: auto; }
+.qu-hits button { all: unset; cursor: pointer; display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border-radius: 4px; box-sizing: border-box; }
+.qu-hits button:hover, .qu-hits button:focus-visible { background: var(--gold-soft); }
+/* Accueil de la guilde */
+.qu-hl { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.qu-hl li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; }
+.qu-hl li.todo { padding: 4px 6px; margin: 0 -6px; border-radius: 6px; background: var(--gold-soft); }
+.qu-hl a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qu-head-t { min-width: 0; flex: 1 1 280px; }
+@media (max-width: 640px) { .qu-head > .qu-mk.lg { display: none; } .qu-h { font-size: 24px; } }
+.qu-coinf { gap: 6px; flex-wrap: nowrap; }
+.qu-coin-in input { width: 76px; text-align: right; }
+.qu-fs .numfield:not(.bare) { max-width: 200px; }
+
 /* Sondages (Guilde › Sondages ; Roster : onglet Sondages), maquette B du 27/11 : liste à gauche, sondage à droite */
 .pl-split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 860px) { .pl-split { grid-template-columns: minmax(0, 1fr); } }

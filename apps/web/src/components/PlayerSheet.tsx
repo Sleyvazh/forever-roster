@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { useMe } from "../auth";
 import { useGameText } from "../gameText";
 import { ApiError, del, get, post, type GroupRole } from "../api";
+import { QuestReliability } from "./Quests";
 import { ExternalLink } from "./ExternalLink";
 import { ClassIcon, SpecIcon } from "./Icons";
 import { Portrait } from "./ImageUpload";
@@ -65,6 +66,7 @@ export function PlayerSheet({ groupId, userId, officer, onClose }: { groupId: st
         <div title={data.lootCount.by === "player" ? t("Objets de spé principale reçus {period}, main et alts ensemble", { period: data.lootCount.label }) : t("Objets de spé principale reçus {period}", { period: data.lootCount.label })}><b className="num">{data.lootCount.player}</b><span>{data.lootCount.player > 1 ? t("objets · {period}", { period: data.lootCount.short }) : t("objet · {period}", { period: data.lootCount.short })}</span><LootDetail detail={data.lootCount.detail} /></div>
         {gt.game !== "retail" && <div><b className="num">{bis ? `${bis.got}/${bis.total}` : "—"}</b><span>{t("BiS du main")}</span></div>}
       </div>
+      {gt.game === "forever" && <QuestReliability groupId={groupId} userId={userId} />}
       <div className="ps-cols">
         <div>
           <h4 className="gm-sec">{t("Persos dans la guilde")}</h4>

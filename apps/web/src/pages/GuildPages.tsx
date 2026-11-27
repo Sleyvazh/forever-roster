@@ -18,11 +18,12 @@ import { GuildBank } from "../components/GuildBank";
 import { GuildLinkSection, RaceAnnounces } from "../components/GuildAdmin";
 import { GroupFeedback } from "../components/GroupFeedback";
 import { PollsTab } from "../components/Polls";
+import { QuestsTab } from "../components/Quests";
 import { LootSettingsPanel } from "../components/Loot";
 import { factionOf } from "../components/GroupRoster";
 import { NumberField } from "../components/NumberField";
 import {
-  AddBot, BotLanguage, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, PollsChannel, type Guard, type Invite,
+  AddBot, BotLanguage, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, PollsChannel, QuestsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
 import { isMany, N, t, tn, tx } from "../i18n";
 
@@ -69,7 +70,7 @@ function ForeverGroupPage({ tab: fixedTab, sub: fixedSub }: { tab?: string; sub?
   if (!tab) page = <HomePage groupId={groupId} detail={d} />;
   else if (tab === "sorties") page = <OutingsPage groupId={groupId} d={d} creating={sub === "nouvelle"} guard={guard} />;
   else if (tab === "raids") page = <RaidsPage groupId={groupId} d={d} view={sub === "passes" ? "past" : sub === "presence" ? "presence" : "next"} guard={guard} />;
-  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "joueurs", "course", "artisans", "sondages", "banque", "historique"].includes(sub ?? "") ? sub : "membres") as GuildPageView} guard={guard} />;
+  else if (tab === "membres") page = <GuildPage groupId={groupId} d={d} view={(["persos", "joueurs", "course", "artisans", "sondages", "banque", "quetes", "historique"].includes(sub ?? "") ? sub : "membres") as GuildPageView} guard={guard} />;
   else if (tab === "admin" && d.role !== "member") page = <AdminPage groupId={groupId} d={d} guard={guard} />;
   else return <Navigate to={base} replace />;
   return <>{err}{page}</>;
@@ -137,10 +138,10 @@ function RaidsPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
 
 /* ---------- Guilde : Membres · Course au 60 · Artisans · Banque · Historique ---------- */
 
-type GuildPageView = GuildView | "artisans" | "banque" | "sondages";
+type GuildPageView = GuildView | "artisans" | "banque" | "sondages" | "quetes";
 const GUILD_TABS: [GuildPageView, ReactNode, string][] = [
   ["membres", N("Membres"), ""], ["course", "course", "/course"], ["artisans", N("Artisans"), "/artisans"],
-  ["sondages", N("Sondages"), "/sondages"], ["banque", N("Banque"), "/banque"], ["historique", N("Historique"), "/historique"],
+  ["sondages", N("Sondages"), "/sondages"], ["banque", N("Banque"), "/banque"], ["quetes", N("Quêtes"), "/quetes"], ["historique", N("Historique"), "/historique"],
 ];
 /** « Course au 60 » ; sur téléphone « Course » seul (la fin est masquée). */
 const tabLabel = (l: ReactNode) => (l === "course"
@@ -182,11 +183,13 @@ function GuildPage({ groupId, d, view, guard }: { groupId: string; d: GroupDetai
       <div className="panel lift">
         <div className="tabs bk-five bk-six" role="tablist">
           {guildTabs(ended).map(([k, l, path]) => <button key={k} type="button" role="tab" className="tab" aria-selected={tabOn === k} onClick={() => nav(`/groups/${groupId}/membres${path}`)}>{tabLabel(l)}
-            {k === "sondages" && !!group.polls.toAnswer && <span className="av-badge" aria-label={tn(group.polls.toAnswer, "{n} sondage où tu n'as pas répondu", "{n} sondages où tu n'as pas répondu")}>{group.polls.toAnswer}</span>}</button>)}
+            {k === "sondages" && !!group.polls.toAnswer && <span className="av-badge" aria-label={tn(group.polls.toAnswer, "{n} sondage où tu n'as pas répondu", "{n} sondages où tu n'as pas répondu")}>{group.polls.toAnswer}</span>}
+            {k === "quetes" && !!group.quests.todo && <span className="av-badge" aria-label={tn(group.quests.todo, "{n} quête attend une action de ta part", "{n} quêtes attendent une action de ta part")}>{group.quests.todo}</span>}</button>)}
         </div>
         <div className="pane">
           {view === "artisans" ? <Crafters groupId={groupId} myId={myId} />
             : view === "sondages" ? <PollsTab groupId={groupId} guard={guard} />
+            : view === "quetes" ? <QuestsTab groupId={groupId} guard={guard} />
             : view === "banque" ? <GuildBank groupId={groupId} officer={officer} onAdmin={officer ? () => nav(`/groups/${groupId}/admin?section=guilde`) : undefined} />
             : <GuildMembersTab groupId={groupId} groupName={group.name} view={view} members={members} myRole={role} myId={myId} guard={guard}
                 onAdmin={officer ? () => nav(`/groups/${groupId}/admin?section=guilde`) : undefined} />}
@@ -261,6 +264,7 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
       <RaceAnnounces groupId={groupId} linked={group.discordLinked} guard={guard} />
       <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={hasDiscord} guard={guard} />
       <PollsChannel groupId={groupId} linked={group.pollsLinked} name={group.pollsChannelName} hasDiscord={hasDiscord} guard={guard} />
+      <QuestsChannel groupId={groupId} linked={group.questsLinked} name={group.questsChannelName} hasDiscord={hasDiscord} guard={guard} />
       <CreatorsSettings groupId={groupId} creators={group.creators} guard={guard} />
       <BotLanguage groupId={groupId} lang={group.lang} guard={guard} />
     </>,

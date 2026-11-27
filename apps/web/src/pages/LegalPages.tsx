@@ -232,6 +232,14 @@ const ROWS: Row[] = [
     who: "Les membres de la guilde et le salon Discord de la sortie.",
   },
   {
+    title: "Quêtes de guilde",
+    data: "Quête (titre, description, objectif, récompense, places, échéance) et son donneur ; pour chaque preneur : le nom de son perso principal, les étapes (prise, rendue, validée, récompense remise, reçue) avec leur date, le mot laissé au rendu ou en réponse ; ta fiabilité (quêtes faites, données, récompenses payées), calculée à partir de ces étapes.",
+    why: "Proposer des services entre membres de la guilde et suivre la remise des récompenses, qui se fait en jeu.",
+    basis: "Contrat",
+    keep: "Effacées automatiquement 12 mois après leur dernière activité, sauf si un preneur est encore en cours, avec leur message Discord. Messages privés du bot : effacés 7 jours après leur envoi.",
+    who: "Les membres de la guilde (tableau, fiche du joueur) et le salon Discord des quêtes.",
+  },
+  {
     title: "Sondages",
     data: "Question, choix ou créneaux, créateur ; ton vote (choix, ou Oui / Si besoin par créneau) avec le nom de ton perso principal et son rôle ; depuis Discord sans compte : ton identifiant et ton pseudo Discord.",
     why: "Poser une question à la guilde et trouver le soir où le plus de monde peut raider.",
@@ -429,7 +437,7 @@ function PrivacyFr() {
         <ul className="legal-list">
           <li>
             <span className="tag legal-basis">Contrat</span> : le service que tu demandes en créant un compte ou en utilisant le bot
-            (compte, persos, guildes, raids, absences, commandes, sorties, sondages, Roster Companion, e-mails du compte).
+            (compte, persos, guildes, raids, absences, commandes, sorties, sondages, quêtes de guilde, Roster Companion, e-mails du compte).
           </li>
           <li>
             <span className="tag legal-basis li">Intérêt légitime</span> : la sécurité du site (journal, sessions, journaux du
