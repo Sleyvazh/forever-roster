@@ -489,7 +489,7 @@ assert(RA.Current() and RA.Current().loot == "softres" and #RA.Current().consuma
 RA.AskVersions(true)
 assert(sent[#sent].msg == "VQ" and sent[#sent].dist == "RAID", "question des versions")
 fire("CHAT_MSG_ADDON", "FRoster", "VQ", "RAID", "Gorrak")
-assert(sent[#sent].msg == "VR;" .. ns.version, "réponse de version")
+assert(sent[#sent].msg == "VR;" .. ns.version .. ";a", "réponse de version (1.7.7 : « a », accusés du conseil)")
 fire("CHAT_MSG_ADDON", "FRoster", "VR;0.0.9", "RAID", "Gorrak-Forever EU") -- plus ancienne que la mienne (0.1.1 dans cette simulation)
 local vr = {}
 for _, r in ipairs(RA.VersionRows()) do vr[r.name] = r.state end
@@ -3855,6 +3855,11 @@ local function raidQueue()
   local COUNCIL = { "Gorrak", "Mirelle", "Thorn", "Nyssa", "Ilyra" }
   RA.CouncilNames = function() return COUNCIL end
   RA.asks = {}
+  -- Addons du conseil en 1.7.6 (sans accusés de réception, 1.7.7) : chaque réponse part une fois, comme avant ; les
+  -- accusés ont leur section (8 terdecies)
+  keep.versions = RA.versions
+  RA.versions = {}
+  for _, n in ipairs({ "Gorrak", "Mirelle", "Thorn", "Nyssa", "Ilyra", "Kaeldra" }) do RA.versions[n] = { v = "1.7.6", at = time() } end
   local function answer(sid) RA.Respond({ sid = sid, itemId = 18814, ml = "Kaeldra", at = time() }, "bis", "") end
   local function stats() return RA.stats.sent, RA.stats.retried, RA.stats.dropped end
   local function full() advance(30) bucket, bucketAt = 10, clock end -- l'allocation de l'addon et celle du jeu sont pleines
@@ -3990,9 +3995,246 @@ local function raidQueue()
   assert(errors() == errorsBefore, "aucune erreur Lua pendant la file du raid")
   time, GetTime, C_Timer, C_ChatInfo, IsInRaid, IsInGroup = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo, keep.IsInRaid, keep.IsInGroup
   GetNumGroupMembers, InCombatLockdown, UnitAffectingCombat = keep.GetNumGroupMembers, keep.InCombatLockdown, keep.UnitAffectingCombat
-  RA.CouncilNames, RA.asks = keep.council, keep.asks
+  RA.CouncilNames, RA.asks, RA.versions = keep.council, keep.asks, keep.versions
 end
 raidQueue()
+
+-- 8 terdecies. Noms et accusés de réception du conseil (1.7.7, Raid.lua). Sur Forever, un perso a un prénom et un nom de
+-- famille : les chuchotements partent à « Prénom-Nom » (le groupe, sinon le dernier nom vu). Mes réponses (LA) et mes votes
+-- (LV) partent numérotés ; l'addon qui les reçoit accuse réception (LK, sur le canal du groupe, groupés) ; sans accusé, le
+-- message repart (5, 10, 15, 20 s après son départ réel), perdu 20 s après le 5e envoi ; une ligne dans le chat dit où il
+-- est arrivé.
+local function councilAcks()
+  local RA = ns.Raid
+  local keep = { time = time, GetTime = GetTime, C_Timer = C_Timer, C_ChatInfo = C_ChatInfo, IsInRaid = IsInRaid, IsInGroup = IsInGroup,
+    GetNumGroupMembers = GetNumGroupMembers, UnitName = UnitName, GetRaidRosterInfo = GetRaidRosterInfo, council = RA.CouncilNames,
+    asks = RA.asks, councils = RA.councils, versions = RA.versions, askedAt = RA.askedAt, random = math.random }
+  local errorsBefore = errors()
+  local clock = 1799000000
+  local timers = {}
+  local function advance(sec)
+    local target = clock + sec
+    while true do
+      local best, bi
+      for i, t in ipairs(timers) do if t.at <= target and (not best or t.at < best.at) then best, bi = t, i end end
+      if not best then break end
+      table.remove(timers, bi)
+      clock = math.max(clock, best.at)
+      best.fn()
+    end
+    clock = target
+  end
+  time = function() return math.floor(clock) end
+  GetTime = function() return clock end
+  C_Timer = { After = function(delay, fn) timers[#timers + 1] = { at = clock + math.max(0, delay or 0), fn = fn } end, NewTicker = function() return {} end }
+  IsInRaid = function() return true end
+  IsInGroup = function() return true end
+  -- Le raid : prénoms dans la liste ; UnitName donne le nom de famille en second, comme le client de Forever
+  local RAID = { { "Tournicoti", "Feuillevent" }, { "Gorrak", "Brisecrâne" }, { "Mirelle", "Douce-Eau" }, { "Thorn", nil }, { "Kaeldra", "Forever EU" } }
+  GetNumGroupMembers = function() return #RAID end
+  GetRaidRosterInfo = function(i) return RAID[i] and RAID[i][1] end
+  UnitName = function(u)
+    local i = tonumber(tostring(u):match("^raid(%d+)$"))
+    if i and RAID[i] then return RAID[i][1], RAID[i][2] end
+    return "Tournicoti"
+  end
+  math.random = function() return 7 end
+  local lock, taken = false, {}
+  C_ChatInfo = { RegisterAddonMessagePrefix = function() return true end, SendAddonMessage = function(prefix, msg, dist, target)
+    assert(#msg <= 255, "message de plus de 255 octets")
+    if lock then return 11 end
+    taken[#taken + 1] = { msg = msg, dist = dist, target = target, t = clock }
+    return 0
+  end }
+  local function from(i) local t = {} for k = i + 1, #taken do t[#t + 1] = taken[k] end return t end
+  local function lastLine() return printed[#printed] or "" end
+  RA.CouncilNames = function() return { "Tournicoti", "Gorrak", "Mirelle", "Thorn" } end
+  RA.asks, RA.councils, RA.askedAt = {}, {}, time()
+  local ok0, lost0 = RA.wire.stats.ok, RA.wire.stats.lost
+  RA.versions = { Gorrak = { v = "1.7.7", ack = true }, Mirelle = { v = "1.7.7", ack = true }, Thorn = { v = "1.7.6" }, Kaeldra = { v = "1.7.7", ack = true } }
+  local failed = {}
+  local function check(ok, what) if not ok then failed[#failed + 1] = what end end
+  advance(30)
+
+  -- a. Noms : le groupe donne « Prénom-Nom » ; un nom de famille qui est mon royaume, ou aucun : le prénom ; « Prénom Nom »
+  -- du jeu devient « Prénom-Nom » ; un nom vu dans un message sert hors du groupe
+  check(RA.WhisperName("Gorrak") == "Gorrak-Brisecrâne", "nom complet trouvé dans le raid : " .. tostring(RA.WhisperName("Gorrak")))
+  check(RA.WhisperName("Mirelle") == "Mirelle-Douce-Eau" and RA.DisplayName("Mirelle") == "Mirelle Douce-Eau", "nom de famille composé : entier")
+  check(RA.WhisperName("Thorn") == "Thorn", "sans nom de famille : le prénom")
+  check(RA.WhisperName("Kaeldra") == "Kaeldra", "mon royaume à la place du nom de famille : le prénom")
+  check(RA.WhisperName("Necko Brisefer") == "Necko-Brisefer", "« Prénom Nom » → « Prénom-Nom »")
+  check(RA.WhisperName("Vesper") == "Vesper", "inconnu : le prénom")
+  fire("CHAT_MSG_ADDON", "FRoster", "VR;1.7.7;a", "GUILD", "Vesper Lamenoire")
+  check(RA.WhisperName("Vesper") == "Vesper-Lamenoire" and RA.DisplayName("Vesper") == "Vesper Lamenoire", "nom vu dans un message, gardé")
+  check(RA.versions.Vesper and RA.versions.Vesper.ack, "VR avec « a » : accusés possibles")
+  -- Consommables : la réponse part au nom brut de celui qui demande
+  local n0 = #taken
+  fire("CHAT_MSG_ADDON", "FRoster", "CQ;13457", "RAID", "Necko Brisefer")
+  advance(1)
+  check(#taken == n0 + 1 and taken[#taken].msg:match("^CR;") and taken[#taken].target == "Necko-Brisefer", "CR chuchoté à Necko-Brisefer")
+
+  -- b. Ma réponse : numérotée pour Gorrak, Mirelle et Kaeldra (maître du butin) ; Thorn (1.7.6) la reçoit une fois, sans numéro
+  n0 = #taken
+  RA.Respond({ sid = "s1", itemId = 18814, ml = "Kaeldra", at = time() }, "bis", "")
+  advance(1)
+  local out = from(n0)
+  local byTarget = {}
+  for _, m in ipairs(out) do byTarget[m.target] = m.msg end
+  local id = (byTarget["Gorrak-Brisecrâne"] or ""):match("^LA;s1;bis;[^;]*;;(%w+)$")
+  check(#out == 4 and id and byTarget["Mirelle-Douce-Eau"] == byTarget["Gorrak-Brisecrâne"] and byTarget.Kaeldra == byTarget["Gorrak-Brisecrâne"],
+    "LA numéroté aux trois addons à jour : " .. #out)
+  check(byTarget.Thorn and byTarget.Thorn:match("^LA;s1;bis;[^;]*;$"), "LA sans numéro pour l'ancienne version")
+  check(RA.WireStamp(id) == math.floor((clock - 1) * 1000), "numéro : l'heure en millisecondes, puis 2 caractères")
+  -- Accusés de Gorrak et Kaeldra (Mirelle tarde) : rien d'écrit encore
+  local p0 = #printed
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Gorrak Brisecrâne")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;zzzzzz," .. id, "RAID", "Kaeldra")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Vesper Lamenoire") -- pas un destinataire : ignoré
+  check(#printed == p0 and #RA.wire.groups == 1, "en attente de Mirelle")
+  -- 5 s sans accusé : renvoyé à Mirelle seule
+  n0 = #taken
+  advance(5.5)
+  out = from(n0)
+  check(#out == 1 and out[1].target == "Mirelle-Douce-Eau" and out[1].msg == byTarget["Mirelle-Douce-Eau"], "renvoi à Mirelle seule, même numéro")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Mirelle Douce-Eau")
+  check(lastLine():find("Ta réponse %(BiS%) pour .* est arrivée chez Gorrak Brisecrâne, Mirelle Douce%-Eau, Kaeldra ; pas d'accusé de réception possible de Thorn %(addon absent ou trop ancien%)%.") ~= nil,
+    "ligne : arrivée, et Thorn sans accusé possible : " .. lastLine())
+  check(#RA.wire.groups == 0 and RA.wire.stats.ok - ok0 == 3, "suivi terminé, 3 arrivés")
+
+  -- c. Tout le conseil à jour : « est arrivée chez tout le conseil »
+  RA.versions.Thorn = { v = "1.7.7", ack = true }
+  n0 = #taken
+  RA.Respond({ sid = "s2", itemId = 18814, ml = "Kaeldra", at = time() }, "upgrade", "petit gain")
+  advance(1)
+  id = taken[#taken].msg:match(";(%w+)$")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Gorrak Brisecrâne")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Mirelle Douce-Eau")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Thorn")
+  fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", "Kaeldra")
+  check(lastLine():find("Ta réponse %(Upgrade%) pour .* est arrivée chez tout le conseil%.") ~= nil, "tout le conseil : " .. lastLine())
+
+  -- d. Le maître du butin ne répond jamais : 5 envois (à 0, 5, 15, 30 et 50 s), perdu à 70 s : la ligne d'échec, avec le mot
+  -- à chuchoter
+  n0 = #taken
+  RA.Respond({ sid = "s3", itemId = 18814, ml = "Kaeldra", at = time() }, "off", "")
+  advance(0.1)
+  id = taken[#taken].msg:match(";(%w+)$")
+  for _, n in ipairs({ "Gorrak Brisecrâne", "Mirelle Douce-Eau", "Thorn" }) do fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", n) end
+  advance(49)
+  local function toML() local n = 0 for _, m in ipairs(from(n0)) do if m.target == "Kaeldra" then n = n + 1 end end return n end
+  check(toML() == 4 and #RA.wire.groups == 1, "4 envois au maître du butin après 49 s : " .. toML())
+  advance(2)
+  check(toML() == 5 and #RA.wire.groups == 1, "5e envoi à 50 s")
+  advance(20) -- (le minuteur passe chaque seconde : jusqu'à 1 s après l'heure)
+  check(#RA.wire.groups == 0 and RA.wire.stats.lost - lost0 == 1 and toML() == 5, "perdu 20 s après le 5e envoi, sans 6e envoi")
+  check(lastLine():find("Ta réponse %(Off%-Spec%) pour .* n'est pas arrivée chez Kaeldra%. Chuchote « os » à Kaeldra, le maître du butin, pour que ta réponse soit notée%.") ~= nil,
+    "ligne d'échec : " .. lastLine())
+
+  -- e. Combat de boss : le message attend dans la file, l'horloge des renvois ne tourne pas
+  lock = true
+  n0 = #taken
+  RA.Respond({ sid = "s4", itemId = 18814, ml = "Kaeldra", at = time() }, "pass", "")
+  advance(60)
+  check(#taken == n0 and #RA.wire.groups == 1, "bloqué une minute : rien d'envoyé, rien de perdu")
+  lock = false
+  fire("ENCOUNTER_END", 1, "Lucifron", 9, 40, 1)
+  check(#taken == n0 + 4, "fin de la rencontre : les 4 partent")
+  id = taken[#taken].msg:match(";(%w+)$")
+  advance(4)
+  check(#taken == n0 + 4, "pas de renvoi 4 s après le vrai départ")
+  for _, n in ipairs({ "Gorrak Brisecrâne", "Mirelle Douce-Eau", "Kaeldra" }) do fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", n) end
+  -- Thorn manque : seulement chez un membre du conseil, le maître du butin l'a
+  advance(80)
+  check(lastLine():find("Ta réponse %(Passer%) pour .* est arrivée chez le maître du butin, mais pas chez Thorn%.") ~= nil, "ligne : pas chez Thorn : " .. lastLine())
+
+  -- f. Mon vote : remplacé par un nouveau avant l'accusé (une seule ligne, celle du dernier) ; fin du conseil : oublié
+  RA.councils.s5 = { itemId = 18814, ml = "Kaeldra", cands = { Gorrak = { response = "bis", gear = {}, note = "" }, Mirelle = { response = "bis", gear = {}, note = "" } }, votes = {}, at = time() }
+  local p1 = #printed
+  RA.Vote("s5", "Gorrak")
+  RA.Vote("s5", "Mirelle")
+  check(#RA.wire.groups == 1 and RA.councils.s5.votes.Tournicoti == "Mirelle", "un seul vote suivi, le dernier")
+  advance(1)
+  id = taken[#taken].msg:match("^LV;s5;Mirelle;(%w+)$")
+  check(id ~= nil, "LV numéroté : " .. taken[#taken].msg)
+  for _, n in ipairs({ "Gorrak Brisecrâne", "Mirelle Douce-Eau", "Thorn", "Kaeldra" }) do fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. tostring(id), "RAID", n) end
+  check(#printed == p1 + 1 and lastLine():find("Ton vote pour Mirelle %(.*%) est arrivé chez tout le conseil%.") ~= nil, "une ligne pour le vote : " .. lastLine())
+  RA.Vote("s5", "Mirelle") -- retrait
+  fire("CHAT_MSG_ADDON", "FRoster", "LC;s5;Gorrak", "RAID", "Kaeldra")
+  advance(120)
+  check(#RA.wire.groups == 0 and #printed == p1 + 1, "fin du conseil : le retrait n'est plus suivi, pas de ligne")
+
+  -- g. Côté destinataire : je suis au conseil. Réponse numérotée : appliquée, accusé groupé 0,5 s plus tard ; même numéro :
+  -- accusé encore, pas réappliquée ; numéro plus ancien qu'un vote déjà lu : ignoré
+  RA.councils.s6 = { itemId = 18814, ml = "Kaeldra", cands = {}, votes = {}, at = time() }
+  n0 = #taken
+  fire("CHAT_MSG_ADDON", "FRoster", "LA;s6;bis;16866;;kq0001aa", "WHISPER", "Gorrak Brisecrâne")
+  fire("CHAT_MSG_ADDON", "FRoster", "LV;s6;Gorrak;kq0002aa", "WHISPER", "Mirelle Douce-Eau")
+  check(RA.councils.s6.cands.Gorrak.response == "bis" and RA.councils.s6.votes.Mirelle == "Gorrak", "réponse et vote appliqués")
+  check(#taken == n0, "accusé pas encore parti")
+  advance(0.6)
+  check(#taken == n0 + 1 and taken[#taken].msg == "LK;kq0001aa,kq0002aa" and taken[#taken].dist == "RAID", "un seul LK pour les deux : " .. tostring(taken[#taken].msg))
+  RA.councils.s6.cands.Gorrak.response = "upgrade"
+  fire("CHAT_MSG_ADDON", "FRoster", "LA;s6;bis;16866;;kq0001aa", "WHISPER", "Gorrak Brisecrâne")
+  advance(0.6)
+  check(RA.councils.s6.cands.Gorrak.response == "upgrade" and taken[#taken].msg == "LK;kq0001aa", "doublon : pas réappliqué, accusé de nouveau")
+  fire("CHAT_MSG_ADDON", "FRoster", "LV;s6;Thorn;kq0004aa", "WHISPER", "Mirelle Douce-Eau")
+  fire("CHAT_MSG_ADDON", "FRoster", "LV;s6;Gorrak;kq0003aa", "WHISPER", "Mirelle Douce-Eau") -- renvoi en retard d'un vote plus ancien
+  check(RA.councils.s6.votes.Mirelle == "Thorn", "vote plus ancien arrivé en retard : ignoré")
+  advance(0.6)
+  check(taken[#taken].msg == "LK;kq0004aa,kq0003aa", "les deux accusés (l'ancien aussi : son expéditeur arrête d'insister)")
+  n0 = #taken
+  fire("CHAT_MSG_ADDON", "FRoster", "LV;s6;Gorrak", "WHISPER", "Brakka") -- ancienne version, sans numéro : appliqué, pas d'accusé
+  advance(0.6)
+  check(RA.councils.s6.votes.Brakka == "Gorrak" and #taken == n0, "sans numéro : appliqué, pas d'accusé")
+
+  -- h. Version inconnue et pas de réponse à la question des versions : compté sans addon, sans 5 envois inutiles
+  RA.versions.Thorn = nil
+  RA.askedAt = nil
+  n0 = #taken
+  RA.Respond({ sid = "s7", itemId = 18814, ml = "Kaeldra", at = time() }, "transmo", "")
+  advance(0.5)
+  check(taken[n0 + 1] and taken[n0 + 1].msg == "VQ", "question des versions envoyée")
+  id = taken[#taken].msg:match(";(%w+)$")
+  for _, n in ipairs({ "Gorrak Brisecrâne", "Mirelle Douce-Eau", "Kaeldra" }) do fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", n) end
+  advance(9)
+  local toThorn = 0
+  for _, m in ipairs(from(n0)) do if m.target == "Thorn" then toThorn = toThorn + 1 end end
+  check(toThorn == 1 and #RA.wire.groups == 0, "Thorn sans réponse aux versions : un seul envoi : " .. toThorn)
+  check(lastLine():find("pas d'accusé de réception possible de Thorn") ~= nil, "ligne : Thorn sans accusé possible")
+
+  -- Version apprise après l'envoi, sans « a » (1.7.6) : plus de renvoi
+  RA.versions.Thorn = nil
+  RA.askedAt = time()
+  n0 = #taken
+  RA.Respond({ sid = "s9", itemId = 18814, ml = "Kaeldra", at = time() }, "bis", "")
+  advance(0.5)
+  id = taken[#taken].msg:match(";(%w+)$")
+  fire("CHAT_MSG_ADDON", "FRoster", "VR;1.7.6", "RAID", "Thorn")
+  for _, n in ipairs({ "Gorrak Brisecrâne", "Mirelle Douce-Eau", "Kaeldra" }) do fire("CHAT_MSG_ADDON", "FRoster", "LK;" .. id, "RAID", n) end
+  advance(30)
+  toThorn = 0
+  for _, m in ipairs(from(n0)) do if m.target == "Thorn" then toThorn = toThorn + 1 end end
+  check(toThorn == 1 and #RA.wire.groups == 0 and lastLine():find("pas d'accusé de réception possible de Thorn") ~= nil,
+    "version 1.7.6 apprise après l'envoi : pas de renvoi : " .. toThorn)
+
+  -- i. /fr partage : les compteurs
+  check(ns.UI.ShareDiagText():find(("Accusés du conseil : %d arrivés, %d perdus"):format(RA.wire.stats.ok, RA.wire.stats.lost), 1, true) ~= nil,
+    "accusés dans /fr partage")
+
+  -- j. Groupe quitté : plus rien en attente
+  RA.Respond({ sid = "s8", itemId = 18814, ml = "Kaeldra", at = time() }, "bis", "")
+  IsInGroup = function() return false end
+  fire("GROUP_ROSTER_UPDATE")
+  check(#RA.wire.groups == 0, "groupe quitté : suivi oublié")
+  advance(120)
+
+  check(errors() == errorsBefore, "aucune erreur Lua pendant les accusés")
+  time, GetTime, C_Timer, C_ChatInfo, IsInRaid, IsInGroup = keep.time, keep.GetTime, keep.C_Timer, keep.C_ChatInfo, keep.IsInRaid, keep.IsInGroup
+  GetNumGroupMembers, UnitName, GetRaidRosterInfo, math.random = keep.GetNumGroupMembers, keep.UnitName, keep.GetRaidRosterInfo, keep.random
+  RA.CouncilNames, RA.asks, RA.councils, RA.versions, RA.askedAt = keep.council, keep.asks, keep.councils, keep.versions, keep.askedAt
+  assert(#failed == 0, "section 8 terdecies :\n  " .. table.concat(failed, "\n  "))
+end
+councilAcks()
 
 -- 8 duodecies. Partage compressé (1.7.4 : copie de Share.lua de Forever Roster, LibDeflate, Inflate.lua, préfixes
 -- réservés de Raid.lua). Tournicoti (moi) est l'addon complet ; les autres joueurs sont soit la nouvelle version (même

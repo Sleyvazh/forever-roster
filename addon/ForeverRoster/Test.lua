@@ -137,13 +137,20 @@ function T.Council(sid, id)
 end
 
 -- Messages vers le raid : on reçoit les siens (comme en jeu), les addons fictifs répondent
-function T.send(msg, dist)
-  if dist == "WHISPER" then return true end -- vers un joueur fictif : son addon n'a rien à renvoyer
+-- Fictif d'après son nom
+local function player(name) for _, p in ipairs(PLAYERS) do if p.name == name then return p end end end
+function T.send(msg, dist, target)
   local f = ns.Format.split(msg)
+  if dist == "WHISPER" then
+    -- Réponse ou vote numéroté (1.7.7) : l'addon d'un joueur fictif à jour accuse réception
+    local p, id = player(target), (f[1] == "LA" and f[6]) or (f[1] == "LV" and f[4]) or nil -- nolocale (codes des messages)
+    if p and id and not p.noAddon and not p.old then after(0.4, function() RA.Deliver(p.name, "LK;" .. id, "RAID") end) end
+    return true
+  end
   after(0.05, function() RA.Deliver(me(), msg, dist) end)
   if f[1] == "VQ" then
     for i, p in ipairs(PLAYERS) do
-      if not p.noAddon then after(0.3 + i * 0.15, function() RA.Deliver(p.name, "VR;" .. (p.old or ns.version)) end) end
+      if not p.noAddon then after(0.3 + i * 0.15, function() RA.Deliver(p.name, "VR;" .. (p.old or (ns.version .. ";a"))) end) end
     end
     after(6, refresh) -- sans réponse au bout de 5 s : « pas d'addon »
   elseif f[1] == "CQ" then

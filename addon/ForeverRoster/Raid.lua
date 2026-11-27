@@ -93,6 +93,52 @@ local function unitFor(name)
   return nil
 end
 
+-- Noms pour chuchoter (1.7.7). Sur WoW Forever, chaque perso a un prénom et un nom de famille, sans royaume : le jeu écrit
+-- « Prénom Nom » et joint un perso par « Prénom-Nom » ; un prénom seul ne le joint pas à coup sûr (relevé par l'addon
+-- Curator, 1.13.1, et deux prénoms pareils sont possibles). L'addon garde les prénoms pour l'affichage et les données du
+-- site ; au moment de chuchoter, RA.WhisperName retrouve le nom complet : dans le groupe (nom de famille de l'unité, ou
+-- liste du raid), sinon le dernier nom complet vu dans un message de ce joueur ; à défaut, le prénom, comme avant.
+local fullNames = {} -- [prénom] = « Prénom-Nom » vu dans un message d'addon de ce joueur
+local function realmKey(s) return (ns.text(s):gsub("[%s%-]", ""):lower()) end
+-- Mon royaume écrit à la place d'un nom de famille (le jeu le fait parfois à la connexion, d'après Curator 1.15.3)
+local function isRealm(s)
+  local r = ns.str(GetRealmName and GetRealmName())
+  return r ~= nil and r ~= "" and realmKey(s) == realmKey(r)
+end
+-- « Prénom Nom » ou « Prénom-Nom » → « Prénom-Nom » (le nom de famille entier) ; un prénom seul (ou suivi de mon royaume) → nil
+local function whisperForm(raw)
+  raw = ns.str(raw)
+  if not raw then return nil end
+  local first, rest = raw:match("^%s*([^%s%-]+)[%s%-]+(.-)%s*$")
+  if not first or rest == "" or isRealm(rest) then return nil end
+  return first .. "-" .. rest
+end
+local function groupFull(first)
+  local raid = IsInRaid and IsInRaid()
+  local n = raid and (GetNumGroupMembers and GetNumGroupMembers() or 0) or 4
+  for i = 1, n do
+    local unit = (raid and "raid" or "party") .. i
+    local ok, name, second = pcall(UnitName, unit)
+    name, second = ok and ns.str(name), ok and ns.str(second)
+    if name == first and second and second ~= "" and not isRealm(second) then return first .. "-" .. second end
+    if raid then
+      local w = whisperForm(GetRaidRosterInfo(i))
+      if w and short(w) == first then return w end
+    end
+  end
+  return nil
+end
+function RA.WhisperName(name)
+  name = ns.str(name)
+  if not name or name == "" then return nil end
+  return whisperForm(name) or groupFull(name) or fullNames[name] or name
+end
+-- Nom à afficher dans une ligne du chat : « Prénom Nom » si on le connaît, sinon le prénom
+function RA.DisplayName(name)
+  local w = RA.WhisperName(name)
+  return w and (w:gsub("%-", " ", 1)) or ns.text(name)
+end
+
 -- Raid du site en cours (le relevé, sinon le raid chargé le plus proche dans le temps) et ses données
 function RA.Current()
   if RA.test then return RA.test.data end
@@ -123,8 +169,8 @@ for i, p in ipairs(BULK) do BULK_SET[p] = i end
 RA.BULK_PREFIXES = BULK
 local handlers = {}
 -- Enregistre le gestionnaire d'un message : fn(prénom de l'expéditeur, champs, canal, message entier, nom brut de
--- l'expéditeur). Le nom brut est celui que le jeu donne (« Prénom-Royaume ») : chuchoter à ce nom, jamais au prénom seul
--- (un homonyme d'un autre serveur, ou un échec, quand la guilde mêle plusieurs serveurs)
+-- l'expéditeur). Le nom brut est celui que le jeu donne (« Prénom Nom » sur Forever) : chuchoter à ce nom, jamais au
+-- prénom seul (un homonyme, ou un échec : voir RA.WhisperName)
 function RA.On(code, fn) handlers[code] = fn end
 local BURST, RESERVE = 10, 6 -- allocation du préfixe ; messages toujours laissés aux messages du raid
 local allowance, allowanceAt = BURST, nil
@@ -211,20 +257,23 @@ function qFlush()
     if bulkFlush then bulkFlush() end
   end
 end
--- Envoi d'un message du raid : mis en file, parti tout de suite si le jeu le prend. Faux hors groupe (rien à qui parler)
+-- Envoi d'un message du raid : mis en file, parti tout de suite si le jeu le prend. Faux hors groupe (rien à qui parler).
+-- Chuchotement : au nom complet (RA.WhisperName, 1.7.7). Rend aussi l'entrée de la file (accusés du conseil, plus bas).
 local function send(msg, dist, target)
   local api = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
   dist = dist or channel()
   if not api or not dist then return false end
-  if dist == "WHISPER" and target == me() then -- à soi-même : traité tout de suite
+  if dist == "WHISPER" and short(target) == short(me()) then -- à soi-même : traité tout de suite
     local f = ns.Format.split(msg)
     if handlers[f[1]] then ns.safe("message", handlers[f[1]], me(), f, "WHISPER", msg, me()) end
     return true
   end
   if RA.test then return RA.test.send(msg, dist, target) end
-  RA.queue[#RA.queue + 1] = { msg = msg, dist = dist, target = target, at = clock() }
+  if dist == "WHISPER" then target = RA.WhisperName(target) or target end
+  local e = { msg = msg, dist = dist, target = target, at = clock() }
+  RA.queue[#RA.queue + 1] = e
   qFlush()
-  return true
+  return true, e
 end
 -- Fin d'une rencontre, levée d'une restriction du jeu : les messages retenus repartent sans attendre le prochain essai
 for _, event in ipairs({ "ENCOUNTER_END", "ADDON_RESTRICTION_STATE_CHANGED" }) do
@@ -253,6 +302,9 @@ ns.on("CHAT_MSG_ADDON", function(prefix, text, dist, sender)
     return
   end
   if prefix ~= PREFIX then return end
+  -- Nom complet de l'expéditeur retenu pour lui chuchoter plus tard (RA.WhisperName)
+  local full = whisperForm(sender)
+  if full then fullNames[short(full)] = full end
   local f = ns.Format.split(text)
   if handlers[f[1]] then handlers[f[1]](short(sender), f, dist, text, ns.str(sender)) end
 end)
@@ -413,8 +465,10 @@ function RA.AskVersions(force)
   RA.askedAt = time()
   send("VQ")
 end
-handlers.VQ = function() send("VR;" .. ns.version) end
-handlers.VR = function(sender, f) RA.versions[sender] = { v = f[2] or "?", at = time() } refresh() end
+-- VR;<version>;a : « a » (1.7.7) = mon addon accuse réception des réponses et votes du conseil (une ancienne version lit
+-- la version seule)
+handlers.VQ = function() send("VR;" .. ns.version .. ";a") end
+handlers.VR = function(sender, f) RA.versions[sender] = { v = f[2] or "?", at = time(), ack = f[3] == "a" } refresh() end
 -- Membres et leur version : ok, ancienne, absente (pas de réponse 5 s après la question), en attente
 function RA.VersionRows()
   local rows, mine = {}, versionKey(ns.version)
@@ -450,12 +504,13 @@ function RA.CallConsumables()
   refresh()
   return true
 end
-handlers.CQ = function(sender, f)
+handlers.CQ = function(sender, f, _, _, raw)
   local parts = {}
   for id in ns.text(f[2]):gmatch("%d+") do
     if #parts < 30 then parts[#parts + 1] = id .. ":" .. ns.ItemCount(tonumber(id), true) end
   end
-  send("CR;" .. table.concat(parts, ","), "WHISPER", sender)
+  local to = ns.str(raw)
+  send("CR;" .. table.concat(parts, ","), "WHISPER", (to and to ~= "") and to or sender)
 end
 handlers.CR = function(sender, f)
   if not RA.call then return end
@@ -852,11 +907,257 @@ local function councilTargets(ml)
   if ml and not seen[ml] then out[#out + 1] = ml end
   return out
 end
-local function toCouncil(msg, ml) for _, n in ipairs(councilTargets(ml)) do send(msg, "WHISPER", n) end end
 function RA.IsCouncil(ml)
   for _, n in ipairs(councilTargets(ml)) do if n == me() then return true end end
   return false
 end
+
+--------------------------------------------------------------------------------------------------------------------
+-- Accusés de réception du conseil (1.7.7, sur le modèle du « fil » de l'addon Curator). Ma réponse (LA) et mon vote (LV)
+-- partent avec un numéro à chaque membre du conseil et au maître du butin ; son addon accuse réception (LK, sur le canal
+-- du groupe, plusieurs numéros par message, 0,5 s après). Sans accusé, le message repart 5, 10, 15 puis 20 s après son
+-- départ réel (tant qu'il attend dans la file du raid, l'horloge ne tourne pas) ; 20 s après le 5e envoi sans réponse
+-- (70 s en tout), il est perdu pour ce destinataire. Une ligne dans le chat dit à chaque fois où il est arrivé (choix de Flo, 27/11).
+-- Un addon qui ne sait pas accuser réception (VR sans « a ») reçoit le message une fois, comme avant ; un joueur dont la
+-- version n'est pas connue est suivi, la question des versions part, et sans réponse 5 s après, il est compté sans
+-- addon. Ordre : un destinataire ignore un numéro plus petit que le dernier lu de cet expéditeur pour la même session et
+-- le même type ; un nouveau vote remplace celui qui attendait encore. Fin du conseil (LC) ou groupe quitté : on oublie.
+-- Messages : LA;<session>;<réponse>;<portés>;<précision>;<n°> · LV;<session>;<candidat>;<n°> · LK;<n°>,<n°>...
+-- (une ancienne version lit les premiers champs et laisse le numéro)
+--------------------------------------------------------------------------------------------------------------------
+local WIRE_RETRY, WIRE_SENDS, WIRE_ACK_DELAY = { 5, 10, 15, 20 }, 5, 0.5
+local W = { groups = {}, byId = {}, seen = {}, acks = {}, stats = { ok = 0, lost = 0 } }
+RA.wire = W
+local B36 = "0123456789abcdefghijklmnopqrstuvwxyz"
+local function base36(n, width)
+  n = math.floor(n)
+  local out = ""
+  repeat
+    local d = n % 36
+    out = B36:sub(d + 1, d + 1) .. out
+    n = math.floor(n / 36)
+  until n == 0
+  while width and #out < width do out = "0" .. out end
+  return out
+end
+-- Numéro : l'heure de la machine en millisecondes (croissante, même après un /reload), puis 2 caractères au hasard
+local lastStamp = 0
+local function newId()
+  local t = math.max(math.floor(clock() * 1000), lastStamp + 1)
+  lastStamp = t
+  return base36(t) .. base36(math.random(0, 1295), 2)
+end
+-- Partie « heure » d'un numéro, ou nil s'il est mal formé (décodée à la main : tonumber(s, 36) déborde sous Windows)
+local function stampOf(id)
+  if type(id) ~= "string" or not id:match("^[0-9a-z]+$") or #id < 3 or #id > 14 then return nil end
+  local n = 0
+  for i = 1, #id - 2 do n = n * 36 + (B36:find(id:sub(i, i), 1, true) - 1) end
+  return n
+end
+local function idOk(id) return stampOf(id) ~= nil end
+RA.WireStamp = stampOf
+
+-- Côté destinataire : faux si ce numéro est plus ancien que le dernier lu (ou le même : déjà lu)
+local function fresh(sender, kind, sid, id)
+  local t = stampOf(id)
+  if not t then return true end
+  local key = sender .. "\1" .. kind .. "\1" .. ns.text(sid)
+  local last = W.seen[key]
+  if last and t <= last then return false end
+  W.seen[key] = t
+  return true
+end
+local ackArmed = false
+local function flushAcks()
+  ackArmed = false
+  local list = W.acks
+  W.acks = {}
+  local cur = ""
+  for _, id in ipairs(list) do
+    if #cur + #id + 1 > 240 then send("LK;" .. cur) cur = "" end
+    cur = cur == "" and id or (cur .. "," .. id)
+  end
+  if cur ~= "" then send("LK;" .. cur) end
+end
+local function ack(sender, id)
+  if not idOk(id) or sender == me() then return end
+  W.acks[#W.acks + 1] = id
+  if not ackArmed then ackArmed = true C_Timer.After(WIRE_ACK_DELAY, flushAcks) end
+end
+
+-- Côté expéditeur
+local function inQueue(e)
+  if not e then return false end
+  for _, x in ipairs(RA.queue) do if x == e then return true end end
+  return false
+end
+local function names(list)
+  local out = {}
+  for _, n in ipairs(list) do out[#out + 1] = RA.DisplayName(n) end
+  return table.concat(out, ", ")
+end
+-- Mot à chuchoter au maître du butin pour une réponse (WHISPERED, plus bas, les lit en français et en anglais)
+local KEYWORD = { bis = "bis", upgrade = "up", off = "os", transmo = "transmo", pass = N("passe") }
+-- La ligne du chat, une fois chaque destinataire fixé : ok (accusé reçu), lost (perdu), noack (pas d'accusé possible)
+local function report(g)
+  local ok, lost, un, mlLost = {}, {}, {}, false
+  for _, n in ipairs(g.order) do
+    local st = g.targets[n].state
+    if st == "ok" then ok[#ok + 1] = n elseif st == "lost" then lost[#lost + 1] = n else un[#un + 1] = n end
+    if st == "lost" and n == g.info.ml then mlLost = true end
+  end
+  W.stats.ok, W.stats.lost = W.stats.ok + #ok, W.stats.lost + #lost
+  local i = g.info
+  local link = (i.link and i.link ~= "") and i.link or linkFor(i.itemId)
+  local text
+  if g.kind == "LA" then -- nolocale (code du message)
+    local resp = L[RESPONSES[i.response]] or i.response
+    if #lost > 0 and mlLost then
+      local word = KEYWORD[i.response] or i.response
+      if i.response == "pass" then word = L[word] end
+      text = L("Ta réponse (%s) pour %s n'est pas arrivée chez %s. Chuchote « %s » à %s, le maître du butin, pour que ta réponse soit notée.",
+        resp, link, names(lost), word, RA.DisplayName(i.ml))
+    elseif #lost > 0 then
+      text = L("Ta réponse (%s) pour %s est arrivée chez le maître du butin, mais pas chez %s.", resp, link, names(lost))
+    elseif #un == 0 then
+      text = L("Ta réponse (%s) pour %s est arrivée chez tout le conseil.", resp, link)
+    elseif #ok > 0 then
+      text = L("Ta réponse (%s) pour %s est arrivée chez %s ; pas d'accusé de réception possible de %s (addon absent ou trop ancien).",
+        resp, link, names(ok), names(un))
+    else
+      text = L("Ta réponse (%s) pour %s est partie, sans accusé de réception possible : addon absent ou trop ancien chez %s.", resp, link, names(un))
+    end
+  else
+    local what = (i.cand or "") == "" and L["Ton retrait de vote"] or L("Ton vote pour %s", i.cand)
+    if #lost > 0 then
+      text = L("%s (%s) n'est pas arrivé chez %s : dis-le dans le chat du raid.", what, link, names(lost))
+    elseif #un == 0 then
+      text = L("%s (%s) est arrivé chez tout le conseil.", what, link)
+    elseif #ok > 0 then
+      text = L("%s (%s) est arrivé chez %s ; pas d'accusé de réception possible de %s (addon absent ou trop ancien).", what, link, names(ok), names(un))
+    else
+      text = L("%s (%s) est parti, sans accusé de réception possible : addon absent ou trop ancien chez %s.", what, link, names(un))
+    end
+  end
+  if RA.test then text = L("(essai) %s", text) end
+  ns.print(text)
+end
+local function forget(g)
+  for i = #W.groups, 1, -1 do if W.groups[i] == g then table.remove(W.groups, i) end end
+  if g.id then W.byId[g.id] = nil end
+end
+local function settled(g)
+  for _, n in ipairs(g.order) do if g.targets[n].state == "wait" then return false end end
+  return true
+end
+local function finish(g)
+  if g.done then return end
+  g.done = true
+  forget(g)
+  report(g)
+  refresh()
+end
+-- Un envoi ; at : son heure prévue (les renvois gardent leur rythme, même si le minuteur passe un peu après). Encore dans
+-- la file du raid : l'heure de départ sera prise quand il en sortira
+local function fire(g, t, at)
+  t.sends = t.sends + 1
+  local _, e = send(g.msg, "WHISPER", t.name)
+  t.q = e
+  t.sentAt = not inQueue(e) and (at or clock()) or nil
+end
+-- Un destinataire en attente : renvoi, perdu, ou sans accusé possible (sa version le dit, ou il n'a pas répondu à la
+-- question des versions)
+local function step(g, t, now)
+  local v = RA.versions[t.name]
+  if v and not v.ack then t.state = "noack" return end
+  if not v and RA.askedAt and RA.askedAt >= g.t - 30 and time() - RA.askedAt >= 5 then t.state = "noack" return end
+  if inQueue(t.q) then return end -- pas encore parti (limite du jeu, combat de boss) : l'horloge attend
+  t.q = nil
+  t.sentAt = t.sentAt or now
+  local due = t.sentAt + WIRE_RETRY[math.min(t.sends, #WIRE_RETRY)]
+  if now < due then return end
+  if t.sends >= WIRE_SENDS then t.state = v and "lost" or "noack" return end
+  fire(g, t, due)
+end
+local function pump()
+  local now = clock()
+  for i = #W.groups, 1, -1 do
+    local g = W.groups[i]
+    if g then
+      for _, n in ipairs(g.order) do
+        local t = g.targets[n]
+        if t.state == "wait" then step(g, t, now) end
+      end
+      if settled(g) then finish(g) end
+    end
+  end
+end
+RA.WirePump = pump
+local armed, armedAt = false, 0
+local function arm()
+  if armed or #W.groups == 0 then return end
+  armed, armedAt = true, clock()
+  C_Timer.After(1, function()
+    armed = false
+    -- Minuteur rendu tout de suite (jeu simulé sans horloge) : pas de nouvel essai, rien ne pourrait avancer
+    if clock() - armedAt < 0.5 then return end
+    ns.safe(L["accusés du conseil"], pump)
+    arm()
+  end)
+end
+-- Message du conseil à suivre : kind "LA" ou "LV", msg sans numéro, targets = prénoms (moi compris : traité sur place),
+-- info = { itemId, link, ml, response (LA) ou cand (LV) }
+function RA.SendTracked(kind, sid, msg, targets, info)
+  if kind == "LV" then -- un nouveau vote remplace celui qui attendait encore, sans ligne
+    for i = #W.groups, 1, -1 do
+      local o = W.groups[i]
+      if o.kind == "LV" and o.sid == sid then o.done = true forget(o) end
+    end
+  end
+  local g = { kind = kind, sid = sid, info = info or {}, targets = {}, order = {}, t = time(), id = newId() }
+  g.msg = msg .. ";" .. g.id
+  local unknown = false
+  for _, n in ipairs(targets) do
+    if short(n) == short(me()) then send(msg, "WHISPER", n)
+    elseif not g.targets[n] then
+      local v = RA.versions[n]
+      local t = { name = n, sends = 0, state = (v and not v.ack) and "noack" or "wait" }
+      if not v then unknown = true end
+      g.targets[n] = t
+      g.order[#g.order + 1] = n
+      if t.state == "noack" then send(msg, "WHISPER", n) end -- ancienne version : une fois, comme avant
+    end
+  end
+  if #g.order == 0 then return g end -- seul au conseil : rien à suivre
+  W.groups[#W.groups + 1] = g
+  W.byId[g.id] = g
+  if unknown then RA.AskVersions() end
+  for _, n in ipairs(g.order) do
+    local t = g.targets[n]
+    if t.state == "wait" and not g.done then fire(g, t) end
+  end
+  if settled(g) then finish(g) else arm() end
+  return g
+end
+handlers.LK = function(sender, f)
+  for id in ns.text(f[2]):gmatch("[0-9a-z]+") do
+    local g = W.byId[id]
+    local t = g and g.targets[sender]
+    if t and t.state == "wait" then
+      t.state = "ok"
+      if settled(g) then finish(g) end
+    end
+  end
+end
+-- Conseil fini (LC) : ses messages ne servent plus ; groupe quitté : plus personne à qui parler
+local function dropSession(sid)
+  for i = #W.groups, 1, -1 do local g = W.groups[i] if g.sid == sid then g.done = true forget(g) end end
+end
+ns.on("GROUP_ROSTER_UPDATE", function()
+  if RA.test or (IsInGroup and IsInGroup()) then return end
+  for i = #W.groups, 1, -1 do W.groups[i].done = true end
+  W.groups, W.byId, W.seen = {}, {}, {}
+end)
 function RA.StartCouncil(item)
   local sid = tostring(time() % 100000) .. tostring(item.itemId)
   RA.session = { item = item, kind = "council", sid = sid, rolls = {}, at = time() }
@@ -894,17 +1195,22 @@ function RA.Equipped(id)
 end
 function RA.Respond(ask, response, note)
   local gear = table.concat(RA.Equipped(ask.itemId), ",")
-  toCouncil("LA;" .. ask.sid .. ";" .. response .. ";" .. gear .. ";" .. ns.Format.clean(note or ""):sub(1, 80), ask.ml) -- nolocale (message entre addons)
+  local msg = "LA;" .. ask.sid .. ";" .. response .. ";" .. gear .. ";" .. ns.Format.clean(note or ""):sub(1, 80) -- nolocale (message entre addons)
   for i = #RA.asks, 1, -1 do if RA.asks[i] == ask then table.remove(RA.asks, i) end end
+  RA.SendTracked("LA", ask.sid, msg, councilTargets(ask.ml), { itemId = ask.itemId, ml = ask.ml, response = response }) -- nolocale (code)
   refresh()
 end
 handlers.LA = function(sender, f)
   local c = RA.councils[f[2] or ""]
   if not c or not RESPONSES[f[3] or ""] then return end
-  local gear = {}
-  for id in ns.text(f[4]):gmatch("%d+") do gear[#gear + 1] = tonumber(id) end
-  c.cands[sender] = { response = f[3], gear = gear, note = f[5] or "" }
-  refresh()
+  -- Numéro (1.7.7) : déjà lu ou plus ancien, pas appliqué ; accusé dans tous les cas
+  if fresh(sender, "LA", f[2], f[6]) then -- nolocale (code du message)
+    local gear = {}
+    for id in ns.text(f[4]):gmatch("%d+") do gear[#gear + 1] = tonumber(id) end
+    c.cands[sender] = { response = f[3], gear = gear, note = f[5] or "" }
+    refresh()
+  end
+  ack(sender, f[6])
 end
 -- Réponse chuchotée par un joueur sans addon (« bis », « up », « os », « transmo ») au maître du butin : mots français
 -- et anglais acceptés, quelle que soit la langue du maître du butin
@@ -925,13 +1231,16 @@ function RA.Vote(sid, cand)
   local c = RA.councils[sid]
   if not c then return end
   local v = c.votes[me()] == cand and "" or cand
-  toCouncil("LV;" .. sid .. ";" .. v, c.ml)
+  RA.SendTracked("LV", sid, "LV;" .. sid .. ";" .. v, councilTargets(c.ml), { itemId = c.itemId, link = c.link, ml = c.ml, cand = v })
 end
 handlers.LV = function(sender, f)
   local c = RA.councils[f[2] or ""]
   if not c then return end
-  c.votes[sender] = (f[3] or "") ~= "" and f[3] or nil
-  refresh()
+  if fresh(sender, "LV", f[2], f[4]) then
+    c.votes[sender] = (f[3] or "") ~= "" and f[3] or nil
+    refresh()
+  end
+  ack(sender, f[4])
 end
 -- Classement du conseil (ordre du tableau) : réponse (BiS, Upgrade, Off-Spec, Transmo, Passer), puis voix, puis nom
 local ORDER = { bis = 1, upgrade = 2, off = 3, transmo = 4, pass = 5 }
@@ -968,6 +1277,7 @@ function RA.AwardCouncil(sid, winner)
 end
 handlers.LC = function(_, f)
   RA.councils[f[2] or ""] = nil
+  dropSession(f[2] or "")
   for i = #RA.asks, 1, -1 do if RA.asks[i].sid == f[2] then table.remove(RA.asks, i) end end
   refresh()
 end

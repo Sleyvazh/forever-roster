@@ -1029,6 +1029,13 @@ function U.ShareDiagText()
     local text = L("Messages du raid : %d partis, %d renvoyés après un refus du jeu, %d abandonnés", s.sent, s.retried, s.dropped)
     if waiting > 0 then text = text .. L(", %d en attente", waiting) end
     lines[#lines + 1] = text
+    -- Accusés de réception du conseil (1.7.7) : destinataires de mes réponses et votes, arrivés ou perdus
+    if RA.wire then
+      local w, open = RA.wire.stats, #RA.wire.groups
+      local acks = L("Accusés du conseil : %d arrivés, %d perdus", w.ok, w.lost)
+      if open > 0 then acks = acks .. L(", %d en attente", open) end
+      lines[#lines + 1] = acks
+    end
     -- Partage compressé (1.7.4) : morceaux partis sur les préfixes réservés, et bibliothèque de compression présente ou non
     if RA.bulkStats then
       local lib = LibStub and LibStub("LibDeflate", true)

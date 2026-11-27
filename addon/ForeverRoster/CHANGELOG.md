@@ -2,6 +2,18 @@
 
 Envoyé sur CurseForge avec chaque version (scripts/curseforge.mjs lit la section « ## <version> ») : anglais d'abord, comme le demande CurseForge, puis français. Ce fichier n'est pas dans le zip de l'addon.
 
+## 1.7.7
+
+- **Loot council: you know where your answer went**: your answer (BiS, Upgrade…) and your vote now get a receipt from each council member and the loot master. Without one, the addon sends it again for about a minute. A line in your chat says each time whether it reached the whole council, or who did not get it; if the loot master did not, it tells you the word to whisper to them.
+- **Whispers reach the right character**: on WoW Forever every character has a first name and a surname. Council answers, votes and consumables replies are now whispered to "First-Surname", no longer to the first name alone.
+- Players on an older version still receive everything, once, as before (no receipt from them). `/fr share` shows the council receipts.
+
+Français :
+
+- **Conseil du butin : tu sais où ta réponse est arrivée** : ta réponse (BiS, Upgrade…) et ton vote reçoivent maintenant un accusé de réception de chaque membre du conseil et du maître du butin. Sans accusé, l'addon les renvoie pendant une minute environ. Une ligne dans ton chat dit à chaque fois s'ils sont arrivés chez tout le conseil, ou qui ne les a pas eus ; si c'est le maître du butin, elle te donne le mot à lui chuchoter.
+- **Les chuchotements arrivent au bon perso** : sur WoW Forever, chaque perso a un prénom et un nom de famille. Les réponses et votes du conseil et les réponses aux consommables partent maintenant à « Prénom-Nom », et plus au prénom seul.
+- Les joueurs restés sur une ancienne version reçoivent tout, une fois, comme avant (sans accusé de leur part). `/fr partage` montre les accusés du conseil.
+
 ## 1.7.6
 
 - **Fewer website data copies spent for nothing**: when another player has just shared the website data with you, Roster Companion does not load a copy of its own right away (the 15 minutes start again). The 20 copies of a session last longer.
