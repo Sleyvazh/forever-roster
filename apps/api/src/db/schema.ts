@@ -1,4 +1,4 @@
-import type { BisSource, BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, PollKind, PollOption, PollResults, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets, Weights } from "@forever/game-data";
+import type { BisSource, BnetCharacter, Game, GameLangPref, GuildEventType, LevelAnnounce, LootCategory, LootMethod, LootMode, LootResponse, LootSettings, PollKind, PollOption, PollResults, QuestType, RaidLogEncounter, RaidLogExport, RaidPrep, RetailDifficulty, RoleTargets, TakerState, Weights } from "@forever/game-data";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn, bigint, bigserial, boolean, customType, check, date, index, integer, jsonb, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid,
@@ -247,11 +247,19 @@ export const groups = pgTable("groups", {
   pollsChannelName: text("polls_channel_name"),
   pollsLinkCodeHash: text("polls_link_code_hash"),
   pollsLinkCodeExpiresAt: ts("polls_link_code_expires_at"),
+  /** Salon Discord des quêtes de guilde (Forever, 27/11/2026), lié de la même façon ; sans lui, les quêtes vont dans le salon de la guilde. */
+  questsGuildId: text("quests_guild_id"),
+  questsChannelId: text("quests_channel_id"),
+  questsChannelName: text("quests_channel_name"),
+  questsLinkCodeHash: text("quests_link_code_hash"),
+  questsLinkCodeExpiresAt: ts("quests_link_code_expires_at"),
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
   raidCreators: text("raid_creators").$type<Creators>().notNull().default("officers"),
   outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
   /** Qui peut créer les sondages (site, /sondage et /dispos) : les officiers par défaut (choix de Flo, 26/11/2026). */
   pollCreators: text("poll_creators").$type<Creators>().notNull().default("officers"),
+  /** Qui peut publier des quêtes de guilde (site et /quete) : tous les membres par défaut (choix de Flo, 27/11/2026). */
+  questCreators: text("quest_creators").$type<Creators>().notNull().default("members"),
   /** Course au 60 (Forever) : annonces des montées de niveau dans le salon de la guilde (rien, les 60, tous les 10 niveaux). */
   levelAnnounces: text("level_announces").$type<LevelAnnounce>().notNull().default("sixty"),
   /** Langue du bot Discord pour cette guilde (annonces, réponses ; version anglaise, lot E6). */
@@ -265,11 +273,13 @@ export const groups = pgTable("groups", {
   check("groups_raid_creators_chk", sql`${t.raidCreators} in ('officers', 'members')`),
   check("groups_outing_creators_chk", sql`${t.outingCreators} in ('officers', 'members')`),
   check("groups_poll_creators_chk", sql`${t.pollCreators} in ('officers', 'members')`),
+  check("groups_quest_creators_chk", sql`${t.questCreators} in ('officers', 'members')`),
   // Groupes liés à un serveur Discord (avis : seuls ceux-là sont proposés), quel que soit le nombre de groupes
   index("groups_discord_guild_idx").on(t.discordGuildId),
   index("groups_orders_guild_idx").on(t.ordersGuildId),
   index("groups_outings_guild_idx").on(t.outingsGuildId),
   index("groups_polls_guild_idx").on(t.pollsGuildId),
+  index("groups_quests_guild_idx").on(t.questsGuildId),
 ]);
 
 export const groupMembers = pgTable("group_members", {
@@ -1435,3 +1445,106 @@ export const pollVotes = pgTable("poll_votes", {
   maybe: jsonb("maybe").$type<number[]>().notNull().default([]),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, t => [primaryKey({ columns: [t.pollId, t.voterKey] })]);
+
+/* ---------- Quêtes de guilde (27/11/2026) ---------- */
+
+/** Objet de récompense d'une quête : identifiant du catalogue, quantité, nom (recopié pour Discord et les MP). */
+export interface QuestRewardItem { itemId: number; qty: number; name: string }
+
+/**
+ * Quête de guilde (Forever) : publiée par un membre (site ou /quete), avec sa récompense, prise par 1 à 40 membres.
+ * Objectif : un objet du catalogue et sa quantité (objective_item_id) ou un texte libre (objective_text).
+ * closed_at : plus de nouveau preneur (close à la main) ; cancelled_at : annulée. L'état se déduit des preneurs
+ * (questStateOf). Le message Discord est posé dans `channel_id` et republié quand discord_changed_at > discord_synced_at.
+ */
+export const quests = pgTable("quests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id").notNull().references(() => groups.id, { onDelete: "cascade" }),
+  type: text("type").$type<QuestType>().notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  objectiveItemId: integer("objective_item_id"),
+  objectiveQty: smallint("objective_qty"),
+  objectiveText: text("objective_text").notNull().default(""),
+  /** Récompense : or (en cuivre), objets, et autre chose (texte libre). */
+  rewardCopper: integer("reward_copper").notNull().default(0),
+  rewardItems: jsonb("reward_items").$type<QuestRewardItem[]>().notNull().default([]),
+  rewardText: text("reward_text").notNull().default(""),
+  places: smallint("places").notNull().default(1),
+  minLevel: smallint("min_level"),
+  /** Métier demandé (nom anglais du jeu, ex. Alchemy), vide sinon. */
+  profession: text("profession").notNull().default(""),
+  dueAt: ts("due_at"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /** Nom du donneur (son perso principal dans la guilde, recopié). */
+  creatorName: text("creator_name").notNull(),
+  closedAt: ts("closed_at"),
+  cancelledAt: ts("cancelled_at"),
+  /** Échéance passée : preneurs en cours prévenus (une fois). */
+  expiryNotifiedAt: ts("expiry_notified_at"),
+  channelId: text("channel_id"),
+  discordChannelId: text("discord_channel_id"),
+  discordMessageId: text("discord_message_id"),
+  discordChangedAt: ts("discord_changed_at").notNull().defaultNow(),
+  discordSyncedAt: ts("discord_synced_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  /** Dernière activité (publication, preneur, validation…) : la purge compte 12 mois à partir d'elle. */
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, t => [
+  index("quests_group_idx").on(t.groupId, t.createdAt),
+  check("quests_type_chk", sql`${t.type} in ('collect', 'craft', 'dungeon', 'help', 'other')`),
+  check("quests_title_chk", sql`char_length(${t.title}) between 1 and 60`),
+  check("quests_places_chk", sql`${t.places} between 1 and 40`),
+  check("quests_objective_qty_chk", sql`${t.objectiveQty} is null or ${t.objectiveQty} between 1 and 999`),
+  check("quests_reward_copper_chk", sql`${t.rewardCopper} >= 0`),
+]);
+
+/**
+ * Preneur d'une quête : un compte du site membre de la guilde (une ligne par quête et par compte ; reprendre une quête
+ * après l'avoir rendue réutilise la ligne). Dates de chaque étape et des rappels envoyés (un seul chacun).
+ */
+export const questTakers = pgTable("quest_takers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  questId: uuid("quest_id").notNull().references(() => quests.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** Nom (perso principal dans la guilde) au moment de la prise. */
+  name: text("name").notNull(),
+  state: text("state").$type<TakerState>().notNull().default("taken"),
+  /** Mot du preneur au rendu (« je te les envoie par courrier ») ; mot du donneur quand il répond « Pas encore ». */
+  note: text("note").notNull().default(""),
+  rejectNote: text("reject_note").notNull().default(""),
+  takenAt: ts("taken_at").notNull().defaultNow(),
+  turnedInAt: ts("turned_in_at"),
+  validatedAt: ts("validated_at"),
+  paidAt: ts("paid_at"),
+  receivedAt: ts("received_at"),
+  /** « Pas reçu » : le preneur dit ne pas avoir reçu la récompense (le donneur est prévenu, la ligne reste « remise »). */
+  disputedAt: ts("disputed_at"),
+  remindedValidateAt: ts("reminded_validate_at"),
+  remindedPayAt: ts("reminded_pay_at"),
+  remindedReceiveAt: ts("reminded_receive_at"),
+}, t => [
+  uniqueIndex("quest_takers_quest_user_uq").on(t.questId, t.userId),
+  index("quest_takers_user_idx").on(t.userId),
+  check("quest_takers_state_chk", sql`${t.state} in ('taken', 'turned_in', 'validated', 'paid', 'received', 'abandoned', 'removed', 'expired')`),
+]);
+
+export type QuestNoticeKind = "taken" | "turned_in" | "rejected" | "validated" | "paid" | "not_received" | "received" | "cancelled" | "expired" | "removed"
+  | "remind_validate" | "remind_pay" | "remind_receive";
+/** Contenu d'un MP de quête : de quoi l'écrire sans relire la base (quête, qui, récompense, adresse). */
+export interface QuestNoticePayload {
+  questId: string; takerId?: string; title: string; groupName: string; lang: "fr" | "en";
+  /** Autre joueur cité (preneur ou donneur). */
+  other: string; reward: string; note?: string; url: string;
+}
+/** MP Discord des quêtes, remis une fois au bot (comme ceux des sorties). */
+export const questNotices = pgTable("quest_notices", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  discordUserId: text("discord_user_id").notNull(),
+  kind: text("kind").$type<QuestNoticeKind>().notNull(),
+  payload: jsonb("payload").$type<QuestNoticePayload>().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  claimedAt: ts("claimed_at"),
+}, t => [
+  index("quest_notices_pending_idx").on(t.createdAt).where(sql`${t.claimedAt} IS NULL`),
+]);

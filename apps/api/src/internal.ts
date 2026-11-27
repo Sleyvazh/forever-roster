@@ -20,6 +20,8 @@ import { mayCreate, retireOutingMessages } from "./lib/outings";
 import { movePolls } from "./lib/polls";
 import { outingRoutes } from "./internal-outings";
 import { pollRoutes } from "./internal-polls";
+import { questRoutes } from "./internal-quests";
+import { moveQuests } from "./lib/quests";
 import { bankNoticeRoutes } from "./internal-bank";
 import { guildAnnounceRoutes } from "./internal-guild";
 import { fullNames } from "./lib/guild";
@@ -69,12 +71,13 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     return { user: u, role: m?.role ?? null };
   }
 
-  /** Groupe lié à ce salon : son salon des raids, des sorties ou des sondages, ou le salon à part de l'un de ses raids récurrents. */
+  /** Groupe lié à ce salon : son salon des raids, des sorties, des sondages ou des quêtes, ou le salon à part de l'un de ses raids récurrents. */
   async function groupForChannel(guildId: string, channelId: string) {
     const [g] = await db.select().from(groups).where(or(
       and(eq(groups.discordGuildId, guildId), eq(groups.discordChannelId, channelId)),
       and(eq(groups.outingsGuildId, guildId), eq(groups.outingsChannelId, channelId)),
       and(eq(groups.pollsGuildId, guildId), eq(groups.pollsChannelId, channelId)),
+      and(eq(groups.questsGuildId, guildId), eq(groups.questsChannelId, channelId)),
     )).limit(1);
     if (g) return g;
     const [t] = await db.select({ group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
@@ -209,6 +212,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       const user = await officer(body.discordUserId, o.id);
       await refuseTemplateChannel(body.channelId, o.id, "les commandes");
       if (o.pollsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sondages : choisis un autre salon pour les commandes.");
+      if (o.questsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des quêtes : choisis un autre salon pour les commandes.");
       await db.update(groups).set({
         ordersGuildId: body.guildId, ordersChannelId: body.channelId, ordersChannelName: body.channelName ?? null, ordersLinkCodeHash: null, ordersLinkCodeExpiresAt: null,
       }).where(eq(groups.id, o.id));
@@ -227,6 +231,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       if (so.discordChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des raids de la guilde : sans salon à part, les sorties y vont déjà. Choisis un autre salon pour les sorties.");
       if (so.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon pour les sorties.");
       if (so.pollsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sondages : choisis un autre salon pour les sorties.");
+      if (so.questsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des quêtes : choisis un autre salon pour les sorties.");
       await db.update(groups).set({
         outingsGuildId: body.guildId, outingsChannelId: body.channelId, outingsChannelName: body.channelName ?? null, outingsLinkCodeHash: null, outingsLinkCodeExpiresAt: null,
       }).where(eq(groups.id, so.id));
@@ -244,10 +249,11 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       if (sp.discordChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des raids de la guilde : choisis un autre salon pour les sondages (sans salon à part, ceux posés sur le site y vont déjà).");
       if (sp.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon pour les sondages.");
       if (sp.outingsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sorties : choisis un autre salon pour les sondages.");
+      if (sp.questsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des quêtes : choisis un autre salon pour les sondages.");
       // Deux guildes du même serveur Discord : un salon des sondages chacune (sinon /sondage ne saurait pas laquelle)
       const [taken] = await db.select({ id: groups.id }).from(groups)
         .where(and(ne(groups.id, sp.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId),
-          eq(groups.outingsChannelId, body.channelId), eq(groups.pollsChannelId, body.channelId)))).limit(1);
+          eq(groups.outingsChannelId, body.channelId), eq(groups.pollsChannelId, body.channelId), eq(groups.questsChannelId, body.channelId)))).limit(1);
       if (taken) throw badRequest("Ce salon sert déjà à une autre guilde : choisis un autre salon pour les sondages.");
       await db.update(groups).set({
         pollsGuildId: body.guildId, pollsChannelId: body.channelId, pollsChannelName: body.channelName ?? null, pollsLinkCodeHash: null, pollsLinkCodeExpiresAt: null,
@@ -258,6 +264,28 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       bus.group({ t: "group", g: sp.id });
       bus.group({ t: "polls", g: sp.id });
       return { group: { id: sp.id, name: sp.name, lang: sp.lang }, kind: "polls" as const };
+    }
+    // Code du salon des quêtes de guilde (Forever) : toutes les quêtes de la guilde y sont annoncées
+    const [sq] = await db.select().from(groups).where(and(eq(groups.questsLinkCodeHash, hash), gt(groups.questsLinkCodeExpiresAt, now)));
+    if (sq) {
+      const user = await officer(body.discordUserId, sq.id);
+      await refuseTemplateChannel(body.channelId, sq.id, "les quêtes");
+      if (sq.discordChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des raids de la guilde : sans salon à part, les quêtes y vont déjà. Choisis un autre salon pour les quêtes.");
+      if (sq.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon pour les quêtes.");
+      if (sq.outingsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sorties : choisis un autre salon pour les quêtes.");
+      if (sq.pollsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sondages : choisis un autre salon pour les quêtes.");
+      const [taken] = await db.select({ id: groups.id }).from(groups)
+        .where(and(ne(groups.id, sq.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId),
+          eq(groups.outingsChannelId, body.channelId), eq(groups.pollsChannelId, body.channelId), eq(groups.questsChannelId, body.channelId)))).limit(1);
+      if (taken) throw badRequest("Ce salon sert déjà à une autre guilde : choisis un autre salon pour les quêtes.");
+      await db.update(groups).set({
+        questsGuildId: body.guildId, questsChannelId: body.channelId, questsChannelName: body.channelName ?? null, questsLinkCodeHash: null, questsLinkCodeExpiresAt: null,
+      }).where(eq(groups.id, sq.id));
+      // Les quêtes en cours quittent leur ancien salon (message effacé) et sont reposées ici
+      await moveQuests(db, sq.id);
+      await audit(db, req, "group_quests_linked", { userId: user.id, groupId: sq.id, meta: { guildId: body.guildId, channelId: body.channelId } });
+      bus.group({ t: "group", g: sq.id });
+      return { group: { id: sq.id, name: sq.name, lang: sq.lang }, kind: "quests" as const };
     }
     // Code du salon à part d'un raid récurrent
     const [t] = await db.select({ template: raidTemplates, group: groups }).from(raidTemplates).innerJoin(groups, eq(groups.id, raidTemplates.groupId))
@@ -270,6 +298,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     if (group.ordersChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon {what}.", { what });
     if (group.outingsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sorties : choisis un autre salon {what}.", { what });
     if (group.pollsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des sondages : choisis un autre salon {what}.", { what });
+    if (group.questsChannelId === body.channelId) throw badRequest("Ce salon est déjà celui des quêtes : choisis un autre salon {what}.", { what });
     const other = await templateOnChannel(body.channelId);
     if (other && other.id !== template.id) {
       if (other.groupId === group.id) throw badRequest("Ce salon est déjà celui du raid récurrent « {name} » : choisis un autre salon {what}.", { name: other.name, what });
@@ -277,7 +306,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
     }
     const [taken] = await db.select({ id: groups.id }).from(groups)
       .where(and(ne(groups.id, group.id), or(eq(groups.discordChannelId, body.channelId), eq(groups.ordersChannelId, body.channelId), eq(groups.outingsChannelId, body.channelId),
-        eq(groups.pollsChannelId, body.channelId)))).limit(1);
+        eq(groups.pollsChannelId, body.channelId), eq(groups.questsChannelId, body.channelId)))).limit(1);
     if (taken) throw badRequest("Ce salon sert déjà à une autre guilde : choisis un autre salon {what}.", { what });
     try {
       await db.update(raidTemplates).set({
@@ -345,7 +374,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
       .from(groups).where(isNotNull(groups.pollsChannelId));
     const of = (kind: LinkedKind) => (r: { id: string; guildId: string | null; channelId: string | null; name: string | null }) =>
       ({ kind, id: r.id, guildId: r.guildId, channelId: r.channelId!, name: r.name });
-    return [...g.map(of("group")), ...o.map(of("orders")), ...t.map(of("template")), ...so.map(of("outings")), ...sp.map(of("polls"))];
+    const sq = await db.select({ id: groups.id, guildId: groups.questsGuildId, channelId: groups.questsChannelId, name: groups.questsChannelName })
+      .from(groups).where(isNotNull(groups.questsChannelId));
+    return [...g.map(of("group")), ...o.map(of("orders")), ...t.map(of("template")), ...so.map(of("outings")), ...sp.map(of("polls")), ...sq.map(of("quests"))];
   });
 
   /** Le bot rapporte le nom actuel d'un salon lié (seulement s'il est toujours lié : un rapport tardif est ignoré). */
@@ -367,6 +398,9 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
         : body.kind === "polls"
         ? db.update(groups).set({ pollsChannelName: body.name })
           .where(and(eq(groups.id, body.id), eq(groups.pollsChannelId, body.channelId), differs(groups.pollsChannelName))).returning({ groupId: groups.id })
+        : body.kind === "quests"
+        ? db.update(groups).set({ questsChannelName: body.name })
+          .where(and(eq(groups.id, body.id), eq(groups.questsChannelId, body.channelId), differs(groups.questsChannelName))).returning({ groupId: groups.id })
         // Raid récurrent : seulement le nom (l'erreur de renommage reste celle rapportée par le renommage)
         : db.update(raidTemplates).set({ discordChannelName: body.name })
           .where(and(eq(raidTemplates.id, body.id), eq(raidTemplates.discordChannelId, body.channelId), differs(raidTemplates.discordChannelName)))
@@ -744,6 +778,7 @@ export async function buildInternalApp(ctx: AppContext, logger: boolean | object
   feedbackRoutes(app, db, cfg);
   outingRoutes(app, db, cfg, { linkedMember, groupForChannel });
   pollRoutes(app, db, cfg, { linkedMember, groupForChannel, raidView: view });
+  questRoutes(app, db, cfg, { linkedMember, groupForChannel });
   guildAnnounceRoutes(app, ctx);
   bankNoticeRoutes(app, ctx);
   return app;

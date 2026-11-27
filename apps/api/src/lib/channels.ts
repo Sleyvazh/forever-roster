@@ -10,9 +10,9 @@ import { discordDeletions, groups, raids, raidTemplates } from "../db/schema";
 
 /**
  * Les salons qu'un officier peut lier : celui du groupe (raids), celui des commandes d'artisanat, celui d'un raid
- * récurrent, celui des sorties donjon (Forever), celui des sondages.
+ * récurrent, celui des sorties donjon (Forever), celui des sondages, celui des quêtes de guilde (Forever).
  */
-export const LINKED_KINDS = ["group", "orders", "template", "outings", "polls"] as const;
+export const LINKED_KINDS = ["group", "orders", "template", "outings", "polls", "quests"] as const;
 export type LinkedKind = (typeof LINKED_KINDS)[number];
 
 /** Une annonce reste synchronisée (et un raid reste « courant » dans le salon de son raid récurrent) jusqu'à 12 h après l'heure du raid. */

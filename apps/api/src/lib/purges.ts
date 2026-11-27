@@ -1,4 +1,5 @@
 import { BANK_REQUEST_KEEP_DAYS } from "@forever/game-data";
+import { purgeOldQuests } from "./quests";
 import { and, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { auditEvents, bankRequests, bnetImports, devices, emailTokens, gameCacheUploads, guildBankLog, guildEvents, guildLinkProposals, sessions } from "../db/schema";
@@ -119,8 +120,11 @@ export async function purgeOldData(db: Db, now = new Date()) {
   const gameCacheUploadsGone = await inBatches(() => db.delete(gameCacheUploads).where(inArray(gameCacheUploads.id,
     db.select({ id: gameCacheUploads.id }).from(gameCacheUploads).where(lt(gameCacheUploads.receivedAt, new Date(now.getTime() - GAME_CACHE_UPLOADS_KEEP_MS))).limit(PURGE_BATCH))));
 
+  // Quêtes de guilde sans preneur en cours et sans activité depuis 12 mois (avec leur message Discord)
+  const questsGone = await purgeOldQuests(db, now);
+
   return {
-    audit, auditStripped, sessions: sessionsGone, devices: devicesGone, emailTokens: emailTokensGone, bnetImports: bnetImportsGone,
+    quests: questsGone, audit, auditStripped, sessions: sessionsGone, devices: devicesGone, emailTokens: emailTokensGone, bnetImports: bnetImportsGone,
     guildMembers: guildMembersGone, guildEvents: guildEventsGone, guildBankLog: guildBankLogGone, guildProposals: guildProposalsGone, bankRequests: bankRequestsGone,
     gameCacheUploads: gameCacheUploadsGone,
   };

@@ -62,12 +62,12 @@ export async function gameDataRoutes(app: FastifyInstance) {
       q: z.string().trim().min(2).max(60),
       slot: z.enum(GEAR_SLOTS).optional(),
       limit: z.coerce.number().int().min(1).max(50).default(20),
-      // Consommables (lot G) : potions, flacons, élixirs, nourriture (classe d'objet 0)
-      kind: z.enum(["gear", "consumable"]).default("gear"),
+      // Consommables (lot G) : potions, flacons, élixirs, nourriture (classe d'objet 0) ; « any » : tous les objets (quêtes de guilde)
+      kind: z.enum(["gear", "consumable", "any"]).default("gear"),
     }), req.query);
     const where = and(
       ilike(gameItems.name, likeContains(q)),
-      kind === "consumable" ? eq(gameItems.classId, 0) : slot ? inArray(gameItems.inventoryType, SLOT_INVENTORY_TYPES[slot]) : gt(gameItems.inventoryType, 0),
+      kind === "any" ? undefined : kind === "consumable" ? eq(gameItems.classId, 0) : slot ? inArray(gameItems.inventoryType, SLOT_INVENTORY_TYPES[slot]) : gt(gameItems.inventoryType, 0),
     );
     const items = await db.select(itemSummary).from(gameItems).where(where)
       .orderBy(desc(sql`lower(${gameItems.name}) LIKE ${`${escapeLike(q.toLowerCase())}%`}`), desc(gameItems.quality), desc(gameItems.itemLevel), asc(gameItems.name))

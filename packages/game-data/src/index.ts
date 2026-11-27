@@ -26,3 +26,4 @@ export * from "./bis";
 export * from "./bis-sources";
 export * from "./bis-sources-web";
 export * from "./polls";
+export * from "./quests";

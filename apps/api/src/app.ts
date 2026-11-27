@@ -25,6 +25,7 @@ import { absenceRoutes } from "./routes/absences";
 import { orderRoutes } from "./routes/orders";
 import { outingRoutes } from "./routes/outings";
 import { pollRoutes } from "./routes/polls";
+import { questRoutes } from "./routes/quests";
 import { guildRoutes } from "./routes/guild";
 import { groupFeedbackRoutes } from "./routes/group-feedback";
 import { prepRoutes } from "./routes/prep";
@@ -121,6 +122,7 @@ export async function buildApp({ ctx, logger = false, rateLimit: withRateLimit =
   await app.register(orderRoutes, { prefix: "/api/groups" });
   await app.register(outingRoutes, { prefix: "/api/groups" });
   await app.register(pollRoutes, { prefix: "/api/groups" });
+  await app.register(questRoutes, { prefix: "/api/groups" });
   await app.register(guildRoutes, { prefix: "/api/groups" });
   await app.register(groupFeedbackRoutes, { prefix: "/api/groups" });
   await app.register(prepRoutes, { prefix: "/api/groups" });

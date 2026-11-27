@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { GEAR_SLOTS, gearStats, MAX_LEVEL, PROFESSION_SKILL_LINES, roleOf, type SignupStatus } from "@forever/game-data";
 import { currentLines } from "../lib/professions";
-import { auditEvents, characterRecipes, characters, craftOrders, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, outings, raids, raidSignups, users } from "../db/schema";
+import { auditEvents, characterRecipes, characters, craftOrders, gameGuilds, gameItems, gameRecipes, groupCharacters, groupInvites, groupMembers, groups, outings, quests, raids, raidSignups, users } from "../db/schema";
 import { assignCharacter, setMain, unassignCharacter } from "../lib/group-characters";
 import { audit } from "../lib/audit";
 import { cancelOpenRequests } from "../lib/bank-requests";
@@ -21,6 +21,7 @@ import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outings";
 import { movePolls, pollCounts, retirePollMessages } from "../lib/polls";
+import { leaveQuests, moveQuests, questCounts, retireQuestMessages } from "../lib/quests";
 import { bus, charsChanged } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
@@ -141,15 +142,19 @@ export async function groupRoutes(app: FastifyInstance) {
       ordersLinked: !!g!.ordersChannelId, ordersChannelName: g!.ordersChannelId ? g!.ordersChannelName : null,
       outingsLinked: !!g!.outingsChannelId, outingsChannelName: g!.outingsChannelId ? g!.outingsChannelName : null,
       pollsLinked: !!g!.pollsChannelId, pollsChannelName: g!.pollsChannelId ? g!.pollsChannelName : null,
+      questsLinked: !!g!.questsChannelId, questsChannelName: g!.questsChannelId ? g!.questsChannelName : null,
     };
     // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
     const creators = {
-      raids: g!.raidCreators, outings: g!.outingCreators, polls: g!.pollCreators,
+      raids: g!.raidCreators, outings: g!.outingCreators, polls: g!.pollCreators, quests: g!.questCreators,
       canCreateRaid: mayCreate(g!.raidCreators, role), canCreateOuting: mayCreate(g!.outingCreators, role), canCreatePoll: mayCreate(g!.pollCreators, role),
+      canCreateQuest: g!.game === "forever" && mayCreate(g!.questCreators, role),
     };
     // Sondages ouverts, et ceux où il n'a pas répondu (pastille de l'onglet Sondages)
     const pollsInfo = await pollCounts(db, g!.id, u.id);
-    return { group: { id: g!.id, name: g!.name, game: g!.game, lang: g!.lang, site: { name: site.name, origin: site.origin }, ...channels, creators, polls: pollsInfo }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
+    // Quêtes de guilde (Forever) : ce qui attend ce compte et les quêtes qu'il peut prendre (pastille de l'onglet Quêtes)
+    const questsInfo = g!.game === "forever" ? await questCounts(db, g!.id, u.id) : { todo: 0, open: 0 };
+    return { group: { id: g!.id, name: g!.name, game: g!.game, lang: g!.lang, site: { name: site.name, origin: site.origin }, ...channels, creators, polls: pollsInfo, quests: questsInfo }, role, banker: members.some(m => m.userId === u.id && m.banker), members, feedback };
   });
 
   /** Langue du bot Discord pour la guilde (annonces, réponses, messages privés des joueurs sans langue choisie). */
@@ -165,6 +170,7 @@ export async function groupRoutes(app: FastifyInstance) {
     const now = new Date();
     await db.update(raids).set({ discordChangedAt: now }).where(eq(raids.groupId, id));
     await db.update(outings).set({ discordChangedAt: now }).where(eq(outings.groupId, id));
+    await db.update(quests).set({ discordChangedAt: now }).where(eq(quests.groupId, id));
     await db.update(craftOrders).set({ discordChangedAt: now }).where(eq(craftOrders.groupId, id));
     return { lang };
   });
@@ -175,14 +181,16 @@ export async function groupRoutes(app: FastifyInstance) {
     const { id } = parse(gid, req.params);
     await requireRole(db, id, u.id, "officer");
     const who = z.enum(["officers", "members"]);
-    const body = parse(z.object({ raids: who.optional(), outings: who.optional(), polls: who.optional() }), req.body);
+    const body = parse(z.object({ raids: who.optional(), outings: who.optional(), polls: who.optional(), quests: who.optional() }), req.body);
     const [g] = await db.update(groups).set({
       ...(body.raids && { raidCreators: body.raids }), ...(body.outings && { outingCreators: body.outings }), ...(body.polls && { pollCreators: body.polls }),
-    }).where(eq(groups.id, id)).returning({ raids: groups.raidCreators, outings: groups.outingCreators, polls: groups.pollCreators });
+      ...(body.quests && { questCreators: body.quests }),
+    }).where(eq(groups.id, id)).returning({ raids: groups.raidCreators, outings: groups.outingCreators, polls: groups.pollCreators, quests: groups.questCreators });
     await audit(db, req, "group_creators", { userId: u.id, groupId: id, meta: { ...body } });
     bus.group({ t: "group", g: id });
     bus.group({ t: "outings", g: id });
     bus.group({ t: "polls", g: id });
+    bus.group({ t: "quests", g: id });
     return { creators: g };
   });
 
@@ -208,6 +216,7 @@ export async function groupRoutes(app: FastifyInstance) {
     await retireOrderMessages(db, id);
     await retireOutingMessages(db, id, { all: true });
     await retirePollMessages(db, id);
+    await retireQuestMessages(db, id);
     const members = await db.select({ u: groupMembers.userId }).from(groupMembers).where(eq(groupMembers.groupId, id));
     await db.delete(groups).where(eq(groups.id, id));
     for (const m of members) await bus.membership(db, m.u);
@@ -460,6 +469,30 @@ export async function groupRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Salon des quêtes de guilde (Forever, 27/11/2026) : même principe ; sans lui, les quêtes vont dans le salon de la guilde. */
+  app.post("/:id/discord/quests-code", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const [g] = await db.select({ game: groups.game }).from(groups).where(eq(groups.id, id));
+    if (g?.game !== "forever") throw badRequest("Les quêtes de guilde sont pour WoW Forever.");
+    const { code, hash, expiresAt } = linkCode();
+    await db.update(groups).set({ questsLinkCodeHash: hash, questsLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    return { code, expiresAt };
+  });
+
+  app.delete("/:id/discord/quests", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    await db.update(groups).set({ questsGuildId: null, questsChannelId: null, questsChannelName: null, questsLinkCodeHash: null, questsLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    // Les quêtes en cours repartent dans le salon de la guilde (sinon : site seulement)
+    await moveQuests(db, id);
+    await audit(db, req, "group_quests_unlinked", { userId: u.id, groupId: id });
+    bus.group({ t: "group", g: id });
+    return { ok: true };
+  });
+
   app.delete("/:id/discord/orders", async (req) => {
     const u = currentUser(req);
     const { id } = parse(gid, req.params);
@@ -545,6 +578,7 @@ export async function groupRoutes(app: FastifyInstance) {
     }
     await dropSignupsInGroup(db, p.id, p.userId);
     await dropOutingSignups(db, p.id, p.userId, siteOf(cfg, req).origin);
+    await leaveQuests(db, p.id, p.userId);
     await cancelOpenRequests(db, p.id, p.userId, app.ctx.now?.() ?? new Date());
     await audit(db, req, p.userId === u.id ? "group_left" : "group_member_removed", { userId: u.id, groupId: p.id, meta: { target: p.userId } });
     bus.group({ t: "group", g: p.id });

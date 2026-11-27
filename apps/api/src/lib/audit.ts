@@ -13,6 +13,7 @@ export type AuditType =
   | "template_discord_linked" | "template_discord_unlinked"
   | "group_character_changed" | "group_loot_settings" | "group_nudge_settings" | "raid_nudged" | "raid_ask_sent" | "group_orders_linked" | "group_orders_unlinked" | "group_outings_linked" | "group_outings_unlinked" | "group_polls_linked" | "group_polls_unlinked" | "group_creators" | "group_lang" | "raid_council"
   | "loot_count_corrected" | "loot_history_imported"
+  | "quest_created" | "quest_updated" | "quest_cancelled" | "quest_closed" | "quest_taker_removed" | "group_quests_linked" | "group_quests_unlinked"
   | "device_linked" | "device_pair_denied" | "device_unlinked"
   | "battlenet_import_list" | "battlenet_import"
   | "reports_channel_linked"
