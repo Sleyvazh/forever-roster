@@ -1,5 +1,6 @@
 import {
-  bestSlot, leaders, POLL_KEEP_DAYS, POLL_MAX_DAYS, POLL_MAX_LABEL, POLL_MAX_OPEN, POLL_MAX_QUESTION, POLL_MIN_OPTIONS, pollMaxOptions, roleOf,
+  bestSlot, byLabel, isBigPoll, leaders, POLL_BUTTONS_MAX, POLL_KEEP_DAYS, POLL_MAX_DAYS, POLL_MAX_LABEL, POLL_MAX_OPEN, POLL_MAX_QUESTION, POLL_MIN_OPTIONS,
+  pollMaxOptions, roleOf, runoffPick,
   type Game, type PollKind, type PollOption, type PollResults, type Role,
 } from "@forever/game-data";
 import { and, asc, count, desc, eq, inArray, isNull, lt, lte, notExists, or, sql } from "drizzle-orm";
@@ -55,6 +56,8 @@ export interface PollInput {
   /** Choix (libellés) ; disponibilités : un créneau par entrée, avec sa date. */
   options: { label: string; at?: string | null }[];
   multi?: boolean; anonymous?: boolean; results?: PollResults;
+  /** Plusieurs choix : au plus ce nombre par votant (absent ou null : sans limite). */
+  maxChoices?: number | null;
   /** Fin (ISO) ; null : jusqu'à ce qu'on le close (disponibilités : le premier créneau). */
   closesAt?: string | null;
   raidName?: string;
@@ -72,7 +75,9 @@ export function cleanOptions(kind: PollKind, list: PollInput["options"], now = n
     if (labels.some(l => !l)) throw badRequest("Un choix est vide.");
     if (labels.some(l => l.length > POLL_MAX_LABEL)) throw badRequest("Un choix fait plus de {n} caractères.", { n: POLL_MAX_LABEL });
     if (new Set(labels.map(l => l.toLowerCase())).size !== labels.length) throw badRequest("Deux choix sont identiques.");
-    return labels.map((label, i) => ({ id: i + 1, label }));
+    // Grand sondage : par ordre alphabétique (liste du message, menus pour voter)
+    const ordered = labels.length > POLL_BUTTONS_MAX ? [...labels].sort((a, b) => byLabel({ label: a }, { label: b })) : labels;
+    return ordered.map((label, i) => ({ id: i + 1, label }));
   }
   const slots = list.map(o => {
     const at = o.at ? new Date(o.at) : null;
@@ -91,6 +96,11 @@ export async function createPoll(db: Db, req: FastifyRequest | null, g: GroupRow
   if (!question) throw badRequest("Écris la question du sondage.");
   if (question.length > POLL_MAX_QUESTION) throw badRequest("La question fait plus de {n} caractères.", { n: POLL_MAX_QUESTION });
   const options = cleanOptions(input.kind, input.options, now);
+  const multi = input.kind === "dates" ? true : !!input.multi || !!input.maxChoices;
+  const maxChoices = input.kind === "choice" && multi && input.maxChoices ? input.maxChoices : null;
+  if (maxChoices !== null && (maxChoices < 2 || maxChoices >= options.length)) {
+    throw badRequest("Le nombre de choix par personne va de 2 à {n}.", { n: options.length - 1 });
+  }
   let closesAt = input.closesAt ? new Date(input.closesAt) : null;
   if (closesAt && Number.isNaN(closesAt.getTime())) throw badRequest("Fin illisible.");
   // Disponibilités sans fin : jusqu'au premier créneau (ensuite, la question ne se pose plus)
@@ -101,7 +111,7 @@ export async function createPoll(db: Db, req: FastifyRequest | null, g: GroupRow
   if (n >= POLL_MAX_OPEN) throw badRequest("La guilde a déjà {n} sondages ouverts : closes-en un avant d'en poser un autre.", { n: POLL_MAX_OPEN });
   const [p] = await db.insert(polls).values({
     groupId: g.id, kind: input.kind, question, options,
-    multi: input.kind === "dates" ? true : !!input.multi,
+    multi, maxChoices,
     // Disponibilités : toujours publiques (« Qui a répondu ? ») et en direct
     anonymous: input.kind === "dates" ? false : !!input.anonymous,
     results: input.kind === "dates" ? "live" : input.results ?? "live",
@@ -166,6 +176,7 @@ export async function voteChoice(db: Db, pollId: string, v: Voter, optionId: num
   const prev = await currentVote(db, poll.id, v);
   const had = prev?.yes ?? [];
   const yes = had.includes(optionId) ? had.filter(x => x !== optionId) : poll.multi ? [...had, optionId].sort((a, b) => a - b) : [optionId];
+  assertMax(poll, yes);
   return { ...(await saveVote(db, poll, v, prev, yes, [])), poll };
 }
 
@@ -178,7 +189,34 @@ export async function setChoices(db: Db, pollId: string, v: Voter, chosen: numbe
   const yes = [...new Set(chosen)].filter(x => valid.has(x)).sort((a, b) => a - b);
   if (yes.length !== new Set(chosen).size) throw badRequest("Ce choix n'existe pas.");
   if (!poll.multi && yes.length > 1) throw badRequest("Un seul choix pour ce sondage.");
+  assertMax(poll, yes);
   return { ...(await saveVote(db, poll, v, await currentVote(db, poll.id, v), yes, [])), poll };
+}
+
+/** Plus de choix cochés que le sondage n'en permet : refusé. */
+function assertMax(poll: PollRow, yes: number[]) {
+  if (poll.maxChoices && yes.length > poll.maxChoices) throw badRequest("{n} choix au plus : retires-en un.", { n: poll.maxChoices });
+}
+
+/**
+ * Grand sondage sur Discord : un menu (25 choix au plus) remplace les choix cochés parmi les siens (`scope`), les autres
+ * menus gardent les leurs. Un seul choix : le dernier coché l'emporte (il remplace celui d'un autre menu).
+ */
+export async function setChoicesIn(db: Db, pollId: string, v: Voter, scope: number[], chosen: number[]) {
+  const { poll } = await loadPoll(db, pollId);
+  if (poll.kind !== "choice") throw badRequest("C'est un sondage de disponibilités : réponds créneau par créneau.");
+  assertOpen(poll);
+  const valid = ids(poll);
+  const inScope = new Set(scope.filter(x => valid.has(x)));
+  const picked = [...new Set(chosen)].filter(x => inScope.has(x));
+  if (picked.length !== new Set(chosen).size) throw badRequest("Ce choix n'existe pas.");
+  const prev = await currentVote(db, poll.id, v);
+  const kept = (prev?.yes ?? []).filter(x => !inScope.has(x));
+  let yes: number[];
+  if (!poll.multi) yes = picked.length ? [picked[picked.length - 1]!] : kept.slice(0, 1);
+  else yes = [...kept, ...picked].sort((a, b) => a - b);
+  assertMax(poll, yes);
+  return { ...(await saveVote(db, poll, v, prev, yes, [])), poll };
 }
 
 /**
@@ -247,6 +285,31 @@ async function queueDeletion(db: Db, channelId: string, messageId: string) {
   await db.insert(discordDeletions).values({ channelId, messageId });
 }
 
+/**
+ * Salon où va un sondage : le salon des sondages s'il est lié, sinon `fallback` (salon où /sondage a été tapé, ou celui
+ * des raids pour un sondage posé sur le site ; null : site seulement).
+ */
+export const pollsChannelOf = (g: Pick<GroupRow, "pollsChannelId">, fallback: string | null) => g.pollsChannelId ?? fallback;
+
+/**
+ * Salon des sondages lié, changé ou délié : les sondages encore ouverts partent dans le nouveau salon (celui des
+ * sondages, sinon celui des raids, sinon site seulement) et leur ancien message est effacé. Les sondages clos restent
+ * où ils sont (leurs boutons marchent toujours).
+ */
+export async function movePolls(db: Db, groupId: string) {
+  const [g] = await db.select().from(groups).where(eq(groups.id, groupId));
+  if (!g) return 0;
+  const target = pollsChannelOf(g, g.discordChannelId);
+  const rows = await db.select({ id: polls.id, channelId: polls.discordChannelId, messageId: polls.discordMessageId }).from(polls)
+    .where(and(eq(polls.groupId, groupId), isNull(polls.closedAt), target ? sql`${polls.channelId} is distinct from ${target}` : sql`${polls.channelId} is not null`));
+  if (!rows.length) return 0;
+  for (const m of rows) if (m.channelId && m.messageId) await queueDeletion(db, m.channelId, m.messageId);
+  await db.update(polls).set({ channelId: target, discordChannelId: null, discordMessageId: null, discordSyncedAt: null, discordChangedAt: new Date() })
+    .where(inArray(polls.id, rows.map(r => r.id)));
+  bus.group({ t: "polls", g: groupId });
+  return rows.length;
+}
+
 /** Guilde supprimée : les messages Discord de ses sondages sont retirés (les sondages partent avec la guilde). */
 export async function retirePollMessages(db: Db, groupId: string) {
   const rows = await db.select({ channelId: polls.discordChannelId, messageId: polls.discordMessageId }).from(polls).where(eq(polls.groupId, groupId));
@@ -264,6 +327,38 @@ export async function closeDuePolls(db: Db, now = new Date()) {
   for (const m of gone) if (m.channelId && m.messageId) await queueDeletion(db, m.channelId, m.messageId);
   for (const g of new Set(closed.map(c => c.g))) bus.group({ t: "polls", g });
   return closed.length;
+}
+
+/* ---------- 2e tour d'un grand sondage ---------- */
+
+/**
+ * « 2e tour avec les 5 premiers » : un nouveau sondage, un seul choix, entre les qualifiés du grand sondage clos (les 5
+ * premiers et leurs ex æquo, 10 au plus), même salon, même anonymat, mêmes résultats. Son créateur ou un officier ;
+ * une seule fois par sondage.
+ */
+export async function createRunoff(db: Db, req: FastifyRequest | null, pollId: string, by: { id: string; displayName: string; role: GroupRole | null },
+  input: { question?: string; closesAt?: string | null }, via: "discord" | "site", groupId?: string) {
+  const { poll, group: g } = await loadPoll(db, pollId, groupId);
+  if (!isBigPoll(poll)) throw badRequest("Le 2e tour est pour les sondages de plus de {n} choix.", { n: POLL_BUTTONS_MAX });
+  if (poll.createdBy !== by.id && (!by.role || by.role === "member")) throw forbidden("Seuls son créateur et les officiers peuvent poser le 2e tour.");
+  if (!poll.closedAt && deadlineOf(poll).getTime() > Date.now()) throw badRequest("Clos d'abord le 1er tour.");
+  if (poll.runoffId) throw badRequest("Le 2e tour de ce sondage est déjà posé.");
+  const votes = await db.select({ yes: pollVotes.yes }).from(pollVotes).where(eq(pollVotes.pollId, poll.id));
+  const counts = poll.options.map(o => ({ id: o.id, label: o.label, yes: votes.filter(v => v.yes.includes(o.id)).length }));
+  const picked = runoffPick(counts);
+  if (picked.length < 2) throw badRequest("Il faut au moins deux choix qui ont des voix pour un 2e tour.");
+  const labels = counts.filter(c => picked.includes(c.id)).sort((a, b) => b.yes - a.yes || byLabel(a, b)).map(c => c.label);
+  const base = poll.question.replace(/\s*[·:-]?\s*(1er|premier) tour\s*$/i, "").trim();
+  const question = (input.question?.trim() || `${base} · 2e tour`).slice(0, 200);
+  const id = await createPoll(db, req, g, by.role, by, {
+    kind: "choice", question, options: labels.map(label => ({ label })), multi: false, anonymous: poll.anonymous, results: poll.results,
+    // Dans le salon des sondages s'il y en a un, sinon là où était le 1er tour
+    closesAt: input.closesAt ?? null, channelId: pollsChannelOf(g, poll.channelId),
+  }, via);
+  const now = new Date();
+  await db.update(polls).set({ runoffId: id, closedAt: poll.closedAt ?? deadlineOf(poll), discordChangedAt: now }).where(eq(polls.id, poll.id));
+  bus.group({ t: "polls", g: g.id });
+  return id;
 }
 
 /* ---------- Raid sur un créneau ---------- */
@@ -307,7 +402,7 @@ export interface PollOptionView {
   roles: Record<Role, number> | null;
 }
 export interface PollView {
-  id: string; kind: PollKind; question: string; multi: boolean; anonymous: boolean; results: PollResults;
+  id: string; kind: PollKind; question: string; multi: boolean; maxChoices: number | null; anonymous: boolean; results: PollResults;
   /** Résultats cachés (« à la fin », sondage encore ouvert). */
   hidden: boolean;
   options: PollOptionView[];
@@ -315,6 +410,8 @@ export interface PollView {
   voters: number;
   /** Disponibilités : meilleur créneau ; choix : choix en tête (ex æquo compris). */
   best: number | null; leaders: number[];
+  /** Grand sondage clos : qualifiés pour le 2e tour (les RUNOFF_SIZE premiers et leurs ex æquo) ; son 2e tour une fois posé. */
+  qualifiers: number[]; runoffId: string | null;
   closesAt: string | null; deadline: string; closedAt: string | null; createdAt: string;
   creator: string; createdBy: string | null; raidName: string;
   raid: { id: string; name: string; scheduledAt: string | null; url: string } | null;
@@ -342,7 +439,7 @@ export async function pollViews(db: Db, rows: { poll: PollRow; group: GroupRow }
     const raid = p.raidId ? raidOf.get(p.raidId) : undefined;
     const origin = originOf(g.game);
     return {
-      id: p.id, kind: p.kind, question: p.question, multi: p.multi, anonymous: p.anonymous, results: p.results, hidden,
+      id: p.id, kind: p.kind, question: p.question, multi: p.multi, maxChoices: p.maxChoices, anonymous: p.anonymous, results: p.results, hidden,
       options: p.options.map((o, i) => {
         const c = counts[i]!;
         const roles = p.kind === "dates" ? { Tank: 0, Heal: 0, DPS: 0 } as Record<Role, number> : null;
@@ -356,11 +453,14 @@ export async function pollViews(db: Db, rows: { poll: PollRow; group: GroupRow }
       voters: mine.length,
       best: hidden || p.kind !== "dates" ? null : bestSlot(counts),
       leaders: hidden || p.kind !== "choice" ? [] : leaders(counts),
+      qualifiers: closed && !hidden && isBigPoll(p) ? runoffPick(counts.map((c, i) => ({ ...c, label: p.options[i]!.label }))) : [],
+      runoffId: p.runoffId,
       closesAt: p.closesAt?.toISOString() ?? null, deadline: deadlineOf(p).toISOString(), closedAt: closed?.toISOString() ?? null, createdAt: p.createdAt.toISOString(),
       creator: creatorNames.get(g.id)!(p.creatorName), createdBy: p.createdBy, raidName: p.raidName,
       raid: raid ? { id: raid.id, name: raid.name, scheduledAt: raid.scheduledAt?.toISOString() ?? null, url: `${origin}/groups/${g.id}/raids/${raid.id}` } : null,
       group: { id: g.id, name: g.name, game: g.game, lang: g.lang },
-      channelId: p.channelId, messageId: p.discordMessageId, changedAt: p.discordChangedAt.toISOString(),
+      // Message à modifier : seulement s'il est déjà dans le bon salon (sinon le bot en pose un nouveau)
+      channelId: p.channelId, messageId: p.discordChannelId === p.channelId ? p.discordMessageId : null, changedAt: p.discordChangedAt.toISOString(),
       url: `${origin}${pollsPath(g)}?sondage=${p.id}`,
     };
   });

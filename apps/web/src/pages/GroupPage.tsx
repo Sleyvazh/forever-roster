@@ -12,7 +12,7 @@ import { LootSettingsPanel } from "../components/Loot";
 import { roleLabel } from "./GroupsPage";
 import { useSite } from "../site";
 import { SiteMembers } from "../components/GroupMembers";
-import { BotLanguage, CreatorsSettings, DeleteGroup, DiscordChannel, GroupName, Invites, Journal, OrdersChannel } from "../components/AdminSections";
+import { BotLanguage, CreatorsSettings, DeleteGroup, DiscordChannel, GroupName, Invites, Journal, OrdersChannel, PollsChannel } from "../components/AdminSections";
 import { N, t, tn, tx } from "../i18n";
 
 /**
@@ -102,6 +102,7 @@ export function GroupPage() {
               loot: <LootSettingsPanel groupId={groupId} />,
               discord: <><DiscordChannel groupId={groupId} linked={group.discordLinked} name={group.discordChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
                 <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
+                <PollsChannel groupId={groupId} linked={group.pollsLinked} name={group.pollsChannelName} hasDiscord={!!me.data?.user?.discordUsername} guard={guard} />
                 <CreatorsSettings groupId={groupId} creators={group.creators} guard={guard} />
                 <BotLanguage groupId={groupId} lang={group.lang} guard={guard} /></>,
               feedback: <GroupFeedback groupId={groupId} groupName={group.name} focus={avis ?? null} />,

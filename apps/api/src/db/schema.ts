@@ -238,6 +238,15 @@ export const groups = pgTable("groups", {
   outingsChannelName: text("outings_channel_name"),
   outingsLinkCodeHash: text("outings_link_code_hash"),
   outingsLinkCodeExpiresAt: ts("outings_link_code_expires_at"),
+  /**
+   * Salon Discord des sondages (/sondage, /dispos, Guilde › Sondages), lié de la même façon (demande de Flo, 27/11/2026) :
+   * tous les sondages y vont. Sans lui, un sondage va dans le salon où /sondage a été tapé, ou dans celui des raids.
+   */
+  pollsGuildId: text("polls_guild_id"),
+  pollsChannelId: text("polls_channel_id"),
+  pollsChannelName: text("polls_channel_name"),
+  pollsLinkCodeHash: text("polls_link_code_hash"),
+  pollsLinkCodeExpiresAt: ts("polls_link_code_expires_at"),
   /** Qui peut créer les raids (site et /raid) et les sorties (site et /sortie) : les officiers, ou tous les membres. */
   raidCreators: text("raid_creators").$type<Creators>().notNull().default("officers"),
   outingCreators: text("outing_creators").$type<Creators>().notNull().default("members"),
@@ -260,6 +269,7 @@ export const groups = pgTable("groups", {
   index("groups_discord_guild_idx").on(t.discordGuildId),
   index("groups_orders_guild_idx").on(t.ordersGuildId),
   index("groups_outings_guild_idx").on(t.outingsGuildId),
+  index("groups_polls_guild_idx").on(t.pollsGuildId),
 ]);
 
 export const groupMembers = pgTable("group_members", {
@@ -1379,6 +1389,8 @@ export const polls = pgTable("polls", {
   question: text("question").notNull(),
   options: jsonb("options").$type<PollOption[]>().notNull(),
   multi: boolean("multi").notNull().default(false),
+  /** Plusieurs choix : au plus ce nombre par votant (null : sans limite). */
+  maxChoices: smallint("max_choices"),
   anonymous: boolean("anonymous").notNull().default(false),
   results: text("results").$type<PollResults>().notNull().default("live"),
   /** Disponibilités : nom du raid à créer sur le meilleur créneau (facultatif, repris dans « Créer le raid sur ★ »). */
@@ -1390,6 +1402,8 @@ export const polls = pgTable("polls", {
   /** Nom du créateur (recopié : « Posé par … »). */
   creatorName: text("creator_name").notNull(),
   raidId: uuid("raid_id").references(() => raids.id, { onDelete: "set null" }),
+  /** Grand sondage : son 2e tour, une fois posé (« 2e tour avec les 5 premiers »). */
+  runoffId: uuid("runoff_id").references((): AnyPgColumn => polls.id, { onDelete: "set null" }),
   channelId: text("channel_id"),
   discordChannelId: text("discord_channel_id"),
   discordMessageId: text("discord_message_id"),
@@ -1402,6 +1416,7 @@ export const polls = pgTable("polls", {
   check("polls_kind_chk", sql`${t.kind} in ('choice', 'dates')`),
   check("polls_results_chk", sql`${t.results} in ('live', 'end')`),
   check("polls_question_chk", sql`char_length(${t.question}) between 1 and 200`),
+  check("polls_max_choices_chk", sql`${t.maxChoices} is null or ${t.maxChoices} between 2 and 100`),
 ]);
 
 /**

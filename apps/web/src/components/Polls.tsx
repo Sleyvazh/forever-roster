@@ -1,10 +1,13 @@
-import { POLL_MAX_LABEL, POLL_MAX_OPTIONS, POLL_MAX_QUESTION, POLL_MAX_SLOTS, pollEndText, slotText, zonedParts, type Role } from "@forever/game-data";
+import {
+  isBigPoll, POLL_MAX_LABEL, POLL_MAX_OPTIONS, POLL_MAX_QUESTION, POLL_MAX_SLOTS, pollEndText, pollSortKey, ranking, RUNOFF_SIZE, slotText, zonedParts, type Role,
+} from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, del, get, post, put } from "../api";
 import { DateField, isoOf, TimeSelect } from "./DateTime";
 import { DialogHead, Modal } from "./Dialog";
+import { NumberField } from "./NumberField";
 import { getLang, N, t, tn, tx } from "../i18n";
 
 /**
@@ -19,17 +22,20 @@ type Guard = (fn: () => Promise<unknown>) => Promise<void>;
 interface PollOption { id: number; label: string; at: string | null; yes: number | null; maybe: number | null; no: number | null; roles: Record<Role, number> | null }
 interface Vote { yes: number[]; maybe: number[] }
 export interface Poll {
-  id: string; kind: "choice" | "dates"; question: string; multi: boolean; anonymous: boolean; results: "live" | "end"; hidden: boolean;
+  id: string; kind: "choice" | "dates"; question: string; multi: boolean; maxChoices: number | null; anonymous: boolean; results: "live" | "end"; hidden: boolean;
   options: PollOption[]; voters: number; best: number | null; leaders: number[];
+  /** Grand sondage clos : qualifiés pour le 2e tour ; son 2e tour une fois posé. */
+  qualifiers: number[]; runoffId: string | null;
   closesAt: string | null; deadline: string; closedAt: string | null; createdAt: string;
   creator: string; createdBy: string | null; raidName: string;
   raid: { id: string; name: string; scheduledAt: string | null; url: string } | null;
   channelId: string | null; url: string;
-  mine: Vote | null; canClose: boolean; canDelete: boolean; canRaid: boolean;
+  mine: Vote | null; canClose: boolean; canDelete: boolean; canRaid: boolean; canRunoff: boolean;
 }
 interface PollsData {
   polls: Poll[]; canCreate: boolean; creators: "officers" | "members";
-  discord: { channel: string | null } | null;
+  /** Salon Discord où le sondage est aussi posé : celui des sondages (polls), sinon celui des raids ; null : site seulement. */
+  discord: { channel: string | null; polls: boolean } | null;
   me: { name: string; role: Role | null };
 }
 interface Voter { name: string; role: Role | null; guest: boolean }
@@ -95,7 +101,7 @@ export function PollsTab({ groupId, guard }: { groupId: string; guard: Guard }) 
         {!!closed.length && <><p className="pl-sec">{t("Clos · gardés 90 jours")}</p><div className="pl-list" role="list">{closed.map(item)}</div></>}
       </div>
       <div ref={detail} className="pl-main">
-        {sel ? <PollCard key={sel.id} groupId={groupId} poll={sel} me={d.me} onChange={refresh} guard={guard} />
+        {sel ? <PollCard key={sel.id} groupId={groupId} poll={sel} me={d.me} onChange={refresh} guard={guard} onPick={pick} />
           : <div className="pl-card pl-none"><p className="hint">{t("Choisis un sondage dans la liste, ou pose le premier.")}</p></div>}
       </div>
       {creating && <PollDialog groupId={groupId} discord={d.discord} onClose={() => setCreating(false)} onCreated={async id => { setCreating(false); await refresh(); pick(id); }} />}
@@ -105,13 +111,14 @@ export function PollsTab({ groupId, guard }: { groupId: string; guard: Guard }) 
 
 /* ---------- Un sondage ---------- */
 
-function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; poll: Poll; me: PollsData["me"]; onChange: () => Promise<unknown>; guard: Guard }) {
+function PollCard({ groupId, poll: p, me, onChange, guard, onPick }: { groupId: string; poll: Poll; me: PollsData["me"]; onChange: () => Promise<unknown>; guard: Guard; onPick?: (id: string) => void }) {
   const qc = useQueryClient();
   const [who, setWho] = useState<{ options: { id: number; yes: Voter[]; maybe: Voter[] }[]; none: Voter[] } | null>(null);
   const [ask, setAsk] = useState<"close" | "delete" | null>(null);
   const [raid, setRaid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [runoff, setRunoff] = useState(false);
   const closed = !!p.closedAt;
   const base = `/groups/${groupId}/polls/${p.id}`;
   const mine = p.mine ?? { yes: [], maybe: [] };
@@ -128,6 +135,7 @@ function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; 
     if (closed || busy) return;
     const has = mine.yes.includes(id);
     const yes = has ? mine.yes.filter(x => x !== id) : p.multi ? [...mine.yes, id] : [id];
+    if (p.maxChoices && yes.length > p.maxChoices) { setNotice(null); void guard(async () => { throw new ApiError(400, t("{n} choix au plus : retires-en un.", { n: p.maxChoices! })); }); return; }
     save(() => put(`${base}/vote`, { yes }));
   };
   const answer = (id: number, a: "yes" | "maybe" | "no") => {
@@ -140,7 +148,8 @@ function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; 
   const total = p.options.reduce((n, o) => n + (o.yes ?? 0), 0);
   const meta = [
     t("Posé par {name}", { name: p.creator }),
-    ...(p.kind === "dates" ? [t("réponds pour chaque créneau")] : [p.anonymous ? t("vote anonyme") : t("vote public"), p.multi ? t("plusieurs choix") : t("un seul choix")]),
+    ...(p.kind === "dates" ? [t("réponds pour chaque créneau")] : [p.anonymous ? t("vote anonyme") : t("vote public"),
+      p.maxChoices ? t("jusqu'à {n} choix", { n: p.maxChoices }) : p.multi ? t("plusieurs choix") : t("un seul choix")]),
     ...(p.hidden ? [t("résultats à la fin")] : []),
     closed ? t("clos le {when}", { when: endText(p.closedAt!) }) : p.closesAt ? t("se termine {when}", { when: endText(p.closesAt) }) : t("jusqu'à ce qu'il soit clos"),
   ];
@@ -156,7 +165,8 @@ function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; 
         {closed ? <span className="pl-tag">{t("Clos")}</span> : answered(p) ? <span className="pl-tag done">{p.kind === "dates" ? t("Répondu") : t("Tu as voté")}</span> : <span className="pl-tag todo">{t("À répondre")}</span>}
       </header>
 
-      {p.kind === "choice" ? (
+      {isBigPoll(p) ? <BigChoices poll={p} mine={mine.yes} busy={busy} onChoose={choose} />
+      : p.kind === "choice" ? (
         <div className="pl-opts" role="group" aria-label={t("Choix")}>
           {p.options.map(o => {
             const on = mine.yes.includes(o.id);
@@ -213,6 +223,7 @@ function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; 
         <div className="row">
           {canWho && <button type="button" className="btn sm ghost" aria-expanded={!!who} onClick={toggleWho}>{p.kind === "dates" ? t("Qui a répondu ?") : t("Qui a voté ?")}</button>}
           {p.canRaid && !!p.best && <button type="button" className="btn sm primary" onClick={() => setRaid(true)}>{t("Créer le raid sur ★")}</button>}
+          {p.canRunoff && <button type="button" className="btn sm primary" onClick={() => setRunoff(true)}>{t("2e tour avec les {n} premiers", { n: RUNOFF_SIZE })}</button>}
           {p.raid && <a className="btn sm" href={p.raid.url}>{t("Voir le raid")}</a>}
           {ask === null && p.canClose && <button type="button" className="btn sm ghost" onClick={() => setAsk("close")}>🔒 {p.kind === "dates" ? t("Clore") : t("Clore le sondage")}</button>}
           {ask === null && p.canDelete && <button type="button" className="btn sm ghost" onClick={() => setAsk("delete")}>{t("Effacer")}</button>}
@@ -229,6 +240,7 @@ function PollCard({ groupId, poll: p, me, onChange, guard }: { groupId: string; 
 
       {notice && <div className="alert ok" role="status">{notice}</div>}
       {who && <Voters poll={p} data={who} />}
+      {runoff && <RunoffDialog groupId={groupId} poll={p} onClose={() => setRunoff(false)} onDone={async id => { setRunoff(false); await onChange(); onPick?.(id); }} />}
       {raid && <RaidDialog groupId={groupId} poll={p} onClose={() => setRaid(false)} onDone={async msg => {
         setRaid(false); setNotice(msg);
         await Promise.all([onChange(), qc.invalidateQueries({ queryKey: ["raids", groupId] })]);
@@ -251,6 +263,92 @@ function Voters({ poll: p, data }: { poll: Poll; data: { options: { id: number; 
       {p.kind === "dates" && !!data.none.length && <span><b>{t("Aucun créneau")}</b> · ❌ {names(data.none)}</span>}
       {guests && <span className="hint">{t("✱ a répondu depuis Discord, sans compte du site")}</span>}
     </div>
+  );
+}
+
+/* ---------- Grand sondage : la liste complète (maquettes D1 bis, D2 bis) ---------- */
+
+/**
+ * Plus de 10 choix : une recherche, « Tous | Mes choix », et la liste complète par ordre alphabétique tant que les
+ * résultats sont cachés, sinon le classement (✅ qualifiés pour le 2e tour une fois clos). Un clic coche ou décoche.
+ */
+function BigChoices({ poll: p, mine, busy, onChoose }: { poll: Poll; mine: number[]; busy: boolean; onChoose: (id: number) => void }) {
+  const [q, setQ] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
+  const closed = !!p.closedAt;
+  const shown = p.hidden ? p.options : ranking(p.options.map(o => ({ ...o, yes: o.yes ?? 0 })));
+  const rankOf = new Map(shown.map((o, i) => [o.id, i + 1]));
+  const want = pollSortKey(q.trim());
+  const list = shown.filter(o => (!onlyMine || mine.includes(o.id)) && (!want || pollSortKey(o.label).includes(want)));
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="pl-big-bar">
+        <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder={t("Chercher un choix…")} aria-label={t("Chercher un choix")} />
+        <div className="seg" role="group" aria-label={t("Afficher")}>
+          <button type="button" className={!onlyMine ? "on" : ""} aria-pressed={!onlyMine} onClick={() => setOnlyMine(false)}>{t("Tous · {n}", { n: p.options.length })}</button>
+          <button type="button" className={onlyMine ? "on" : ""} aria-pressed={onlyMine} onClick={() => setOnlyMine(true)}>{t("Mes choix · {n}", { n: mine.length })}</button>
+        </div>
+        {!closed && p.multi && <span className="pl-count">{p.maxChoices ? t("{n} sur {max} choisis", { n: mine.length, max: p.maxChoices }) : tn(mine.length, "{n} choisi", "{n} choisis")}</span>}
+      </div>
+      <p className="hint" style={{ margin: 0 }}>{p.hidden ? t("Par ordre alphabétique ; le classement s'affiche à la fin.") : t("Du plus coché au moins coché ; ex æquo par ordre alphabétique.")}</p>
+      <div className="pl-big" role="group" aria-label={t("Choix")}>
+        {list.map(o => {
+          const on = mine.includes(o.id);
+          return (
+            <button key={o.id} type="button" className={`pl-opt${on ? " mine" : ""}`} disabled={closed || busy} aria-pressed={on}
+              style={{ "--p": `${o.yes === null ? 0 : pct(o.yes, p.voters)}%` } as CSSProperties} onClick={() => onChoose(o.id)}>
+              <span className={`mk${p.multi ? " sq" : ""}`} aria-hidden="true">{on ? "✓" : ""}</span>
+              <span className="l">{!p.hidden && <span className="num pl-rank">{rankOf.get(o.id)}.</span>}{o.label}{p.qualifiers.includes(o.id) && <span aria-label={t("qualifié pour le 2e tour")}> ✅</span>}</span>
+              {o.yes !== null && <span className="n">{o.yes}</span>}
+            </button>
+          );
+        })}
+        {!list.length && <p className="hint">{onlyMine ? t("Tu n'as encore rien coché.") : t("Aucun choix ne correspond.")}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** « 2e tour avec les 5 premiers » : sa question (préremplie) et sa fin ; il part dans le salon des sondages (sinon celui du 1er tour). */
+function RunoffDialog({ groupId, poll: p, onClose, onDone }: { groupId: string; poll: Poll; onClose: () => void; onDone: (id: string) => Promise<void> }) {
+  const today = dayOf(new Date().toISOString());
+  const base = p.question.replace(/\s*[·:-]?\s*(1er|premier) tour\s*$/i, "").trim();
+  const [question, setQuestion] = useState(`${base} · ${t("2e tour")}`);
+  const [endOn, setEndOn] = useState(true);
+  const [end, setEnd] = useState<Slot>({ day: today, time: "23:45" });
+  const [err, setErr] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  // Dans l'ordre du classement (celui des choix du 2e tour)
+  const names = p.qualifiers.flatMap(id => p.options.find(o => o.id === id)?.label ?? []);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setErr(null); setSending(true);
+    try {
+      const r = await post<{ poll: { id: string } }>(`/groups/${groupId}/polls/${p.id}/runoff`, { question, closesAt: endOn ? isoAt(end.day, end.time) : null });
+      await onDone(r.poll.id);
+    } catch (x) { setErr(errorOf(x)); setSending(false); }
+  };
+  return (
+    <Modal label="pl-r2-t" onClose={onClose}>
+      <form className="stack" onSubmit={submit}>
+        <DialogHead id="pl-r2-t" title={t("2e tour")} sub={tn(names.length, "{n} qualifié : {list}", "{n} qualifiés : {list}", { list: names.join(", ") })} onClose={onClose} />
+        <div className="fld"><label htmlFor="pl-r2q">{t("Question")}</label><input id="pl-r2q" value={question} maxLength={POLL_MAX_QUESTION} required onChange={e => setQuestion(e.target.value)} /></div>
+        <div className="stack" style={{ gap: 6 }}><b className="pl-lb">{t("Fin")}</b>
+          <div className="row">
+            <div className="seg" role="group" aria-label={t("Fin")}>
+              <button type="button" className={!endOn ? "on" : ""} aria-pressed={!endOn} onClick={() => setEndOn(false)}>{t("Quand je le clos")}</button>
+              <button type="button" className={endOn ? "on" : ""} aria-pressed={endOn} onClick={() => setEndOn(true)}>{t("Le")}</button>
+            </div>
+            {endOn && <><DateField value={end.day} min={today} onChange={day => setEnd(x => ({ ...x, day }))} /><TimeSelect value={end.time} onChange={time => setEnd(x => ({ ...x, time }))} /></>}
+          </div>
+        </div>
+        <p className="hint" style={{ margin: 0 }}>{t("Un seul choix par personne ; même anonymat et mêmes résultats que le 1er tour.")}</p>
+        {err && <div className="alert error" role="alert">{err}</div>}
+        <div className="row pl-acts">
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annuler")}</button>
+          <button type="submit" className="btn primary" disabled={sending}>{t("Poser le 2e tour")}</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -308,6 +406,9 @@ function PollDialog({ groupId, discord, onClose, onCreated }: { groupId: string;
   const [slots, setSlots] = useState<Slot[]>([1, 2, 3].map(n => ({ day: plusDays(today, n), time: "21:00" })));
   const [anonymous, setAnonymous] = useState(true);
   const [multi, setMulti] = useState(false);
+  const [maxOn, setMaxOn] = useState(false);
+  const [max, setMax] = useState(3);
+  const [paste, setPaste] = useState<string | null>(null);
   const [results, setResults] = useState<"live" | "end">("live");
   const [endOn, setEndOn] = useState(false);
   const [end, setEnd] = useState<Slot>({ day: plusDays(today, 2), time: "20:00" });
@@ -326,7 +427,7 @@ function PollDialog({ groupId, discord, onClose, onCreated }: { groupId: string;
         ? choices.map(c => c.trim()).filter(Boolean).map(label => ({ label }))
         : slots.map(s => ({ label: "", at: isoAt(s.day, s.time) }));
       const r = await post<{ poll: { id: string } }>(`/groups/${groupId}/polls`, {
-        kind, question, options, multi, anonymous, results, raidName, discord: toDiscord,
+        kind, question, options, multi, maxChoices: kind === "choice" && multi && maxOn ? max : null, anonymous, results, raidName, discord: toDiscord,
         closesAt: endOn ? isoAt(end.day, end.time) : null,
       });
       await onCreated(r.poll.id);
@@ -347,6 +448,19 @@ function PollDialog({ groupId, discord, onClose, onCreated }: { groupId: string;
 
         {kind === "choice" ? (
           <fieldset className="pl-fs"><legend>{t("Choix · {min} à {max}", { min: 2, max: POLL_MAX_OPTIONS })}</legend>
+            {paste === null
+              ? <button type="button" className="btn sm ghost" style={{ justifySelf: "start" }} onClick={() => setPaste("")}>{t("Coller une liste (un choix par ligne)")}</button>
+              : <div className="stack" style={{ gap: 6 }}>
+                  <textarea value={paste} rows={6} onChange={e => setPaste(e.target.value)} aria-label={t("Liste des choix, un par ligne")} placeholder={t("Un choix par ligne")} />
+                  <div className="row">
+                    <button type="button" className="btn sm" onClick={() => {
+                      const lines = [...new Set((paste ?? "").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean))].slice(0, POLL_MAX_OPTIONS);
+                      setChoices(lines.length ? lines : ["", ""]); setPaste(null);
+                    }}>{t("Utiliser cette liste")}</button>
+                    <button type="button" className="btn sm ghost" onClick={() => setPaste(null)}>{t("Annuler")}</button>
+                  </div>
+                </div>}
+            {choices.length > 10 && <p className="hint" style={{ margin: 0 }}>{tn(choices.filter(c => c.trim()).length, "{n} choix : ils seront rangés par ordre alphabétique, et sur Discord « Voter » ouvre la liste.", "{n} choix : ils seront rangés par ordre alphabétique, et sur Discord « Voter » ouvre la liste.")}</p>}
             {choices.map((c, i) => (
               <div key={i} className="pl-opt-in">
                 <span className="num" aria-hidden="true">{i + 1}</span>
@@ -375,6 +489,8 @@ function PollDialog({ groupId, discord, onClose, onCreated }: { groupId: string;
             <div className="stack" style={{ gap: 8 }}>
               <label className="pl-chk"><input type="checkbox" checked={anonymous} onChange={e => setAnonymous(e.target.checked)} />{t("Vote anonyme")}</label>
               <label className="pl-chk"><input type="checkbox" checked={multi} onChange={e => setMulti(e.target.checked)} />{t("Plusieurs choix par personne")}</label>
+              {multi && <label className="pl-chk"><input type="checkbox" checked={maxOn} onChange={e => setMaxOn(e.target.checked)} />{t("Au plus")}
+                <NumberField value={max} min={2} max={25} onChange={setMax} label={t("Nombre de choix au plus")} />{t("choix")}</label>}
             </div>
             <div className="stack" style={{ gap: 6 }}><b className="pl-lb">{t("Résultats")}</b>
               <div className="seg" role="group" aria-label={t("Résultats")}>
@@ -401,7 +517,7 @@ function PollDialog({ groupId, discord, onClose, onCreated }: { groupId: string;
         {kind === "dates" && <p className="hint" style={{ margin: 0 }}>{t("Chacun répond Oui, Si besoin ou Non pour chaque créneau. Les réponses sont visibles de la guilde (« Qui a répondu ? »).")}</p>}
 
         {discord
-          ? <label className="pl-chk"><input type="checkbox" checked={toDiscord} onChange={e => setToDiscord(e.target.checked)} />{tx("Le poser aussi sur Discord, dans {channel}", { channel: <b>#{discord.channel ?? t("salon des raids")}</b> })}</label>
+          ? <label className="pl-chk"><input type="checkbox" checked={toDiscord} onChange={e => setToDiscord(e.target.checked)} />{tx("Le poser aussi sur Discord, dans {channel}", { channel: <b>#{discord.channel ?? (discord.polls ? t("salon des sondages") : t("salon des raids"))}</b> })}</label>
           : <p className="hint" style={{ margin: 0 }}>{t("Aucun salon Discord lié aux raids de la guilde : le sondage reste sur le site.")}</p>}
         {err && <div className="alert error" role="alert">{err}</div>}
         <div className="row pl-acts">

@@ -22,7 +22,7 @@ import { LootSettingsPanel } from "../components/Loot";
 import { factionOf } from "../components/GroupRoster";
 import { NumberField } from "../components/NumberField";
 import {
-  AddBot, BotLanguage, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, type Guard, type Invite,
+  AddBot, BotLanguage, Crafters, CreatorsSettings, DeleteGroup, DiscordChannel, fmt, GroupName, Journal, OrdersChannel, OutingsChannel, PollsChannel, type Guard, type Invite,
 } from "../components/AdminSections";
 import { isMany, N, t, tn, tx } from "../i18n";
 
@@ -260,6 +260,7 @@ function AdminPage({ groupId, d, guard }: { groupId: string; d: GroupDetail; gua
       <OutingsChannel groupId={groupId} linked={group.outingsLinked} name={group.outingsChannelName} hasDiscord={hasDiscord} guard={guard} />
       <RaceAnnounces groupId={groupId} linked={group.discordLinked} guard={guard} />
       <OrdersChannel groupId={groupId} linked={group.ordersLinked} name={group.ordersChannelName} hasDiscord={hasDiscord} guard={guard} />
+      <PollsChannel groupId={groupId} linked={group.pollsLinked} name={group.pollsChannelName} hasDiscord={hasDiscord} guard={guard} />
       <CreatorsSettings groupId={groupId} creators={group.creators} guard={guard} />
       <BotLanguage groupId={groupId} lang={group.lang} guard={guard} />
     </>,

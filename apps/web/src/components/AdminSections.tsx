@@ -34,7 +34,7 @@ export const EVENT_LABEL: Record<string, string> = {
   group_character_changed: N("a modifié les persos d'un membre"), group_loot_settings: N("a changé les réglages du butin"), loot_history_imported: N("a importé un historique de butin"),
   group_nudge_settings: N("a changé les relances Discord"), raid_nudged: N("a relancé les sans-réponse"), raid_ask_sent: N("a demandé à un joueur de venir"),
   group_feedback_linked: N("a relié les avis d'un serveur Discord"), group_feedback_unlinked: N("a retiré les avis d'un serveur Discord"),
-  group_outings_linked: N("a lié le salon des sorties"), group_outings_unlinked: N("a délié le salon des sorties"), group_creators: N("a changé qui crée les raids, les sorties ou les sondages"),
+  group_outings_linked: N("a lié le salon des sorties"), group_outings_unlinked: N("a délié le salon des sorties"), group_polls_linked: N("a lié le salon des sondages"), group_polls_unlinked: N("a délié le salon des sondages"), group_creators: N("a changé qui crée les raids, les sorties ou les sondages"),
   // Lot « Guilde » (Forever) : guilde du jeu, annonces de la course, mains et alts
   guild_linked: N("a lié la guilde du jeu"), guild_unlinked: N("a délié la guilde du jeu"), guild_announces: N("a changé les annonces de la Course au 60"),
   guild_member_linked: N("a rattaché un perso"), guild_member_unlinked: N("a détaché un perso"),
@@ -367,6 +367,41 @@ export function OutingsChannel({ groupId, linked, name, hasDiscord, guard }: { g
         })}>{t("Délier le salon")}</button>}
       </div>
       {code && <LinkCodeBox key={code.code} game="forever" code={code} intro={t("Dans le salon Discord des sorties, tape cette commande")} label={t("Commande de liaison du salon des sorties")} />}
+    </section>
+  );
+}
+
+/**
+ * Salon des sondages (Forever et Roster, demande de Flo du 27/11/2026) : facultatif, lié par code comme celui des
+ * commandes. Lié, tous les sondages y vont ; sinon /sondage pose le sondage là où il est tapé, le site dans le salon Discord.
+ */
+export function PollsChannel({ groupId, linked, name, hasDiscord, guard }: { groupId: string; linked: boolean; name: string | null; hasDiscord: boolean; guard: Guard }) {
+  const game = useSite().game;
+  const qc = useQueryClient();
+  const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [wantCode, setWantCode] = useState(false);
+  return (
+    <section className="stack admin-sec" aria-labelledby="pc-title">
+      <div className="row between">
+        <h3 id="pc-title" style={{ margin: 0 }}>{t("Salon des sondages")}</h3>
+        <ChannelTag linked={linked} name={name} />
+      </div>
+      <p className="hint" style={{ margin: 0 }}>{linked
+        ? t("Tous les sondages de la guilde y sont posés : /sondage et /dispos, où que la commande soit tapée, et ceux posés sur le site.")
+        : t("Facultatif. Sans lui, /sondage et /dispos posent le sondage dans le salon où la commande est tapée, et ceux posés sur le site vont dans le salon Discord de la guilde.")}</p>
+      {!hasDiscord && wantCode && <div className="alert info">{tx("Lie d'abord ton propre Discord dans {el} : le bot vérifie que c'est bien un officier qui tape la commande.", { el: <Link to="/account">{t("Compte & sécurité")}</Link> })}</div>}
+      <div className="row">
+        <button className="btn sm" type="button" onClick={() => { setWantCode(true); if (hasDiscord) void guard(async () => {
+          setCode(await post<{ code: string; expiresAt: string }>(`/groups/${groupId}/discord/polls-code`));
+        }); }}>{linked ? t("Changer de salon") : t("Générer un code de liaison")}</button>
+        {linked && <button className="btn ghost sm" type="button" onClick={() => void guard(async () => {
+          await del(`/groups/${groupId}/discord/polls`); setCode(null);
+          await qc.invalidateQueries({ queryKey: ["group", groupId] });
+          await qc.invalidateQueries({ queryKey: ["polls", groupId] });
+        })}>{t("Délier le salon")}</button>}
+      </div>
+      {code && <LinkCodeBox key={code.code} game={game} code={code} intro={t("Dans le salon Discord des sondages, tape cette commande")} label={t("Commande de liaison du salon des sondages")}
+        footer={<span className="small muted">{t("Les sondages en cours y sont déplacés dès que le salon est lié ; les sondages clos restent où ils sont.")}</span>} />}
     </section>
   );
 }

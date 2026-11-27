@@ -7,7 +7,9 @@ import type { Db } from "./db/client";
 import { groups, polls } from "./db/schema";
 import { forbidden, parse } from "./lib/http";
 import {
-  closeDuePolls, closePoll, createPoll, loadPoll, mayCreatePoll, myVote, OUTBOX_WHERE, pollView, pollViews, pollVoters, raidFromPoll, setDates, voteChoice,
+  closeDuePolls, closePoll, createPoll, createRunoff, loadPoll, mayCreatePoll, myVote, OUTBOX_WHERE, pollsChannelOf, pollView, pollViews, pollVoters, raidFromPoll,
+  setChoicesIn,
+  setDates, voteChoice,
   type Voter,
 } from "./lib/polls";
 import { siteForGame } from "./lib/site";
@@ -63,12 +65,14 @@ export function pollRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpers
       guildId: snowflake, channelId: snowflake, discordUserId: snowflake,
       kind: z.enum(POLL_KINDS), question: z.string().max(POLL_MAX_QUESTION * 2),
       options: z.array(z.object({ label: z.string().max(POLL_MAX_LABEL * 2), at: z.iso.datetime({ offset: true }).nullable().optional() })).max(POLL_MAX_OPTIONS + 5),
-      multi: z.boolean().optional(), anonymous: z.boolean().optional(), results: z.enum(POLL_RESULTS).optional(),
+      multi: z.boolean().optional(), maxChoices: z.int().min(2).max(POLL_MAX_OPTIONS).nullable().optional(),
+      anonymous: z.boolean().optional(), results: z.enum(POLL_RESULTS).optional(),
       closesAt: z.iso.datetime({ offset: true }).nullable().optional(), raidName: z.string().max(60).optional(),
     }), req.body);
     const g = await h.groupForChannel(body.guildId, body.channelId);
     const { user, role } = await memberOf(g.id, body.discordUserId);
-    const id = await createPoll(db, req, g, role, user, { ...body, channelId: body.channelId }, "discord");
+    // Dans le salon des sondages de la guilde s'il y en a un, sinon dans ce salon
+    const id = await createPoll(db, req, g, role, user, { ...body, channelId: pollsChannelOf(g, body.channelId) }, "discord");
     return { view: await view(id) };
   });
 
@@ -100,6 +104,16 @@ export function pollRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpers
     const { group } = await loadPoll(db, id);
     const v = await voterOf(group.id, body.discordUserId, body.discordName);
     const r = await voteChoice(db, id, v, body.optionId);
+    return { vote: { yes: r.yes }, name: r.name, guest: v.kind === "guest", view: await view(id) };
+  });
+
+  /** Grand sondage : un menu de « Voter » (ses choix dans `scope`, ceux cochés dans `yes`). */
+  app.put("/internal/discord/polls/:id/choices", async (req: FastifyRequest) => {
+    const { id } = parse(idParam, req.params);
+    const body = parse(z.object({ ...who, scope: optionIds, yes: optionIds }), req.body);
+    const { group } = await loadPoll(db, id);
+    const v = await voterOf(group.id, body.discordUserId, body.discordName);
+    const r = await setChoicesIn(db, id, v, body.scope, body.yes);
     return { vote: { yes: r.yes }, name: r.name, guest: v.kind === "guest", view: await view(id) };
   });
 
@@ -137,6 +151,16 @@ export function pollRoutes(app: FastifyInstance, db: Db, cfg: Config, h: Helpers
     const { user, role } = await memberOf(group.id, body.discordUserId);
     const r = await closePoll(db, req, id, { id: user.id, role });
     return { already: r.already, view: await view(id) };
+  });
+
+  /** « 2e tour avec les 5 premiers » : le nouveau sondage, posé dans le même salon. */
+  app.post("/internal/discord/polls/:id/runoff", async (req: FastifyRequest) => {
+    const { id } = parse(idParam, req.params);
+    const body = parse(z.object({ discordUserId: snowflake, question: z.string().max(POLL_MAX_QUESTION * 2).optional(), closesAt: z.iso.datetime({ offset: true }).nullable().optional() }), req.body);
+    const { group } = await loadPoll(db, id);
+    const { user, role } = await memberOf(group.id, body.discordUserId);
+    const runoff = await createRunoff(db, req, id, { ...user, role }, { question: body.question, closesAt: body.closesAt }, "discord");
+    return { view: await view(runoff), first: await view(id) };
   });
 
   app.post("/internal/discord/polls/:id/raid", async (req: FastifyRequest) => {

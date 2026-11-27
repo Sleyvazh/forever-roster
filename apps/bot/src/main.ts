@@ -327,6 +327,11 @@ async function start() {
         void outings.tick().catch(() => {});
         return;
       }
+      if (kind === "polls") {
+        await i.editReply(tr(g, "✅ Salon lié aux sondages de {name}. Tous les sondages de la guilde y seront posés (/sondage, /dispos et ceux du site), où que la commande soit tapée ; ceux en cours y arrivent dans quelques secondes.", { name }));
+        void polls.tick().catch(() => {});
+        return;
+      }
       if (kind === "orders") {
         await i.editReply(tr(g, "✅ Salon lié aux commandes d'artisanat de {name}. Chaque commande y sera postée avec un bouton « Je m'en charge ».", { name }));
         void orders.tick().catch(() => {});

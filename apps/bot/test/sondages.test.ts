@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PollView } from "../src/api";
 import {
-  closeConfirm, createModal, datesPanel, decodePollId, encodePollId, isPollId, parseDraft, raidCreatedReply, raidModal, renderPoll, voteReply, votersReply,
+  ballotPanel, closeConfirm, createdReply, createModal, datesPanel, decodePollId, encodePollId, isPollId, parseDraft, raidCreatedReply, raidModal, renderPoll, runoffModal,
+  voteReply, votersReply,
   type PollAction,
 } from "../src/polls-core";
 
@@ -13,7 +14,7 @@ type Btn = { custom_id?: string; label?: string; disabled?: boolean; style?: num
 const buttons = (p: { components: { components: unknown[] }[] }) => p.components.flatMap(r => r.components as Btn[]);
 
 const base = {
-  id: ID, multi: false, anonymous: true, results: "live" as const, hidden: false, closesAt: "2026-11-26T17:00:00.000Z", deadline: "2026-11-26T17:00:00.000Z", closedAt: null,
+  id: ID, multi: false, maxChoices: null, qualifiers: [], runoffId: null, anonymous: true, results: "live" as const, hidden: false, closesAt: "2026-11-26T17:00:00.000Z", deadline: "2026-11-26T17:00:00.000Z", closedAt: null,
   createdAt: "2026-11-20T10:00:00.000Z", creator: "Sleyvazh", createdBy: "u", raidName: "", raid: null, group: { id: "g", name: "Forever", lang: "fr" as const },
   channelId: "300000000000000002", messageId: null, changedAt: "2026-11-26T18:00:00.000Z", url: `https://x.test/groups/g/membres/sondages?sondage=${ID}`,
 };
@@ -38,6 +39,9 @@ describe("identifiants des boutons, menus et fenêtres", () => {
       { a: "vote", pollId: ID, optionId: 10 }, { a: "me", pollId: ID }, { a: "who", pollId: ID }, { a: "close", pollId: ID }, { a: "closeok", pollId: ID },
       { a: "raid", pollId: ID }, { a: "raidmodal", pollId: ID }, { a: "yes", pollId: ID }, { a: "maybe", pollId: ID },
       { a: "new", kind: "choice", anonymous: false, multi: true, results: "end" }, { a: "new", kind: "dates" }, { a: "fix" },
+      // Grand sondage : menus de « Voter » (4 au plus), « Effacer mes choix », 2e tour, « au plus N choix »
+      { a: "pick", pollId: ID, menu: 0 }, { a: "pick", pollId: ID, menu: 3 }, { a: "ballot", pollId: ID }, { a: "clear", pollId: ID },
+      { a: "runoff", pollId: ID }, { a: "runoffmodal", pollId: ID }, { a: "new", kind: "choice", anonymous: true, multi: true, results: "end", max: 5 },
     ];
     for (const x of all) {
       const id = encodePollId(x);
@@ -45,7 +49,8 @@ describe("identifiants des boutons, menus et fenêtres", () => {
       expect(id.length).toBeLessThanOrEqual(100);
       expect(decodePollId(id)).toEqual(x);
     }
-    for (const bad of [`pl|v|${ID}|0`, `pl|v|${ID}|11`, `pl|v|${ID}`, `pl|me|nope`, `pl|me|${ID}|1`, "pl|new|c|a2m0rl", "pl|new|x", "pl|fix|1", `fr|me|${ID}`, `pl|zz|${ID}`]) {
+    for (const bad of [`pl|v|${ID}|0`, `pl|v|${ID}|11`, `pl|v|${ID}`, `pl|me|nope`, `pl|me|${ID}|1`, "pl|new|c|a2m0rl", "pl|new|x", "pl|fix|1", `fr|me|${ID}`, `pl|zz|${ID}`,
+      `pl|pk|${ID}|4`, `pl|pk|${ID}|10`, `pl|pk|${ID}`, `pl|vo|${ID}|1`, "pl|new|c|a1m1rex1", "pl|new|c|a1m1rex101"]) {
       expect(decodePollId(bad)).toBeNull();
     }
   });
@@ -150,7 +155,7 @@ describe("fenêtres de /sondage et /dispos", () => {
     expect(m.title).toBe("Nouveau sondage");
     expect(decodePollId(m.custom_id)).toEqual(choiceAction);
     const ids = (x: typeof m) => x.components.map(r => (r as { components: { custom_id: string; label: string; required: boolean; value?: string }[] }).components[0]!);
-    expect(ids(m).map(f => `${f.custom_id}:${f.label}${f.required ? "" : " (facultatif)"}`)).toEqual(["question:Question", "options:Choix (un par ligne, 2 à 10)", "end:Fin (facultatif) (facultatif)"]);
+    expect(ids(m).map(f => `${f.custom_id}:${f.label}${f.required ? "" : " (facultatif)"}`)).toEqual(["question:Question", "options:Choix (un par ligne, 2 à 100)", "end:Fin (facultatif) (facultatif)"]);
     const d = createModal({ a: "new", kind: "dates" }, "fr", { action: { a: "new", kind: "dates" }, question: "Quel soir ?", options: "mardi 21h", end: "", raidName: "Onyxia" });
     expect(ids(d).map(f => [f.custom_id, f.value ?? null])).toEqual([["question", "Quel soir ?"], ["options", "mardi 21h"], ["raid", "Onyxia"], ["end", null]]);
     for (const f of [...ids(m), ...ids(d)]) expect(f.label.length).toBeLessThanOrEqual(45);
@@ -159,7 +164,7 @@ describe("fenêtres de /sondage et /dispos", () => {
   it("lecture : choix, fin, erreurs par ligne ; créneaux en heure de Paris", () => {
     const draft = (options: string, end = "", question = "Quel donjon ?") => ({ action: choiceAction, question, options, end, raidName: "" });
     const ok = parseDraft(draft("Scholomance\n\n  Stratholme  \n", "2j"), NOW, TZ, "fr");
-    expect(ok).toEqual({ ok: true, body: { kind: "choice", question: "Quel donjon ?", options: [{ label: "Scholomance" }, { label: "Stratholme" }], multi: false, anonymous: true, results: "live", closesAt: "2026-11-28T18:42:00.000Z" } });
+    expect(ok).toEqual({ ok: true, body: { kind: "choice", question: "Quel donjon ?", options: [{ label: "Scholomance" }, { label: "Stratholme" }], multi: false, maxChoices: null, anonymous: true, results: "live", closesAt: "2026-11-28T18:42:00.000Z" } });
     expect(parseDraft(draft("Scholomance"), NOW, TZ, "fr")).toEqual({ ok: false, error: "Propose au moins 2 choix, un par ligne." });
     expect(parseDraft(draft("A\nB\na"), NOW, TZ, "fr")).toEqual({ ok: false, error: "Ligne 3 : ce choix est déjà dans la liste." });
     expect(parseDraft(draft("A\nB", "mercredi"), NOW, TZ, "fr")).toEqual({ ok: false, error: "Fin « mercredi » : date ou heure illisible (ex. mardi 01/12 21:00, mercredi 21h)." });
@@ -174,5 +179,101 @@ describe("fenêtres de /sondage et /dispos", () => {
     expect(d("mardi 21h\nmercredi 21h", "dimanche 06/12 20:00")).toEqual({ ok: false, error: "La fin du sondage tombe après le dernier créneau." });
     expect(parseDraft({ action: { a: "new", kind: "dates" }, question: "Which evening?", options: "tuesday 9pm\nnope", end: "", raidName: "" }, NOW, TZ, "en"))
       .toEqual({ ok: false, error: "Line 2 “nope”: unreadable date or time (e.g. tuesday 01/12 21:00, wednesday 9pm)." });
+  });
+});
+
+/* ---------- Grand sondage (plus de 10 choix : maquettes D1 bis et D2 bis) ---------- */
+
+const NAMES = ["Aube", "Bastion", "Cendre", "Dague", "Écho", "Forge", "Givre", "Hydre", "Iris", "Jade", "Les Sans-Nom", "Milk me John", "Zèle"];
+const big = (over: Partial<PollView> = {}, labels: string[] = NAMES): PollView => ({
+  ...base, kind: "choice", question: "Nom de guilde · 1er tour", multi: true, maxChoices: 5, hidden: true, voters: 37, best: null, leaders: [],
+  closesAt: "2026-11-28T22:59:00.000Z", deadline: "2026-11-28T22:59:00.000Z",
+  options: labels.map((label, i) => ({ id: i + 1, label, at: null, yes: null, maybe: null, no: null, roles: null })),
+  ...over,
+});
+const counted = (yes: number[]) => big({ hidden: false, closedAt: "2026-11-28T22:59:00.000Z", options: NAMES.map((label, i) => ({ id: i + 1, label, at: null, yes: yes[i] ?? 0, maybe: 0, no: null, roles: null })) });
+
+describe("message d'un grand sondage", () => {
+  it("résultats à la fin : la liste complète par ordre alphabétique ; Voter, Mes choix, Clore (pas un bouton par choix)", () => {
+    const p = renderPoll(big());
+    const d = p.embeds[0]!.description!;
+    expect(d.split("\n").slice(0, 4)).toEqual([
+      "*Posé par Sleyvazh · vote anonyme · jusqu'à 5 choix · résultats à la fin · se termine samedi 28/11 à 23:59*", "", "**13 choix**, par ordre alphabétique :", "Aube",
+    ]);
+    expect(d.endsWith("Zèle")).toBe(true);
+    expect(p.embeds[0]!.footer!.text).toBe("37 votants · coche jusqu'à 5 choix, change d'avis jusqu'à la fin");
+    expect(buttons(p).map(b => b.label)).toEqual(["Voter", "Mes choix", "Clore le sondage", "Sur le site"]);
+    expect(decodePollId(buttons(p)[0]!.custom_id!)).toEqual({ a: "ballot", pollId: ID });
+    // Anglais
+    const en = renderPoll(big({ group: { ...base.group, lang: "en" } }));
+    expect(en.embeds[0]!.description).toContain("up to 5 choices");
+    expect(en.embeds[0]!.description).toContain("**13 choices**, in alphabetical order:");
+    expect(buttons(en).map(b => b.label)).toEqual(["Vote", "My choices", "Close the poll", "On the website"]);
+  });
+
+  it("clos : classement complet (ex æquo par ordre alphabétique), ✅ qualifiés, « 2e tour avec les 5 premiers »", () => {
+    // Écho 9 ; Aube 7, Milk me John 7 ; Bastion 4 ; Cendre 2, Dague 2 (ex æquo du 5e) ; les autres 0
+    const v = { ...counted([7, 4, 2, 2, 9, 0, 0, 0, 0, 0, 0, 7, 0]), qualifiers: [5, 1, 12, 2, 3, 4] };
+    const p = renderPoll(v);
+    const lines = p.embeds[0]!.description!.split("\n").slice(2);
+    expect(lines.slice(0, 7)).toEqual([
+      "1. **Écho** ✅ `███░░░░░░░░░░░` 9", "2. **Aube** ✅ `███░░░░░░░░░░░` 7", "3. **Milk me John** ✅ `███░░░░░░░░░░░` 7",
+      "4. **Bastion** ✅ `██░░░░░░░░░░░░` 4", "5. **Cendre** ✅ `█░░░░░░░░░░░░░` 2", "6. **Dague** ✅ `█░░░░░░░░░░░░░` 2", "7. **Forge** `░░░░░░░░░░░░░░` 0",
+    ]);
+    expect(p.embeds[0]!.title).toBe("🔒 📊 Nom de guilde · 1er tour");
+    expect(p.embeds[0]!.footer!.text).toBe("37 votants · ✅ qualifiés pour le 2e tour · ex æquo rangés par ordre alphabétique");
+    expect(buttons(p).map(b => b.label)).toEqual(["2e tour avec les 5 premiers", "Sur le site"]);
+    expect(decodePollId(buttons(p)[0]!.custom_id!)).toEqual({ a: "runoff", pollId: ID });
+    // 2e tour déjà posé : plus de bouton
+    expect(buttons(renderPoll({ ...v, runoffId: "x" })).map(b => b.label)).toEqual(["Sur le site"]);
+  });
+
+  it("100 choix longs : le message tient dans la limite de Discord, la suite est sur le site", () => {
+    const labels = Array.from({ length: 100 }, (_, i) => `Nom ${String(i).padStart(3, "0")} ${"x".repeat(52)}`);
+    const d = renderPoll(big({}, labels)).embeds[0]!.description!;
+    expect(d.length).toBeLessThanOrEqual(4000);
+    expect(d).toMatch(/… et \d+ autres : la liste complète est sur le site\.$/);
+  });
+});
+
+describe("« Voter » d'un grand sondage", () => {
+  it("des menus de 25 qui se suivent, cochés comme le vote, au plus N par menu ; Effacer mes choix", () => {
+    const labels = Array.from({ length: 58 }, (_, i) => `Nom ${String(i + 1).padStart(2, "0")}`);
+    const v = big({}, labels);
+    const panel = ballotPanel(v, [2, 30], "fr");
+    expect(panel.content).toBe("**Tes choix : 2 sur 5** · Nom 02, Nom 30\n-# Coche jusqu'à 5 choix dans les menus (par ordre alphabétique).");
+    type Menu = { custom_id: string; max_values: number; placeholder: string; options: { value: string; default: boolean }[] };
+    const menus = panel.components.slice(0, -1).map(r => r.components[0] as unknown as Menu);
+    expect(menus.map(m => m.options.length)).toEqual([25, 25, 8]);
+    expect(menus.map(m => m.max_values)).toEqual([5, 5, 5]);
+    expect(menus.map(m => decodePollId(m.custom_id))).toEqual([0, 1, 2].map(menu => ({ a: "pick", pollId: ID, menu })));
+    expect(menus[1]!.placeholder).toBe("Choix 26 à 50 · Nom 26 → Nom 50");
+    expect(menus.flatMap(m => m.options.filter(o => o.default).map(o => o.value))).toEqual(["2", "30"]);
+    expect(buttons({ components: panel.components.slice(-1) }).map(b => [b.label, decodePollId(b.custom_id!)])).toEqual([["Effacer mes choix", { a: "clear", pollId: ID }]]);
+    // Un seul choix (2e tour d'un grand sondage, par ex.) : 1 par menu
+    const one = ballotPanel(big({ multi: false, maxChoices: null }, labels), [], "fr", true);
+    expect(one.content).toBe("**Ton choix** · aucun pour l'instant\n-# Enregistré. Choisis dans un des menus (par ordre alphabétique) : ton choix remplace le précédent.");
+    expect(one.components.slice(0, -1).map(r => (r.components[0] as unknown as Menu).max_values)).toEqual([1, 1, 1]);
+    expect(voteReply(v, [2, 30])).toBe("✅ Tes choix : **Nom 02**, **Nom 30**. « Voter » pour les changer.");
+    expect(voteReply(v, [])).toBe("Tu n'as pas (ou plus) de vote : « Voter » ouvre la liste.");
+  });
+
+  it("fenêtre du 2e tour : question préremplie, fin facultative", () => {
+    const m = runoffModal(big({ closedAt: "2026-11-28T22:59:00.000Z" }), "fr");
+    expect(decodePollId(m.custom_id)).toEqual({ a: "runoffmodal", pollId: ID });
+    const fields = m.components.map(r => (r as { components: { custom_id: string; label: string; value?: string; required?: boolean }[] }).components[0]!);
+    expect(fields.map(f => [f.custom_id, f.value ?? null])).toEqual([["question", "Nom de guilde · 2e tour"], ["end", null]]);
+    for (const f of fields) expect(f.label.length).toBeLessThanOrEqual(45);
+    const long = runoffModal(big({ question: "Q".repeat(200) }), "fr");
+    expect(((long.components[0] as { components: { value: string }[] }).components[0]!.value).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("salon des sondages", () => {
+  it("réponse à /sondage : dit où le sondage est posé quand ce n'est pas ce salon", () => {
+    const v = choice({ channelId: "300000000000000009" });
+    expect(createdReply(v, "fr", "300000000000000009")).not.toContain("<#");
+    expect(createdReply(v, "fr", "300000000000000002")).toContain("Il est dans le salon des sondages : <#300000000000000009>.");
+    expect(createdReply(v, "en", "300000000000000002")).toContain("It is in the polls channel: <#300000000000000009>.");
   });
 });

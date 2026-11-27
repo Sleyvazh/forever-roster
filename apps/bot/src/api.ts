@@ -112,8 +112,10 @@ export interface PollOptionView {
 }
 /** Sondage dans son salon Discord (même vue que le site). */
 export interface PollView {
-  id: string; kind: PollKind; question: string; multi: boolean; anonymous: boolean; results: "live" | "end"; hidden: boolean;
+  id: string; kind: PollKind; question: string; multi: boolean; maxChoices: number | null; anonymous: boolean; results: "live" | "end"; hidden: boolean;
   options: PollOptionView[]; voters: number; best: number | null; leaders: number[];
+  /** Grand sondage clos : qualifiés pour le 2e tour ; son 2e tour une fois posé. */
+  qualifiers: number[]; runoffId: string | null;
   closesAt: string | null; deadline: string; closedAt: string | null; createdAt: string;
   creator: string; createdBy: string | null; raidName: string;
   raid: { id: string; name: string; scheduledAt: string | null; url: string } | null;
@@ -123,7 +125,7 @@ export interface PollView {
 export interface PollVoter { name: string; role: PollRole | null; guest: boolean }
 export interface PollNewBody {
   guildId: string; channelId: string; discordUserId: string; kind: PollKind; question: string; options: { label: string; at?: string | null }[];
-  multi?: boolean; anonymous?: boolean; results?: "live" | "end"; closesAt?: string | null; raidName?: string;
+  multi?: boolean; maxChoices?: number | null; anonymous?: boolean; results?: "live" | "end"; closesAt?: string | null; raidName?: string;
 }
 
 export interface Current { status: SignupStatus; characterId: string | null; cls: string; spec: string }
@@ -135,11 +137,11 @@ export interface SignupBody { status: SignupStatus; characterId?: string | null;
 export interface Deletion { id: number; channelId: string; messageId: string }
 /** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
 export interface ChannelName { templateId: string; guildId: string; channelId: string; name: string }
-/** Salon lié (celui du groupe, des commandes, d'un raid récurrent ou des sorties) et le nom que le site en connaît (null : inconnu). */
-export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings"; id: string; guildId: string | null; channelId: string; name: string | null }
-/** Liaison d'un salon : raids du groupe, commandes d'artisanat, sorties donjon, ou salon à part d'un raid récurrent. */
+/** Salon lié (celui du groupe, des commandes, d'un raid récurrent, des sorties ou des sondages) et le nom que le site en connaît (null : inconnu). */
+export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings" | "polls"; id: string; guildId: string | null; channelId: string; name: string | null }
+/** Liaison d'un salon : raids du groupe, commandes d'artisanat, sorties donjon, sondages, ou salon à part d'un raid récurrent. */
 export type BindResult =
-  | { group: { id: string; name: string; lang?: Lang }; kind: "raids" | "orders" | "outings" }
+  | { group: { id: string; name: string; lang?: Lang }; kind: "raids" | "orders" | "outings" | "polls" }
   | { group: { id: string; name: string; lang?: Lang }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
 /** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
 export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string; lang?: Lang }
@@ -298,6 +300,13 @@ export class InternalApi {
   pollView(id: string) { return this.req<PollView>("GET", `/internal/discord/polls/${id}/view`); }
   pollVote(id: string, b: { discordUserId: string; discordName: string; optionId: number }) {
     return this.req<{ vote: { yes: number[] }; name: string; guest: boolean; view: PollView }>("POST", `/internal/discord/polls/${id}/vote`, b);
+  }
+  /** Grand sondage : un menu de « Voter » (ses choix dans scope). */
+  pollChoicesIn(id: string, b: { discordUserId: string; discordName: string; scope: number[]; yes: number[] }) {
+    return this.req<{ vote: { yes: number[] }; name: string; guest: boolean; view: PollView }>("PUT", `/internal/discord/polls/${id}/choices`, b);
+  }
+  pollRunoff(id: string, b: { discordUserId: string; question?: string; closesAt?: string | null }) {
+    return this.req<{ view: PollView; first: PollView }>("POST", `/internal/discord/polls/${id}/runoff`, b);
   }
   pollDates(id: string, b: { discordUserId: string; discordName: string; yes?: number[]; maybe?: number[] }) {
     return this.req<{ vote: { yes: number[]; maybe: number[] }; name: string; role: PollRole | null; guest: boolean; view: PollView }>("PUT", `/internal/discord/polls/${id}/dates`, b);

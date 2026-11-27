@@ -20,7 +20,7 @@ import { itemsById, likeContains, type ItemSummary } from "./gamedata";
 import { dropSignupsInGroup, retireAnnouncements } from "../lib/signups";
 import { retireOrderMessages } from "../lib/orders";
 import { dropOutingSignups, mayCreate, retireOutingMessages } from "../lib/outings";
-import { pollCounts, retirePollMessages } from "../lib/polls";
+import { movePolls, pollCounts, retirePollMessages } from "../lib/polls";
 import { bus, charsChanged } from "../lib/events";
 import { siteForGame, siteOf } from "../lib/site";
 import { feedbackSummary } from "./group-feedback";
@@ -140,6 +140,7 @@ export async function groupRoutes(app: FastifyInstance) {
       discordLinked: !!g!.discordChannelId, discordChannelName: g!.discordChannelId ? g!.discordChannelName : null,
       ordersLinked: !!g!.ordersChannelId, ordersChannelName: g!.ordersChannelId ? g!.ordersChannelName : null,
       outingsLinked: !!g!.outingsChannelId, outingsChannelName: g!.outingsChannelId ? g!.outingsChannelName : null,
+      pollsLinked: !!g!.pollsChannelId, pollsChannelName: g!.pollsChannelId ? g!.pollsChannelName : null,
     };
     // Qui crée les raids et les sorties (réglage des officiers), et si ce joueur le peut
     const creators = {
@@ -430,6 +431,32 @@ export async function groupRoutes(app: FastifyInstance) {
     await retireOutingMessages(db, id);
     await audit(db, req, "group_outings_unlinked", { userId: u.id, groupId: id });
     bus.group({ t: "group", g: id });
+    return { ok: true };
+  });
+
+  /**
+   * Salon des sondages (Forever et Roster, demande de Flo du 27/11/2026) : même principe ; tous les sondages y vont. Sans
+   * lui, un sondage va dans le salon où /sondage a été tapé, ou dans celui des raids s'il est posé sur le site.
+   */
+  app.post("/:id/discord/polls-code", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    const { code, hash, expiresAt } = linkCode();
+    await db.update(groups).set({ pollsLinkCodeHash: hash, pollsLinkCodeExpiresAt: expiresAt }).where(eq(groups.id, id));
+    return { code, expiresAt };
+  });
+
+  app.delete("/:id/discord/polls", async (req) => {
+    const u = currentUser(req);
+    const { id } = parse(gid, req.params);
+    await requireRole(db, id, u.id, "officer");
+    await db.update(groups).set({ pollsGuildId: null, pollsChannelId: null, pollsChannelName: null, pollsLinkCodeHash: null, pollsLinkCodeExpiresAt: null }).where(eq(groups.id, id));
+    // Les sondages ouverts repartent dans le salon des raids (sinon : site seulement)
+    await movePolls(db, id);
+    await audit(db, req, "group_polls_unlinked", { userId: u.id, groupId: id });
+    bus.group({ t: "group", g: id });
+    bus.group({ t: "polls", g: id });
     return { ok: true };
   });
 

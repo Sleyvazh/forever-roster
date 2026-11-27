@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { auditEvents, polls, pollVotes, users } from "../src/db/schema";
+import { auditEvents, discordDeletions, polls, pollVotes, users } from "../src/db/schema";
 import { buildInternalApp } from "../src/internal";
 import { setup, signedIn, tokenFrom, type TestEnv } from "./helpers";
 
@@ -88,7 +88,7 @@ describe("sondage à choix", () => {
     const q = (options: string[], extra: object = {}) => s.create(lead, { kind: "choice", question: "  Quel   donjon jeudi soir ? ", options: options.map(label => ({ label })), anonymous: true, ...extra });
     expect((await q(["Scholomance"])).json().error).toBe("Propose au moins 2 choix.");
     expect((await q(["Scholomance", "scholomance"])).json().error).toBe("Deux choix sont identiques.");
-    expect((await q(Array.from({ length: 11 }, (_, i) => `Choix ${i}`))).json().error).toBe("10 choix au plus.");
+    expect((await q(Array.from({ length: 101 }, (_, i) => `Choix ${i}`))).json().error).toBe("100 choix au plus.");
     expect((await q(["A", "B"], { closesAt: inDays(-1) })).json().error).toBe("La fin du sondage est déjà passée.");
     expect((await q(["A", "B"], { closesAt: inDays(40) })).json().error).toBe("Un sondage dure 30 jours au plus.");
     const r = await q(["Scholomance", "Stratholme", "Pic Rochenoire"]);
@@ -276,5 +276,159 @@ describe("sur le site", () => {
     expect((await api(s.gm).list()).polls).toEqual([expect.objectContaining({ id: dates.id, raid: expect.objectContaining({ name: "Onyxia" }), canRaid: false })]);
     const other = await signedIn(env, "SiteAutre");
     expect((await other.c.get(`/api/groups/${s.g.id}/polls`)).statusCode).toBe(404);
+  });
+});
+
+type BigView = View & { multi: boolean; maxChoices: number | null; qualifiers: number[]; runoffId: string | null; anonymous: boolean; results: string; question: string };
+const deleted = async () => (await db().select({ messageId: discordDeletions.messageId }).from(discordDeletions)).map(d => d.messageId);
+
+describe("grand sondage", () => {
+  it("jusqu'à 100 choix par ordre alphabétique, au plus N par personne, menus de Discord, classement, 2e tour", async () => {
+    const s = await scene("Grands", [["Ana", "Kaelys", "Priest", "Holy"], ["Bob", "Torvald", "Warrior", "Protection"]]);
+    const ana = s.people.Kaelys!.discordId, bob = s.people.Torvald!.discordId, lead = s.lead.discordId;
+    const names = ["Zèle", "Écho", "Aube", "Milk me John", "Bastion", "Les Sans-Nom", "Cendre", "Dague", "Forge", "Givre", "Hydre", "Iris", "Jade"];
+    const big = (extra: object) => s.create(lead, { kind: "choice", question: "Nom de guilde · 1er tour", options: names.map(label => ({ label })), anonymous: true, results: "end", ...extra });
+    expect((await big({ maxChoices: 13 })).json().error).toBe("Le nombre de choix par personne va de 2 à 12.");
+    const v0 = (await big({ maxChoices: 3 })).json().view as BigView;
+    // « Au plus 3 » vaut « plusieurs » ; plus de 10 choix : par ordre alphabétique (accents compris)
+    expect(v0).toMatchObject({ multi: true, maxChoices: 3, hidden: true, qualifiers: [], runoffId: null });
+    expect(v0.options.map(o => o.label)).toEqual(["Aube", "Bastion", "Cendre", "Dague", "Écho", "Forge", "Givre", "Hydre", "Iris", "Jade", "Les Sans-Nom", "Milk me John", "Zèle"]);
+
+    // Menus de « Voter » : chacun remplace ses propres choix, les autres menus gardent les leurs
+    const pick = (who: string, scope: number[], yes: number[], id = v0.id) =>
+      bot("PUT", `/internal/discord/polls/${id}/choices`, { discordUserId: who, discordName: "Pseudo", scope, yes });
+    const first = [1, 2, 3, 4, 5, 6, 7], second = [8, 9, 10, 11, 12, 13];
+    expect((await pick(ana, first, [1, 5])).json().vote).toEqual({ yes: [1, 5] });
+    expect((await pick(ana, second, [12])).json().vote).toEqual({ yes: [1, 5, 12] });
+    expect((await pick(ana, second, [12, 13])).json().error).toBe("3 choix au plus : retires-en un.");
+    expect((await pick(ana, first, [5])).json().vote).toEqual({ yes: [5, 12] });
+    expect((await pick(ana, [99], [99])).json().error).toBe("Ce choix n'existe pas.");
+    // Bouton (vote à un clic) : la même limite
+    await pick(bob, first, [1, 2, 5]);
+    expect((await vote(v0.id, bob, 9)).json().error).toBe("3 choix au plus : retires-en un.");
+    await pick(lead, first, [1, 3, 5]);
+    const guest1 = nextId(), guest2 = nextId();
+    expect((await pick(guest1, second, [12], v0.id)).json()).toMatchObject({ vote: { yes: [12] }, guest: true });
+    await pick(guest2, first, [4]);
+    // Site : la même limite
+    expect((await s.people.Kaelys!.s.c.put(`/api/groups/${s.g.id}/polls/${v0.id}/vote`, { yes: [1, 2, 3, 4] })).json().error).toBe("3 choix au plus : retires-en un.");
+
+    // Pas de 2e tour avant la fin
+    const r2 = (who: string, body: object = {}) => bot("POST", `/internal/discord/polls/${v0.id}/runoff`, { discordUserId: who, ...body });
+    expect((await r2(lead)).json().error).toBe("Clos d'abord le 1er tour.");
+    await bot("POST", `/internal/discord/polls/${v0.id}/close`, { discordUserId: lead });
+    // Classement : Écho 3 ; Aube 2, Milk me John 2 ; Bastion, Cendre, Dague 1 (ex æquo du 5e : qualifié aussi)
+    const closed = await view(v0.id) as BigView;
+    expect(closed.hidden).toBe(false);
+    expect(closed.qualifiers).toEqual([5, 1, 12, 2, 3, 4]);
+    expect(closed.options.find(o => o.id === 5)?.yes).toBe(3);
+    // Le 2e tour : créateur ou officier, une seule fois
+    expect((await r2(ana)).json().error).toBe("Seuls son créateur et les officiers peuvent poser le 2e tour.");
+    const r = (await r2(lead)).json() as { view: BigView; first: BigView };
+    expect(r.view).toMatchObject({ question: "Nom de guilde · 2e tour", multi: false, maxChoices: null, anonymous: true, results: "end", channelId: s.channelId });
+    expect(r.view.options.map(o => o.label)).toEqual(["Écho", "Aube", "Milk me John", "Bastion", "Cendre", "Dague"]);
+    expect(r.first.runoffId).toBe(r.view.id);
+    expect((await r2(lead)).json().error).toBe("Le 2e tour de ce sondage est déjà posé.");
+    // Un seul choix : le dernier coché l'emporte, quel que soit le menu
+    expect((await pick(ana, [1, 2, 3], [2], r.view.id)).json().vote).toEqual({ yes: [2] });
+    expect((await pick(ana, [4, 5, 6], [5], r.view.id)).json().vote).toEqual({ yes: [5] });
+    expect((await pick(ana, [4, 5, 6], [], r.view.id)).json().vote).toEqual({ yes: [] });
+    // Petit sondage : pas de 2e tour
+    const small = (await s.create(lead, { kind: "choice", question: "Petit ?", options: [{ label: "A" }, { label: "B" }] })).json().view as View;
+    await bot("POST", `/internal/discord/polls/${small.id}/close`, { discordUserId: lead });
+    expect((await bot("POST", `/internal/discord/polls/${small.id}/runoff`, { discordUserId: lead })).json().error).toBe("Le 2e tour est pour les sondages de plus de 10 choix.");
+  });
+
+  it("sur le site : liste collée, 2e tour (canRunoff)", async () => {
+    const s = await scene("GrandSite", [["Ana", "Kaelys", "Priest", "Holy"]]);
+    const ana = s.people.Kaelys!;
+    const labels = Array.from({ length: 12 }, (_, i) => ({ label: `Nom ${String.fromCharCode(76 - i)}` }));
+    const c = await s.gm.c.post(`/api/groups/${s.g.id}/polls`, { kind: "choice", question: "Nom ?", options: labels, multi: true, maxChoices: 2, results: "end" });
+    expect(c.statusCode).toBe(201);
+    const p = c.json().poll as BigView & { canRunoff: boolean };
+    expect(p.options[0]!.label).toBe("Nom A");
+    expect(p).toMatchObject({ maxChoices: 2, canRunoff: false });
+    expect((await ana.s.c.put(`/api/groups/${s.g.id}/polls/${p.id}/vote`, { yes: [1, 2] })).json()).toEqual({ mine: { yes: [1, 2], maybe: [] } });
+    await s.gm.c.put(`/api/groups/${s.g.id}/polls/${p.id}/vote`, { yes: [2, 3] });
+    await s.gm.c.post(`/api/groups/${s.g.id}/polls/${p.id}/close`, {});
+    const list = async (x: Signed) => (await x.c.get(`/api/groups/${s.g.id}/polls`)).json().polls as (BigView & { canRunoff: boolean })[];
+    expect((await list(s.gm)).find(x => x.id === p.id)).toMatchObject({ canRunoff: true, qualifiers: [2, 1, 3] });
+    expect((await list(ana.s)).find(x => x.id === p.id)?.canRunoff).toBe(false);
+    expect((await ana.s.c.post(`/api/groups/${s.g.id}/polls/${p.id}/runoff`, {})).statusCode).toBe(403);
+    const r = await s.gm.c.post(`/api/groups/${s.g.id}/polls/${p.id}/runoff`, { question: "Nom : la finale", closesAt: inDays(1) });
+    expect(r.statusCode).toBe(201);
+    expect(r.json().poll).toMatchObject({ question: "Nom : la finale", multi: false });
+    expect((r.json().poll as View).options.map(o => o.label)).toEqual(["Nom B", "Nom A", "Nom C"]);
+    expect((await list(s.gm)).find(x => x.id === p.id)).toMatchObject({ canRunoff: false, runoffId: r.json().poll.id });
+  });
+});
+
+describe("salon des sondages", () => {
+  it("lié par code : tous les sondages y vont, ceux en cours y sont déplacés ; refus ; délié : retour au salon des raids", async () => {
+    const s = await scene("Salons", [["Ana", "Kaelys", "Priest", "Holy"]]);
+    const lead = s.lead.discordId;
+    const ask = (question: string, channelId = s.channelId) =>
+      bot("POST", "/internal/discord/polls", { guildId: s.guildId, channelId, discordUserId: lead, kind: "choice", question, options: [{ label: "A" }, { label: "B" }] });
+    const published = (v: View, channelId: string, messageId: string) =>
+      bot("POST", `/internal/discord/polls/${v.id}/published`, { channelId, messageId, changedAt: v.changedAt });
+    // Un sondage ouvert et un sondage clos, déjà posés dans le salon des raids
+    const open = (await ask("Ouvert ?")).json().view as View;
+    await published(open, s.channelId, "900000000000001001");
+    const done = (await ask("Clos ?")).json().view as View;
+    await published(done, s.channelId, "900000000000001002");
+    await bot("POST", `/internal/discord/polls/${done.id}/close`, { discordUserId: lead });
+
+    // Code : officiers seulement ; refusés : le salon des raids
+    expect((await s.people.Kaelys!.s.c.post(`/api/groups/${s.g.id}/discord/polls-code`)).statusCode).toBe(403);
+    const code = async () => (await s.gm.c.post(`/api/groups/${s.g.id}/discord/polls-code`)).json().code as string;
+    const bind = async (channelId: string, by = lead) =>
+      bot("POST", "/internal/discord/bind", { code: await code(), guildId: s.guildId, channelId, discordUserId: by, channelName: "sondages" });
+    expect((await bind(s.channelId)).json().error).toContain("Ce salon est déjà celui des raids de la guilde");
+    expect((await bind(nextId(), s.people.Kaelys!.discordId)).json().error).toBe("Réservé aux officiers de la guilde.");
+    const pollsChannel = nextId();
+    expect((await bind(pollsChannel)).json()).toMatchObject({ kind: "polls", group: { id: s.g.id } });
+    expect((await s.gm.c.get(`/api/groups/${s.g.id}`)).json().group).toMatchObject({ pollsLinked: true, pollsChannelName: "sondages" });
+
+    // Le sondage ouvert part dans le salon des sondages (ancien message effacé) ; le clos reste où il est
+    expect(await view(open.id)).toMatchObject({ channelId: pollsChannel, messageId: null });
+    expect((await outbox()).map(p => p.id)).toContain(open.id);
+    expect(await view(done.id)).toMatchObject({ channelId: s.channelId, messageId: "900000000000001002" });
+    expect(await deleted()).toContain("900000000000001001");
+    expect(await deleted()).not.toContain("900000000000001002");
+
+    // /sondage tapé ailleurs (salon des raids) ou dans le salon des sondages : posé dans le salon des sondages
+    const next = (await ask("Ailleurs ?")).json().view as View;
+    expect(next.channelId).toBe(pollsChannel);
+    expect((await ask("Ici ?", pollsChannel)).json().view.channelId).toBe(pollsChannel);
+    // Site : « aussi sur Discord » vise ce salon
+    expect((await s.gm.c.get(`/api/groups/${s.g.id}/polls`)).json().discord).toEqual({ channel: "sondages", polls: true });
+    const site = (await s.gm.c.post(`/api/groups/${s.g.id}/polls`, { kind: "choice", question: "Site ?", options: [{ label: "A" }, { label: "B" }] })).json().poll as View;
+    expect(site.channelId).toBe(pollsChannel);
+
+    // Nom du salon : rapporté par le bot
+    const linked = (await bot("GET", "/internal/discord/linked-channels")).json() as object[];
+    expect(linked).toContainEqual({ kind: "polls", id: s.g.id, guildId: s.guildId, channelId: pollsChannel, name: "sondages" });
+    expect((await bot("POST", "/internal/discord/channel-name", { kind: "polls", id: s.g.id, channelId: pollsChannel, name: "votes" })).json()).toEqual({ ok: true, changed: true });
+    expect((await s.gm.c.get(`/api/groups/${s.g.id}`)).json().group.pollsChannelName).toBe("votes");
+
+    // Les autres liaisons refusent ce salon ; une autre guilde ne peut pas le prendre pour ses sondages
+    const oc = (await s.gm.c.post(`/api/groups/${s.g.id}/discord/orders-code`)).json().code;
+    expect((await bot("POST", "/internal/discord/bind", { code: oc, guildId: s.guildId, channelId: pollsChannel, discordUserId: lead })).json().error)
+      .toBe("Ce salon est déjà celui des sondages : choisis un autre salon pour les commandes.");
+    const other = await scene("Voisins", []);
+    const c2 = (await other.gm.c.post(`/api/groups/${other.g.id}/discord/polls-code`)).json().code;
+    expect((await bot("POST", "/internal/discord/bind", { code: c2, guildId: s.guildId, channelId: pollsChannel, discordUserId: other.lead.discordId })).json().error)
+      .toBe("Ce salon sert déjà à une autre guilde : choisis un autre salon pour les sondages.");
+
+    // Délié : les sondages ouverts reviennent dans le salon des raids
+    await published(next, pollsChannel, "900000000000001003");
+    expect((await s.people.Kaelys!.s.c.del(`/api/groups/${s.g.id}/discord/polls`)).statusCode).toBe(403);
+    expect((await s.gm.c.del(`/api/groups/${s.g.id}/discord/polls`)).json()).toEqual({ ok: true });
+    expect(await view(next.id)).toMatchObject({ channelId: s.channelId, messageId: null });
+    expect(await deleted()).toContain("900000000000001003");
+    expect((await s.gm.c.get(`/api/groups/${s.g.id}`)).json().group).toMatchObject({ pollsLinked: false, pollsChannelName: null });
+    expect((await s.gm.c.get(`/api/groups/${s.g.id}/polls`)).json().discord).toEqual({ channel: null, polls: false });
+    const types = (await db().select({ type: auditEvents.type }).from(auditEvents).where(eq(auditEvents.groupId, s.g.id))).map(e => e.type);
+    expect(types).toEqual(expect.arrayContaining(["group_polls_linked", "group_polls_unlinked"]));
   });
 });

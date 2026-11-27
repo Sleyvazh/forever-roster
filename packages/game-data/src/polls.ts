@@ -12,9 +12,19 @@ export const POLL_KINDS = ["choice", "dates"] as const;
 export type PollKind = (typeof POLL_KINDS)[number];
 
 export const POLL_MIN_OPTIONS = 2;
-/** Choix d'un sondage (A) ; créneaux d'un sondage de disponibilités (B : 2 à 8, maquette du 26/11). */
-export const POLL_MAX_OPTIONS = 10;
+/**
+ * Choix d'un sondage (A) ; créneaux d'un sondage de disponibilités (B : 2 à 8, maquette du 26/11).
+ * Au-delà de POLL_BUTTONS_MAX choix (« grand sondage », 27/11, maquettes D1 bis et D2 bis : le nom de la guilde parmi
+ * 58 propositions), plus un bouton par choix : la liste complète par ordre alphabétique, et « Voter » ouvre des menus de
+ * POLL_MENU_SIZE choix (limite de Discord), dans le même ordre.
+ */
+export const POLL_MAX_OPTIONS = 100;
+export const POLL_BUTTONS_MAX = 10;
+export const POLL_MENU_SIZE = 25;
 export const POLL_MAX_SLOTS = 8;
+/** Grand sondage : son 2e tour reprend les RUNOFF_SIZE premiers (ex æquo compris, au plus POLL_BUTTONS_MAX). */
+export const RUNOFF_SIZE = 5;
+export const isBigPoll = (p: { kind: PollKind; options: readonly unknown[] }) => p.kind === "choice" && p.options.length > POLL_BUTTONS_MAX;
 export const pollMaxOptions = (kind: PollKind) => (kind === "dates" ? POLL_MAX_SLOTS : POLL_MAX_OPTIONS);
 export const POLL_MAX_QUESTION = 200;
 export const POLL_MAX_LABEL = 80;
@@ -49,6 +59,26 @@ export function bestSlot(options: PollOptionCount[]): number | null {
 export function leaders(options: PollOptionCount[]): number[] {
   const top = Math.max(0, ...options.map(o => o.yes));
   return top ? options.filter(o => o.yes === top).map(o => o.id) : [];
+}
+
+/** Ordre alphabétique d'un grand sondage : sans tenir compte des accents ni des majuscules. */
+export const pollSortKey = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+export const byLabel = (a: { label: string }, b: { label: string }) => pollSortKey(a.label).localeCompare(pollSortKey(b.label), "fr");
+
+/** Classement d'un sondage à choix : le plus de voix d'abord, ex æquo par ordre alphabétique. */
+export function ranking<T extends { id: number; label: string; yes: number }>(options: readonly T[]): T[] {
+  return [...options].sort((a, b) => b.yes - a.yes || byLabel(a, b));
+}
+
+/**
+ * Qualifiés pour le 2e tour d'un grand sondage : les `size` premiers et ceux à égalité avec le dernier, au plus `max`
+ * (au-delà, l'ordre alphabétique départage). Seuls les choix qui ont au moins une voix.
+ */
+export function runoffPick<T extends { id: number; label: string; yes: number }>(options: readonly T[], size = RUNOFF_SIZE, max = POLL_BUTTONS_MAX): number[] {
+  const ranked = ranking(options).filter(o => o.yes > 0);
+  if (!ranked.length) return [];
+  const cut = ranked[Math.min(size, ranked.length) - 1]!.yes;
+  return ranked.filter((o, i) => i < size || o.yes === cut).slice(0, max).map(o => o.id);
 }
 
 /** Barre de texte pour Discord : « ███████░░░░░░░ » (14 cases), pourcentage arrondi. */

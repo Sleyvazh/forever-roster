@@ -1,4 +1,4 @@
-import { parseSlot } from "@forever/game-data";
+import { parseEnd, parseSlot } from "@forever/game-data";
 import {
   ButtonStyle, ComponentType, DiscordAPIError, MessageFlags,
   type ButtonInteraction, type ChatInputCommandInteraction, type Client, type Interaction, type ModalSubmitInteraction, type StringSelectMenuInteraction,
@@ -6,7 +6,7 @@ import {
 import { ApiError, type InternalApi, type PollView, type RaidView } from "./api";
 import { langOf, remember, tr, type Lang } from "./i18n";
 import {
-  closeConfirm, createdReply, createModal, datesPanel, decodePollId, encodePollId, parseDraft, raidCreatedReply, raidModal, renderPoll, slotError, voteReply, votersReply,
+  ballotPanel, closeConfirm, createdReply, createModal, elsewhere, datesPanel, decodePollId, encodePollId, parseDraft, runoffModal, raidCreatedReply, raidModal, renderPoll, slotError, voteReply, votersReply,
   type PollAction, type PollDraft,
 } from "./polls-core";
 import type { Row } from "./render";
@@ -102,6 +102,8 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
     const action: Extract<PollAction, { a: "new" }> = i.commandName === "dispos" ? { a: "new", kind: "dates" } : {
       a: "new", kind: "choice", anonymous: i.options.getBoolean("anonyme") ?? true, multi: i.options.getBoolean("plusieurs") ?? false,
       results: i.options.getString("resultats") === "fin" ? "end" : "live",
+      // « max » : au plus N choix par personne (vaut « plusieurs »)
+      ...(i.options.getInteger("max") ? { max: i.options.getInteger("max")! } : {}),
     };
     return i.showModal(createModal(action, ui));
   }
@@ -122,7 +124,7 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
       const { view } = await api.withLang(ui).createPoll({ ...parsed.body, guildId: i.guildId, channelId: i.channelId, discordUserId: i.user.id });
       drafts.delete(i.user.id);
       await publish(view).catch(e => log.warn("Sondage non publié", e?.message));
-      return i.editReply({ content: createdReply(view, ui), components: [] });
+      return i.editReply({ content: createdReply(view, ui, i.channelId), components: [] });
     } catch (e) {
       if (!(e instanceof ApiError)) throw e;
       keep();
@@ -152,6 +154,20 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
       if (v.raid) return fail(i, tr(langOf(v.group, lang), "Le raid de ce sondage est déjà créé."));
       return i.showModal(raidModal(v, langOf(v.group, lang)));
     }
+    if (x.a === "runoff") {
+      // Fenêtre d'abord (première réponse) : la question du 2e tour préremplie
+      const v = await a.pollView(pollId);
+      if (v.runoffId) return fail(i, tr(langOf(v.group, lang), "Le 2e tour de ce sondage est déjà posé."));
+      return i.showModal(runoffModal(v, langOf(v.group, lang)));
+    }
+    if (x.a === "clear") {
+      // Depuis le panneau « Voter » (déjà visible par le joueur seul) : on le met à jour
+      await i.deferUpdate();
+      const v = await a.pollView(pollId);
+      const r = await a.pollChoicesIn(pollId, { discordUserId: i.user.id, discordName: nameOf(i), scope: v.options.map(o => o.id), yes: [] });
+      publishSoon(r.view);
+      return i.editReply(ballotPanel(r.view, r.vote.yes, langOf(r.view.group, lang), true));
+    }
     if (x.a === "closeok") {
       await i.deferUpdate();
       const r = await a.pollClose(pollId, i.user.id);
@@ -165,6 +181,11 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
       remember(r.view.group.lang, pollId);
       publishSoon(r.view);
       return i.editReply(voteReply(r.view, r.vote.yes, langOf(r.view.group, lang)));
+    }
+    if (x.a === "ballot") {
+      const r = await a.pollMine(pollId, me);
+      remember(r.view.group.lang, pollId);
+      return i.editReply(ballotPanel(r.view, r.vote?.yes ?? [], langOf(r.view.group, lang)));
     }
     if (x.a === "me") {
       const r = await a.pollMine(pollId, me);
@@ -183,9 +204,27 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
     }
   }
 
-  /* ----- Menus « Je viens » / « Si besoin » ----- */
+  /* ----- Menus « Je viens » / « Si besoin », menus de « Voter » ----- */
   async function menu(i: StringSelectMenuInteraction) {
     const x = decodePollId(i.customId);
+    if (x?.a === "pick") {
+      await i.deferUpdate();
+      const lang = replyLang(i, x.pollId);
+      // Les choix de ce menu : ceux qu'il propose (Discord ne renvoie que les cochés)
+      const scope = i.component.options.map(o => Number(o.value)).filter(n => Number.isInteger(n) && n > 0);
+      const values = i.values.map(Number).filter(n => Number.isInteger(n) && n > 0);
+      try {
+        const r = await api.withLang(lang).pollChoicesIn(x.pollId, { discordUserId: i.user.id, discordName: nameOf(i), scope, yes: values });
+        publishSoon(r.view);
+        return i.editReply(ballotPanel(r.view, r.vote.yes, langOf(r.view.group, lang), true));
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        // Refusé (trop de choix) : le panneau revient à ce qui est enregistré, avec la raison
+        const m = await api.withLang(lang).pollMine(x.pollId, { discordUserId: i.user.id, discordName: nameOf(i) });
+        const p = ballotPanel(m.view, m.vote?.yes ?? [], langOf(m.view.group, lang));
+        return i.editReply({ ...p, content: `⚠️ ${e.message}\n${p.content}` });
+      }
+    }
     if (!x || (x.a !== "yes" && x.a !== "maybe")) return;
     await i.deferUpdate();
     const lang = replyLang(i, x.pollId);
@@ -200,6 +239,17 @@ export function createPolls({ client, api, log, timeZone, nameOf, replyLang, pub
     const x = decodePollId(i.customId);
     if (!x) return;
     if (x.a === "new") return submitNew(i, x);
+    if (x.a === "runoffmodal") {
+      await i.deferReply({ flags: MessageFlags.Ephemeral });
+      const lang = replyLang(i, x.pollId);
+      const end = parseEnd(i.fields.getTextInputValue("end") ?? "", new Date(), timeZone);
+      if (!end.ok) return i.editReply(`⚠️ ${tr(lang, "Fin : {why}.", { why: slotError(lang, end.reason) })}`);
+      const r = await api.withLang(lang).pollRunoff(x.pollId, { discordUserId: i.user.id, question: i.fields.getTextInputValue("question"), closesAt: end.at?.toISOString() ?? null });
+      publishSoon(r.first);
+      await publish(r.view).catch(e => log.warn("2e tour non publié", e?.message));
+      const g = langOf(r.view.group, lang);
+      return i.editReply(`✅ ${tr(g, "2e tour posé avec {n} choix.", { n: r.view.options.length })}${elsewhere(r.view, g, i.channelId)}`);
+    }
     if (x.a !== "raidmodal") return;
     await i.deferReply({ flags: MessageFlags.Ephemeral });
     const lang = replyLang(i, x.pollId);

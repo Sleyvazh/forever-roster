@@ -51,11 +51,12 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   {
     type: ApplicationCommandType.ChatInput,
     name: "sondage",
-    ...d("Pose un sondage à la guilde liée à ce salon : une question, 2 à 10 choix, des boutons pour voter.", "Posts a poll to the guild linked to this channel: a question, 2 to 10 choices, buttons to vote."),
+    ...d("Pose un sondage à la guilde liée à ce salon : une question, 2 à 100 choix.", "Posts a poll to the guild linked to this channel: a question, 2 to 100 choices."),
     contexts: [InteractionContextType.Guild],
     options: [
       { type: ApplicationCommandOptionType.Boolean, name: "anonyme", ...d("Vote anonyme : personne ne voit qui a voté quoi (oui par défaut)", "Anonymous vote: nobody sees who voted what (yes by default)"), required: false },
       { type: ApplicationCommandOptionType.Boolean, name: "plusieurs", ...d("Chacun peut cocher plusieurs choix (non par défaut)", "Everyone can tick several choices (no by default)"), required: false },
+      { type: ApplicationCommandOptionType.Integer, name: "max", ...d("Au plus N choix par personne (ex. 5 pour élire un nom parmi 60)", "At most N choices per person (e.g. 5 to pick a name out of 60)"), required: false, min_value: 2, max_value: 25 },
       { type: ApplicationCommandOptionType.String, name: "resultats", ...d("Résultats en direct, ou cachés jusqu'à la fin", "Results live, or hidden until the end"), required: false,
         choices: [{ name: "Live", name_localizations: { fr: "En direct" }, value: "direct" }, { name: "At the end", name_localizations: { fr: "À la fin" }, value: "fin" }] },
     ],

@@ -462,5 +462,19 @@
  "Seul un sondage de disponibilités crée un raid.": "Only an availability poll creates a raid.",
  "Le raid de ce sondage est déjà créé.": "This poll's raid has already been created.",
  "Le nom du raid fait de 2 à 60 caractères.": "The raid name is 2 to 60 characters long.",
- "Cette date est déjà passée.": "This date is already past."
+ "Cette date est déjà passée.": "This date is already past.",
+ "Ce salon est déjà celui des sondages : choisis un autre salon pour les commandes.": "This channel is already the polls channel: choose another channel for orders.",
+ "Ce salon est déjà celui des sondages : choisis un autre salon pour les sorties.": "This channel is already the polls channel: choose another channel for runs.",
+ "Ce salon est déjà celui des raids de la guilde : choisis un autre salon pour les sondages (sans salon à part, ceux posés sur le site y vont déjà).": "This channel is already the guild's raids channel: choose another channel for polls (without a separate channel, those posted on the website already go there).",
+ "Ce salon est déjà celui des commandes d'artisanat : choisis un autre salon pour les sondages.": "This channel is already the crafting orders channel: choose another channel for polls.",
+ "Ce salon est déjà celui des sorties : choisis un autre salon pour les sondages.": "This channel is already the runs channel: choose another channel for polls.",
+ "Ce salon sert déjà à une autre guilde : choisis un autre salon pour les sondages.": "This channel is already used by another guild: choose another channel for polls.",
+ "Ce salon est déjà celui des sondages : choisis un autre salon {what}.": "This channel is already the polls channel: choose another channel {what}.",
+ "Le nombre de choix par personne va de 2 à {n}.": "The number of choices per person goes from 2 to {n}.",
+ "{n} choix au plus : retires-en un.": "{n} choices at most: remove one.",
+ "Le 2e tour est pour les sondages de plus de {n} choix.": "The runoff is for polls with more than {n} choices.",
+ "Seuls son créateur et les officiers peuvent poser le 2e tour.": "Only its creator and the officers can post the runoff.",
+ "Clos d'abord le 1er tour.": "Close the first round first.",
+ "Le 2e tour de ce sondage est déjà posé.": "The runoff of this poll is already posted.",
+ "Il faut au moins deux choix qui ont des voix pour un 2e tour.": "A runoff needs at least two choices with votes."
 }

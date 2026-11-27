@@ -3124,6 +3124,14 @@ p.rp-meta { margin: 0; color: var(--ink); }
 .pl-opt.mine .mk { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
 .pl-opt.mine .l { font-weight: 700; }
 .pl-opt .n { font: 600 13px var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Grand sondage (plus de 10 choix) : recherche, « Tous / Mes choix », liste qui défile, rang au classement */
+.pl-big-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pl-big-bar input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.pl-count { margin-left: auto; font: 600 12px var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
+.pl-big { display: grid; gap: 4px; max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+.pl-big .pl-opt { padding: 7px 10px; }
+.pl-big .hint { margin: 0; padding: 8px 2px; }
+.pl-rank { display: inline-block; min-width: 2.4em; margin-right: 4px; color: var(--ink-3); font-size: 12px; font-weight: 600; }
 .pl-grid { display: grid; font-size: 14px; }
 .pl-gr { display: grid; grid-template-columns: minmax(150px, 1.2fr) auto 52px 76px 52px minmax(130px, 1fr); gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .pl-gh { font: 600 11px/1 var(--f-mono); letter-spacing: .08em; text-transform: uppercase; padding-block: 0 8px; }

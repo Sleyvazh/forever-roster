@@ -6,7 +6,9 @@ import { groups } from "../db/schema";
 import { membership } from "../lib/groups";
 import { notFound, parse } from "../lib/http";
 import {
-  closePoll, createPoll, deletePoll, groupPolls, identity, mayCreatePoll, pollView, pollVoters, raidFromPoll, setChoices, setDates, votesOf, type PollView, type Voter,
+  closePoll, createPoll, createRunoff, deletePoll, groupPolls, identity, mayCreatePoll, pollsChannelOf, pollView, pollVoters, raidFromPoll, setChoices, setDates,
+  votesOf,
+  type PollView, type Voter,
 } from "../lib/polls";
 import { currentUser, requireAuth } from "../lib/session";
 import { siteForGame } from "../lib/site";
@@ -41,6 +43,7 @@ export async function pollRoutes(app: FastifyInstance) {
     canClose: !view.closedAt && (view.createdBy === userId || role !== "member"),
     canDelete: view.createdBy === userId || role !== "member",
     canRaid: view.kind === "dates" && !view.raid && (raidCreators === "members" || role !== "member"),
+    canRunoff: !!view.closedAt && view.qualifiers.length >= 2 && !view.runoffId && (view.createdBy === userId || role !== "member"),
   });
 
   /** Sondages du groupe (ouverts d'abord, puis clos), mon vote dans chacun ; de quoi poser un sondage. */
@@ -54,8 +57,8 @@ export async function pollRoutes(app: FastifyInstance) {
     return {
       polls: list.map(p => forMe(u.id, role, p, mine.get(p.id) ?? null, g.raidCreators)),
       canCreate: mayCreatePoll(g.pollCreators, role), creators: g.pollCreators,
-      // Salon où le sondage est aussi posé (celui des raids de la guilde) ; null : site seulement
-      discord: g.discordChannelId ? { channel: g.discordChannelName } : null,
+      // Salon où le sondage est aussi posé (celui des sondages, sinon celui des raids) ; null : site seulement
+      discord: g.pollsChannelId ? { channel: g.pollsChannelName, polls: true } : g.discordChannelId ? { channel: g.discordChannelName, polls: false } : null,
       // Nom et rôle sous lesquels ce compte répond (son main dans la guilde)
       me: { name: who.name, role: who.role },
     };
@@ -68,12 +71,13 @@ export async function pollRoutes(app: FastifyInstance) {
     const body = parse(z.object({
       kind: z.enum(POLL_KINDS), question: z.string().max(POLL_MAX_QUESTION * 2),
       options: z.array(z.object({ label: z.string().max(POLL_MAX_LABEL * 2), at: z.iso.datetime({ offset: true }).nullable().optional() })).max(POLL_MAX_OPTIONS + 5),
-      multi: z.boolean().optional(), anonymous: z.boolean().optional(), results: z.enum(POLL_RESULTS).optional(),
+      multi: z.boolean().optional(), maxChoices: z.int().min(2).max(POLL_MAX_OPTIONS).nullable().optional(),
+      anonymous: z.boolean().optional(), results: z.enum(POLL_RESULTS).optional(),
       closesAt: z.iso.datetime({ offset: true }).nullable().optional(), raidName: z.string().max(60).optional(),
-      /** Aussi sur Discord, dans le salon des raids de la guilde (s'il y en a un). */
+      /** Aussi sur Discord, dans le salon des sondages de la guilde (sinon celui des raids), s'il y en a un. */
       discord: z.boolean().default(true),
     }), req.body);
-    const pollId = await createPoll(db, req, g, role, u, { ...body, channelId: body.discord ? g.discordChannelId : null }, "site");
+    const pollId = await createPoll(db, req, g, role, u, { ...body, channelId: body.discord ? pollsChannelOf(g, g.discordChannelId) : null }, "site");
     return reply.code(201).send({ poll: forMe(u.id, role, await pollView(db, pollId, originOf), null, g.raidCreators) });
   });
 
@@ -119,6 +123,16 @@ export async function pollRoutes(app: FastifyInstance) {
     const { role } = await forGroup(p.id, u.id);
     await deletePoll(db, req, p.pollId, { id: u.id, role }, p.id);
     return { ok: true };
+  });
+
+  /** « 2e tour avec les 5 premiers » d'un grand sondage clos. */
+  app.post("/:id/polls/:pollId/runoff", async (req, reply) => {
+    const u = currentUser(req);
+    const p = parse(pid, req.params);
+    const { role, g } = await forGroup(p.id, u.id);
+    const body = parse(z.object({ question: z.string().max(POLL_MAX_QUESTION * 2).optional(), closesAt: z.iso.datetime({ offset: true }).nullable().optional() }), req.body);
+    const id = await createRunoff(db, req, p.pollId, { id: u.id, displayName: u.displayName, role }, body, "site", p.id);
+    return reply.code(201).send({ poll: forMe(u.id, role, await pollView(db, id, originOf), null, g.raidCreators) });
   });
 
   /** « Créer le raid sur ★ » : nom et créneau choisis (le meilleur par défaut, côté site). */
