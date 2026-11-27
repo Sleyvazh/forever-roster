@@ -13,6 +13,8 @@ import { confirmation, guestLabel, onCharPicked, onClassPicked, onStatus, type S
 import { decodeId, decodeOutingId, splitValue } from "./ids";
 import { createOrderSync, renderOrder } from "./orders";
 import { createPolls } from "./polls";
+import { createQuests } from "./quests";
+import { isQuestId } from "./quests-core";
 import { isPollId } from "./polls-core";
 import { createOutingSync, onOutingClass, onOutingRole, outingConfirmation, renderNotice, renderOuting, roleWord, waitChooser, type OutingStep } from "./outings";
 import { langOf, localeLang, recall, remember, tr, trn, type Lang } from "./i18n";
@@ -247,6 +249,8 @@ async function start() {
     setInterval(() => { orders.tick().catch(e => log.warn("Relève des commandes impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { outings.tick().catch(e => log.warn("Relève des sorties impossible", e?.message)); }, cfg.pollMs);
     setInterval(() => { polls.tick().catch(e => log.warn("Relève des sondages impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { quests.tick().catch(e => log.warn("Relève des quêtes impossible", e?.message)); }, cfg.pollMs);
+    setInterval(() => { quests.sendNotices().catch(e => log.warn("MP des quêtes impossibles", e?.message)); }, 30e3);
     setInterval(() => { sendOutingNotices().catch(e => log.warn("MP des sorties impossibles", e?.message)); }, 30e3);
     setInterval(() => { bankNotices.tick().catch(e => log.warn("MP de la banque impossibles", e?.message)); }, 30e3);
     setInterval(() => { levels.tick().catch(e => log.warn("Annonces de niveau impossibles", e?.message)); }, 60e3);
@@ -283,6 +287,7 @@ async function start() {
   const feedback = createFeedback(client, api, log, nameOf);
   // Sondages (/sondage, /dispos) : fenêtre de saisie, boutons, menus, relève des messages
   const polls = createPolls({ client, api, log, timeZone: cfg.timeZone, nameOf, replyLang, publishRaid: publishSoon });
+  const quests = createQuests({ client, api, log, timeZone: cfg.timeZone, replyLang, dm: (u, p, what) => dm(u, p, what) });
   client.on(Events.MessageCreate, m => { feedback.dm(m).catch(e => log.warn("MP d'avis non traité", (e as Error).message)); });
 
   async function handle(i: Interaction) {
@@ -291,9 +296,9 @@ async function start() {
       return i.commandName === "feedback-config" ? feedback.autocomplete(i).catch(() => i.respond([]).catch(() => {})) : undefined;
     }
     // /sondage et /dispos ouvrent une fenêtre : elle doit être la première réponse (pas de réponse différée avant)
-    if (i.isChatInputCommand()) return i.commandName === "sondage" || i.commandName === "dispos" ? polls.command(i) : command(i);
-    if (i.isButton()) return isFeedbackId(i.customId) ? feedback.button(i) : isPollId(i.customId) ? polls.button(i) : button(i);
-    if (i.isModalSubmit()) return isPollId(i.customId) ? polls.modal(i) : feedback.modal(i);
+    if (i.isChatInputCommand()) return i.commandName === "sondage" || i.commandName === "dispos" ? polls.command(i) : i.commandName === "quete" ? quests.command(i) : command(i);
+    if (i.isButton()) return isFeedbackId(i.customId) ? feedback.button(i) : isPollId(i.customId) ? polls.button(i) : isQuestId(i.customId) ? quests.button(i) : button(i);
+    if (i.isModalSubmit()) return isPollId(i.customId) ? polls.modal(i) : isQuestId(i.customId) ? quests.modal(i) : feedback.modal(i);
     if (i.isStringSelectMenu()) return isPollId(i.customId) ? polls.menu(i) : menu(i);
   }
 
@@ -330,6 +335,11 @@ async function start() {
       if (kind === "polls") {
         await i.editReply(tr(g, "✅ Salon lié aux sondages de {name}. Tous les sondages de la guilde y seront posés (/sondage, /dispos et ceux du site), où que la commande soit tapée ; ceux en cours y arrivent dans quelques secondes.", { name }));
         void polls.tick().catch(() => {});
+        return;
+      }
+      if (kind === "quests") {
+        await i.editReply(tr(g, "✅ Salon lié aux quêtes de {name}. Chaque quête de la guilde y sera annoncée avec un bouton « Prendre » ; l'annonce disparaît quand la quête est finie.", { name }));
+        void quests.tick().catch(() => {});
         return;
       }
       if (kind === "orders") {

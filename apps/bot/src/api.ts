@@ -122,6 +122,29 @@ export interface PollView {
   group: { id: string; name: string; lang?: Lang };
   channelId: string | null; messageId: string | null; changedAt: string; url: string;
 }
+/* ----- Quêtes de guilde (Forever, 27/11/2026) ----- */
+export type QuestType = "collect" | "craft" | "dungeon" | "help" | "other";
+export type QuestTakerState = "taken" | "turned_in" | "validated" | "paid" | "received" | "abandoned" | "removed" | "expired";
+export interface QuestItem { id: number; name: string; quality: number; icon: string | null; qty: number }
+export interface QuestView {
+  id: string; type: QuestType; title: string; description: string; state: "open" | "running" | "done" | "closed" | "cancelled";
+  objective: { item: QuestItem | null; text: string };
+  reward: { copper: number; items: QuestItem[]; text: string; label: string };
+  places: number; free: number; minLevel: number | null; profession: string; dueAt: string | null;
+  creator: string; takers: { id: string; name: string; state: QuestTakerState }[];
+  group: { id: string; name: string; lang?: Lang };
+  channelId: string | null; messageId: string | null; changedAt: string; url: string;
+}
+export type QuestNoticeKind = "taken" | "turned_in" | "rejected" | "validated" | "paid" | "not_received" | "received" | "cancelled" | "expired" | "removed"
+  | "remind_validate" | "remind_pay" | "remind_receive";
+export interface QuestNotice {
+  id: number; discordUserId: string; kind: QuestNoticeKind;
+  payload: { questId: string; takerId?: string; title: string; groupName: string; lang?: Lang; other: string; reward: string; note?: string; url: string };
+}
+export interface QuestNewBody {
+  guildId: string; channelId: string; discordUserId: string; type?: QuestType; title: string; objective: string; description?: string;
+  gold?: number; reward?: string; places?: number; dueAt?: string | null;
+}
 export interface PollVoter { name: string; role: PollRole | null; guest: boolean }
 export interface PollNewBody {
   guildId: string; channelId: string; discordUserId: string; kind: PollKind; question: string; options: { label: string; at?: string | null }[];
@@ -138,10 +161,10 @@ export interface Deletion { id: number; channelId: string; messageId: string }
 /** Salon à part d'un raid récurrent, et le nom qu'il doit porter (date du raid courant, ex. jeudi-15-10). */
 export interface ChannelName { templateId: string; guildId: string; channelId: string; name: string }
 /** Salon lié (celui du groupe, des commandes, d'un raid récurrent, des sorties ou des sondages) et le nom que le site en connaît (null : inconnu). */
-export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings" | "polls"; id: string; guildId: string | null; channelId: string; name: string | null }
+export interface LinkedChannel { kind: "group" | "orders" | "template" | "outings" | "polls" | "quests"; id: string; guildId: string | null; channelId: string; name: string | null }
 /** Liaison d'un salon : raids du groupe, commandes d'artisanat, sorties donjon, sondages, ou salon à part d'un raid récurrent. */
 export type BindResult =
-  | { group: { id: string; name: string; lang?: Lang }; kind: "raids" | "orders" | "outings" | "polls" }
+  | { group: { id: string; name: string; lang?: Lang }; kind: "raids" | "orders" | "outings" | "polls" | "quests" }
   | { group: { id: string; name: string; lang?: Lang }; kind: "template"; template: { id: string; name: string; rename?: boolean; next?: string | null } };
 /** Groupe du site qui suit les avis d'un serveur (Administration → Avis). */
 export interface FeedbackTrack { groupId: string; groupName: string; game: Game; site: string; url: string; lang?: Lang }
@@ -289,6 +312,23 @@ export class InternalApi {
   }
   claimOutingNotices() { return this.req<{ notices: OutingNotice[] }>("POST", "/internal/discord/outings/notices/claim", {}); }
   /* Sondages */
+  questsOutbox() { return this.req<{ quests: QuestView[] }>("GET", "/internal/discord/quests/outbox"); }
+  questPublished(id: string, b: { channelId: string; messageId: string; changedAt: string }) {
+    return this.req<{ ok: true }>("POST", `/internal/discord/quests/${id}/published`, b);
+  }
+  questTake(id: string, discordUserId: string) { return this.req<{ view: QuestView }>("POST", `/internal/discord/quests/${id}/take`, { discordUserId }); }
+  questTaker(id: string, takerId: string, action: "validate" | "paid", discordUserId: string) {
+    return this.req<{ view: QuestView }>("POST", `/internal/discord/quests/${id}/takers/${takerId}/${action}`, { discordUserId });
+  }
+  questReject(id: string, takerId: string, b: { discordUserId: string; note: string }) {
+    return this.req<{ view: QuestView }>("POST", `/internal/discord/quests/${id}/takers/${takerId}/reject`, b);
+  }
+  questReceived(id: string, b: { discordUserId: string; ok: boolean }) { return this.req<{ view: QuestView }>("POST", `/internal/discord/quests/${id}/received`, b); }
+  questCanCreate(b: { guildId: string; channelId: string; discordUserId: string }) {
+    return this.req<{ ok: true; group: { id: string; name: string; lang?: Lang } }>("GET", `/internal/discord/quests/can-create?${new URLSearchParams(b)}`);
+  }
+  createQuest(b: QuestNewBody) { return this.req<{ view: QuestView }>("POST", "/internal/discord/quests", b); }
+  claimQuestNotices() { return this.req<{ notices: QuestNotice[] }>("POST", "/internal/discord/quests/notices/claim", {}); }
   pollCanCreate(b: { guildId: string; channelId: string; discordUserId: string }) {
     return this.req<{ ok: true; group: { id: string; name: string; lang?: Lang } }>("GET", `/internal/discord/polls/can-create?${new URLSearchParams(b)}`);
   }

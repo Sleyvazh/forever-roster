@@ -11,7 +11,7 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   {
     type: ApplicationCommandType.ChatInput,
     name: "forever-lier",
-    ...d("Lie ce salon à une guilde Forever Roster : raids, sorties ou commandes (code donné par le site).", "Links this channel to a Forever Roster guild: raids, runs or orders (code given by the website)."),
+    ...d("Lie ce salon à une guilde Forever Roster : raids, sorties, sondages, quêtes… (code du site).", "Links this channel to a Forever Roster guild: raids, runs, polls, quests… (code from the website)."),
     contexts: [InteractionContextType.Guild],
     options: [{ type: ApplicationCommandOptionType.String, name: "code", ...d("Code affiché sur la page de la guilde (valable 30 min)", "Code shown on the guild's page (valid 30 min)"), required: true, min_length: 6, max_length: 32 }],
   },
@@ -66,6 +66,26 @@ export const COMMANDS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
     name: "dispos",
     ...d("Demande à la guilde ses dispos pour un raid : 2 à 8 créneaux, chacun répond Oui ou Si besoin.", "Asks the guild when it can raid: 2 to 8 time slots, everyone answers Yes or If needed."),
     contexts: [InteractionContextType.Guild],
+  },
+  // Quêtes de guilde (Forever, 27/11/2026) : droits vérifiés par le site (réglage « Qui peut publier des quêtes », tous par défaut)
+  {
+    type: ApplicationCommandType.ChatInput,
+    name: "quete",
+    ...d("Publie une quête de guilde (Forever) : un service et sa récompense, que d'autres membres prennent.", "Posts a guild quest (Forever): a favor and its reward, for other members to take."),
+    contexts: [InteractionContextType.Guild],
+    options: [
+      { type: ApplicationCommandOptionType.String, name: "titre", ...d("Ex. Du cuir pour mes sacoches (60 caractères)", "E.g. Leather for my bags (60 characters)"), required: true, max_length: 60 },
+      { type: ApplicationCommandOptionType.String, name: "objectif", ...d("Ex. 20 Cuir épais, Vaincre Mor'Ladim (80 caractères)", "E.g. 20 Thick Leather, Defeat Mor'Ladim (80 characters)"), required: true, max_length: 80 },
+      { type: ApplicationCommandOptionType.Integer, name: "or", ...d("Récompense en pièces d'or", "Reward in gold"), required: false, min_value: 0, max_value: 99999 },
+      { type: ApplicationCommandOptionType.String, name: "autre", ...d("Autre récompense : un objet, un enchantement… (80 caractères)", "Other reward: an item, an enchant… (80 characters)"), required: false, max_length: 80 },
+      { type: ApplicationCommandOptionType.Integer, name: "places", ...d("Nombre de joueurs qui peuvent la prendre (1 à 40, 1 par défaut)", "How many players can take it (1 to 40, 1 by default)"), required: false, min_value: 1, max_value: 40 },
+      { type: ApplicationCommandOptionType.String, name: "type", ...d("Sorte de quête", "Kind of quest"), required: false, choices: [
+        { name: "Gathering", name_localizations: { fr: "Collecte" }, value: "collect" }, { name: "Crafting", name_localizations: { fr: "Artisanat" }, value: "craft" },
+        { name: "Dungeon", name_localizations: { fr: "Donjon" }, value: "dungeon" }, { name: "Helping hand", name_localizations: { fr: "Coup de main" }, value: "help" },
+        { name: "Other", name_localizations: { fr: "Autre" }, value: "other" }] },
+      { type: ApplicationCommandOptionType.String, name: "echeance", ...d("Facultatif : 3j, 48h, jeudi 21:00 (heure de Paris)", "Optional: 3d, 48h, thursday 21:00 (Paris time)"), required: false, max_length: 40 },
+      { type: ApplicationCommandOptionType.String, name: "description", ...d("Facultatif : les détails (300 caractères)", "Optional: details (300 characters)"), required: false, max_length: 300 },
+    ],
   },
   // Signalements du site (bug, idée, question) : le salon privé des admins du site
   {
