@@ -3128,7 +3128,8 @@ p.rp-meta { margin: 0; color: var(--ink); }
 .pl-big-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .pl-big-bar input[type="search"] { flex: 1 1 200px; min-width: 0; }
 .pl-count { margin-left: auto; font: 600 12px var(--f-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
-.pl-big { display: grid; gap: 4px; max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+/* Lignes à leur hauteur (max-content) : sans ça, la grille écrase ses lignes (overflow: hidden) pour tenir dans max-height au lieu de défiler */
+.pl-big { display: grid; grid-auto-rows: max-content; align-content: start; gap: 4px; max-height: min(60vh, 560px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .pl-big .pl-opt { padding: 7px 10px; }
 .pl-big .hint { margin: 0; padding: 8px 2px; }
 .pl-rank { display: inline-block; min-width: 2.4em; margin-right: 4px; color: var(--ink-3); font-size: 12px; font-weight: 600; }

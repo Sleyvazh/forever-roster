@@ -24,6 +24,8 @@ const test = base.extend<{ page: Page }>({
 
 const DB = process.env.DATABASE_URL_E2E ?? "postgres://forever:forever@localhost:5432/forever_e2e";
 const NAMES = ["Zèle", "Écho", "Aube", "Milk me John", "Bastion", "Les Sans-Nom", "Cendre", "Dague", "Forge", "Givre", "Hydre", "Iris", "Jade"];
+// 58 choix comme le vrai vote du nom de guilde : la liste défile, chaque ligne garde sa hauteur (bug vu par Flo le 27/11)
+const MORE = Array.from({ length: 45 }, (_, i) => `Nom ${String(i + 1).padStart(2, "0")}`);
 const PROFS = JSON.stringify({ prof1: { name: "", skill: 0 }, prof2: { name: "", skill: 0 }, cooking: 0, fishing: 0, firstAid: 0 });
 
 test("sondages : poser, voter, disponibilités, raid sur ★", async ({ page, context }) => {
@@ -187,10 +189,10 @@ test("grand sondage (liste collée, au plus N, recherche, classement, 2e tour) e
     const dlg = page.getByRole("dialog", { name: "Nouveau sondage" });
     await dlg.getByLabel("Question").fill("Nom de guilde · 1er tour");
     await dlg.getByRole("button", { name: "Coller une liste (un choix par ligne)" }).click();
-    await dlg.getByLabel("Liste des choix, un par ligne").fill([...NAMES, "Aube", ""].join("\n"));
+    await dlg.getByLabel("Liste des choix, un par ligne").fill([...NAMES, ...MORE, "Aube", ""].join("\n"));
     await dlg.getByRole("button", { name: "Utiliser cette liste" }).click();
     await expect(dlg.getByLabel("Choix 13", { exact: true })).toHaveValue("Jade");
-    await expect(dlg.getByText("13 choix : ils seront rangés par ordre alphabétique, et sur Discord « Voter » ouvre la liste.")).toBeVisible();
+    await expect(dlg.getByText("58 choix : ils seront rangés par ordre alphabétique, et sur Discord « Voter » ouvre la liste.")).toBeVisible();
     await dlg.getByLabel("Plusieurs choix par personne").check();
     await dlg.getByRole("checkbox", { name: /^Au plus/ }).check();
     await dlg.getByRole("button", { name: "À la fin" }).click();
@@ -206,8 +208,11 @@ test("grand sondage (liste collée, au plus N, recherche, classement, 2e tour) e
   await test.step("recherche, Mes choix, au plus 3", async () => {
     await expect(card.getByText(/vote anonyme · jusqu'à 3 choix · résultats à la fin/)).toBeVisible();
     const opts = card.locator(".pl-big .pl-opt");
-    await expect(opts).toHaveCount(13);
+    await expect(opts).toHaveCount(58);
     await expect(opts.first()).toContainText("Aube");
+    // Pas de lignes écrasées : chacune garde sa hauteur, la liste défile
+    expect(await opts.evaluateAll(els => Math.min(...els.map(e => e.getBoundingClientRect().height))), "hauteur d'une ligne").toBeGreaterThanOrEqual(30);
+    expect(await card.locator(".pl-big").evaluate(el => el.scrollHeight > el.clientHeight), "la liste défile").toBe(true);
     await expect(opts.nth(4)).toContainText("Écho");
     await card.getByRole("searchbox", { name: "Chercher un choix" }).fill("echo");
     await expect(opts).toHaveCount(1);
