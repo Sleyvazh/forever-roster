@@ -1,5 +1,5 @@
 import {
-  isBigPoll, POLL_MAX_LABEL, POLL_MAX_OPTIONS, POLL_MAX_QUESTION, POLL_MAX_SLOTS, pollEndText, pollSortKey, ranking, RUNOFF_SIZE, slotText, zonedParts, type Role,
+  isBigPoll, POLL_MAX_LABEL, POLL_MAX_OPTIONS, POLL_MAX_QUESTION, POLL_MAX_SLOTS, pollEndText, pollSortKey, ranking, runoffDefaultEnd, RUNOFF_SIZE, slotText, zonedParts, type Role,
 } from "@forever/game-data";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
@@ -315,7 +315,7 @@ function RunoffDialog({ groupId, poll: p, onClose, onDone }: { groupId: string; 
   const base = p.question.replace(/\s*[·:-]?\s*(1er|premier) tour\s*$/i, "").trim();
   const [question, setQuestion] = useState(`${base} · ${t("2e tour")}`);
   const [endOn, setEndOn] = useState(true);
-  const [end, setEnd] = useState<Slot>({ day: today, time: "23:45" });
+  const [end, setEnd] = useState<Slot>(() => runoffDefaultEnd());
   const [err, setErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   // Dans l'ordre du classement (celui des choix du 2e tour)

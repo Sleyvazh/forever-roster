@@ -26,6 +26,18 @@ export const POLL_MAX_SLOTS = 8;
 export const RUNOFF_SIZE = 5;
 export const isBigPoll = (p: { kind: PollKind; options: readonly unknown[] }) => p.kind === "choice" && p.options.length > POLL_BUTTONS_MAX;
 export const pollMaxOptions = (kind: PollKind) => (kind === "dates" ? POLL_MAX_SLOTS : POLL_MAX_OPTIONS);
+/**
+ * Fin proposée pour un 2e tour : ce soir à 23:45 (heure du jeu), ou demain à 23:45 s'il reste moins d'une heure
+ * (sinon, posé après 22:45, il partait avec une fin déjà passée, et le site le refusait).
+ */
+export function runoffDefaultEnd(now = new Date(), timeZone = GAME_TIMEZONE): { day: string; time: string } {
+  const z = zonedParts(now, timeZone);
+  const tonight = zonedTime(z.year, z.month, z.day, 23, 45, timeZone);
+  const late = !tonight || tonight.getTime() - now.getTime() < 3600e3;
+  const d = new Date(Date.UTC(z.year, z.month - 1, z.day + (late ? 1 : 0)));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { day: `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`, time: "23:45" };
+}
 export const POLL_MAX_QUESTION = 200;
 export const POLL_MAX_LABEL = 80;
 /** Durée maximale d'un sondage (sa fin, au plus tard) et sondages ouverts à la fois par guilde. */

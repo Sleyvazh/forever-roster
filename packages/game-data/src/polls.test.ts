@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestSlot, byLabel, isBigPoll, leaders, parseEnd, parseSlot, pollEndText, ranking, runoffPick, slotText, textBar } from "./polls";
+import { bestSlot, byLabel, isBigPoll, leaders, parseEnd, parseSlot, pollEndText, ranking, runoffDefaultEnd, runoffPick, slotText, textBar } from "./polls";
 
 // Jeudi 26 novembre 2026, 19:42 à Paris
 const NOW = new Date("2026-11-26T18:42:00Z");
@@ -68,5 +68,13 @@ describe("sondages : créneaux et fin tapés dans le bot", () => {
     expect(end("dimanche 20:00")).toBe("dimanche 29/11 à 20:00");
     expect(end("0j")).toBe("invalid");
     expect(pollEndText(new Date("2026-11-26T17:00:00Z"), "en")).toBe("Thursday 26/11 at 18:00");
+  });
+  it("fin proposée pour le 2e tour : ce soir 23:45, sinon demain si c'est dans moins d'une heure", () => {
+    expect(runoffDefaultEnd(new Date("2026-11-27T21:00:00Z"))).toEqual({ day: "2026-11-27", time: "23:45" }); // 22:00 à Paris
+    expect(runoffDefaultEnd(new Date("2026-11-27T21:44:00Z"))).toEqual({ day: "2026-11-27", time: "23:45" }); // 22:44
+    expect(runoffDefaultEnd(new Date("2026-11-27T21:46:00Z"))).toEqual({ day: "2026-11-28", time: "23:45" }); // 22:46
+    expect(runoffDefaultEnd(new Date("2026-11-27T22:55:00Z"))).toEqual({ day: "2026-11-28", time: "23:45" }); // 23:55 (CI du 27/11)
+    expect(runoffDefaultEnd(new Date("2026-11-27T23:05:00Z"))).toEqual({ day: "2026-11-28", time: "23:45" }); // 00:05 le 28
+    expect(runoffDefaultEnd(new Date("2026-12-31T23:30:00Z"))).toEqual({ day: "2027-01-01", time: "23:45" }); // 00:30 le 1er janvier
   });
 });
